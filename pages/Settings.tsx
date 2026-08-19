@@ -1,12 +1,26 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
-import { UserRole, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo } from '../types';
+import { UserRole, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
 import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download } from 'lucide-react';
 import { api, API_URL } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
 import { ACCESS_MODULES, SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
+
+/** Bo'lim rangi — navbat tablosi va kalendar shu ranglarni ishlatadi */
+const DEPT_COLORS = [
+   { name: "Ko'k", value: '#2563EB' },
+   { name: 'Qizil', value: '#DC2626' },
+   { name: 'Binafsha', value: '#7C3AED' },
+   { name: 'Pushti', value: '#DB2777' },
+   { name: 'Moviy', value: '#0891B2' },
+   { name: 'Yashil', value: '#059669' },
+   { name: 'Sariq', value: '#D97706' },
+   { name: 'Feruza', value: '#0D9488' },
+   { name: 'Indigo', value: '#4F46E5' },
+   { name: 'Jigarrang', value: '#B45309' },
+];
 
 const DOCTOR_COLORS = [
    { name: 'Ko\'k', value: '#3B82F6' },
@@ -49,7 +63,7 @@ export const Settings: React.FC<SettingsProps> = ({
    userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, plans, reviews
 }) => {
    const { t } = useLanguage();
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'leadApi' | 'maintenance'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'leadApi' | 'maintenance' | 'departments'>('services');
 
    // Tashqi lid manbalari (yuboraman.uz va h.k.) uchun integratsiya kaliti
    const [leadApiInfo, setLeadApiInfo] = useState<LeadApiKeyInfo | null>(null);
@@ -920,6 +934,93 @@ export const Settings: React.FC<SettingsProps> = ({
       try { return new Date(iso).toLocaleString('uz-UZ'); } catch { return iso; }
    };
 
+   /* ─── Bo'limlar ────────────────────────────────────────────────────────
+      Ilgari bo'limlarni faqat seed yaratardi: klinika yangi bo'lim qo'sha
+      olmasdi, nomini tuzata olmasdi, yopilganini o'chira olmasdi. */
+   const [deptList, setDeptList] = useState<any[]>([]);
+   const [deptLoading, setDeptLoading] = useState(false);
+   const [deptError, setDeptError] = useState('');
+   const [deptBusy, setDeptBusy] = useState(false);
+   const [deptModal, setDeptModal] = useState<null | { mode: 'create' | 'edit'; data: any }>(null);
+   const [deptForm, setDeptForm] = useState({ name: '', code: '', type: 'CLINICAL', color: '', sortOrder: '0' });
+
+   const loadDepartments = React.useCallback(async () => {
+      setDeptLoading(true);
+      setDeptError('');
+      try {
+         setDeptList(await api.departments.getAll());
+      } catch (e: any) {
+         setDeptError(e?.message || 'Bo\'limlarni yuklab bo\'lmadi');
+      } finally {
+         setDeptLoading(false);
+      }
+   }, []);
+
+   React.useEffect(() => {
+      if (activeTab === 'departments' && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
+   }, [activeTab, userRole, loadDepartments]);
+
+   const openDeptCreate = () => {
+      setDeptForm({ name: '', code: '', type: 'CLINICAL', color: DEPT_COLORS[0].value, sortOrder: String((deptList.length + 1) * 10) });
+      setDeptModal({ mode: 'create', data: null });
+   };
+
+   const openDeptEdit = (d: any) => {
+      setDeptForm({
+         name: d.name || '',
+         code: d.code || '',
+         type: d.type || 'CLINICAL',
+         color: d.color || DEPT_COLORS[0].value,
+         sortOrder: String(d.sortOrder ?? 0),
+      });
+      setDeptModal({ mode: 'edit', data: d });
+   };
+
+   const saveDepartment = async () => {
+      if (!deptForm.name.trim() || !deptForm.code.trim()) return;
+      setDeptBusy(true);
+      setDeptError('');
+      try {
+         const payload = {
+            name: deptForm.name.trim(),
+            code: deptForm.code.trim().toUpperCase(),
+            type: deptForm.type,
+            color: deptForm.color || null,
+            sortOrder: Number(deptForm.sortOrder) || 0,
+         };
+         if (deptModal?.mode === 'edit' && deptModal.data) {
+            await api.departments.update(deptModal.data.id, payload as any);
+         } else {
+            await api.departments.create(payload as any);
+         }
+         setDeptModal(null);
+         await loadDepartments();
+      } catch (e: any) {
+         setDeptError(e?.message || 'Saqlab bo\'lmadi');
+      } finally {
+         setDeptBusy(false);
+      }
+   };
+
+   /* O'chirish EMAS, faolsizlantirish: eski qabullar bo'limga bog'langan va
+      ular tarixdan yo'qolmasligi kerak. Backend ham shunday ishlaydi. */
+   const toggleDepartmentActive = async (d: any) => {
+      setDeptBusy(true);
+      setDeptError('');
+      try {
+         if (d.isActive) {
+            await api.departments.deactivate(d.id);
+         } else {
+            await api.departments.update(d.id, { isActive: true } as any);
+         }
+         await loadDepartments();
+      } catch (e: any) {
+         setDeptError(e?.message || 'O\'zgartirib bo\'lmadi');
+      } finally {
+         setDeptBusy(false);
+      }
+   };
+
    return (
       <div className="space-y-6 animate-fade-in">
          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('settings.title')}</h1>
@@ -938,6 +1039,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   // Kalitni faqat klinika egasi ko'radi — backend ham shu rolni talab qiladi.
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'leadApi', name: 'Lid integratsiyasi', icon: Link2 }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: 'Ruxsatlar', icon: Shield }] : []),
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: 'Bo’limlar', icon: Building2 }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: 'Xizmat ko’rsatish', icon: HardDrive }] : []),
                ].map((item) => (
                   <button
@@ -1321,6 +1423,90 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                            </p>
                         </div>
                         </>)}
+                     </Card>
+                  </div>
+               )}
+
+               {/* Bo'limlar — ko'p profilli klinikaning asosiy o'qi */}
+               {activeTab === 'departments' && userRole === UserRole.CLINIC_ADMIN && (
+                  <div className="space-y-6">
+                     <Card className="p-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
+                           <div className="flex items-center gap-3 flex-1">
+                              <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
+                                 <Building2 className="w-5 h-5 text-primary-600 dark:text-primary-300" />
+                              </div>
+                              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Bo'limlar</h3>
+                           </div>
+                           <Button onClick={openDeptCreate} disabled={deptBusy}>
+                              <Plus className="w-4 h-4 mr-1.5" /> Bo'lim qo'shish
+                           </Button>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                           Shifokorlar, xizmatlar, qabullar va kalendar bo'limga bog'lanadi.
+                           Bo'lim turi qaysi ekranda ko'rinishini belgilaydi: registratura faqat
+                           klinik bo'limlarni ko'rsatadi.
+                        </p>
+
+                        {deptError && (
+                           <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                              <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                              <p className="text-sm text-red-700 dark:text-red-300 flex-1">{deptError}</p>
+                              <Button variant="secondary" size="sm" onClick={loadDepartments}>Qayta urinish</Button>
+                           </div>
+                        )}
+
+                        {deptLoading && deptList.length === 0 ? (
+                           <div className="space-y-2">
+                              {[0, 1, 2].map((i) => (
+                                 <div key={i} className="h-14 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                              ))}
+                           </div>
+                        ) : deptList.length === 0 ? (
+                           <div className="text-center py-10 border border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
+                              <Building2 className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Bo'lim yo'q</p>
+                              <Button size="sm" onClick={openDeptCreate}>Birinchisini qo'shish</Button>
+                           </div>
+                        ) : (
+                           <div className="space-y-2">
+                              {deptList.map((d) => (
+                                 <div key={d.id}
+                                    className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 border rounded-lg
+                                       ${d.isActive
+                                          ? 'border-gray-200 dark:border-gray-700'
+                                          : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 opacity-60'}`}>
+                                    <span className="w-3 h-3 rounded-full shrink-0"
+                                       style={{ backgroundColor: d.color || '#9CA3AF' }} />
+                                    <div className="min-w-0 flex-1">
+                                       <div className="flex items-center gap-2 flex-wrap">
+                                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{d.name}</p>
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                             {d.code}
+                                          </span>
+                                          {!d.isActive && (
+                                             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">
+                                                o'chirilgan
+                                             </span>
+                                          )}
+                                       </div>
+                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                          {DEPARTMENT_TYPE_LABELS[d.type as DepartmentType] || d.type}
+                                          {' · '}tartib {d.sortOrder ?? 0}
+                                       </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                       <Button variant="secondary" size="sm" onClick={() => openDeptEdit(d)} disabled={deptBusy}>
+                                          <Edit className="w-4 h-4" />
+                                       </Button>
+                                       <Button variant="secondary" size="sm" onClick={() => toggleDepartmentActive(d)} disabled={deptBusy}>
+                                          {d.isActive ? 'O\'chirish' : 'Yoqish'}
+                                       </Button>
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        )}
                      </Card>
                   </div>
                )}
@@ -2511,6 +2697,85 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                </div>
             </div>
          </Modal>
+      {/* Bo'lim yaratish va tahrirlash */}
+      {deptModal && (
+         <Modal isOpen={true} onClose={() => setDeptModal(null)}
+            title={deptModal.mode === 'edit' ? 'Bo\'limni tahrirlash' : 'Yangi bo\'lim'}>
+            <div className="space-y-4">
+               <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nomi</label>
+                  <Input value={deptForm.name}
+                     onChange={(e: any) => setDeptForm(f => ({ ...f, name: e.target.value }))}
+                     placeholder="Masalan: Kardiologiya" />
+               </div>
+
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kod</label>
+                     <Input value={deptForm.code}
+                        onChange={(e: any) => setDeptForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                        placeholder="KARD" />
+                     <p className="text-xs text-gray-400 mt-1">Qisqa, takrorlanmaydigan belgi</p>
+                  </div>
+                  <div>
+                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tartib</label>
+                     <Input type="number" value={deptForm.sortOrder}
+                        onChange={(e: any) => setDeptForm(f => ({ ...f, sortOrder: e.target.value }))} />
+                     <p className="text-xs text-gray-400 mt-1">Ro'yxatlarda joyi</p>
+                  </div>
+               </div>
+
+               <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Turi</label>
+                  <Select value={deptForm.type}
+                     onChange={(e: any) => setDeptForm(f => ({ ...f, type: e.target.value }))}>
+                     {(Object.keys(DEPARTMENT_TYPE_LABELS) as DepartmentType[]).map((k) => (
+                        <option key={k} value={k}>{DEPARTMENT_TYPE_LABELS[k]}</option>
+                     ))}
+                  </Select>
+                  {/* Turni tushuntirish TALTIQ emas: noto'g'ri tanlangan tur — keyin
+                      hech kim topa olmaydigan bo'lim. */}
+                  <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                     <p><b>Klinik</b> — registraturada bemor shu bo'limga yoziladi</p>
+                     <p><b>Laboratoriya</b> — tahlillar katalogi va yo'llanmalar</p>
+                     <p><b>Diagnostika</b> — UZI, EKG, rentgen</p>
+                     <p><b>Statsionar</b> — palata va koykalar</p>
+                     <p><b>Dorixona</b> — ombor va retseptlar</p>
+                  </div>
+               </div>
+
+               <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rangi</label>
+                  <div className="flex flex-wrap gap-2">
+                     {DEPT_COLORS.map((c) => (
+                        <button key={c.value} type="button"
+                           onClick={() => setDeptForm(f => ({ ...f, color: c.value }))}
+                           title={c.name}
+                           className={`w-8 h-8 rounded-full border-2 transition-transform
+                              ${deptForm.color === c.value
+                                 ? 'border-gray-900 dark:border-white scale-110'
+                                 : 'border-transparent hover:scale-105'}`}
+                           style={{ backgroundColor: c.value }} />
+                     ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">Navbat tablosida va kalendarda ishlatiladi</p>
+               </div>
+
+               {deptError && (
+                  <p className="text-sm text-red-600 dark:text-red-400">{deptError}</p>
+               )}
+
+               <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="secondary" onClick={() => setDeptModal(null)}>Bekor qilish</Button>
+                  <Button onClick={saveDepartment}
+                     disabled={deptBusy || !deptForm.name.trim() || !deptForm.code.trim()}>
+                     {deptBusy ? 'Saqlanmoqda…' : 'Saqlash'}
+                  </Button>
+               </div>
+            </div>
+         </Modal>
+      )}
+
       {/* Tiklashni tasdiqlash. Amal QAYTARILMAYDI, shuning uchun oddiy "Ha" yetarli
           emas: foydalanuvchi nusxa sanasini o'z qo'li bilan yozib tasdiqlaydi. */}
       {restoreTarget && (

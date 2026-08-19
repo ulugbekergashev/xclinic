@@ -3,9 +3,28 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const CLOUDFLARE_API_TOKEN = 'CLOUDFLARE_SECRET_REMOVED';
-const CLOUDFLARE_ACCOUNT_ID = 'CLOUDFLARE_SECRET_REMOVED';
-const CLOUDFLARE_ZONE_ID = 'CLOUDFLARE_SECRET_REMOVED';
+/* ─────────────────────────────────────────────────────────────────────────────
+   Cloudflare kalitlari MUHITDAN olinadi, koddan emas.
+
+   Ilgari bu uchtasi shu yerda matn sifatida turardi. Token account darajasida:
+   uni bilgan odam SIZNING akkauntingizda tunnellarni o'chirishi, ya'ni barcha
+   klinikalarning masofadan kirishini o'chirib qo'yishi va zonadagi DNS
+   yozuvlarini qayta yozishi mumkin edi.
+
+   MUHIM: kodni tozalash yetarli EMAS. Eski token allaqachon repozitoriyda va,
+   ehtimol, tarqatilgan bilduruvlarda bo'lgan — uni Cloudflare panelida
+   BEKOR QILISH shart, aks holda toza kod bilan birga o'sha ochiq kalit qoladi.
+
+   Kalitlar bo'lmasa: avtomatik ro'yxatdan o'tish ishga tushmaydi va bir marta
+   tushunarli log yoziladi. Klinika mahalliy tarmoqda ishlashda davom etadi —
+   offline ish buzilmaydi. */
+const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
+const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID || '';
+const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || '';
+
+/** Uchtasi ham to'ldirilganmi. Bittasi yo'q bo'lsa — API ga murojaat qilib bo'lmaydi. */
+const hasCloudflareCredentials = () =>
+    !!CLOUDFLARE_API_TOKEN && !!CLOUDFLARE_ACCOUNT_ID && !!CLOUDFLARE_ZONE_ID;
 
 /**
  * Returns a STABLE, per-installation RANDOM id used for this machine's public tunnel
@@ -82,6 +101,17 @@ async function ensureIngressTarget(tunnelName: string, domain: string, headers: 
 }
 
 export async function checkAndRegisterAutoTunnel() {
+    // Kalitlar muhitda bo'lmasa — hech narsa qilmaymiz. Bu xato emas: masofadan
+    // kirish ixtiyoriy imkoniyat, klinika mahalliy tarmoqda ishlayveradi.
+    if (!hasCloudflareCredentials()) {
+        console.log(
+            '📡 [Cloudflare Auto] Kalitlar sozlanmagan (CLOUDFLARE_API_TOKEN, '
+            + 'CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE_ID) — avtomatik ro\'yxatdan '
+            + 'o\'tish o\'tkazib yuborildi. Mahalliy tarmoqda ishlash buzilmaydi.'
+        );
+        return;
+    }
+
     const envPath = path.join(__dirname, '.env');
     // Haqiqiy token/URL userData'dagi .env da saqlanadi; bundle ichidagi .env da ular bo'sh.
     // Faqat __dirname dan o'qilsa, token "yo'q" deb hisoblanib har ishga tushishda
