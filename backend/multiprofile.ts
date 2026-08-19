@@ -348,6 +348,8 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             source: 'Service', sourceId: proc.id,
             name, unitPrice: basePrice, discount: disc,
             createdByName: doctorName || visit.doctorName || null,
+            doctorId: proc.doctorId || null,
+            doctorName: proc.doctorName || null,
         });
 
         res.json(proc);
@@ -722,6 +724,9 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             source: 'Study', sourceId: study.id,
             name: study.name, unitPrice: study.price,
             createdByName: study.orderedByName,
+            // Tekshiruvni BAJARGAN emas, BUYURGAN shifokor: ulush buyurtmachiga
+            doctorId: study.orderedById || null,
+            doctorName: study.orderedByName || null,
         });
 
         res.json(study);

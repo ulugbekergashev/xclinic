@@ -79,6 +79,7 @@ import { registerInventoryRoutes } from './inventory';
 import { registerReportRoutes } from './reports';
 import { registerFileRoutes } from './files';
 import { runMigrations, registerMaintenanceRoutes } from './maintenance';
+import { tashkentDateStr } from './tashkentTime';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
 const { smsService, normalizeUzPhone } = require('./smsService');
@@ -2493,6 +2494,80 @@ const writeCashAudit = async (input: {
 // Yopish kunni QULFLAMAYDI: kechroq kelgan to'lov baribir yoziladi, faqat kassa sahifasida
 // "yopilgandan keyin o'zgardi" belgisi chiqadi. Qattiq blok ish oqimini to'xtatib qo'yardi.
 
+/* ─── Smenani OCHISH va KUTILAYOTGAN naqdni SERVERDA hisoblash ──────────────
+
+   Nima uchun. Ilgari `POST /api/cash-register/close` da `expectedCash` MIJOZDAN
+   kelardi. Ya'ni kassir "hisob bo'yicha qancha bo'lishi kerak" degan raqamni
+   o'zi yuborardi — sanagan summasiga teng qilib yuborsa, `difference` nolga
+   aylanardi va butun sverka ma'nosini yo'qotardi (GAP-ANALYSIS, C6).
+
+   Endi kutilayotgan summa serverda hisoblanadi. Eski so'rov shakli
+   BUZILMAYDI: `expectedCash` hamon qabul qilinadi, lekin E'TIBORGA
+   OLINMAYDI — server o'z hisobini yozadi. */
+
+/** Kun/smena bo'yicha kutilayotgan summalar. Manba: Transaction + CashMovement. */
+async function computeExpectedCash(prisma: any, clinicId: string, date: string) {
+    const [txs, movements, prevClosure] = await Promise.all([
+        prisma.transaction.findMany({
+            where: { clinicId, date, status: 'Paid' },
+            select: { amount: true, type: true, service: true },
+        }),
+        prisma.cashMovement.findMany({
+            where: { clinicId, date },
+            select: { type: true, amount: true, method: true },
+        }),
+        // Oldingi yopilishdan ko'chib keladigan naqd qoldiq
+        prisma.cashRegisterDay.findFirst({
+            where: { clinicId, date: { lt: date } },
+            orderBy: [{ date: 'desc' }, { shift: 'desc' }],
+            select: { countedCash: true, date: true },
+        }),
+    ]);
+
+    const r = (n: number) => Math.round(n * 100) / 100;
+    let cash = 0, card = 0, click = 0, fromBalance = 0;
+
+    for (const t of txs) {
+        const amt = t.amount || 0;
+        const m = String(t.type || '');
+        // 'Balance' — bemor avansidan yechilgan: kassaga YANGI pul kirmaydi
+        if (m === 'Balance') { fromBalance = r(fromBalance + amt); continue; }
+        if (m === 'Cash') cash = r(cash + amt);
+        else if (m === 'Card' || m === 'Terminal') card = r(card + amt);
+        else if (m === 'Click' || m === 'Payme' || m === 'Uzum') click = r(click + amt);
+    }
+
+    // Naqd yashikka ta'sir qiladigan harakatlar
+    let encashment = 0, refundCash = 0, cashIn = 0;
+    for (const mv of movements) {
+        if (String(mv.method || 'Cash') !== 'Cash') continue;
+        if (mv.type === 'Encashment') encashment = r(encashment + mv.amount);
+        else if (mv.type === 'Refund') refundCash = r(refundCash + mv.amount);
+        else if (mv.type === 'CashIn') cashIn = r(cashIn + mv.amount);
+    }
+
+    const openingCash = r(prevClosure?.countedCash || 0);
+    const expectedCash = r(openingCash + cash + cashIn - encashment - refundCash);
+
+    return {
+        openingCash,
+        expectedCash,
+        expectedCard: card,
+        expectedClick: click,
+        sources: {
+            cashPayments: cash,
+            cardPayments: card,
+            clickPayments: click,
+            fromBalance,
+            cashIn,
+            encashment,
+            refundCash,
+            openingFrom: prevClosure?.date || null,
+            paymentCount: txs.length,
+        },
+    };
+}
+
 app.get('/api/cash-register', authenticateToken, async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
@@ -2524,6 +2599,74 @@ const optionalAmount = (v: any): number | null => {
     return isFinite(n) ? n : null;
 };
 
+/** Kutilayotgan naqd — SERVER hisobi. Interfeys bu raqamni ko'rsatadi va
+ *  tahrirlashga ruxsat bermaydi (C6 tuzatishining ekran tomoni). */
+app.get('/api/cash-register/expected', authenticateToken, async (req, res) => {
+    try {
+        const clinicId = getScopedClinicId(req);
+        if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
+        const date = String(req.query.date || tashkentDateStr());
+        const result = await computeExpectedCash(prisma, clinicId as string, date);
+        res.json({ date, ...result });
+    } catch (error: any) {
+        console.error('Expected cash error:', error?.message || error);
+        res.status(500).json({ error: "Kutilayotgan summani hisoblab bo'lmadi" });
+    }
+});
+
+/** Smenani ochish. Ilgari faqat yopilish bor edi: "kim kassada turgan edi"
+ *  degan savolga javob yo'q edi, boshlang'ich qoldiq ham kimning so'zi ekani
+ *  noma'lum edi. */
+app.post('/api/cash-register/open', authenticateToken, requireRole('RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN'), async (req, res) => {
+    try {
+        const clinicId = getScopedClinicId(req);
+        if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
+        const user = (req as any).user;
+        const date = String(req.body?.date || tashkentDateStr());
+        const shiftNo = Number(req.body?.shift) > 0 ? Math.floor(Number(req.body.shift)) : 1;
+
+        const existing = await prisma.cashRegisterDay.findUnique({
+            where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
+        });
+        if (existing?.openedAt) {
+            return res.status(409).json({ error: 'Smena allaqachon ochilgan' });
+        }
+
+        // Boshlang'ich qoldiqni ham server taklif qiladi — oldingi yopilishdan
+        const computed = await computeExpectedCash(prisma, clinicId as string, date);
+        const openingCash = req.body?.openingCash !== undefined
+            ? Number(req.body.openingCash) || 0
+            : computed.openingCash;
+
+        const data = {
+            openedAt: new Date(),
+            openedByName: user?.name || null,
+            openedByRole: user?.role || null,
+            openingCash,
+        };
+        const shift = await prisma.cashRegisterDay.upsert({
+            where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
+            update: data,
+            create: {
+                clinicId, date, shift: shiftNo,
+                countedCash: 0, expectedCash: 0, difference: 0,
+                ...data,
+            },
+        });
+
+        await writeCashAudit({
+            clinicId, date, action: 'Open', entityType: 'CashRegisterDay', entityId: shift.id,
+            summary: `Smena ${shiftNo} ochildi (boshlang'ich naqd ${Math.round(openingCash)})`,
+            user,
+        });
+
+        res.json(shift);
+    } catch (error: any) {
+        console.error('Cash register open error:', error?.message || error);
+        res.status(500).json({ error: 'Smenani ochishda xatolik' });
+    }
+});
+
 app.post('/api/cash-register/close', authenticateToken, async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
@@ -2541,23 +2684,30 @@ app.post('/api/cash-register/close', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Sana ko\'rsatilmagan' });
         }
         const counted = Number(countedCash);
-        const expected = Number(expectedCash);
-        if (!isFinite(counted) || !isFinite(expected)) {
+        if (!isFinite(counted)) {
             return res.status(400).json({ error: 'Summa noto\'g\'ri' });
         }
         const shiftNo = Number(shift) > 0 ? Math.floor(Number(shift)) : 1;
 
+        /* KUTILAYOTGAN summani SERVER hisoblaydi. `expectedCash` tanada hamon
+           qabul qilinadi (eski mijoz buzilmasin), lekin E'TIBORGA OLINMAYDI:
+           aks holda kassir uni sanagan summasiga teng qilib yuborib, farqni
+           nolga aylantira olardi va butun sverka ma'nosini yo'qotardi (C6). */
+        const computed = await computeExpectedCash(prisma, clinicId as string, date);
+        const expected = computed.expectedCash;
+
         const data = {
             shiftStart: shiftStart ? String(shiftStart) : null,
             shiftEnd: shiftEnd ? String(shiftEnd) : null,
-            openingCash: Number(openingCash) || 0,
+            openingCash: openingCash !== undefined ? (Number(openingCash) || 0) : computed.openingCash,
             countedCash: counted,
             expectedCash: expected,
-            difference: counted - expected,
+            difference: Math.round((counted - expected) * 100) / 100,
             countedCard: optionalAmount(countedCard),
-            expectedCard: optionalAmount(expectedCard),
+            // Terminal va Click bo'yicha kutilgan summa ham serverdan
+            expectedCard: computed.expectedCard,
             countedClick: optionalAmount(countedClick),
-            expectedClick: optionalAmount(expectedClick),
+            expectedClick: computed.expectedClick,
             note: note ? String(note) : null,
             closedByName: user?.name || null,
             closedByRole: user?.role || null,
@@ -3308,6 +3458,8 @@ app.post('/api/lab-orders', authenticateToken, async (req: any, res: any) => {
             name: tests.map((t: any) => t.name).join(', ').slice(0, 180),
             unitPrice: totalPrice,
             createdByName: order.doctorName,
+            doctorId: order.doctorId || null,
+            doctorName: order.doctorName || null,
         });
 
         res.json(order);

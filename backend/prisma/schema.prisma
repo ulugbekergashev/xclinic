@@ -93,6 +93,7 @@ model Patient {
   admissions       Admission[]
   prescriptions    Prescription[]
   charges          VisitCharge[]
+  allergies        PatientAllergy[]
 
   @@unique([clinicId, telegramChatId])
   /// Karta raqami klinika ichida takrorlanmaydi. SQLite da UNIQUE indeksda
@@ -175,6 +176,11 @@ model Visit {
   examData      String?
   diagnosis     String?
   treatmentPlan String?
+  /// Qabul nima bilan tugadi: Home | Followup | Admit | Referred. Migratsiya 0010.
+  disposition   String?
+  /// Yakunlangan bayon qulflanadi — keyin jimgina qayta yozib bo'lmaydi
+  lockedAt      DateTime?
+  lockedByName  String?
   diagnoses     PatientDiagnosis[]
   transactions  Transaction[]
   procedures    TreatmentProcedure[]
@@ -242,6 +248,7 @@ model Transaction {
   clinic          Clinic    @relation(fields: [clinicId], references: [id])
   patient         Patient?  @relation(fields: [patientId], references: [id])
   visit           Visit?    @relation(fields: [visitId], references: [id])
+  chargePayments  ChargePayment[]
 }
 
 model Expense {
@@ -377,6 +384,8 @@ model Clinic {
   charges                 VisitCharge[]
   stockMovements          StockMovement[]
   serviceRecipes          ServiceRecipe[]
+  chargePayments          ChargePayment[]
+  patientAllergies        PatientAllergy[]
 
   @@index([botToken])
 }
@@ -409,6 +418,10 @@ model CashRegisterDay {
   closedByName  String?
   closedByRole  String?
   closedAt      DateTime @default(now())
+  /// Smenani KIM ochgani. Ilgari faqat yopilish yozilardi. Migratsiya 0008.
+  openedAt      DateTime?
+  openedByName  String?
+  openedByRole  String?
   clinic        Clinic   @relation(fields: [clinicId], references: [id])
 
   @@unique([clinicId, date, shift])
@@ -527,10 +540,14 @@ model PatientDiagnosis {
   status    String
   clinicId  String
   visitId   String?
+  /// Surunkali kasallik — bemor kartasida doimiy ro'yxatda turadi. Migratsiya 0011.
+  isChronic Boolean   @default(false)
   clinic    Clinic    @relation(fields: [clinicId], references: [id])
   icd10     ICD10Code @relation(fields: [code], references: [code])
   patient   Patient   @relation(fields: [patientId], references: [id])
   visit     Visit?    @relation(fields: [visitId], references: [id])
+
+  @@index([patientId, isChronic])
 }
 
 model InventoryItem {
@@ -728,6 +745,8 @@ model LabOrder {
   totalPrice        Float          @default(0)
   clinicianNotes    String?
   technicianNotes   String?
+  /// Natija tayyor bo'lgach shifokor ko'rdimi. NULL = ko'rilmagan. Migratsiya 0009.
+  seenByDoctorAt    DateTime?
   clinic            Clinic         @relation(fields: [clinicId], references: [id])
   patient           Patient?       @relation(fields: [patientId], references: [id])
   visit             Visit?         @relation(fields: [visitId], references: [id])
@@ -901,6 +920,8 @@ model DiagnosticStudy {
   findings        String?
   conclusion      String?
   price           Float     @default(0)
+  /// Shifokor natijani ko'rdimi. Migratsiya 0009.
+  seenByDoctorAt  DateTime?
 
   clinic     Clinic           @relation(fields: [clinicId], references: [id])
   patient    Patient          @relation(fields: [patientId], references: [id])
@@ -1124,12 +1145,18 @@ model VisitCharge {
   transactionId String?
   createdAt     DateTime  @default(now())
   createdByName String?
+  /// Qator KIMNING ishi. Chekka emas, qatorga yoziladi: bitta chek bir necha
+  /// shifokorning xizmatini o'z ichiga oladi. Migratsiya 0007.
+  doctorId      String?
+  doctorName    String?
 
-  clinic  Clinic   @relation(fields: [clinicId], references: [id])
-  visit   Visit?   @relation(fields: [visitId], references: [id])
-  patient Patient? @relation(fields: [patientId], references: [id])
+  clinic   Clinic          @relation(fields: [clinicId], references: [id])
+  visit    Visit?          @relation(fields: [visitId], references: [id])
+  patient  Patient?        @relation(fields: [patientId], references: [id])
+  payments ChargePayment[]
 
   @@index([clinicId, status])
+  @@index([doctorId])
   @@index([visitId])
   @@index([patientId])
   @@index([sourceId])
@@ -1225,4 +1252,63 @@ model SchemaMigration {
   /// `baseline` — ishlayotgan klinikaning boshlang'ich nuqtasi;
   /// xatolik bo'lsa — sabab matni
   note       String?
+}
+
+/// Hisob qatori va chek o'rtasidagi bog'lanish — KO'PDAN-KO'PGA.
+///
+/// Ilgari bog'lanish `VisitCharge.transactionId` orqali bitta edi, va shu
+/// sababli to'rt narsa imkonsiz bo'lgan: bir chek bilan bir necha qatorni
+/// to'lash, qisman to'lovda qatorni tanlash, chekni naqd+karta deb bo'lish,
+/// bitta qator bo'yicha qaytarish.
+///
+/// `VisitCharge.paidAmount` yig'indi keshi bo'lib qoladi — ataylab ortiqchalik:
+/// mavjud kod buzilmasligi kerak.
+model ChargePayment {
+  id            String   @id @default(uuid())
+  clinicId      String
+  chargeId      String
+  transactionId String
+  /// Shu chekdan shu qatorga qancha ketgani
+  amount        Float
+  /// Payment | Refund. Qaytarish manfiy summa bilan yoziladi.
+  kind          String   @default("Payment")
+  createdAt     DateTime @default(now())
+  createdByName String?
+
+  clinic      Clinic      @relation(fields: [clinicId], references: [id])
+  charge      VisitCharge @relation(fields: [chargeId], references: [id])
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+
+  @@index([chargeId])
+  @@index([transactionId])
+  @@index([clinicId, createdAt])
+}
+
+/// Bemorning allergiyasi.
+///
+/// Ilgari allergiya qabul bayonining JSON matnida yotardi (`Visit.examData`),
+/// ya'ni uni qidirib ham, ko'rsatib ham, dori tayinlaganda solishtirib ham
+/// bo'lmasdi. Allergiya — bemor xavfsizligi masalasi, JSON ichidagi satr emas.
+///
+/// Olib tashlanganda yozuv O'CHIRILMAYDI, `isActive` o'chadi: tibbiy ma'lumot
+/// tarixi saqlanishi kerak.
+model PatientAllergy {
+  id          String   @id @default(uuid())
+  clinicId    String
+  patientId   String
+  /// Dori yoki modda
+  substance   String
+  /// Qanday namoyon bo'lgan
+  reaction    String?
+  /// Mild | Severe | Unknown
+  severity    String   @default("Unknown")
+  notedAt     DateTime @default(now())
+  notedByName String?
+  isActive    Boolean  @default(true)
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@index([clinicId])
 }

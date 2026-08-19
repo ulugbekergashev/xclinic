@@ -24,3 +24,7 @@ Thumbs.db
 
 # Arxivlar va tekshiruv fayllari
 *.zip
+
+# Vaqtinchalik ish fayllari (test tokenlari, id lar)
+backend/_*
+_*
