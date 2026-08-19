@@ -1177,3 +1177,33 @@ model ServiceRecipe {
   @@unique([serviceId, itemId])
   @@index([clinicId])
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SXEMA VERSIYASI
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Qaysi migratsiya allaqachon qo'llanilgani.
+///
+/// Nima uchun kerak. Klinikaning kompyuterida Prisma CLI yo'q, ya'ni
+/// `prisma db push` ni ishga tushirish imkoni yo'q. Yangi ustun yoki jadval
+/// o'sha yerga qanday yetib borishini shu mexanizm hal qiladi: o'rnatuvchi
+/// ichida raqamlangan SQL fayllar keladi, server ishga tushganda yetishmayotgan
+/// migratsiyalarni qo'llaydi va shu jadvalga yozib qo'yadi.
+///
+/// Nima uchun Prisma sxemasida e'lon qilingan. Xizmat jadvalini Prisma'dan
+/// yashirish jozibali edi, lekin ishlab chiqishda ishlatiladigan
+/// `prisma db push` sxemada yo'q jadvalni "chetdan kelgan" deb hisoblaydi va
+/// tozalab tashlashi mumkin. Besh qator e'lon shu xavfni olib tashlaydi.
+/// Qatorlarni esa baribir raner raw SQL bilan boshqaradi, Prisma Client emas.
+model SchemaMigration {
+  /// Fayl nomi, masalan `0002_appointment_drop_unique`
+  version    String   @id
+  appliedAt  DateTime @default(now())
+  /// SQL faylning xeshi: qo'llanilgandan keyin fayl tahrirlangani ko'rinadi
+  checksum   String?
+  /// Qancha vaqt ketgani — kuchsiz kompyuterda diagnostika uchun
+  durationMs Int?
+  /// `baseline` — ishlayotgan klinikaning boshlang'ich nuqtasi;
+  /// xatolik bo'lsa — sabab matni
+  note       String?
+}

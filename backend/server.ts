@@ -78,6 +78,7 @@ import { registerBillingRoutes, createCharge } from './billing';
 import { registerInventoryRoutes } from './inventory';
 import { registerReportRoutes } from './reports';
 import { registerFileRoutes } from './files';
+import { runMigrations, registerMaintenanceRoutes } from './maintenance';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
 const { smsService, normalizeUzPhone } = require('./smsService');
@@ -4451,6 +4452,14 @@ registerInventoryRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerReportRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerFileRoutes(app, { prisma, authenticateToken, getScopedClinicId, uploadsDir });
 
+/* Migratsiya fayllari. O'rnatilgan nusxada ncc bundle yonida yotadi,
+   dev'da — backend/migrations/. */
+const migrationsDir = [
+    path.join(__dirname, 'migrations'),
+    path.join(__dirname, '..', 'migrations'),
+].find((d) => fs.existsSync(d)) || path.join(__dirname, 'migrations');
+registerMaintenanceRoutes(app, { prisma, authenticateToken, requireRole, migrationsDir });
+
 // --- Patient Photos ---
 app.post('/api/patients/:id/photos', authenticateToken, upload.single('photo'), async (req, res) => {
     try {
@@ -6298,6 +6307,24 @@ async function verifyCriticalSchema(): Promise<boolean> {
 
 console.log('🚀 Server is initializing...');
 runStartupMigrations()
+    /* Yangi mexanizm: raqamlangan SQL fayllar (backend/migrations/).
+       Eski COLUMN_MIGRATIONS ro'yxati ATAYLAB o'z joyida qoldirildi — u
+       ishlayotgan klinikalarda allaqachon o'tgan bo'lishi mumkin, va uni
+       olib tashlash hech narsa yutmaydi. Yangi o'zgarishlar faqat SQL
+       fayllar orqali qo'shiladi. */
+    .then(() => runMigrations(prisma, migrationsDir))
+    .then((mig) => {
+        if (mig.failed) {
+            console.error(
+                `❌ KRITIK: migratsiya ${mig.failed.version} bajarilmadi — server ishga tushmaydi.
+` +
+                `   Sabab: ${mig.failed.error}
+` +
+                "   Sxema o'zgartirilmagan holatda qoldi, ma'lumot yo'qolmadi."
+            );
+            process.exit(1);
+        }
+    })
     .then(verifyCriticalSchema)
     .then((ok) => {
         if (!ok) {
