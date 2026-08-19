@@ -611,6 +611,17 @@ const AppContent: React.FC = () => {
     }
   };
 
+  /* Ombor qoldig'ini qayta o'qish. Kerak, chunki qoldiq endi harakatlar orqali
+     o'zgaradi: kirim/chiqim/inventarizatsiyadan keyin ro'yxat eskirib qoladi. */
+  const refreshInventory = async () => {
+    try {
+      const invItems = await api.inventory.getAll(clinicId);
+      setInventoryItems(invItems || []);
+    } catch (e) {
+      console.error('Failed to refresh inventory:', e);
+    }
+  };
+
   const addExpense = async (expense: Omit<Expense, 'id'>) => {
     try {
       const newExpense = await api.expenses.create({ ...expense, clinicId });
@@ -857,6 +868,13 @@ const AppContent: React.FC = () => {
     } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
   };
 
+  /* ESKIRGAN — interfeys endi bundan FOYDALANMAYDI.
+     Bu funksiya `PUT /api/inventory/:id/stock` ni chaqiradi, u esa qoldiqni
+     to'g'ridan-to'g'ri qayta yozadi va harakat qatorini yozmaydi. Ombor ekrani
+     endi `api.stock.*` orqali ishlaydi: kirim/chiqim/inventarizatsiya —
+     hammasi StockMovement bo'lib tushadi, shunda qoldiq isbotlanadi.
+     Endpoint o'z joyida qoldirildi (ishlayotgan narsani buzmaymiz), lekin bu
+     yo'lni QAYTA ISHLATMANG. */
   const updateInventoryStock = async (id: string, data: { change: number; type: 'IN' | 'OUT'; note?: string; userName: string; cost?: number }) => {
     try {
       const updated = await api.inventory.updateStock(id, data);
@@ -1541,9 +1559,10 @@ const AppContent: React.FC = () => {
                     <Inventory
                       items={inventoryItems}
                       userName={userName}
+                      userRole={userRole}
                       onAddItem={addInventoryItem}
-                      onUpdateStock={updateInventoryStock}
                       onDeleteItem={deleteInventoryItem}
+                      onRefreshItems={refreshInventory}
                     />
                   } />
 

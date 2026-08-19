@@ -538,6 +538,18 @@ export interface InventoryItem {
   clinicId: string;
   createdAt: string;
   updatedAt: string;
+  // Quyidagilar bazada allaqachon bor edi (schema.prisma, InventoryItem), lekin
+  // bu turda yo'q edi — shuning uchun frontend ularni "ko'rmasdi". Ixtiyoriy
+  // qilib qo'shildi: eski kod buzilmaydi.
+  /** Tannarx. Xizmat retsepti (ServiceRecipe) tannarxni shu narxdan hisoblaydi */
+  price?: number;
+  /** Dori — partiya va yaroqlilik muddati nazorat qilinadi */
+  isMedication?: boolean;
+  /** Xizmat ko'rsatilganda retsept bo'yicha avtomatik hisobdan chiqadi */
+  isConsumable?: boolean;
+  form?: string | null;
+  activeIngredient?: string | null;
+  departmentId?: string | null;
 }
 
 export interface InventoryLog {
