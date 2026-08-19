@@ -1,0 +1,97 @@
+{
+  "name": "xclinic",
+  "private": true,
+  "version": "0.1.0",
+  "description": "XClinic — ko'p profilli klinika uchun offline boshqaruv tizimi",
+  "type": "module",
+  "main": "electron-main/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "electron:compile": "tsc -p tsconfig.electron.json",
+    "electron:build": "npm run build && npm run electron:compile && electron-builder"
+  },
+  "build": {
+    "appId": "uz.xclinic.local",
+    "productName": "XClinic",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main/**/*",
+      "public/**/*",
+      "backend/dist-bundle/**/*",
+      "!backend/dist-bundle/**/device_id.txt",
+      "!backend/dist-bundle/**/*.db",
+      "!backend/dist-bundle/**/dotenv_log.txt"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "backend/dist-bundle/**/*",
+      "dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/cloudflared.exe",
+        "to": "cloudflared.exe"
+      },
+      {
+        "from": "backend/node_modules/@prisma/client",
+        "to": "app.asar.unpacked/backend/node_modules/@prisma/client",
+        "filter": [
+          "**/*",
+          "!**/*.d.ts"
+        ]
+      },
+      {
+        "from": "backend/node_modules/.prisma/client",
+        "to": "app.asar.unpacked/backend/node_modules/.prisma/client",
+        "filter": [
+          "index.js",
+          "default.js",
+          "package.json",
+          "schema.prisma"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "XClinic"
+    }
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.1",
+    "lucide-react": "^0.554.0",
+    "motion": "^12.42.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-is": "^19.2.0",
+    "react-router-dom": "^7.13.1",
+    "recharts": "^3.4.1",
+    "tailwindcss": "^4.3.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^41.2.1",
+    "electron-builder": "^26.8.1",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "wait-on": "^7.2.0"
+  }
+}

@@ -1,0 +1,1179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Doctor {
+  id               String            @id @default(uuid())
+  firstName        String
+  lastName         String
+  specialty        String
+  phone            String
+  email            String?
+  status           String
+  username         String?           @unique
+  password         String?
+  clinicId         String
+  telegramChatId   String?
+  percentage       Float             @default(0)
+  salaryType       String            @default("none") // 'none' | 'fixed' | 'fixed_kpi' | 'kpi'
+  fixedSalary      Float             @default(0)
+  color            String?
+  secondaryPhone   String?
+  startHour        Int?
+  endHour          Int?
+  /// Qaysi bo'limda ishlaydi. `specialty` ko'rsatish uchun qoladi,
+  /// filtr va hisobot esa shu maydon bo'yicha ishlaydi.
+  departmentId     String?
+  department       Department?       @relation(fields: [departmentId], references: [id])
+  appointments     Appointment[]
+  visits           Visit[]
+  clinic           Clinic            @relation(fields: [clinicId], references: [id])
+  installmentPlans InstallmentPlan[]
+  patients         Patient[]
+  expenses         Expense[]
+
+  @@unique([clinicId, telegramChatId])
+}
+
+model Receptionist {
+  id        String    @id @default(uuid())
+  firstName String
+  lastName  String
+  phone     String
+  username  String    @unique
+  password  String
+  status    String
+  clinicId  String
+  clinic    Clinic    @relation(fields: [clinicId], references: [id])
+  expenses  Expense[]
+}
+
+model Patient {
+  id               String             @id @default(uuid())
+  firstName        String
+  lastName         String
+  phone            String
+  dob              String
+  lastVisit        String
+  status           String
+  gender           String
+  medicalHistory   String
+  clinicId         String
+  telegramChatId   String?
+  address          String?
+  createdAt        DateTime           @default(now())
+  secondaryPhone   String?
+  avatarUrl        String?
+  portraitUrl      String?
+  balance          Float              @default(0)
+  doctorId         String?
+  pinfl            String?
+  appointments     Appointment[]
+  installmentPlans InstallmentPlan[]
+  inventoryLogs    InventoryLog[]
+  clinic           Clinic             @relation(fields: [clinicId], references: [id])
+  doctor           Doctor?            @relation(fields: [doctorId], references: [id])
+  diagnoses        PatientDiagnosis[]
+  photos           PatientPhoto[]
+  telegramLogs     TelegramLog[]
+  transactions     Transaction[]
+  visits           Visit[]
+  labOrders        LabOrder[]
+  studies          DiagnosticStudy[]
+  admissions       Admission[]
+  prescriptions    Prescription[]
+  charges          VisitCharge[]
+
+  @@unique([clinicId, telegramChatId])
+  @@index([phone])
+}
+
+model PatientPhoto {
+  id          String   @id @default(uuid())
+  patientId   String
+  url         String
+  description String?
+  category    String
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  patient     Patient  @relation(fields: [patientId], references: [id])
+}
+
+model Appointment {
+  id           String      @id @default(uuid())
+  patientId    String
+  patientName  String
+  doctorId     String
+  doctorName   String
+  type         String
+  date         String
+  time         String
+  duration     Int
+  status       String
+  notes        String?
+  clinicId     String
+  departmentId String?
+  reminderSent Boolean     @default(false)
+  department   Department? @relation(fields: [departmentId], references: [id])
+  clinic       Clinic      @relation(fields: [clinicId], references: [id])
+  doctor       Doctor      @relation(fields: [doctorId], references: [id])
+  patient      Patient     @relation(fields: [patientId], references: [id])
+  review       Review?
+  visits       Visit[]
+
+  @@unique([patientId, date], name: "unique_patient_date")
+  @@index([date])
+  @@index([patientId])
+}
+
+/// Qabul — butun tizimning markaziy tuguni. Har bir modul (tahlil, diagnostika,
+/// retsept, muolaja) shu yozuvga `visitId` orqali ulanadi va narxi bitta
+/// Transaction oqimiga tushadi.
+model Visit {
+  id            String               @id @default(uuid())
+  patientId     String
+  appointmentId String?
+  date          String
+  checkInTime   DateTime             @default(now())
+  checkOutTime  DateTime?
+  status        String               @default("Waiting")
+  complaints    String?
+  vitalSigns    String?
+  notes         String?
+  clinicId      String
+  departmentId  String?
+  doctorId      String?
+  doctorName    String?
+  templateId    String?
+  /// Kunlik navbat raqami — registratura qabulni ochganda beriladi
+  queueNumber   Int?
+  /// Navbat chaqirilgan vaqt — tablo va kutish vaqti uchun
+  calledAt      DateTime?
+  /// Natija kutilmoqda: qabul navbatdan chiqadi, lekin yopilmaydi
+  awaitingSince DateTime?
+  /// Registratura yoki shifokor: qaysi bosqichda turibdi
+  /// Waiting | In Progress | Completed | Cancelled
+  /// Bo'lim shabloni bo'yicha to'ldirilgan ko'rik maydonlari (JSON).
+  /// Tish kartasining o'rnini shu egallaydi.
+  examData      String?
+  diagnosis     String?
+  treatmentPlan String?
+  diagnoses     PatientDiagnosis[]
+  transactions  Transaction[]
+  procedures    TreatmentProcedure[]
+  labOrders     LabOrder[]
+  studies       DiagnosticStudy[]
+  prescriptions Prescription[]
+  charges       VisitCharge[]
+  appointment   Appointment?         @relation(fields: [appointmentId], references: [id])
+  clinic        Clinic               @relation(fields: [clinicId], references: [id])
+  patient       Patient              @relation(fields: [patientId], references: [id])
+  department    Department?          @relation(fields: [departmentId], references: [id])
+  doctor        Doctor?              @relation(fields: [doctorId], references: [id])
+  template      EncounterTemplate?   @relation(fields: [templateId], references: [id])
+
+  @@index([patientId])
+  @@index([date])
+  @@index([departmentId])
+}
+
+/// Bajarilgan xizmat. Ilgari stomatologik muolaja edi (toothNumber/toothSurface),
+/// endi har qanday bo'lim xizmatini yozadi.
+model TreatmentProcedure {
+  id            String    @id @default(uuid())
+  visitId       String
+  procedureName String
+  serviceId     Int?
+  departmentId  String?
+  status        String    @default("Planned")
+  basePrice     Float
+  discount      Float     @default(0)
+  finalPrice    Float
+  materialsUsed String?
+  notes         String?
+  duration      Int?
+  doctorId      String
+  doctorName    String
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+  visit         Visit     @relation(fields: [visitId], references: [id])
+
+  @@index([visitId])
+  @@index([departmentId])
+}
+
+model Transaction {
+  id              String    @id @default(uuid())
+  patientName     String
+  date            String
+  amount          Float
+  type            String
+  service         String
+  status          String
+  clinicId        String
+  doctorId        String?
+  doctorName      String?
+  patientId       String?
+  visitId         String?
+  discountAmount  Float?    @default(0)
+  discountPercent Float?    @default(0)
+  createdAt       DateTime? @default(now())
+  /// Pulni kim qabul qildi. Rollar har xil jadvalda (Receptionist/Doctor/Clinic admin)
+  /// bo'lgani uchun FK emas — id va ism nusxasi saqlanadi.
+  receivedById    String?
+  receivedByName  String?
+  clinic          Clinic    @relation(fields: [clinicId], references: [id])
+  patient         Patient?  @relation(fields: [patientId], references: [id])
+  visit           Visit?    @relation(fields: [visitId], references: [id])
+}
+
+model Expense {
+  id              String        @id @default(uuid())
+  date            String
+  amount          Float
+  category        String
+  title           String
+  method          String?
+  note            String?
+  clinicId        String
+  doctorId        String?
+  receptionistId  String?
+  labOrderId      String?       @unique
+  inventoryItemId String?
+  createdAt       DateTime      @default(now())
+  clinic          Clinic        @relation(fields: [clinicId], references: [id])
+  doctor          Doctor?       @relation(fields: [doctorId], references: [id])
+  receptionist    Receptionist? @relation(fields: [receptionistId], references: [id])
+  labOrder        LabOrder?     @relation(fields: [labOrderId], references: [id])
+
+  @@index([clinicId])
+  @@index([doctorId])
+  @@index([receptionistId])
+}
+
+model Service {
+  id           Int              @id @default(autoincrement())
+  name         String
+  price        Float
+  duration     Int
+  clinicId     String
+  cost         Float            @default(0)
+  categoryId   String?
+  departmentId String?
+  category     ServiceCategory? @relation(fields: [categoryId], references: [id])
+  department   Department?      @relation(fields: [departmentId], references: [id])
+  clinic       Clinic           @relation(fields: [clinicId], references: [id])
+  recipe       ServiceRecipe[]
+}
+
+model SubscriptionPlan {
+  id         String   @id
+  name       String
+  price      Float
+  maxDoctors Int
+  features   String
+  clinics    Clinic[]
+}
+
+model Clinic {
+  id                      String              @id @default(uuid())
+  name                    String
+  adminName               String
+  username                String              @unique
+  password                String?
+  phone                   String
+  status                  String
+  planId                  String
+  subscriptionStartDate   String
+  expiryDate              String
+  monthlyRevenue          Float
+  telegramChatId          String?
+  botToken                String?
+  subscriptionType        String              @default("Paid")
+  smsBalance              Float               @default(0)
+  smsLimit                Int                 @default(0)
+  smsUsedThisMonth        Int                 @default(0)
+  ownerPhone              String?
+  facebookPageAccessToken String?
+  facebookPageId          String?
+  facebookPageName        String?
+  facebookUserAccessToken String?
+  customPrice             Float?
+  endHour                 Int                 @default(20)
+  startHour               Int                 @default(8)
+  address                 String?
+  email                   String?
+  enableReceipts          Boolean             @default(false)
+  notificationMode        String              @default("telegram_only")
+  eskizEmail              String?
+  eskizPassword           String?
+  eskizToken              String?
+  eskizTokenExpiry        DateTime?
+  eskizNick               String?
+  dmedEnabled             Boolean             @default(false)
+  dmedApiKey              String?
+  dmedApiSecret           String?
+  dmedClinicId            String?
+  dmedToken               String?
+  dmedTokenExpiry         DateTime?
+  prepaymentEnabled       Boolean             @default(false)
+  prepaymentCardNumber    String?
+  prepaymentAmount        Float?
+  accessControl           String?
+  /// Tashqi lid manbalari (yuboraman va h.k.) uchun kirish kaliti.
+  /// POST /api/public/leads da X-API-Key sarlavhasi orqali klinika shu kalit bo'yicha topiladi.
+  leadApiKey              String?             @unique
+  leadApiKeyCreatedAt     DateTime?
+  appointments            Appointment[]
+  plan                    SubscriptionPlan    @relation(fields: [planId], references: [id])
+  doctors                 Doctor[]
+  installmentPlans        InstallmentPlan[]
+  inventoryItems          InventoryItem[]
+  leads                   Lead[]
+  patients                Patient[]
+  diagnoses               PatientDiagnosis[]
+  receptionists           Receptionist[]
+  services                Service[]
+  serviceCategories       ServiceCategory[]
+  telegramLogs            TelegramLog[]
+  transactions            Transaction[]
+  visits                  Visit[]
+  salesAgentId            String?
+  salesAgent              SalesAgent?         @relation(fields: [salesAgentId], references: [id])
+  labTechnicians          LabTechnician[]
+  labOrders               LabOrder[]
+  expenses                Expense[]
+  messageTemplates        MessageTemplate[]
+  automationRules         AutomationRule[]
+  cashRegisterDays        CashRegisterDay[]
+  cashMovements           CashMovement[]
+  cashAuditLogs           CashAuditLog[]
+  /// Kuniga nechta kassa smenasi (1 yoki 2). Klinikaga qarab sozlanadi.
+  cashShiftsPerDay        Int                 @default(1)
+  departments             Department[]
+  encounterTemplates      EncounterTemplate[]
+  labTests                LabTest[]
+  studies                 DiagnosticStudy[]
+  wards                   Ward[]
+  admissions              Admission[]
+  prescriptions           Prescription[]
+  charges                 VisitCharge[]
+  stockMovements          StockMovement[]
+  serviceRecipes          ServiceRecipe[]
+
+  @@index([botToken])
+}
+
+/// Kassa smenasini yopish: sanalgan naqd/terminal/Click hisob bilan solishtiriladi.
+/// Bir kunda bir nechta smena bo'lishi mumkin (klinika sozlamasiga qarab).
+model CashRegisterDay {
+  id            String   @id @default(uuid())
+  clinicId      String
+  date          String
+  /// Smena raqami. Bitta smenali klinikada har doim 1.
+  shift         Int      @default(1)
+  shiftStart    String?
+  shiftEnd      String?
+  /// Smena boshidagi naqd qoldiq (oldingi yopilishdan ko'chib keladi)
+  openingCash   Float    @default(0)
+  /// Kassir haqiqatda sanagan naqd
+  countedCash   Float
+  /// Yopilgan daqiqadagi hisob bo'yicha naqd qoldiq (snapshot)
+  expectedCash  Float
+  /// countedCash − expectedCash (kam/ortiq)
+  difference    Float    @default(0)
+  /// Terminal Z-hisoboti bo'yicha summa (kiritilmasa null — solishtirilmaydi)
+  countedCard   Float?
+  expectedCard  Float?
+  /// Click/Payme kabineti bo'yicha summa
+  countedClick  Float?
+  expectedClick Float?
+  note          String?
+  closedByName  String?
+  closedByRole  String?
+  closedAt      DateTime @default(now())
+  clinic        Clinic   @relation(fields: [clinicId], references: [id])
+
+  @@unique([clinicId, date, shift])
+  @@index([clinicId])
+}
+
+/// Kassaga xizmat to'lovidan tashqari kirgan/chiqqan pul.
+/// Xarajatdan (Expense) ataylab ajratilgan: inkassatsiya va qaytarish klinikaning
+/// xarajati emas, shuning uchun sof foydadan ayirilmasligi kerak.
+model CashMovement {
+  id            String   @id @default(uuid())
+  clinicId      String
+  date          String
+  /// 'Encashment' — kassadan olib ketildi (inkassatsiya)
+  /// 'Refund'     — bemorga pul qaytarildi
+  /// 'CashIn'     — kassaga pul solindi (masalan, qaytim uchun mayda pul)
+  type          String
+  amount        Float
+  /// Qaysi usulda: naqd yashikka faqat 'Cash' ta'sir qiladi
+  method        String   @default("Cash")
+  note          String?
+  patientId     String?
+  transactionId String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  clinic        Clinic   @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId])
+  @@index([date])
+}
+
+/// Kassa yozuvlariga qilingan o'zgarishlar izi.
+/// Ayniqsa kun yopilgandan keyin to'lov o'chirilishi/o'zgartirilishi qayd etiladi —
+/// bu kassa dasturidagi eng klassik teshik.
+model CashAuditLog {
+  id         String   @id @default(uuid())
+  clinicId   String
+  /// Yozuv qaysi kassa kuniga tegishli
+  date       String
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  /// Kun o'sha paytda yopilgan bo'lganmi
+  afterClose Boolean  @default(false)
+  byName     String?
+  byRole     String?
+  createdAt  DateTime @default(now())
+  clinic     Clinic   @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId])
+  @@index([date])
+}
+
+model Lead {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  service   String?
+  source    String?
+  notes     String?
+  /// Tashqi manbadan (yuboraman va h.k.) kelgan payload'ning asl nusxasi, JSON matn ko'rinishida.
+  /// notes matnga aylantirilganda ma'lumot yo'qolishi mumkin — bu ustun zaxira sifatida saqlanadi.
+  raw       String?
+  /// Manzil va tug'ilgan sana lid bemorga aylantirilganda Patient'ga ko'chiriladi.
+  address   String?
+  dob       String?
+  status    String   @default("New")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId])
+  @@index([status])
+  @@index([clinicId, phone, createdAt])
+}
+
+model DemoRequest {
+  id           String   @id @default(uuid())
+  name         String
+  clinicName   String?
+  phone        String
+  city         String?
+  doctorsCount Int?
+  source       String?
+  status       String   @default("New")
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PlatformSetting {
+  key       String   @id
+  value     String?
+  updatedAt DateTime @default(now())
+}
+
+model ICD10Code {
+  code        String             @id
+  name        String
+  description String?
+  category    String?
+  diagnoses   PatientDiagnosis[]
+}
+
+model PatientDiagnosis {
+  id        String    @id @default(uuid())
+  patientId String
+  code      String
+  date      String
+  notes     String?
+  status    String
+  clinicId  String
+  visitId   String?
+  clinic    Clinic    @relation(fields: [clinicId], references: [id])
+  icd10     ICD10Code @relation(fields: [code], references: [code])
+  patient   Patient   @relation(fields: [patientId], references: [id])
+  visit     Visit?    @relation(fields: [visitId], references: [id])
+}
+
+model InventoryItem {
+  id                String             @id @default(uuid())
+  name              String
+  unit              String
+  quantity          Float              @default(0)
+  minQuantity       Float              @default(0)
+  clinicId          String
+  departmentId      String?
+  /// Dori bo'lsa partiya va yaroqlilik muddati nazorat qilinadi
+  isMedication      Boolean            @default(false)
+  /// Xizmat ko'rsatilganda retsept bo'yicha avtomatik hisobdan chiqadi
+  isConsumable      Boolean            @default(true)
+  form              String?
+  activeIngredient  String?
+  price             Float              @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  clinic            Clinic             @relation(fields: [clinicId], references: [id])
+  logs              InventoryLog[]
+  batches           InventoryBatch[]
+  prescriptionItems PrescriptionItem[]
+  medicationOrders  MedicationOrder[]
+  movements         StockMovement[]
+  recipeLines       ServiceRecipe[]
+
+  @@index([clinicId])
+}
+
+model InventoryLog {
+  id        String        @id @default(uuid())
+  itemId    String
+  change    Float
+  type      String
+  note      String?
+  date      DateTime      @default(now())
+  userName  String
+  patientId String?
+  cost      Float?
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+  patient   Patient?      @relation(fields: [patientId], references: [id])
+
+  @@index([itemId])
+  @@index([patientId])
+}
+
+model ServiceCategory {
+  id       String    @id @default(uuid())
+  name     String
+  clinicId String
+  services Service[]
+  clinic   Clinic    @relation(fields: [clinicId], references: [id])
+
+  @@unique([clinicId, name])
+}
+
+model Review {
+  id            String      @id @default(uuid())
+  appointmentId String      @unique
+  rating        Int
+  comment       String?
+  createdAt     DateTime    @default(now())
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+}
+
+model TelegramLog {
+  id        String   @id @default(uuid())
+  clinicId  String
+  patientId String?
+  type      String
+  status    String
+  message   String?
+  error     String?
+  sentAt    DateTime @default(now())
+  channel   String   @default("telegram")
+  source    String   @default("manual")
+  ruleId    String?
+  refId     String?
+  recipient String?
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  patient   Patient? @relation(fields: [patientId], references: [id])
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([ruleId, refId])
+}
+
+model MessageTemplate {
+  id               String           @id @default(uuid())
+  clinicId         String
+  name             String
+  text             String
+  eskizTemplateId  Int? // Eskiz.uz'dagi shablon ID'si
+  eskizStatus      String? // Eskiz'dan qaytgan moderatsiya holati (masalan: moderation/confirmed/declined)
+  eskizSubmittedAt DateTime? // Oxirgi marta Eskiz'ga yuborilgan vaqt
+  createdAt        DateTime         @default(now())
+  clinic           Clinic           @relation(fields: [clinicId], references: [id])
+  rules            AutomationRule[]
+
+  @@index([clinicId])
+}
+
+model AutomationRule {
+  id          String          @id @default(uuid())
+  clinicId    String
+  name        String
+  templateId  String
+  trigger     String // 'before_appointment' | 'birthday' | 'no_show'
+  hoursBefore Int?
+  channel     String // 'sms' | 'telegram' | 'both'
+  doctorId    String?
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  clinic      Clinic          @relation(fields: [clinicId], references: [id])
+  template    MessageTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([clinicId])
+}
+
+model InstallmentPlan {
+  id          String            @id @default(uuid())
+  patientId   String
+  clinicId    String
+  doctorId    String?
+  service     String
+  totalAmount Float
+  totalPaid   Float             @default(0)
+  startDate   String
+  endDate     String
+  status      String            @default("Active")
+  createdAt   DateTime          @default(now())
+  items       InstallmentItem[]
+  clinic      Clinic            @relation(fields: [clinicId], references: [id])
+  doctor      Doctor?           @relation(fields: [doctorId], references: [id])
+  patient     Patient           @relation(fields: [patientId], references: [id])
+}
+
+model InstallmentItem {
+  id            String          @id @default(uuid())
+  planId        String
+  expectedDate  String
+  amount        Float
+  status        String          @default("Pending")
+  paidDate      String?
+  transactionId String?
+  plan          InstallmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+model SalesAgent {
+  id        String   @id @default(uuid())
+  name      String
+  username  String   @unique
+  password  String
+  phone     String
+  status    String   @default("Active") // Active, Blocked
+  clinics   Clinic[]
+  createdAt DateTime @default(now())
+}
+
+model LabTechnician {
+  id        String     @id @default(uuid())
+  firstName String
+  lastName  String
+  specialty String
+  phone     String
+  status    String     @default("Active")
+  clinicId  String
+  username  String?    @unique
+  password  String?
+  clinic    Clinic     @relation(fields: [clinicId], references: [id])
+  labOrders LabOrder[]
+
+  @@index([clinicId])
+}
+
+/// Tahlil yo'llanmasi. Ilgari stomatologik protez buyurtmasi edi
+/// (orderType/material/toothNumbers) — endi laboratoriya tahlillari.
+model LabOrder {
+  id                String         @id @default(uuid())
+  clinicId          String
+  patientId         String?
+  patientName       String
+  visitId           String?
+  doctorId          String?
+  doctorName        String
+  technicianId      String?
+  technicianName    String?
+  status            String         @default("Ordered")
+  priority          String         @default("Normal")
+  orderedAt         DateTime       @default(now())
+  sampleCollectedAt DateTime?
+  completedAt       DateTime?
+  deadline          String?
+  totalPrice        Float          @default(0)
+  clinicianNotes    String?
+  technicianNotes   String?
+  clinic            Clinic         @relation(fields: [clinicId], references: [id])
+  patient           Patient?       @relation(fields: [patientId], references: [id])
+  visit             Visit?         @relation(fields: [visitId], references: [id])
+  technician        LabTechnician? @relation(fields: [technicianId], references: [id])
+  items             LabOrderItem[]
+  expense           Expense?
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([status])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  KO'P PROFILLI KLINIKA
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Bo'lim — ko'p profilli klinikani bir profillidan ajratadigan asosiy tushuncha.
+/// `type` qaysi qabul shakli va qaysi UI ko'rsatilishini hal qiladi.
+model Department {
+  id        String   @id @default(uuid())
+  clinicId  String
+  name      String
+  code      String
+  /// CLINICAL | LAB | DIAGNOSTIC | INPATIENT | PHARMACY
+  type      String   @default("CLINICAL")
+  color     String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  clinic       Clinic              @relation(fields: [clinicId], references: [id])
+  doctors      Doctor[]
+  services     Service[]
+  appointments Appointment[]
+  visits       Visit[]
+  templates    EncounterTemplate[]
+  labTests     LabTest[]
+  studies      DiagnosticStudy[]
+  wards        Ward[]
+  admissions   Admission[]
+
+  @@unique([clinicId, code])
+  @@index([clinicId])
+}
+
+/// Qabul bayoni shabloni. Tish kartasining o'rnini bosadi: har bo'lim o'z
+/// maydonlar to'plamini oladi, ular JSON sifatida saqlanadi.
+model EncounterTemplate {
+  id           String   @id @default(uuid())
+  clinicId     String
+  departmentId String
+  name         String
+  /// [{ key, label, type: text|number|select|textarea|checkbox, unit?, options?, group? }]
+  fields       String
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  clinic     Clinic     @relation(fields: [clinicId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
+  visits     Visit[]
+
+  @@index([departmentId])
+}
+
+// ─── Laboratoriya ──────────────────────────────────────────────────────────
+
+model LabTest {
+  id              String  @id @default(uuid())
+  clinicId        String
+  departmentId    String?
+  name            String
+  code            String
+  /// Qon | Siydik | Najas | Surtma | Boshqa
+  sampleType      String  @default("Qon")
+  price           Float   @default(0)
+  cost            Float   @default(0)
+  turnaroundHours Int     @default(24)
+  isActive        Boolean @default(true)
+  sortOrder       Int     @default(0)
+
+  clinic     Clinic             @relation(fields: [clinicId], references: [id])
+  department Department?        @relation(fields: [departmentId], references: [id])
+  parameters LabTestParameter[]
+  orderItems LabOrderItem[]
+
+  @@unique([clinicId, code])
+  @@index([clinicId])
+}
+
+/// Tahlil ko'rsatkichi va uning normasi. Norma jins/yoshga bog'liq bo'lgani uchun
+/// bitta ko'rsatkich bir necha qatorda bo'lishi mumkin.
+model LabTestParameter {
+  id        String  @id @default(uuid())
+  testId    String
+  name      String
+  unit      String?
+  refLow    Float?
+  refHigh   Float?
+  refText   String?
+  /// null = hammaga; "Male" | "Female"
+  sex       String?
+  ageMin    Int?
+  ageMax    Int?
+  sortOrder Int     @default(0)
+
+  test    LabTest     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  results LabResult[]
+
+  @@index([testId])
+}
+
+model LabOrderItem {
+  id       String @id @default(uuid())
+  orderId  String
+  testId   String
+  testName String
+  price    Float  @default(0)
+  status   String @default("Pending")
+
+  order   LabOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  test    LabTest     @relation(fields: [testId], references: [id])
+  results LabResult[]
+
+  @@index([orderId])
+}
+
+/// Natija. `flag` saqlanadi, hisoblanmaydi — norma keyin o'zgarsa ham eski
+/// natija o'sha paytdagi bahoni ko'rsatishi kerak.
+model LabResult {
+  id          String   @id @default(uuid())
+  orderItemId String
+  parameterId String
+  value       String
+  valueNum    Float?
+  /// Normal | High | Low
+  flag        String   @default("Normal")
+  note        String?
+  enteredBy   String?
+  enteredAt   DateTime @default(now())
+
+  orderItem LabOrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  parameter LabTestParameter @relation(fields: [parameterId], references: [id])
+
+  @@index([orderItemId])
+}
+
+// ─── Diagnostika ───────────────────────────────────────────────────────────
+
+/// UZI, EKG, rentgen va h.k. Laboratoriyadan farqi: natija raqam emas,
+/// tavsif + xulosa + rasm.
+model DiagnosticStudy {
+  id              String    @id @default(uuid())
+  clinicId        String
+  patientId       String
+  patientName     String
+  visitId         String?
+  departmentId    String?
+  serviceId       Int?
+  /// UZI | EKG | RENTGEN | ENDOSKOPIYA | MRT | KT
+  modality        String
+  name            String
+  status          String    @default("Ordered")
+  orderedById     String?
+  orderedByName   String?
+  performedById   String?
+  performedByName String?
+  orderedAt       DateTime  @default(now())
+  performedAt     DateTime?
+  findings        String?
+  conclusion      String?
+  price           Float     @default(0)
+
+  clinic     Clinic           @relation(fields: [clinicId], references: [id])
+  patient    Patient          @relation(fields: [patientId], references: [id])
+  visit      Visit?           @relation(fields: [visitId], references: [id])
+  department Department?      @relation(fields: [departmentId], references: [id])
+  files      DiagnosticFile[]
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([status])
+}
+
+model DiagnosticFile {
+  id        String   @id @default(uuid())
+  studyId   String
+  url       String
+  kind      String   @default("image")
+  caption   String?
+  createdAt DateTime @default(now())
+
+  study DiagnosticStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+
+  @@index([studyId])
+}
+
+// ─── Statsionar ────────────────────────────────────────────────────────────
+
+model Ward {
+  id           String  @id @default(uuid())
+  clinicId     String
+  departmentId String?
+  name         String
+  floor        String?
+  /// Umumiy | Yarim lyuks | Lyuks | Reanimatsiya
+  kind         String  @default("Umumiy")
+  dailyRate    Float   @default(0)
+  isActive     Boolean @default(true)
+
+  clinic     Clinic      @relation(fields: [clinicId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  beds       Bed[]
+
+  @@index([clinicId])
+}
+
+model Bed {
+  id     String @id @default(uuid())
+  wardId String
+  label  String
+  /// Free | Occupied | Cleaning | Blocked
+  status String @default("Free")
+
+  ward       Ward        @relation(fields: [wardId], references: [id], onDelete: Cascade)
+  admissions Admission[]
+
+  @@index([wardId])
+}
+
+/// Yotqizish. Chiqarilgunicha ochiq turadi; koyka haqi har kuni hisoblanadi.
+model Admission {
+  id               String    @id @default(uuid())
+  clinicId         String
+  patientId        String
+  patientName      String
+  departmentId     String?
+  doctorId         String?
+  doctorName       String?
+  bedId            String?
+  admittedAt       DateTime  @default(now())
+  dischargedAt     DateTime?
+  /// Active | Discharged
+  status           String    @default("Active")
+  reason           String?
+  diagnosis        String?
+  dischargeSummary String?
+  dailyRate        Float     @default(0)
+  /// Oxirgi marta koyka haqi yozilgan sana (YYYY-MM-DD) — takroriy yozuvni oldini oladi
+  lastChargedDate  String?
+  totalCharges     Float     @default(0)
+
+  clinic           Clinic            @relation(fields: [clinicId], references: [id])
+  patient          Patient           @relation(fields: [patientId], references: [id])
+  department       Department?       @relation(fields: [departmentId], references: [id])
+  bed              Bed?              @relation(fields: [bedId], references: [id])
+  rounds           InpatientRound[]
+  medicationOrders MedicationOrder[]
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([status])
+}
+
+model InpatientRound {
+  id          String   @id @default(uuid())
+  admissionId String
+  date        String
+  doctorId    String?
+  doctorName  String?
+  vitalSigns  String?
+  notes       String?
+  plan        String?
+  createdAt   DateTime @default(now())
+
+  admission Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+
+  @@index([admissionId])
+}
+
+// ─── Dorixona ──────────────────────────────────────────────────────────────
+
+/// Partiya va yaroqlilik muddati. Chiqim eng yaqin muddatlisidan boshlanadi (FEFO).
+model InventoryBatch {
+  id          String   @id @default(uuid())
+  itemId      String
+  batchNumber String?
+  expiryDate  String?
+  quantity    Float    @default(0)
+  cost        Float    @default(0)
+  receivedAt  DateTime @default(now())
+
+  item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  movements StockMovement[]
+
+  @@index([itemId])
+  @@index([expiryDate])
+}
+
+model Prescription {
+  id          String   @id @default(uuid())
+  clinicId    String
+  patientId   String
+  patientName String
+  visitId     String?
+  doctorId    String?
+  doctorName  String?
+  date        String
+  status      String   @default("Active")
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  clinic  Clinic             @relation(fields: [clinicId], references: [id])
+  patient Patient            @relation(fields: [patientId], references: [id])
+  visit   Visit?             @relation(fields: [visitId], references: [id])
+  items   PrescriptionItem[]
+
+  @@index([clinicId])
+  @@index([patientId])
+}
+
+/// Dori omborda bo'lmasa ham retsept yozilishi kerak — shuning uchun
+/// medicationId ixtiyoriy, nomi matn sifatida ham saqlanadi.
+model PrescriptionItem {
+  id             String  @id @default(uuid())
+  prescriptionId String
+  medicationId   String?
+  name           String
+  dosage         String?
+  frequency      String?
+  durationDays   Int?
+  instructions   String?
+
+  prescription Prescription   @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medication   InventoryItem? @relation(fields: [medicationId], references: [id])
+
+  @@index([prescriptionId])
+}
+
+/// Statsionarda dori tayinlash
+model MedicationOrder {
+  id           String   @id @default(uuid())
+  admissionId  String
+  medicationId String?
+  name         String
+  dosage       String?
+  route        String?
+  frequency    String?
+  startDate    String
+  endDate      String?
+  status       String   @default("Active")
+  createdAt    DateTime @default(now())
+
+  admission  Admission      @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  medication InventoryItem? @relation(fields: [medicationId], references: [id])
+
+  @@index([admissionId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PUL: HISOB QATORI
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Hisob qatori — qo'ldagi qog'ozning o'rni.
+///
+/// Klinikada bemor har bir yo'llanma bilan kassaga boradi: konsultatsiya uchun
+/// bir marta, tahlil uchun yana bir marta. Shuning uchun "to'landi" bayrog'i
+/// qabulga emas, HAR BIR XIZMAT QATORIGA tegishli — bitta qabulda konsultatsiya
+/// to'langan, tahlil to'lanmagan bo'lishi mumkin.
+///
+/// Qator har bir buyurtmada avtomatik yaratiladi: xizmat qo'shilganda, tahlilga
+/// yuborilganda, tekshiruv buyurilganda.
+model VisitCharge {
+  id            String    @id @default(uuid())
+  clinicId      String
+  visitId       String?
+  patientId     String?
+  patientName   String
+  /// Service | Lab | Study | Medication | Bed | Other
+  source        String
+  /// Manba yozuvining id si (TreatmentProcedure, LabOrder, DiagnosticStudy...)
+  sourceId      String?
+  name          String
+  quantity      Float     @default(1)
+  unitPrice     Float
+  discount      Float     @default(0)
+  total         Float
+  /// Unpaid | Paid | Cancelled
+  status        String    @default("Unpaid")
+  /// Qisman to'lovni qo'llab-quvvatlaydi: total ga yetganda status Paid bo'ladi
+  paidAmount    Float     @default(0)
+  paidAt        DateTime?
+  transactionId String?
+  createdAt     DateTime  @default(now())
+  createdByName String?
+
+  clinic  Clinic   @relation(fields: [clinicId], references: [id])
+  visit   Visit?   @relation(fields: [visitId], references: [id])
+  patient Patient? @relation(fields: [patientId], references: [id])
+
+  @@index([clinicId, status])
+  @@index([visitId])
+  @@index([patientId])
+  @@index([sourceId])
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  OMBOR HARAKATLARI VA XIZMAT RETSEPTI
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Ombordagi HAR BIR o'zgarish shu jadvalga qator bo'lib tushadi.
+///
+/// Qoldiq hech qachon qo'lda tahrirlanmaydi — u shu qatorlarning yig'indisi.
+/// Aks holda "kim oldi, qachon yo'qoldi" degan savolga javob bo'lmaydi.
+model StockMovement {
+  id        String   @id @default(uuid())
+  clinicId  String
+  itemId    String
+  batchId   String?
+  /// In | Out | Adjust | Writeoff
+  type      String
+  /// Musbat — kirim, manfiy — chiqim
+  quantity  Float
+  /// Purchase | Service | Expired | Damaged | Inventory | Manual
+  reason    String   @default("Manual")
+  visitId   String?
+  serviceId Int?
+  note      String?
+  userName  String?
+  createdAt DateTime @default(now())
+
+  clinic Clinic          @relation(fields: [clinicId], references: [id])
+  item   InventoryItem   @relation(fields: [itemId], references: [id])
+  batch  InventoryBatch? @relation(fields: [batchId], references: [id])
+
+  @@index([clinicId, createdAt])
+  @@index([itemId])
+  @@index([visitId])
+}
+
+/// Xizmat retsepti (нормы списания / технологическая карта).
+///
+/// Bitta xizmatga qancha material ketishi shu yerda yoziladi. Xizmat bajarilgan
+/// deb belgilanganda tizim materiallarni O'ZI ombordan chiqaradi va tannarxni
+/// hisoblaydi. Bunsiz hech kim har shpritsni qo'lda yozmaydi va ombor
+/// raqamlari yolg'on bo'lib qoladi.
+model ServiceRecipe {
+  id        String  @id @default(uuid())
+  clinicId  String
+  serviceId Int
+  itemId    String
+  quantity  Float
+  note      String?
+
+  clinic  Clinic        @relation(fields: [clinicId], references: [id])
+  service Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  item    InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@unique([serviceId, itemId])
+  @@index([clinicId])
+}

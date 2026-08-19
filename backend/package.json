@@ -1,0 +1,46 @@
+{
+  "name": "xclinic-backend",
+  "version": "0.1.0",
+  "description": "XClinic offline backend (Express + Prisma/SQLite)",
+  "main": "server.ts",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "ts-node server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "bundle": "prisma generate && ncc build server.ts -o dist-bundle --external prisma --external @prisma/client && node scripts/copy-prisma-engine.js",
+    "db:push": "prisma db push --schema=prisma/schema.prisma",
+    "db:studio": "prisma studio --schema=prisma/schema.prisma",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "adm-zip": "^0.5.17",
+    "axios": "^1.13.2",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.10.1",
+    "@types/node-cron": "^3.0.11",
+    "@vercel/ncc": "^0.38.4",
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^17.2.3",
+    "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "@types/express-serve-static-core": "5.1.0"
+  }
+}

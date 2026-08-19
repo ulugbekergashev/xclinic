@@ -1,0 +1,126 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   XClinic — global stillar
+
+   DIQQAT: denta7/dentalocal da Tailwind `cdn.tailwindcss.com` dan yuklanardi.
+   Offline mashinada bu ishlamaydi — dastur butunlay stilsiz ochiladi.
+   Shuning uchun Tailwind endi bundle ichiga kiradi, palitra esa shu yerda
+   `@theme` tokenlari sifatida yashaydi (ilgari index.html dagi tailwind.config).
+   ───────────────────────────────────────────────────────────────────────── */
+
+@import "tailwindcss";
+
+/* darkMode: 'class' — v4 da variant qo'lda e'lon qilinadi */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Shrift: internetsiz ishlashi uchun tizim shriftlari ustuvor.
+     Inter kerak bo'lsa public/fonts/ ga woff2 qo'yib, @font-face qo'shing. */
+  --font-sans: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+    "Helvetica Neue", Arial, sans-serif;
+
+  /* Yagona brend rangi (primary) + semantik tokenlar */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+  --color-primary: #2563eb;
+
+  --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-200: #a7f3d0;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+  --color-success: #059669;
+
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning: #d97706;
+
+  --color-danger-50: #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-200: #fecaca;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+  --color-danger: #dc2626;
+
+  --color-info-50: #f0f9ff;
+  --color-info-100: #e0f2fe;
+  --color-info-200: #bae6fd;
+  --color-info-500: #0ea5e9;
+  --color-info-600: #0284c7;
+  --color-info-700: #0369a1;
+  --color-info: #0ea5e9;
+
+  --animate-fade-in: fadeIn 0.3s ease-in-out;
+  --animate-in: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+/* Toza ko'rinish uchun ingichka scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Scrollbarni yashirish (nav/qidiruv qatorlari uchun) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mobil pastki xavfsiz zona (BottomNav) */
+.pb-safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Ochilish animatsiyalari (dropdown/menyular) */
+.animate-in {
+  animation: fadeIn 0.2s ease-out;
+}

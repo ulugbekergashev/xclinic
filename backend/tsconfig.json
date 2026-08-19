@@ -1,0 +1,39 @@
+{
+    "compilerOptions": {
+        "target": "es2016",
+        "module": "commonjs",
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "strict": true,
+        "skipLibCheck": true,
+        "outDir": "./dist"
+    },
+    "include": [
+        "server.ts",
+        "multiprofile.ts",
+        "billing.ts",
+        "inventory.ts",
+        "reports.ts",
+        "botManager.ts",
+        "smsService.ts",
+        "triggers.ts",
+        "segments.ts",
+        "segmentFields.ts",
+        "segmentAggregates.ts",
+        "savedSegments.ts",
+        "ruleExtras.ts",
+        "bot.ts",
+        "dmedService.ts",
+        "aiService.ts",
+        "ai/tools.ts",
+        "ai/prompts.ts",
+        "ai/reports.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "test_*.ts",
+        "debug_*.ts",
+        "check_*.ts"
+    ]
+}

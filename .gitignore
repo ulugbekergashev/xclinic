@@ -1,0 +1,26 @@
+node_modules/
+dist/
+dist-electron/
+dist-bundle/
+electron-main/
+build/
+
+# Muhit va sirlar
+.env
+.env.local
+.env.*.local
+
+# Baza — hech qachon repoga tushmaydi
+*.db
+*.db-journal
+*.sqlite
+backend/prisma/migrations/
+backend/uploads/
+
+# Log va vaqtinchalik fayllar
+*.log
+.DS_Store
+Thumbs.db
+
+# Arxivlar va tekshiruv fayllari
+*.zip
