@@ -85,7 +85,7 @@ const { smsService, normalizeUzPhone } = require('./smsService');
 const { dmedService } = require('./dmedService');
 const cors = require('cors');
 const axios = require('axios');
-const { prisma, USER_DATA_PATH } = require('./db');
+const { prisma, USER_DATA_PATH, DB_PATH } = require('./db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
@@ -4458,7 +4458,10 @@ const migrationsDir = [
     path.join(__dirname, 'migrations'),
     path.join(__dirname, '..', 'migrations'),
 ].find((d) => fs.existsSync(d)) || path.join(__dirname, 'migrations');
-registerMaintenanceRoutes(app, { prisma, authenticateToken, requireRole, migrationsDir });
+registerMaintenanceRoutes(app, {
+    prisma, authenticateToken, requireRole, migrationsDir,
+    userDataPath: USER_DATA_PATH, dbPath: DB_PATH, uploadsDir,
+});
 
 // --- Patient Photos ---
 app.post('/api/patients/:id/photos', authenticateToken, upload.single('photo'), async (req, res) => {

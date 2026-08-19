@@ -28,6 +28,12 @@ type Deps = {
     requireRole: (...roles: string[]) => any;
     /** Migratsiya fayllari papkasi */
     migrationsDir: string;
+    /** %APPDATA%\xclinic — zaxira nusxalar shu ichida */
+    userDataPath: string;
+    /** Baza faylining to'liq yo'li */
+    dbPath: string;
+    /** Bemor fotolari va tekshiruv fayllari */
+    uploadsDir: string;
 };
 
 const BASELINE = '0000_baseline';
@@ -201,8 +207,202 @@ export async function runMigrations(prisma: any, migrationsDir: string): Promise
     return result;
 }
 
+/* ─── ZAXIRA NUSXA ─────────────────────────────────────────────────────────
+   Nusxa oddiy `copyFile` bilan OLINMAYDI: server bazani ochiq tutadi va
+   nusxalash yarim yozilgan holatni tushirib qolishi mumkin. SQLite ning
+   `VACUUM INTO` buyrug'i ochiq baza ustida ham izchil snapshot beradi va
+   qo'shimcha kutubxona talab qilmaydi (tekshirilgan: 816 KB, 53 jadval).
+
+   Baza bilan birga `uploads/` arxivlanadi: aks holda tiklangan bazada bemor
+   fotolari va UZI suratlariga havolalar bor, fayllar esa yo'q. */
+
+const BACKUP_DIR_NAME = 'backups';
+const RESTORE_MARKER = 'restore-pending.json';
+
+/** Bir vaqtda faqat bitta nusxa. Ikkita `VACUUM INTO` bir-birini urib ketadi. */
+let backupInProgress = false;
+
+/** Fayl nomidan papkadan chiqib ketish urinishini kesadi. */
+function safeBackupName(name: any): string | null {
+    if (typeof name !== 'string' || !name) return null;
+    const base = path.basename(name);
+    if (base !== name) return null;                       // yo'l qismlari bo'lmasin
+    if (!/^xclinic-\d{8}-\d{6}\.db$/.test(base)) return null;
+    return base;
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** `xclinic-20260819-171530` — nusxa nomining asosi (mahalliy vaqt bo'yicha) */
+function backupStamp(d = new Date()): string {
+    return `xclinic-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`
+        + `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
-    const { prisma, authenticateToken: auth, requireRole, migrationsDir } = deps;
+    const { prisma, authenticateToken: auth, requireRole, migrationsDir,
+            userDataPath, dbPath, uploadsDir } = deps;
+
+    const backupDir = path.join(userDataPath, BACKUP_DIR_NAME);
+    const markerPath = path.join(userDataPath, RESTORE_MARKER);
+    const ensureBackupDir = () => { if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true }); };
+
+    /** Nusxalar ro'yxati: `.db` fayllari, yangilari birinchi */
+    const listBackups = () => {
+        if (!fs.existsSync(backupDir)) return [];
+        return fs.readdirSync(backupDir)
+            .filter((f) => /^xclinic-\d{8}-\d{6}\.db$/.test(f))
+            .map((f) => {
+                const st = fs.statSync(path.join(backupDir, f));
+                const zip = f.replace(/\.db$/, '-uploads.zip');
+                const noteFile = f.replace(/\.db$/, '.txt');
+                let note: string | null = null;
+                try {
+                    const np = path.join(backupDir, noteFile);
+                    if (fs.existsSync(np)) note = fs.readFileSync(np, 'utf8').trim() || null;
+                } catch { /* izoh ixtiyoriy */ }
+                return {
+                    file: f,
+                    sizeBytes: st.size,
+                    createdAt: st.mtime.toISOString(),
+                    hasUploads: fs.existsSync(path.join(backupDir, zip)),
+                    note,
+                };
+            })
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    };
+
+    /**
+     * POST /api/admin/backup — hozir nusxa olish.
+     *
+     * Bazani `VACUUM INTO` bilan, `uploads/` ni zip bilan. Izoh berilsa,
+     * yonma-yon `.txt` faylga yoziladi (bazaga ustun qo'shmaslik uchun).
+     */
+    app.post('/api/admin/backup', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (req: any, res: any) => {
+        if (backupInProgress) {
+            return res.status(409).json({ error: 'Nusxa olish allaqachon ketmoqda' });
+        }
+        backupInProgress = true;
+        const started = Date.now();
+        try {
+            ensureBackupDir();
+            const stamp = backupStamp();
+            const dbTarget = path.join(backupDir, `${stamp}.db`);
+
+            // Prisma raw SQL: yo'lda faqat forward slash, apostrof bo'lmasligi kerak
+            const sqlPath = dbTarget.split(path.sep).join('/');
+            if (sqlPath.includes("'")) {
+                return res.status(500).json({ error: 'Nusxa yo\'lida apostrof bor — nusxa olinmadi' });
+            }
+            await prisma.$executeRawUnsafe(`VACUUM INTO '${sqlPath}'`);
+
+            // uploads/ — arxivga. Bo'sh bo'lsa arxiv yaratilmaydi.
+            let uploadsCount = 0;
+            try {
+                if (fs.existsSync(uploadsDir) && fs.readdirSync(uploadsDir).length > 0) {
+                    const AdmZip = require('adm-zip');
+                    const zip = new AdmZip();
+                    zip.addLocalFolder(uploadsDir);
+                    zip.writeZip(path.join(backupDir, `${stamp}-uploads.zip`));
+                    uploadsCount = fs.readdirSync(uploadsDir).length;
+                }
+            } catch (e: any) {
+                // Baza nusxasi olingan — bu asosiysi. Fayllar arxivi yiqilsa
+                // ogohlantiramiz, lekin butun amalni bekor qilmaymiz.
+                console.error('Zaxira: uploads arxivlanmadi:', e?.message || e);
+            }
+
+            const note = typeof req.body?.note === 'string' ? req.body.note.slice(0, 500).trim() : '';
+            if (note) {
+                try { fs.writeFileSync(path.join(backupDir, `${stamp}.txt`), note, 'utf8'); } catch { /* ixtiyoriy */ }
+            }
+
+            const size = fs.statSync(dbTarget).size;
+            const durationMs = Date.now() - started;
+            console.log(`💾 Zaxira nusxa: ${stamp}.db (${Math.round(size / 1024)} KB, ${uploadsCount} fayl, ${durationMs} ms)`);
+            res.json({ file: `${stamp}.db`, sizeBytes: size, createdAt: new Date().toISOString(), uploadsCount, durationMs });
+        } catch (e: any) {
+            const msg = describeDbError(e);
+            console.error('Zaxira nusxa xatosi:', msg);
+            res.status(500).json({ error: `Nusxa olinmadi: ${msg}` });
+        } finally {
+            backupInProgress = false;
+        }
+    });
+
+    /** GET /api/admin/backups — mavjud nusxalar */
+    app.get('/api/admin/backups', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (_req: any, res: any) => {
+        try {
+            res.json(listBackups());
+        } catch (e: any) {
+            console.error('[GET /api/admin/backups]', e?.message || e);
+            res.status(500).json({ error: 'Nusxalar ro\'yxatini o\'qib bo\'lmadi' });
+        }
+    });
+
+    /**
+     * POST /api/admin/backup/restore — tiklashni BELGILAYDI.
+     *
+     * Tiklashni shu endpoint BAJARMAYDI: server bazani ochiq tutadi va uni
+     * o'z ostidan almashtirib bo'lmaydi. Shuning uchun tanlangan fayl belgi
+     * fayliga yoziladi, almashtirishni esa Electron backend ishga tushishidan
+     * OLDIN qiladi. Javob shu sababli `staged`, `restored` emas.
+     */
+    app.post('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (req: any, res: any) => {
+        try {
+            if (req.body?.confirm !== true) {
+                return res.status(400).json({ error: 'Tasdiqlanmagan: confirm=true kerak' });
+            }
+            const file = safeBackupName(req.body?.file);
+            if (!file) return res.status(400).json({ error: 'Nusxa nomi noto\'g\'ri' });
+            if (!fs.existsSync(path.join(backupDir, file))) {
+                return res.status(404).json({ error: 'Nusxa topilmadi' });
+            }
+            if (fs.existsSync(markerPath)) {
+                return res.status(409).json({ error: 'Tiklash allaqachon belgilangan' });
+            }
+            const user = req.user;
+            fs.writeFileSync(markerPath, JSON.stringify({
+                file,
+                stagedAt: new Date().toISOString(),
+                byName: user?.name || null,
+                byRole: user?.role || null,
+            }, null, 2), 'utf8');
+            console.warn(`⚠️ Tiklash belgilandi: ${file} (${user?.name || '?'}). Dastur qayta ishga tushganda qo'llanadi.`);
+            res.json({ staged: true, restartRequired: true, file });
+        } catch (e: any) {
+            console.error('[POST /api/admin/backup/restore]', e?.message || e);
+            res.status(500).json({ error: 'Tiklashni belgilab bo\'lmadi' });
+        }
+    });
+
+    /** DELETE /api/admin/backup/restore — belgilangan tiklashni bekor qilish.
+     *  Kerak, chunki tiklash kechiktirilgan: "bosdim va o'yladim" holatidan chiqish yo'li. */
+    app.delete('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (_req: any, res: any) => {
+        try {
+            if (!fs.existsSync(markerPath)) {
+                return res.status(404).json({ error: 'Tiklash belgilanmagan' });
+            }
+            fs.unlinkSync(markerPath);
+            console.log('Tiklash bekor qilindi');
+            res.json({ success: true });
+        } catch (e: any) {
+            console.error('[DELETE /api/admin/backup/restore]', e?.message || e);
+            res.status(500).json({ error: 'Bekor qilib bo\'lmadi' });
+        }
+    });
+
+    /** GET /api/admin/backup/restore — belgilangan tiklash bormi (interfeys shu bilan
+     *  sahifada ogohlantirish chizig'ini ko'rsatadi) */
+    app.get('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (_req: any, res: any) => {
+        try {
+            if (!fs.existsSync(markerPath)) return res.json({ staged: false });
+            const raw = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+            res.json({ staged: true, ...raw });
+        } catch {
+            res.json({ staged: false });
+        }
+    });
 
     /**
      * Sxema holati. Ko'rish uchun: qo'llab-quvvatlashda birinchi savol —
