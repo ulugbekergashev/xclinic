@@ -26,6 +26,8 @@ model Doctor {
   secondaryPhone   String?
   startHour        Int?
   endHour          Int?
+  /// Kabinet raqami — talonda va navbat tablosida ko'rsatiladi. Migratsiya 0004.
+  room             String?
   /// Qaysi bo'limda ishlaydi. `specialty` ko'rsatish uchun qoladi,
   /// filtr va hisobot esa shu maydon bo'yicha ishlaydi.
   departmentId     String?
@@ -73,6 +75,9 @@ model Patient {
   balance          Float              @default(0)
   doctorId         String?
   pinfl            String?
+  /// Registratura aytadigan/yozadigan raqam. UUID bemor uchun yaroqsiz.
+  /// Migratsiya 0003. Nullable: mavjud bemorlarda bo'sh.
+  cardNumber       String?
   appointments     Appointment[]
   installmentPlans InstallmentPlan[]
   inventoryLogs    InventoryLog[]
@@ -90,6 +95,9 @@ model Patient {
   charges          VisitCharge[]
 
   @@unique([clinicId, telegramChatId])
+  /// Karta raqami klinika ichida takrorlanmaydi. SQLite da UNIQUE indeksda
+  /// bir nechta NULL ruxsat etiladi, shuning uchun bo'sh qiymatlar to'siq emas.
+  @@unique([clinicId, cardNumber])
   @@index([phone])
 }
 
@@ -126,7 +134,11 @@ model Appointment {
   review       Review?
   visits       Visit[]
 
-  @@unique([patientId, date], name: "unique_patient_date")
+  // @@unique([patientId, date]) OLIB TASHLANDI — migratsiya 0002.
+  // Ko'p profilli klinikada bemor bir kunda bir necha shifokorga boradi:
+  // ertalab terapevt, tushdan keyin UZI. Cheklov buni imkonsiz qilardi.
+  // Dublikatdan himoya endi kodda: POST /api/appointments bir xil kunga
+  // tushgan yozuvni topsa, izohlarni birlashtiradi (server.ts).
   @@index([date])
   @@index([patientId])
 }
@@ -756,6 +768,8 @@ model Department {
   studies      DiagnosticStudy[]
   wards        Ward[]
   admissions   Admission[]
+  stockFrom    StockMovement[] @relation("StockMovementFrom")
+  stockTo      StockMovement[] @relation("StockMovementTo")
 
   @@unique([clinicId, code])
   @@index([clinicId])
@@ -1146,10 +1160,15 @@ model StockMovement {
   note      String?
   userName  String?
   createdAt DateTime @default(now())
+  /// Bo'limlar orasida ko'chirish (type = 'Transfer'). Migratsiya 0005.
+  fromDepartmentId String?
+  toDepartmentId   String?
 
   clinic Clinic          @relation(fields: [clinicId], references: [id])
   item   InventoryItem   @relation(fields: [itemId], references: [id])
   batch  InventoryBatch? @relation(fields: [batchId], references: [id])
+  fromDepartment Department? @relation("StockMovementFrom", fields: [fromDepartmentId], references: [id])
+  toDepartment   Department? @relation("StockMovementTo", fields: [toDepartmentId], references: [id])
 
   @@index([clinicId, createdAt])
   @@index([itemId])

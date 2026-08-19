@@ -223,6 +223,22 @@ export const api = {
             if (isDemoMode()) return Promise.resolve(DEMO_PATIENTS);
             return fetchJson<Patient[]>(`/patients?clinicId=${clinicId}`);
         },
+        /** Butun klinika bo'yicha ro'yxat. Shifokorga o'ziga biriktirilmagan
+         *  bemorlar ham kerak: ko'p profilli klinikada bemor bir necha
+         *  bo'limdan o'tadi. Parametrsiz `getAll` xatti-harakati o'zgarmadi. */
+        getAllForClinic: (clinicId: string) => {
+            if (isDemoMode()) return Promise.resolve(DEMO_PATIENTS);
+            return fetchJson<Patient[]>(`/patients?clinicId=${clinicId}&scope=clinic`);
+        },
+        /** Ism, familiya, telefon yoki JSHSHIR bo'yicha qidiruv (kamida 2 belgi) */
+        search: (q: string) => {
+            if (isDemoMode()) {
+                const s = q.toLowerCase();
+                return Promise.resolve(DEMO_PATIENTS.filter(p =>
+                    `${p.firstName} ${p.lastName} ${p.phone}`.toLowerCase().includes(s)));
+            }
+            return fetchJson<Patient[]>(`/patients/search?q=${encodeURIComponent(q)}`);
+        },
         getById: (id: string) => {
             if (isDemoMode()) {
                 const patient = DEMO_PATIENTS.find(p => p.id === id);
@@ -1164,6 +1180,10 @@ export const api = {
             isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/in', { method: 'POST', body: JSON.stringify(data) }),
         issue: (data: { itemId: string; quantity: number; reason?: string; note?: string; userName?: string }) =>
             isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/out', { method: 'POST', body: JSON.stringify(data) }),
+        /** Bo'limlar orasida ko'chirish. Umumiy qoldiq O'ZGARMAYDI — tovar
+         *  klinika ichida qoladi, faqat 'Transfer' qatori yoziladi. */
+        transfer: (data: { itemId: string; quantity: number; fromDepartmentId?: string; toDepartmentId: string; note?: string; userName?: string }) =>
+            isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/transfer', { method: 'POST', body: JSON.stringify(data) }),
         // Inventarizatsiya — haqiqiy qoldiqqa tenglashtirish
         adjust: (data: { itemId: string; actualQuantity: number; note?: string; userName?: string }) =>
             isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/adjust', { method: 'POST', body: JSON.stringify(data) }),

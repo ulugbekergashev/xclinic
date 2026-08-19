@@ -1629,7 +1629,17 @@ app.get('/api/patients', authenticateToken, async (req, res) => {
 
         const user = (req as any).user;
         const whereClause: any = { clinicId: clinicId as string };
-        if (user?.role === 'DOCTOR' && user?.doctorId) {
+
+        /* Shifokor odatda O'ZIGA biriktirilgan bemorlarni ko'radi. Lekin ko'p
+           profilli klinikada bemor bir necha shifokordan o'tadi: terapevtga
+           xirurg ko'rgan bemor keladi, va u kartani ocha olishi kerak.
+
+           `?scope=clinic` — butun klinika bo'yicha. Parametr IXTIYORIY va
+           default o'zgarmadi: parametrsiz chaqiruvlar ilgarigidek ishlaydi,
+           ya'ni mavjud ekranlar buzilmaydi. Bemorlar ro'yxati ekrani shu
+           parametrni yuboradi. */
+        const wantsClinicScope = String(req.query.scope || '') === 'clinic';
+        if (user?.role === 'DOCTOR' && user?.doctorId && !wantsClinicScope) {
             whereClause.doctorId = user.doctorId;
         }
 
@@ -1650,7 +1660,7 @@ app.get('/api/patients', authenticateToken, async (req, res) => {
 
 app.post('/api/patients', authenticateToken, async (req, res) => {
     try {
-        const { firstName, lastName, phone, dob, gender, medicalHistory, pinfl, address, secondaryPhone } = req.body;
+        const { firstName, lastName, phone, dob, gender, medicalHistory, pinfl, address, secondaryPhone, cardNumber } = req.body;
 
         // Klinika TOKENDAN olinadi, tanadan emas. Ilgari `clinicId` mijozdan
         // kelardi va uni faqat authenticateToken ichidagi bitta satr to'g'rilab
@@ -1698,7 +1708,10 @@ app.post('/api/patients', authenticateToken, async (req, res) => {
                 doctorId: assignedDoctorId,
                 pinfl: pinfl || '',
                 address: address || null,
-                secondaryPhone: secondaryPhone || null
+                secondaryPhone: secondaryPhone || null,
+                // Migratsiya 0003. Bo'sh satr emas, NULL: unique indeks bo'sh
+                // satrlarni takroriy deb hisoblardi, NULL larni esa yo'q.
+                cardNumber: cardNumber ? String(cardNumber).trim() : null
             }
         });
         res.json(patient);
@@ -1715,6 +1728,58 @@ app.post('/api/patients', authenticateToken, async (req, res) => {
         }
 
         res.status(500).json({ error: 'Bemor yaratishda xatolik yuz berdi: ' + (error.message || 'Noma\'lum xatolik') });
+    }
+});
+
+/* Bemorni butun klinika bo'yicha qidirish.
+
+   Nima uchun alohida endpoint. Shifokor o'ziga biriktirilmagan bemorni topishi
+   kerak (boshqa bo'lim ko'rgan bemor), lekin buning uchun klinikaning BUTUN
+   ro'yxatini yuklash to'g'ri emas — minglab yozuv bo'lishi mumkin.
+
+   DIQQAT: bu marshrut `/api/patients/:id` dan OLDIN turishi shart, aks holda
+   Express "search" ni id deb qabul qiladi. */
+app.get('/api/patients/search', authenticateToken, async (req, res) => {
+    try {
+        const clinicId = getScopedClinicId(req);
+        if (!clinicId) {
+            return res.status(400).json({ error: 'clinicId is required' });
+        }
+        const q = String(req.query.q || '').trim();
+        // Bir-ikki harf bo'yicha qidirish butun bazani qaytaradi — ma'nosi yo'q
+        if (q.length < 2) {
+            return res.status(400).json({ error: 'Kamida 2 belgi kiriting' });
+        }
+
+        // Telefon turli ko'rinishda saqlangan bo'lishi mumkin (+998, bo'shliq,
+        // qavs) — raqamlarni ajratib, shu bo'yicha ham qidiramiz.
+        const digits = q.replace(/\D/g, '');
+
+        const patients = await prisma.patient.findMany({
+            where: {
+                clinicId: clinicId as string,
+                OR: [
+                    { firstName: { contains: q } },
+                    { lastName: { contains: q } },
+                    { phone: { contains: q } },
+                    // Karta raqami — registratura eng ko'p shu bo'yicha qidiradi
+                    { cardNumber: { contains: q } },
+                    ...(digits.length >= 4 ? [{ phone: { contains: digits } }] : []),
+                    ...(digits.length >= 4 ? [{ pinfl: { contains: digits } }] : []),
+                ],
+            },
+            orderBy: { lastName: 'asc' },
+            take: 50,
+            include: { doctor: { select: { firstName: true, lastName: true } } },
+        });
+
+        res.json(patients.map(({ doctor, ...p }: any) => ({
+            ...p,
+            doctorName: doctor ? `${doctor.lastName} ${doctor.firstName}` : null,
+        })));
+    } catch (error: any) {
+        console.error('Patient search error:', error?.message || error);
+        res.status(500).json({ error: 'Qidiruvda xatolik' });
     }
 });
 
@@ -1813,13 +1878,21 @@ app.post('/api/appointments', authenticateToken, async (req, res) => {
         // yozib qo'yardi — ya'ni chet ma'lumotga o'zgartirish.
         if (patientId && !(await assertPatientOwnership(req, res, patientId))) return;
 
-        // 1. Check for existing appointment for this patient on this date
-        // This prevents creating duplicate appointments due to frontend race conditions or network lag
+        /* 1. Dublikatdan himoya — ikki marta bosish va tarmoq kechikishiga qarshi.
+
+           MUHIM: tekshiruv SHIFOKOR bo'yicha ham bo'lishi shart. Ilgari shart
+           faqat "bemor + sana" edi, ya'ni bemorning o'sha kundagi HAR QANDAY
+           yozuvi topilib, yangi yozuv o'rniga izohlar birlashtirilardi.
+           Ko'p profilli klinikada bu xato: ertalab terapevt, tushdan keyin UZI —
+           bu ikki BOSHQA yozuv, bittasi emas. 0002 migratsiyasi bazadagi
+           cheklovni oldi, lekin bu shart uni kod darajasida saqlab turgan edi. */
+        const { doctorId: incomingDoctorId } = req.body;
         const existingAppointment = await prisma.appointment.findFirst({
             where: {
                 clinicId,
                 patientId: patientId,
                 date: date,
+                ...(incomingDoctorId ? { doctorId: incomingDoctorId } : {}),
                 status: { not: 'Cancelled' } // Only check active appointments
             }
         });
@@ -2821,7 +2894,7 @@ app.get('/api/doctors', authenticateToken, async (req, res) => {
 
 app.post('/api/doctors', authenticateToken, async (req, res) => {
     try {
-        const { firstName, lastName, specialty, phone, email, status, username, password, percentage, salaryType, fixedSalary } = req.body;
+        const { firstName, lastName, specialty, phone, email, status, username, password, percentage, salaryType, fixedSalary, room } = req.body;
 
         // Klinika tokendan. Ilgari tanadan kelardi — va u yo'q bo'lsa Prisma
         // `where: { id: undefined }` bilan tushunarsiz 500 qaytarardi.
@@ -2872,7 +2945,8 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
             firstName, lastName, specialty, phone, status, clinicId, username, password: passwordData,
             percentage: percentage || 0,
             salaryType: salaryType || 'none',
-            fixedSalary: fixedSalary ? Number(fixedSalary) : 0
+            fixedSalary: fixedSalary ? Number(fixedSalary) : 0,
+            room: room ? String(room).trim() : null   // Migratsiya 0004: kabinet
         };
         if (email) data.email = email;
 
@@ -2898,7 +2972,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
             }
         }
         // Sanitize body to only include valid Doctor fields
-        const { firstName, lastName, specialty, phone, email, status, password, percentage, salaryType, fixedSalary, secondaryPhone, color, clinicId, startHour, endHour } = req.body;
+        const { firstName, lastName, specialty, phone, email, status, password, percentage, salaryType, fixedSalary, secondaryPhone, color, clinicId, startHour, endHour, room } = req.body;
         const updateData: any = {};
         if (firstName !== undefined) updateData.firstName = firstName;
         if (lastName !== undefined) updateData.lastName = lastName;
@@ -2910,6 +2984,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
         if (percentage !== undefined) updateData.percentage = percentage;
         if (salaryType !== undefined) updateData.salaryType = salaryType;
         if (fixedSalary !== undefined) updateData.fixedSalary = Number(fixedSalary) || 0;
+        if (room !== undefined) updateData.room = room ? String(room).trim() : null;
         if (secondaryPhone !== undefined) updateData.secondaryPhone = secondaryPhone;
         if (color !== undefined) updateData.color = color;
         if (clinicId !== undefined) updateData.clinicId = clinicId;

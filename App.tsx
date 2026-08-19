@@ -217,7 +217,9 @@ const AppContent: React.FC = () => {
           setLeads(DEMO_LEADS || []);
         } else if (clinicId) {
           const [pts, appts, txs, exps, svcs, docs, recs, plns, invItems, cats, revs, leadsData, clinicData, labTechs, labOrds, closures, movements, depts, chrgs] = await Promise.all([
-            api.patients.getAll(clinicId),
+            // Butun klinika bo'yicha: shifokor boshqa bo'lim ko'rgan bemorning
+            // kartasini ocha olishi kerak (ko'p profilli klinikaning asosi).
+            api.patients.getAllForClinic(clinicId),
             api.appointments.getAll(clinicId),
             api.transactions.getAll(clinicId),
             api.expenses.getAll(clinicId),
@@ -335,7 +337,7 @@ const AppContent: React.FC = () => {
     try {
       if (clinicId) {
         const [pts, appts, txs, exps, svcs, docs, recs, plns, invItems, cats, revs, leadsData] = await Promise.all([
-          api.patients.getAll(clinicId),
+          api.patients.getAllForClinic(clinicId),
           api.appointments.getAll(clinicId),
           api.transactions.getAll(clinicId),
           api.expenses.getAll(clinicId),
@@ -1560,6 +1562,7 @@ const AppContent: React.FC = () => {
                       items={inventoryItems}
                       userName={userName}
                       userRole={userRole}
+                      departments={departments}
                       onAddItem={addInventoryItem}
                       onDeleteItem={deleteInventoryItem}
                       onRefreshItems={refreshInventory}

@@ -29,6 +29,8 @@ export interface Doctor {
   color?: string;
   startHour?: number | null;
   endHour?: number | null;
+  /** Kabinet raqami — talonda va navbat tablosida. Migratsiya 0004 */
+  room?: string | null;
 }
 
 export interface Receptionist {
@@ -62,6 +64,8 @@ export interface Patient {
   portraitUrl?: string;
   balance?: number;
   pinfl?: string;
+  /** Registratura aytadigan raqam (UUID emas). Migratsiya 0003 */
+  cardNumber?: string | null;
 }
 
 export interface Appointment {

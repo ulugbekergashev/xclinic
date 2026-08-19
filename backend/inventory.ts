@@ -230,6 +230,57 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
         res.json({ moves });
     });
 
+    /**
+     * Bo'limlar orasida ko'chirish.
+     *
+     * Nima uchun alohida amal. Ilgari ko'chirishni "chiqim + kirim" deb yozish
+     * kerak edi, va bunda ikkita muammo bor: qoldiq oraliqda noto'g'ri
+     * ko'rinadi, va "qayerdan qayerga" ma'lumoti hech qayerda saqlanmaydi.
+     *
+     * Umumiy qoldiq O'ZGARMAYDI: bu klinika ichidagi harakat, tovar hech
+     * qayoqqa ketmaydi. Shuning uchun `InventoryItem.quantity` ga tegilmaydi —
+     * faqat 'Transfer' turidagi qator yoziladi.
+     */
+    route('post', '/api/stock-movements/transfer', async (req, res, clinicId) => {
+        const { itemId, quantity, fromDepartmentId, toDepartmentId, note, userName } = req.body;
+
+        const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } });
+        if (!item || item.clinicId !== clinicId) return res.status(403).json({ error: "Ruxsat yo'q" });
+
+        const qty = Number(quantity);
+        if (!(qty > 0)) return res.status(400).json({ error: "Miqdor noto'g'ri" });
+        if (!toDepartmentId) return res.status(400).json({ error: "Qabul qiluvchi bo'lim majburiy" });
+        if (fromDepartmentId && fromDepartmentId === toDepartmentId) {
+            return res.status(400).json({ error: "Bir xil bo'lim ko'rsatilgan" });
+        }
+        if (qty > (item.quantity || 0)) {
+            return res.status(409).json({ error: `Qoldiq yetarli emas (mavjud: ${item.quantity})` });
+        }
+
+        // Ikki bo'lim ham shu klinikadan bo'lishi shart
+        for (const depId of [fromDepartmentId, toDepartmentId].filter(Boolean)) {
+            const dep = await prisma.department.findUnique({ where: { id: depId } });
+            if (!dep || dep.clinicId !== clinicId) {
+                return res.status(400).json({ error: "Bo'lim topilmadi yoki boshqa klinikaga tegishli" });
+            }
+        }
+
+        const move = await prisma.stockMovement.create({
+            data: {
+                clinicId, itemId,
+                type: 'Transfer',
+                // Umumiy qoldiq o'zgarmaydi — miqdor ma'lumot uchun musbat yoziladi
+                quantity: qty,
+                reason: 'Manual',
+                fromDepartmentId: fromDepartmentId || null,
+                toDepartmentId,
+                note: note || null,
+                userName: userName || null,
+            },
+        });
+        res.json({ move });
+    });
+
     /** Inventarizatsiya — haqiqiy qoldiqqa tenglashtirish */
     route('post', '/api/stock-movements/adjust', async (req, res, clinicId) => {
         const { itemId, actualQuantity, note, userName } = req.body;

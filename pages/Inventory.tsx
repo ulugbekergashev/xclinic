@@ -3,7 +3,7 @@ import { Card, Button, Input, Modal, Select } from '../components/Common';
 import { InventoryItem, UserRole } from '../types';
 import {
     Package, Plus, Trash2, AlertCircle, ArrowDownToLine, ArrowUpFromLine,
-    History, ClipboardCheck, CalendarClock, RefreshCw, AlertTriangle,
+    History, ClipboardCheck, CalendarClock, RefreshCw, AlertTriangle, ArrowLeftRight,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { todayISO } from '../utils/dateUtils';
@@ -34,6 +34,8 @@ interface InventoryProps {
     items: InventoryItem[];
     userName: string;
     userRole?: UserRole;
+    /** Bo'limlar — ko'chirish uchun (migratsiya 0005) */
+    departments?: { id: string; name: string; isActive?: boolean }[];
     onAddItem: (item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'> & { initialCost?: number }) => void;
     onDeleteItem: (id: string) => void;
     /** Ro'yxatni qayta yuklash — harakat qoldiqni o'zgartirgandan keyin kerak */
@@ -47,6 +49,7 @@ const fmtWhen = (iso: string) => {
 
 const MOVEMENT_LABEL: Record<string, string> = {
     In: 'Kirim', Out: 'Chiqim', Adjust: 'Tuzatish', Writeoff: 'Hisobdan chiqarish',
+    Transfer: "Ko'chirish",
 };
 const REASON_LABEL: Record<string, string> = {
     Purchase: 'Xarid', Service: 'Xizmat', Expired: 'Muddati o\'tgan',
@@ -56,7 +59,7 @@ const REASON_LABEL: Record<string, string> = {
 const OUT_REASONS = ['Expired', 'Damaged', 'Manual'];
 
 export const Inventory: React.FC<InventoryProps> = ({
-    items, userName, userRole, onAddItem, onDeleteItem, onRefreshItems,
+    items, userName, userRole, departments = [], onAddItem, onDeleteItem, onRefreshItems,
 }) => {
     const [tab, setTab] = useState<Tab>('stock');
     const [error, setError] = useState('');
@@ -75,6 +78,10 @@ export const Inventory: React.FC<InventoryProps> = ({
     const [outForm, setOutForm] = useState({ quantity: '', reason: 'Manual', note: '' });
     /** Chiqim tasdiqlashdan OLDIN qaysi partiyalardan yechilishini ko'rsatamiz */
     const [outPreview, setOutPreview] = useState<{ batch: string; expiry: string | null; take: number }[]>([]);
+
+    // ─── Ko'chirish (bo'limlar orasida) ─────────────────────────────────────
+    const [moveTarget, setMoveTarget] = useState<InventoryItem | null>(null);
+    const [moveForm, setMoveForm] = useState({ quantity: '', fromDepartmentId: '', toDepartmentId: '', note: '' });
 
     // ─── Harakatlar ─────────────────────────────────────────────────────────
     const [movements, setMovements] = useState<any[]>([]);
@@ -206,6 +213,25 @@ export const Inventory: React.FC<InventoryProps> = ({
             if (tab === 'batches') loadAlerts();
         } catch (e: any) {
             setError(e?.message || 'Chiqim yozilmadi');
+        } finally { setBusy(false); }
+    };
+
+    const submitMove = async () => {
+        if (!moveTarget) return;
+        const qty = Number(moveForm.quantity);
+        if (!(qty > 0) || !moveForm.toDepartmentId) return;
+        setBusy(true); setError('');
+        try {
+            await api.stock.transfer({
+                itemId: moveTarget.id, quantity: qty,
+                fromDepartmentId: moveForm.fromDepartmentId || undefined,
+                toDepartmentId: moveForm.toDepartmentId,
+                note: moveForm.note || undefined, userName,
+            });
+            setMoveTarget(null);
+            if (tab === 'movements') loadMovements();
+        } catch (e: any) {
+            setError(e?.message || "Ko'chirish yozilmadi");
         } finally { setBusy(false); }
     };
 
@@ -364,6 +390,15 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                     <Button variant="secondary" size="sm" onClick={() => openOut(it)} title="Chiqim">
                                                         <ArrowUpFromLine className="w-4 h-4" />
                                                     </Button>
+                                                    {departments.length > 0 && (
+                                                        <Button variant="secondary" size="sm" title="Ko'chirish"
+                                                            onClick={() => {
+                                                                setMoveForm({ quantity: '', fromDepartmentId: '', toDepartmentId: '', note: '' });
+                                                                setMoveTarget(it);
+                                                            }}>
+                                                            <ArrowLeftRight className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
                                                 </>
                                             )}
                                             <Button variant="secondary" size="sm" onClick={() => openHistory(it)} title="Tarix">
@@ -661,6 +696,46 @@ export const Inventory: React.FC<InventoryProps> = ({
                             <Button variant="secondary" onClick={() => setOutTarget(null)}>Bekor qilish</Button>
                             <Button onClick={submitOut} disabled={busy || !(Number(outForm.quantity) > 0)}>
                                 {busy ? 'Saqlanmoqda…' : 'Chiqimni yozish'}
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* ─── Ko'chirish ─────────────────────────────────────────────── */}
+            {moveTarget && (
+                <Modal isOpen={true} onClose={() => setMoveTarget(null)} title={`Ko'chirish — ${moveTarget.name}`}>
+                    <div className="space-y-4">
+                        <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <p className="text-xs text-gray-600 dark:text-gray-300">
+                                Ko'chirish klinika ICHIDA bo'ladi: umumiy qoldiq o'zgarmaydi,
+                                faqat qayerdan qayerga ketgani yozib qo'yiladi.
+                            </p>
+                        </div>
+                        <Input label={`Miqdor (${moveTarget.unit}) — mavjud ${fmt(moveTarget.quantity || 0)}`}
+                            type="number" step="any" value={moveForm.quantity}
+                            onChange={(e: any) => setMoveForm(f => ({ ...f, quantity: e.target.value }))} />
+                        <Select label="Qayerdan (ixtiyoriy)" value={moveForm.fromDepartmentId}
+                            onChange={(e: any) => setMoveForm(f => ({ ...f, fromDepartmentId: e.target.value }))}>
+                            <option value="">Ko'rsatilmagan (umumiy ombor)</option>
+                            {departments.filter(d => d.isActive !== false).map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                        </Select>
+                        <Select label="Qayerga" value={moveForm.toDepartmentId}
+                            onChange={(e: any) => setMoveForm(f => ({ ...f, toDepartmentId: e.target.value }))}>
+                            <option value="">Tanlang…</option>
+                            {departments.filter(d => d.isActive !== false && d.id !== moveForm.fromDepartmentId).map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                        </Select>
+                        <Input label="Izoh" value={moveForm.note}
+                            onChange={(e: any) => setMoveForm(f => ({ ...f, note: e.target.value }))} />
+                        <div className="flex justify-end gap-2">
+                            <Button variant="secondary" onClick={() => setMoveTarget(null)}>Bekor qilish</Button>
+                            <Button onClick={submitMove}
+                                disabled={busy || !(Number(moveForm.quantity) > 0) || !moveForm.toDepartmentId}>
+                                {busy ? 'Saqlanmoqda…' : "Ko'chirishni yozish"}
                             </Button>
                         </div>
                     </div>

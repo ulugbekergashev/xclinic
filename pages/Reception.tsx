@@ -157,6 +157,8 @@ export const Reception: React.FC<Props> = ({
 
     const printTicket = (v: Visit) => {
         const dept = departments.find(d => d.id === v.departmentId);
+        // Kabinet raqami — bemor qaysi xonaga borishini bilishi kerak
+        const room = doctors.find(d => d.id === v.doctorId)?.room || '';
         const w = window.open('', '_blank', 'width=380,height=520');
         if (!w) return;
         w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Talon</title>
@@ -170,6 +172,7 @@ export const Reception: React.FC<Props> = ({
 <div class="n">${v.queueNumber ?? '—'}</div>
 <div class="d"><b>${v.patient?.lastName || ''} ${v.patient?.firstName || ''}</b></div>
 ${v.doctorName ? `<div class="d">${v.doctorName}</div>` : ''}
+${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
 <div class="s"></div>
 <div class="d">${new Date().toLocaleString('uz-UZ')}</div>
 <script>window.onload=()=>window.print()</script>

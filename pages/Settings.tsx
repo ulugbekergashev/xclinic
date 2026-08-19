@@ -204,7 +204,7 @@ export const Settings: React.FC<SettingsProps> = ({
    // Doctor Modal State
    const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
    const [editingDoctorId, setEditingDoctorId] = useState<string | null>(null);
-   const [doctorForm, setDoctorForm] = useState({ firstName: '', lastName: '', specialty: '', phone: '', secondaryPhone: '', username: '', password: '', percentage: '', salaryType: 'none' as 'none' | 'fixed' | 'fixed_kpi' | 'kpi', fixedSalary: '', color: DOCTOR_COLORS[0].value, startHour: '', endHour: '' });
+   const [doctorForm, setDoctorForm] = useState({ firstName: '', lastName: '', specialty: '', phone: '', secondaryPhone: '', username: '', password: '', percentage: '', salaryType: 'none' as 'none' | 'fixed' | 'fixed_kpi' | 'kpi', fixedSalary: '', color: DOCTOR_COLORS[0].value, startHour: '', endHour: '', room: '' });
 
    // Receptionist Modal State
    const [isReceptionistModalOpen, setIsReceptionistModalOpen] = useState(false);
@@ -567,10 +567,11 @@ export const Settings: React.FC<SettingsProps> = ({
             color: doctor.color || DOCTOR_COLORS[0].value,
             startHour: doctor.startHour != null ? String(doctor.startHour) : '',
             endHour: doctor.endHour != null ? String(doctor.endHour) : '',
+            room: doctor.room || '',
          });
       } else {
          setEditingDoctorId(null);
-         setDoctorForm({ firstName: '', lastName: '', specialty: '', phone: '', secondaryPhone: '', username: '', password: '', percentage: '', salaryType: 'none', fixedSalary: '', color: DOCTOR_COLORS[0].value, startHour: '', endHour: '' });
+         setDoctorForm({ firstName: '', lastName: '', specialty: '', phone: '', secondaryPhone: '', username: '', password: '', percentage: '', salaryType: 'none', fixedSalary: '', color: DOCTOR_COLORS[0].value, startHour: '', endHour: '', room: '' });
       }
       setIsDoctorModalOpen(true);
    };
@@ -2339,6 +2340,12 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   <Input label={t('settings.staff.lastName')} value={doctorForm.lastName} onChange={e => setDoctorForm({ ...doctorForm, lastName: e.target.value })} required />
                </div>
                <Input label={t('settings.staff.specialty')} value={doctorForm.specialty} onChange={e => setDoctorForm({ ...doctorForm, specialty: e.target.value })} required />
+               {/* Kabinet — talonda va navbat tablosida chiqadi, bemor qaysi
+                   xonaga borishini bilishi uchun */}
+               <Input label="Kabinet" value={doctorForm.room}
+                  onChange={e => setDoctorForm({ ...doctorForm, room: e.target.value })}
+                  placeholder="Masalan: 204"
+                  helperText="Talonda bemorga ko'rsatiladi" />
                <div className="grid grid-cols-2 gap-4">
                   <Input label={t('settings.staff.phone')} value={doctorForm.phone} onChange={e => setDoctorForm({ ...doctorForm, phone: e.target.value })} required />
                   <Input label="Qo'shimcha raqam (Ixtiyoriy)" value={doctorForm.secondaryPhone} onChange={e => setDoctorForm({ ...doctorForm, secondaryPhone: e.target.value })} />

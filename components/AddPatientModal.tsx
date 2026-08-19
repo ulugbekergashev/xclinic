@@ -17,7 +17,7 @@ interface AddPatientModalProps {
 
 const emptyForm = {
     firstName: '', lastName: '', phone: '', secondaryPhone: '',
-    dob: '', gender: 'Male', address: '', medicalHistory: '', doctorId: '', pinfl: '',
+    dob: '', gender: 'Male', address: '', medicalHistory: '', doctorId: '', pinfl: '', cardNumber: '',
 };
 
 // Barcha joylar uchun yagona bemor qo'shish modali.
@@ -77,6 +77,7 @@ export const AddPatientModal: React.FC<AddPatientModalProps> = ({
                 medicalHistory: form.medicalHistory || '',
                 doctorId: isDoctor ? doctorId : (form.doctorId || undefined),
                 pinfl: form.pinfl || undefined,
+                cardNumber: form.cardNumber?.trim() || undefined,
                 status: 'Active',
                 lastVisit: 'Never',
             } as Omit<Patient, 'id' | 'clinicId'>);
@@ -114,6 +115,11 @@ export const AddPatientModal: React.FC<AddPatientModalProps> = ({
                     <div className="space-y-4 pt-1">
                         <div className="flex gap-2 items-end">
                             <Input label="JSHSHIR (PINFL)" containerClassName="flex-1" value={form.pinfl} onChange={e => setForm(f => ({ ...f, pinfl: e.target.value }))} placeholder="14 raqam" maxLength={14} />
+                            {/* Karta raqami — registratura og'zaki aytadigan va
+                                qog'ozga yozadigan raqam. UUID buning uchun yaroqsiz. */}
+                            <Input label="Karta raqami" containerClassName="flex-1" value={form.cardNumber}
+                                onChange={e => setForm(f => ({ ...f, cardNumber: e.target.value }))}
+                                placeholder="Masalan: 001234" />
                             <Button type="button" variant="secondary" onClick={handleLookupPinfl} disabled={lookupLoading} className="h-10">
                                 {lookupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                             </Button>
