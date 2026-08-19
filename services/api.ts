@@ -1207,6 +1207,26 @@ export const api = {
                 : fetchJson<ServiceCost>(`/service-recipes/${serviceId}/cost`),
     },
 
+    /* ─── Klinik kontur: bemor tarixi, allergiya, natija belgisi ────────────
+       `summary` — shifokorning ish stolidagi "avval nima bo'lgan" paneli.
+       Bitta so'rov: allergiya, surunkali, oldingi qabullar, tahlillar, dorilar. */
+    clinical: {
+        summary: (patientId: string) => fetchJson<any>(`/patients/${patientId}/summary`),
+        allergies: (patientId: string) => fetchJson<any[]>(`/patients/${patientId}/allergies`),
+        addAllergy: (patientId: string, data: { substance: string; reaction?: string; severity?: string }) =>
+            fetchJson<any>(`/patients/${patientId}/allergies`, { method: 'POST', body: JSON.stringify(data) }),
+        removeAllergy: (patientId: string, allergyId: string) =>
+            fetchJson<{ success: true }>(`/patients/${patientId}/allergies/${allergyId}`, { method: 'DELETE' }),
+        markLabSeen: (orderId: string) =>
+            fetchJson<{ success: true }>(`/lab-orders/${orderId}/seen`, { method: 'POST' }),
+        markStudySeen: (studyId: string) =>
+            fetchJson<{ success: true }>(`/studies/${studyId}/seen`, { method: 'POST' }),
+        /** Natijasi tayyor, lekin ko'rilmagan qabullar — SANA bilan cheklanmagan */
+        pendingResults: () => fetchJson<any[]>('/visits/pending-results'),
+        lockVisit: (visitId: string, disposition?: string) =>
+            fetchJson<any>(`/visits/${visitId}/lock`, { method: 'POST', body: JSON.stringify({ disposition }) }),
+    },
+
     // ─── Pul: hisob qatorlari va kassa ──────────────────────────────────────
     charges: {
         getAll: (params?: { status?: string; patientId?: string; visitId?: string; date?: string }) => {
@@ -1228,8 +1248,32 @@ export const api = {
             isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/charges/${id}`, { method: 'DELETE' }),
     },
     payments: {
-        pay: (data: { chargeIds: string[]; amount?: number; method?: string; receivedByName?: string; doctorId?: string; doctorName?: string }) =>
+        /** `perCharge` — qaysi qatorga qancha (tanlab to'lash).
+         *  `payments` — bir to'lovni naqd + karta deb bo'lish.
+         *  Ikkisi ham ixtiyoriy: berilmasa eski xatti-harakat. */
+        pay: (data: {
+            chargeIds: string[]; amount?: number; method?: string;
+            receivedByName?: string; doctorId?: string; doctorName?: string;
+            perCharge?: Record<string, number>;
+            payments?: { method: string; amount: number }[];
+        }) =>
             isDemoMode() ? demoWrite<any>() : fetchJson<any>('/payments', { method: 'POST', body: JSON.stringify(data) }),
+        /** Qator bo'yicha qaytarish — faqat klinika admini */
+        refund: (chargeId: string, data: { amount?: number; method?: string; reason?: string }) =>
+            isDemoMode() ? demoWrite<any>() : fetchJson<any>(`/charges/${chargeId}/refund`, { method: 'POST', body: JSON.stringify(data) }),
+        /** Qatorga chegirma — admin va registrator */
+        discount: (chargeId: string, discount: number) =>
+            isDemoMode() ? demoWrite<any>() : fetchJson<any>(`/charges/${chargeId}/discount`, { method: 'PUT', body: JSON.stringify({ discount }) }),
+    },
+
+    cashShift: {
+        /** Kutilayotgan naqd — SERVER hisobi, tahrirlanmaydi */
+        expected: (date: string) => fetchJson<{
+            date: string; openingCash: number; expectedCash: number;
+            expectedCard: number; expectedClick: number; sources: Record<string, any>;
+        }>(`/cash-register/expected?date=${date}`),
+        open: (data: { date: string; shift?: number; openingCash?: number }) =>
+            fetchJson<any>('/cash-register/open', { method: 'POST', body: JSON.stringify(data) }),
     },
 
     // ─── Moliyaviy hisobot ──────────────────────────────────────────────────

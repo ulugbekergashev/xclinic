@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { api } from '../services/api';
 import { EncounterForm } from '../components/EncounterForm';
+import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Qabul ish stoli — shifokorning asosiy ekrani.
@@ -111,6 +112,15 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
             examData: JSON.stringify(data), templateId,
             status: visit!.status === 'Waiting' ? 'In Progress' : visit!.status,
         }), 'Bayon saqlandi');
+
+    /* Natijani "ko'rdim" deb belgilash.
+       Nima uchun tugma, avtomatik emas: ro'yxatdan chiqishi shifokorning
+       ataylab qilgan ishi bo'lishi kerak — kim va qachon tanishgani jurnalda
+       qoladi. Qabulni ochish o'zi "o'qidim" degani emas. */
+    const markSeen = (kind: 'lab' | 'study', id: string) => guard(async () => {
+        if (kind === 'lab') await api.clinical.markLabSeen(id);
+        else await api.clinical.markStudySeen(id);
+    }, "Ko'rilgan deb belgilandi");
 
     const sendToLab = () => guard(() => api.labOrders.create({
         patientId: visit!.patientId,
@@ -236,6 +246,18 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                     <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                     <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
                 </div>
+            )}
+
+            {/* "Avval nima bo'lgan" — bemor kartasidan KEYIN, buyurtma
+                tugmalaridan OLDIN. Sabab: dori yoki tahlil buyurishdan avval
+                shifokor allergiyani ko'rishi kerak. Ilgari bu ma'lumot ish
+                stolida umuman yo'q edi (GAP-ANALYSIS, 2-sahna). */}
+            {visit.patientId && (
+                <PatientHistoryPanel
+                    patientId={visit.patientId}
+                    canEdit={true}
+                    addToast={addToast}
+                />
             )}
 
             {/* To'lanmagan buyurtma bo'lsa eslatma. Shifokorni ATAYLAB bloklamaymiz:
@@ -438,20 +460,36 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                 <Section title="Tahlillar" icon={FlaskConical} empty="Tahlil yuborilmagan">
                     {(visit.labOrders || []).map(o => (
                         <Row key={o.id} main={(o.items || []).map(i => i.testName).join(', ') || 'Tahlil'}
-                            sub={o.status === 'Completed' ? 'Natija tayyor' : 'Kutilmoqda'}
+                            sub={o.status === 'Completed'
+                                ? (o.seenByDoctorAt ? "Natija tayyor - ko'rildi" : 'Natija tayyor')
+                                : 'Kutilmoqda'}
                             right={`${fmt(o.totalPrice)} so'm`}
                             charge={chargeOf('Lab', o.id)}
-                            tone={o.status === 'Completed' ? 'ok' : 'wait'} />
+                            tone={o.status === 'Completed' ? 'ok' : 'wait'}
+                            action={o.status === 'Completed' && !o.seenByDoctorAt ? (
+                                <button onClick={() => markSeen('lab', o.id)} disabled={busy}
+                                    className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200">
+                                    Ko'rdim
+                                </button>
+                            ) : undefined} />
                     ))}
                 </Section>
 
                 <Section title="Diagnostika" icon={Scan} empty="Tekshiruv yuborilmagan">
                     {(visit.studies || []).map(s => (
                         <Row key={s.id} main={`${MODALITY_LABELS[s.modality] || s.modality} — ${s.name}`}
-                            sub={s.conclusion || (s.status === 'Completed' ? 'Tayyor' : 'Kutilmoqda')}
+                            sub={s.conclusion || (s.status === 'Completed'
+                                ? (s.seenByDoctorAt ? "Tayyor - ko'rildi" : 'Tayyor')
+                                : 'Kutilmoqda')}
                             right={`${fmt(s.price)} so'm`}
                             charge={chargeOf('Study', s.id)}
-                            tone={s.status === 'Completed' ? 'ok' : 'wait'} />
+                            tone={s.status === 'Completed' ? 'ok' : 'wait'}
+                            action={s.status === 'Completed' && !s.seenByDoctorAt ? (
+                                <button onClick={() => markSeen('study', s.id)} disabled={busy}
+                                    className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200">
+                                    Ko'rdim
+                                </button>
+                            ) : undefined} />
                     ))}
                 </Section>
 
@@ -497,7 +535,9 @@ const PaidBadge: React.FC<{ charge?: VisitCharge }> = ({ charge }) => {
 const Row: React.FC<{
     main: string; sub?: string; right?: string;
     tone?: 'ok' | 'wait'; onDelete?: () => void; charge?: VisitCharge;
-}> = ({ main, sub, right, tone, onDelete, charge }) => (
+    /** Qator ichidagi qo'shimcha amal — masalan "Ko'rdim" */
+    action?: React.ReactNode;
+}> = ({ main, sub, right, tone, onDelete, charge, action }) => (
     <div className="flex items-center gap-3 text-sm">
         <div className="min-w-0 flex-1">
             <p className="text-gray-900 dark:text-white truncate">{main}</p>
@@ -508,6 +548,7 @@ const Row: React.FC<{
                 </p>
             )}
         </div>
+        {action}
         <PaidBadge charge={charge} />
         {right && <span className="tabular-nums text-gray-600 dark:text-gray-300 shrink-0">{right}</span>}
         {onDelete && (

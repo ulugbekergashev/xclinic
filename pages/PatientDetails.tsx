@@ -5,6 +5,7 @@ import { Button, Card, Badge, Modal, Input, Select } from '../components/Common'
 import { EncounterForm, EncounterSummary } from '../components/EncounterForm';
 import { PatientPhotos } from '../components/PatientPhotos';
 import { VisitWorkflow, ProceduresSection } from '../components/ProceduresSection';
+import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 import { InstallmentsTab } from '../components/InstallmentsTab';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, SubscriptionPlan, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate } from '../types';
 import { api, getFileUrl } from '../services/api';
@@ -788,7 +789,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       let finalDoctorId = chosenDoctor?.id || (doctors.length > 0 ? doctors[0].id : '');
       let finalDoctorName = chosenDoctor ? `Dr. ${chosenDoctor.lastName}` : (doctors.length > 0 ? `Dr. ${doctors[0].lastName}` : 'Doctor');
 
-      // Create a text summary of procedures for the appointment notes with explicit prices
+      /* DIQQAT. Bu matn shunchaki izoh emas — stomatologiya tarixining
+         YAGONA saqlash joyi: tish kartasi (pastProcedures, yuqorida) aynan
+         shu satrlarni regex bilan o'qiydi, kassa esa narxni shundan
+         hisoblaydi (calculateAppointmentTotal).
+
+         Shuning uchun "notes ga yozishni to'xtatish" (qaror В6) shu relizda
+         BAJARILMADI: avval bajarilgan xizmatlar `VisitCharge` qatorlariga
+         ko'chirilishi va to'lov oynasi o'sha qatorlarni yopadigan qilib
+         ulanishi kerak. Matnni olib tashlash — tish kartasini yo'q qilish.
+         Batafsil: BUILD-SPEC.md, Б4.1. */
       const proceduresText = procedures.map(p => `- ${p.serviceName} (${p.toothNumber ? `Tish #${p.toothNumber}` : 'Umumiy'}) [${p.price.toLocaleString().replace(/,/g, ' ')} UZS]`).join('\n');
 
       try {
@@ -1052,6 +1062,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             <div className="min-h-[400px]">
 
                {activeTab === 'overview' && (
+                  <div className="space-y-6">
+                  {/* Allergiya, surunkali kasalliklar va BOSHQA bo'limlardagi
+                      qabullar. Shu ekranda ilgari faqat stomatologiya
+                      ko'rinardi — bemor terapevtga ham borgani bilinmasdi. */}
+                  <PatientHistoryPanel
+                     patientId={patient.id}
+                     canEdit={userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.DOCTOR}
+                     // Bu ekranda toast tizimi yo'q — xabar alert bilan
+                     addToast={(_t, msg) => alert(msg)}
+                  />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                      <VisitWorkflow
                         key={visitKey}
@@ -1135,6 +1155,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      </Card>
 
 
+                  </div>
                   </div>
                )}
 

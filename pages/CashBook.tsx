@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Card, Button, Modal, Input, Select } from '../components/Common';
 import { QuickPaymentModal } from '../components/QuickPaymentModal';
+import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import {
     Transaction, Expense, ExpenseCategory, Doctor, Clinic, Patient, Appointment,
     CashRegisterDay, CashMovement, CashMovementType, CashAuditLog, PaymentMethod,
@@ -75,6 +76,10 @@ interface CashBookProps {
     onDeleteCashMovement?: (id: string) => Promise<void>;
     onUpdateTransaction?: (id: string, data: Partial<Transaction>) => Promise<void>;
     onDeleteTransaction?: (id: string) => Promise<void>;
+    /** Chegirma va qaytarish huquqi rolga bog'liq — server ham tekshiradi */
+    userRole?: string;
+    currentUserName?: string;
+    addToast?: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
 const num = (v: number) => Math.round(v).toLocaleString('uz-UZ').replace(/,/g, ' ');
@@ -457,6 +462,7 @@ export const CashBook: React.FC<CashBookProps> = ({
     charges = [], onChargesChanged,
     movements = [], onAddCashMovement, onDeleteCashMovement,
     onUpdateTransaction, onDeleteTransaction,
+    userRole, currentUserName, addToast,
 }) => {
     const today = formatDateToISO(new Date());
     const [view, setView] = useState<'day' | 'month'>('day');
@@ -491,6 +497,20 @@ export const CashBook: React.FC<CashBookProps> = ({
     // Yopish: terminal va Click ixtiyoriy
     const [countedCardInput, setCountedCardInput] = useState('');
     const [countedClickInput, setCountedClickInput] = useState('');
+
+    // Bir bemorning bir necha qatorini bitta chek bilan to'lash
+    const [payingPatient, setPayingPatient] = useState<{ name: string; patientId?: string } | null>(null);
+
+    /* Kutilayotgan naqd — SERVER hisobi.
+       Interfeys ham o'zi hisoblaydi (day.totals.drawer), lekin yopilishda
+       yozib qoladigan raqam serverdan. Ikkisi farq qilsa — buni kassirga
+       ko'rsatamiz, jimgina yashirmaymiz. */
+    const [serverExpected, setServerExpected] = useState<{
+        openingCash: number; expectedCash: number;
+        expectedCard: number; expectedClick: number; sources: Record<string, any>;
+    } | null>(null);
+    const [expectedLoading, setExpectedLoading] = useState(false);
+    const [expectedError, setExpectedError] = useState('');
 
     // To'lovni tuzatish
     const [editingTx, setEditingTx] = useState<Transaction | null>(null);
@@ -576,10 +596,50 @@ export const CashBook: React.FC<CashBookProps> = ({
         setCountedClickInput(c?.countedClick != null ? String(c.countedClick) : '');
         setCloseNote(c?.note || '');
         setIsCloseOpen(true);
+        loadExpected();
     };
 
-    const expectedCard = day.totals.byMethod.Card || 0;
-    const expectedClick = day.totals.byMethod.Click || 0;
+    /** Serverning kutilayotgan naqd hisobi. Yopish oynasi ochilganda olinadi. */
+    const loadExpected = async () => {
+        setExpectedLoading(true);
+        setExpectedError('');
+        try {
+            setServerExpected(await api.cashShift.expected(date));
+        } catch (e: any) {
+            setServerExpected(null);
+            setExpectedError(e?.message || 'Server hisobi olinmadi');
+        } finally {
+            setExpectedLoading(false);
+        }
+    };
+
+    /* ── Smenani ochish ──────────────────────────────────────────────────────
+       Ochilgan smena — yopilmagan qator (isClosed === false). Kun boshida
+       kassir "smenani ochaman" deb bosadi: kim turgani va boshlang'ich naqd
+       yoziladi. Majburiy emas — eski xatti-harakat saqlanadi. */
+    const openedShift = useMemo(
+        () => closures.find(c => (c.date || '').split('T')[0] === date
+            && (c.shift || 1) === activeShift && c.isClosed === false),
+        [closures, date, activeShift]
+    );
+    const [openingShift, setOpeningShift] = useState(false);
+
+    const handleOpenShift = async () => {
+        setOpeningShift(true);
+        try {
+            await api.cashShift.open({ date, shift: multiShift ? activeShift : 1 });
+            addToast?.('success', 'Smena ochildi');
+            onChargesChanged?.();
+        } catch (e: any) {
+            addToast?.('error', e?.message || "Smenani ochib bo'lmadi");
+        } finally {
+            setOpeningShift(false);
+        }
+    };
+
+    // Naqdsiz kutilgan summalar ham serverdan (bo'lmasa — ekran hisobidan)
+    const expectedCard = serverExpected ? serverExpected.expectedCard : (day.totals.byMethod.Card || 0);
+    const expectedClick = serverExpected ? serverExpected.expectedClick : (day.totals.byMethod.Click || 0);
     const parseOptional = (v: string): number | null => {
         if (v.trim() === '') return null;
         const n = Number(v.replace(/\s/g, ''));
@@ -589,7 +649,11 @@ export const CashBook: React.FC<CashBookProps> = ({
     const countedClickValue = parseOptional(countedClickInput);
 
     const countedValue = Number(countedInput.replace(/\s/g, ''));
-    const previewDifference = isFinite(countedValue) ? countedValue - day.totals.drawer : 0;
+    // Farq SERVER raqamiga nisbatan ko'rsatiladi — yopilganda ham shu yoziladi.
+    // Server javob bermasa interfeys hisobiga qaytamiz (offline rejim buzilmasin).
+    const expectedForClose = serverExpected ? serverExpected.expectedCash : day.totals.drawer;
+    const previewDifference = isFinite(countedValue) ? countedValue - expectedForClose : 0;
+    const expectedDrift = serverExpected ? Math.abs(serverExpected.expectedCash - day.totals.drawer) : 0;
 
     const handleCloseDay = async () => {
         if (!onCloseDay || !isFinite(countedValue) || countedInput.trim() === '') return;
@@ -600,7 +664,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                 shift: activeShift,
                 openingCash: day.totals.openingCash,
                 countedCash: countedValue,
-                expectedCash: day.totals.drawer,
+                // Serverda qayta hisoblanadi; bu yerda faqat eski shakl uchun
+                expectedCash: expectedForClose,
                 countedCard: countedCardValue,
                 expectedCard: countedCardValue === null ? null : expectedCard,
                 countedClick: countedClickValue,
@@ -763,15 +828,28 @@ export const CashBook: React.FC<CashBookProps> = ({
         .filter(c => c.status === 'Unpaid' && (c.visit?.date || c.createdAt.split('T')[0]) !== date)
         .reduce((sum, c) => sum + (c.total - (c.paidAmount || 0)), 0), [charges, date]);
 
-    /** Hisob qatorini to'lash — Transaction o'zi yaratiladi */
-    const payCharge = async (chargeId: string, amount: number) => {
-        try {
-            await api.payments.pay({ chargeIds: [chargeId], amount, method: 'Cash' });
-            onChargesChanged?.();
-        } catch (e) {
-            console.error('Hisob qatorini to\'lab bo\'lmadi', e);
-        }
+    /* Qatorni to'lash — endi oyna orqali: bemorning barcha qatorlari bir
+       joyda, tanlab, qisman, bir necha usul bilan to'lanadi. Ilgari bu tugma
+       to'g'ridan-to'g'ri hamma summani NAQD deb yozib qo'yardi. */
+    // Qaytarishni faqat klinika admini qiladi — server ham shuni talab qiladi
+    const canRefundCharges = userRole === 'CLINIC_ADMIN' || userRole === 'SUPER_ADMIN';
+
+    const openChargePayment = (patientName: string, patientId?: string) => {
+        setPayingPatient({ name: patientName, patientId });
     };
+
+    /* Oynadagi qatorlar — SNAPSHOT emas, tirik ro'yxatdan. Chegirma yoki
+       qaytarishdan keyin ota-komponent ro'yxatni yangilaydi va oyna darhol
+       yangi summani ko'rsatadi.
+
+       Bemorning boshqa kunlardagi qarzi ham shu yerda: kassa varag'i kunlik,
+       lekin bemor bir marta keladi va hammasini birga to'laydi. */
+    const payingCharges = useMemo(() => {
+        if (!payingPatient) return [];
+        return charges.filter(c => payingPatient.patientId
+            ? c.patientId === payingPatient.patientId
+            : c.patientName === payingPatient.name);
+    }, [charges, payingPatient]);
 
     // Qarzni yopish — Dashboard'dagi mantiq bilan bir xil:
     // qisman to'lansa yangi Paid yozuv, qoldiq eskisida qoladi
@@ -1195,6 +1273,19 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                     <Pencil className="w-4 h-4" />
                                                 </button>
                                             )}
+                                            {/* Qaytarish — qator bo'yicha, jurnalga tushadi.
+                                                Bu yo'l kerak, chunki hammasini to'lab bo'lgan
+                                                bemorning "To'lanmagan" ro'yxatida qatori yo'q,
+                                                ya'ni boshqa kirish nuqtasi qolmaydi. */}
+                                            {canRefundCharges && row.patientId && row.method !== 'Refund' && (
+                                                <button
+                                                    onClick={() => openChargePayment(row.patientName, row.patientId)}
+                                                    title="Qaytarish yoki qolgan qatorlarni to'lash"
+                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                >
+                                                    <Undo2 className="w-4 h-4" />
+                                                </button>
+                                            )}
                                             {onDeleteTransaction && (
                                                 <button
                                                     onClick={() => setDeletingRow(row)}
@@ -1261,7 +1352,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         </span>
                                         <button
                                             onClick={() => {
-                                                if (item.kind === 'charge') payCharge(item.id, item.amount);
+                                                if (item.kind === 'charge') openChargePayment(item.patientName, item.patientId);
                                                 else if (item.kind === 'debt' && item.tx) openDebt(item.tx);
                                                 else {
                                                     setPresetPayment({
@@ -1440,6 +1531,37 @@ export const CashBook: React.FC<CashBookProps> = ({
                         )}
                     </Card>
 
+                    {/* ── Smena holati ──────────────────────────────────────
+                        Kim kassada turgani. Majburiy emas: ochmasdan ham
+                        ishlash mumkin, lekin ochilgan bo'lsa kunni yopishda
+                        boshlang'ich naqd kimning so'zi ekani ma'lum bo'ladi. */}
+                    {!closureStatus.closed && date === today && (
+                        openedShift ? (
+                            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                                <LockOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                <span className="text-sm text-emerald-900 dark:text-emerald-200">
+                                    Smena ochiq{openedShift.openedByName ? ` — ${openedShift.openedByName}` : ''}
+                                    {openedShift.openedAt ? ` · ${new Date(openedShift.openedAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                </span>
+                                <span className="text-xs text-emerald-700 dark:text-emerald-300 ml-auto tabular-nums">
+                                    boshlang'ich naqd {num(openedShift.openingCash || 0)}
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                                <Lock className="w-4 h-4 text-gray-400 shrink-0" />
+                                <span className="text-sm text-gray-600 dark:text-gray-300">
+                                    Smena ochilmagan — kim kassada turgani yozilmaydi
+                                </span>
+                                <Button size="sm" variant="secondary" className="ml-auto"
+                                    onClick={handleOpenShift} disabled={openingShift}>
+                                    {openingShift ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <LockOpen className="w-3.5 h-3.5 mr-1.5" />}
+                                    Smenani ochish
+                                </Button>
+                            </div>
+                        )
+                    )}
+
                     {/* ── Naqd yashik hisobi ── */}
                     <CashFlowPanel
                         day={day}
@@ -1537,6 +1659,21 @@ export const CashBook: React.FC<CashBookProps> = ({
                         </table>
                     </div>
                 </Card>
+            )}
+
+            {/* ── Bemorning qatorlarini to'lash ── */}
+            {payingPatient && (
+                <ChargePaymentModal
+                    isOpen={!!payingPatient}
+                    onClose={() => setPayingPatient(null)}
+                    patientName={payingPatient.name}
+                    charges={payingCharges}
+                    patientId={payingPatient.patientId}
+                    receivedByName={currentUserName}
+                    role={userRole}
+                    addToast={addToast}
+                    onDone={() => onChargesChanged?.()}
+                />
             )}
 
             {/* ── To'lov qabul qilish ── */}
@@ -1918,8 +2055,28 @@ export const CashBook: React.FC<CashBookProps> = ({
                         </div>
                         <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700 text-base">
                             <span className="font-bold text-gray-900 dark:text-white">Hisob bo'yicha kassada</span>
-                            <span className="font-black tabular-nums text-amber-600 dark:text-amber-400">{num(day.totals.drawer)}</span>
+                            <span className="font-black tabular-nums text-amber-600 dark:text-amber-400">
+                                {expectedLoading ? '…' : num(expectedForClose)}
+                            </span>
                         </div>
+                        {serverExpected && (
+                            <p className="text-[11px] text-gray-400 pt-1">
+                                Server hisobi: {serverExpected.sources?.paymentCount ?? 0} to'lov,
+                                boshlang'ich {num(serverExpected.openingCash)}
+                                {serverExpected.sources?.openingFrom ? ` (${formatDateLabel(String(serverExpected.sources.openingFrom))} yopilishidan)` : ''}
+                            </p>
+                        )}
+                        {expectedDrift > 1 && (
+                            <p className="text-[11px] text-amber-700 dark:text-amber-300 pt-1">
+                                Diqqat: ekrandagi hisob {num(day.totals.drawer)}, server hisobi {num(serverExpected!.expectedCash)}.
+                                Yopilishda server raqami yoziladi. Sahifani yangilab ko'ring.
+                            </p>
+                        )}
+                        {expectedError && (
+                            <p className="text-[11px] text-amber-700 dark:text-amber-300 pt-1">
+                                Server hisobi olinmadi ({expectedError}) — ekrandagi hisob bilan yopiladi.
+                            </p>
+                        )}
                     </div>
 
                     <div>
@@ -1932,13 +2089,13 @@ export const CashBook: React.FC<CashBookProps> = ({
                             placeholder="0"
                             autoFocus
                         />
-                        <button
-                            type="button"
-                            onClick={() => setCountedInput(String(Math.round(day.totals.drawer)))}
-                            className="mt-2 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
-                        >
-                            Hisob bo'yicha summani qo'yish ({num(day.totals.drawer)})
-                        </button>
+                        {/* Ilgari bu yerda "hisob bo'yicha summani qo'yish"
+                            tugmasi bor edi. U bir bosishda farqni nolga
+                            aylantirardi — ya'ni sanashning o'zi ma'nosiz
+                            bo'lib qolardi. Olib tashlandi (C6). */}
+                        <p className="mt-2 text-[11px] text-gray-400">
+                            Pulni sanab, haqiqiy summani kiriting. Farqni tizim o'zi chiqaradi.
+                        </p>
                     </div>
 
                     {countedInput.trim() !== '' && isFinite(countedValue) && (

@@ -153,6 +153,12 @@ export interface CashRegisterDay {
   countedClick?: number | null;  // Click/Payme kabineti
   expectedClick?: number | null;
   note?: string | null;
+  /** false — smena ochilgan, lekin hali sanalmagan (migratsiya 0012).
+   *  Eski yozuvlarda maydon yo'q — u holda yopilgan deb qaraladi. */
+  isClosed?: boolean;
+  openedAt?: string | null;
+  openedByName?: string | null;
+  openedByRole?: string | null;
   closedByName?: string | null;
   closedByRole?: string | null;
   closedAt: string;
@@ -717,6 +723,9 @@ export interface LabOrder {
   clinicianNotes?: string;
   technicianNotes?: string;
   items?: LabOrderItem[];
+  /** Shifokor natijani ochib ko'rgan payt. null — hali ko'rilmagan
+   *  (navbatdagi "Natija tayyor" belgisi shunga qaraydi). Migratsiya 0009. */
+  seenByDoctorAt?: string | null;
 }
 
 export interface LabOrderItem {
@@ -860,6 +869,8 @@ export interface DiagnosticStudy {
   conclusion?: string | null;
   price: number;
   files?: DiagnosticFile[];
+  /** Shifokor natijani ochib ko'rgan payt. Migratsiya 0009. */
+  seenByDoctorAt?: string | null;
 }
 
 export interface DiagnosticFile {

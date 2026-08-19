@@ -3,7 +3,7 @@ import { todayISO } from '../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import {
     Stethoscope, RefreshCw, Clock, Volume2, CheckCircle,
-    FlaskConical, AlertCircle, X, ArrowRight,
+    FlaskConical, AlertCircle, X, ArrowRight, BellRing, CalendarClock,
 } from 'lucide-react';
 import { Visit, Department, UserRole } from '../types';
 import { api } from '../services/api';
@@ -46,6 +46,11 @@ const waitedMin = (v: Visit) => {
 export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addToast }) => {
     const navigate = useNavigate();
     const [visits, setVisits] = useState<Visit[]>([]);
+    /* "Natija kutilmoqda" ro'yxati serverdan alohida olinadi.
+       Sabab: bu ekran BUGUNGI sanani so'raydi, tahlil esa ertaga tayyor
+       bo'lishi mumkin — o'sha qabul kechagi kunda qolib, shifokor ko'zidan
+       butunlay g'oyib bo'lardi (GAP-ANALYSIS, B22). */
+    const [pending, setPending] = useState<any[]>([]);
     const [deptFilter, setDeptFilter] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -55,7 +60,13 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
             // Shifokor faqat o'zinikini, admin/registrator hammasini ko'radi
             const params: any = { date: today() };
             if (userRole === UserRole.DOCTOR && doctorId) params.doctorId = doctorId;
-            setVisits(await api.visits.getAll(params));
+            const [list, pend] = await Promise.all([
+                api.visits.getAll(params),
+                // Bu ro'yxat bo'sh qaytsa ham navbat ko'rinishi kerak
+                api.clinical.pendingResults().catch(() => []),
+            ]);
+            setVisits(list);
+            setPending(pend || []);
             setError('');
         } catch (e: any) { setError(e.message || 'Yuklab bo\'lmadi'); }
         finally { setLoading(false); }
@@ -76,9 +87,12 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
 
     const groups = useMemo(() => ({
         active: filtered.filter(v => ['Waiting', 'Called', 'In Progress'].includes(v.status as string)),
-        awaiting: filtered.filter(v => v.status === 'AwaitingResults'),
         done: filtered.filter(v => v.status === 'Completed'),
     }), [filtered]);
+
+    // Natijasi TAYYOR, lekin shifokor ochib ko'rmagan — eng oson yo'qoladigan ish
+    const ready = useMemo(() => pending.filter(r => (r.unseenCount || 0) > 0), [pending]);
+    const stillWaiting = useMemo(() => pending.filter(r => (r.unseenCount || 0) === 0), [pending]);
 
     const call = async (v: Visit) => {
         try {
@@ -141,6 +155,49 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
         );
     };
 
+    /** Natija kutayotgan qabul — bugungi navbat kartochkasidan boshqa shakl:
+        bu yerda muhimi navbat raqami emas, natija tayyor bo'lgani va qancha
+        vaqt o'tgani. */
+    const PendingCard: React.FC<{ r: any; highlight?: boolean }> = ({ r, highlight }) => {
+        const stale = r.date !== today();
+        return (
+            <div className={`rounded-xl border p-3 flex items-center gap-3 ${highlight
+                ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-800'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}>
+                <span className={`w-11 h-11 rounded-lg grid place-items-center shrink-0 ${highlight
+                    ? 'bg-purple-200 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200'
+                    : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'}`}>
+                    <FlaskConical className="w-5 h-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 dark:text-white truncate">{r.patientName || '—'}</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                        {highlight && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-200 text-purple-900 dark:bg-purple-900/50 dark:text-purple-200">
+                                {r.unseenCount} NATIJA TAYYOR
+                            </span>
+                        )}
+                        {r.stillPending > 0 && (
+                            <span className="text-xs text-gray-400">{r.stillPending} ta hali kutilmoqda</span>
+                        )}
+                        <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{r.department || '—'}</span>
+                        {stale && (
+                            <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                                <CalendarClock className="w-3 h-3" />
+                                {r.date}
+                            </span>
+                        )}
+                    </div>
+                </div>
+                <button onClick={() => navigate(`/visit/${r.visitId}`)}
+                    className={`shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 text-white ${highlight
+                        ? 'bg-purple-600 hover:bg-purple-700' : 'bg-primary-600 hover:bg-primary-700'}`}>
+                    Ochish <ArrowRight className="w-3 h-3" />
+                </button>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-3">
@@ -175,6 +232,21 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
                 <p className="text-sm text-gray-400 py-10 text-center">Yuklanmoqda...</p>
             ) : (
                 <div className="space-y-6">
+                    {/* Navbatdan OLDIN turadi: tayyor natija hech kim so'ramasa
+                        o'zi eslatmaydi, navbat esa o'zi ko'rinib turadi. */}
+                    {ready.length > 0 && (
+                        <section>
+                            <h3 className="flex items-center gap-2 text-sm font-semibold text-purple-800 dark:text-purple-300 mb-2">
+                                <BellRing className="w-4 h-4" />
+                                Natija tayyor — ko'rilmadi <span className="font-normal opacity-70">({ready.length})</span>
+                            </h3>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                                Oldingi kunlardagi qabullar ham shu yerda. Ochib ko'rilgach ro'yxatdan chiqadi.
+                            </p>
+                            <div className="space-y-2">{ready.map(r => <PendingCard key={r.visitId} r={r} highlight />)}</div>
+                        </section>
+                    )}
+
                     <section>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
                             Navbatda <span className="text-gray-400 font-normal">({groups.active.length})</span>
@@ -189,16 +261,16 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
                         )}
                     </section>
 
-                    {groups.awaiting.length > 0 && (
+                    {stillWaiting.length > 0 && (
                         <section>
                             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-2">
                                 <FlaskConical className="w-4 h-4 text-purple-500" />
-                                Natija kutilmoqda <span className="text-gray-400 font-normal">({groups.awaiting.length})</span>
+                                Natija kutilmoqda <span className="text-gray-400 font-normal">({stillWaiting.length})</span>
                             </h3>
                             <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
                                 Bemor tahlil yoki tekshiruvga ketgan. Qabul ochiq, lekin navbatni band qilmaydi.
                             </p>
-                            <div className="space-y-2">{groups.awaiting.map(v => <Card key={v.id} v={v} />)}</div>
+                            <div className="space-y-2">{stillWaiting.map(r => <PendingCard key={r.visitId} r={r} />)}</div>
                         </section>
                     )}
 

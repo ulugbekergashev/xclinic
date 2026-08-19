@@ -144,6 +144,10 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                     onDeleteTransaction={props.onDeleteTransaction}
                     charges={props.charges}
                     onChargesChanged={props.onChargesChanged}
+                    // Chegirma va qaytarish tugmalari rolga qarab ko'rinadi
+                    userRole={userRole}
+                    currentUserName={props.currentUserName}
+                    addToast={props.addToast}
                 />
             ) : (
                 <FinanceReport embedded departments={props.departments} />

@@ -2,7 +2,7 @@
 // Ilgari har bir sahifada `type === 'Cash' ? 'Naqd' : ...` zanjiri takrorlanardi — yangi usul
 // qo'shilganda ular jimgina noto'g'ri yorliq ko'rsatardi. Endi barcha ro'yxat/yorliq shu yerdan.
 
-export type PaymentMethod = 'Cash' | 'Card' | 'Click' | 'Transfer' | 'Insurance' | 'Balance';
+export type PaymentMethod = 'Cash' | 'Card' | 'Click' | 'Transfer' | 'Insurance' | 'Balance' | 'Refund';
 
 export interface PaymentMethodMeta {
     key: PaymentMethod;
@@ -25,6 +25,12 @@ export const PAYMENT_METHODS: PaymentMethodMeta[] = [
     { key: 'Insurance', label: "Sug'urta", short: "Sug'urta", isMoneyIn: true, isCashDrawer: false, color: '#8B5CF6' },
     // Avansdan yechish — bemor pulni ilgari to'lagan, bugun kassaga yangi pul kirmaydi.
     { key: 'Balance', label: 'Hisobdan (Avans)', short: 'Avans', isMoneyIn: false, isCashDrawer: false, color: '#F59E0B' },
+    /* Qaytarish cheki. Kassaga PUL KIRMAYDI — aksincha chiqadi, lekin yashik
+       hisobida uni `CashMovement` (type Refund) bajaradi. Chek esa qatorga
+       bog'lash uchun kerak (ChargePayment.transactionId majburiy).
+       Ikkisi ham daromad deb sanalsa, qaytarilgan pul kassada "qolib"
+       ketardi: +40 000 tushum va −40 000 harakat bir-birini yo'q qilardi. */
+    { key: 'Refund', label: 'Qaytarish', short: 'Qaytarish', isMoneyIn: false, isCashDrawer: false, color: '#EF4444' },
 ];
 
 const META_BY_KEY = new Map<string, PaymentMethodMeta>(PAYMENT_METHODS.map(m => [m.key, m]));

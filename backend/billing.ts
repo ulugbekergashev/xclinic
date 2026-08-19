@@ -449,7 +449,12 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
                 visitId: charge.visitId || null,
                 date: nowDate(),
                 amount: back,
-                type: String(method || 'Cash'),
+                /* Usul 'Refund' — bu chek TUSHUM emas. Yashikdan chiqishni
+                   pastdagi `CashMovement` bajaradi (u haqiqiy usulni saqlaydi).
+                   Ilgari bu yerda 'Cash' turardi va qaytarish bir vaqtda
+                   tushum ham, chiqim ham bo'lib, natijada kassa hisobida
+                   qaytarilgan pul "yo'qolmasdi". */
+                type: 'Refund',
                 service: `Qaytarish: ${charge.name}`.slice(0, 200),
                 status: 'Paid',
                 receivedByName: user?.name || null,

@@ -197,6 +197,12 @@ function toRow(tx: Transaction, doctors: Doctor[]): CashBookRow {
 }
 
 function accumulate(totals: CashBookTotals, row: CashBookRow) {
+    // Qaytarish cheki — na tushum, na avans. Yashikdagi ta'siri
+    // `CashMovement` (type Refund) orqali hisoblanadi, aks holda ikki marta.
+    if (row.method === 'Refund') {
+        totals.byMethod[row.method] = (totals.byMethod[row.method] || 0) + row.amount;
+        return;
+    }
     if (!row.isMoneyIn) {
         totals.fromBalance += row.amount;
         totals.byMethod[row.method] = (totals.byMethod[row.method] || 0) + row.amount;
@@ -248,6 +254,8 @@ export function computeOpeningCash(
     movements: CashMovement[]
 ): { opening: number; anchorDate: string | null } {
     const past = closures
+        // Ochilgan, lekin yopilmagan smena anker bo'lolmaydi: unda countedCash = 0
+        .filter(c => c.isClosed !== false)
         .filter(c => dayOf(c.date) < date)
         .sort((a, b) => (dayOf(b.date).localeCompare(dayOf(a.date)) || (b.shift || 1) - (a.shift || 1)));
 
@@ -579,7 +587,9 @@ export function getClosureStatus(
     closures: CashRegisterDay[],
     shift?: number
 ): CashClosureStatus {
-    const forDay = closures.filter(c => dayOf(c.date) === date);
+    // Ochilgan smena qatori ham bor, lekin u YOPILISH emas —
+    // aks holda hali sanalmagan kun "yopilgan, farq -X" bo'lib ko'rinardi.
+    const forDay = closures.filter(c => dayOf(c.date) === date && c.isClosed !== false);
     const closure = shift
         ? forDay.find(c => (c.shift || 1) === shift)
         // Smena ko'rsatilmasa — kunning oxirgi yopilishi

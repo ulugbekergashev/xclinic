@@ -203,15 +203,33 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
             return res.status(400).json({ error: 'Modda nomi majburiy' });
         }
         const allowed = ['Mild', 'Severe', 'Unknown'];
-        const item = await prisma.patientAllergy.create({
-            data: {
-                clinicId, patientId: req.params.id,
-                substance: String(substance).trim(),
-                reaction: reaction ? String(reaction).trim() : null,
-                severity: allowed.includes(severity) ? severity : 'Unknown',
-                notedByName: user?.name || null,
-            },
+        const clean = String(substance).trim();
+
+        /* Bir modda ikki marta yozilmasin. Aks holda qizil blokda
+           "Penitsillin, Penitsillin, Penitsillin" chiqadi va o'chirganda
+           bittasi qolib ketadi — ya'ni "o'chirdim, lekin turibdi" holati.
+           Ayni modda allaqachon faol bo'lsa — YANGILAYMIZ (og'irlik va
+           reaksiya aniqlashtirilishi mumkin). */
+        // SQLite da `mode: 'insensitive'` ishlamaydi — solishtirishni qo'lda qilamiz
+        const active = await prisma.patientAllergy.findMany({
+            where: { patientId: req.params.id, isActive: true },
         });
+        const existing = active.find(
+            (a: any) => String(a.substance).trim().toLowerCase() === clean.toLowerCase(),
+        );
+
+        const data = {
+            substance: clean,
+            reaction: reaction ? String(reaction).trim() : null,
+            severity: allowed.includes(severity) ? severity : 'Unknown',
+            notedByName: user?.name || null,
+        };
+
+        const item = existing
+            ? await prisma.patientAllergy.update({ where: { id: existing.id }, data })
+            : await prisma.patientAllergy.create({
+                data: { clinicId, patientId: req.params.id, ...data },
+            });
         res.json(item);
     });
 

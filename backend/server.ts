@@ -2508,7 +2508,7 @@ const writeCashAudit = async (input: {
 
 /** Kun/smena bo'yicha kutilayotgan summalar. Manba: Transaction + CashMovement. */
 async function computeExpectedCash(prisma: any, clinicId: string, date: string) {
-    const [txs, movements, prevClosure] = await Promise.all([
+    const [txs, movements, expenses, prevClosure] = await Promise.all([
         prisma.transaction.findMany({
             where: { clinicId, date, status: 'Paid' },
             select: { amount: true, type: true, service: true },
@@ -2517,9 +2517,18 @@ async function computeExpectedCash(prisma: any, clinicId: string, date: string) 
             where: { clinicId, date },
             select: { type: true, amount: true, method: true },
         }),
-        // Oldingi yopilishdan ko'chib keladigan naqd qoldiq
+        // Naqd xarajat ham yashikdan chiqadi. Buni qo'shmaganda server hisobi
+        // interfeysdagi hisobdan (utils/cashbook.ts, finalizeCash) farq qilardi
+        // va kassir ikki xil "kutilayotgan summa" ko'rardi.
+        prisma.expense.findMany({
+            where: { clinicId, date },
+            select: { amount: true, method: true },
+        }),
+        // Oldingi YOPILGAN smenadan ko'chib keladigan naqd qoldiq.
+        // Ochilgan, lekin yopilmagan smenada countedCash = 0 — uni anker
+        // qilib olsak qoldiq nolga tushib ketardi.
         prisma.cashRegisterDay.findFirst({
-            where: { clinicId, date: { lt: date } },
+            where: { clinicId, date: { lt: date }, isClosed: true },
             orderBy: [{ date: 'desc' }, { shift: 'desc' }],
             select: { countedCash: true, date: true },
         }),
@@ -2547,8 +2556,16 @@ async function computeExpectedCash(prisma: any, clinicId: string, date: string) 
         else if (mv.type === 'CashIn') cashIn = r(cashIn + mv.amount);
     }
 
+    // Naqd xarajatlar (usuli ko'rsatilmagani ham naqd deb hisoblanadi —
+    // interfeysdagi isCashDrawerMethod bilan bir xil qoida)
+    let cashExpense = 0;
+    for (const ex of expenses) {
+        const m = String(ex.method || 'Cash');
+        if (m === 'Cash') cashExpense = r(cashExpense + (ex.amount || 0));
+    }
+
     const openingCash = r(prevClosure?.countedCash || 0);
-    const expectedCash = r(openingCash + cash + cashIn - encashment - refundCash);
+    const expectedCash = r(openingCash + cash + cashIn - cashExpense - encashment - refundCash);
 
     return {
         openingCash,
@@ -2561,6 +2578,7 @@ async function computeExpectedCash(prisma: any, clinicId: string, date: string) 
             clickPayments: click,
             fromBalance,
             cashIn,
+            cashExpense,
             encashment,
             refundCash,
             openingFrom: prevClosure?.date || null,
@@ -2632,6 +2650,11 @@ app.post('/api/cash-register/open', authenticateToken, requireRole('RECEPTIONIST
         if (existing?.openedAt) {
             return res.status(409).json({ error: 'Smena allaqachon ochilgan' });
         }
+        // Yopilgan kunni "ochish" tugmasi bilan jimgina ochib yuborish mumkin
+        // emas — buning uchun alohida "qayta ochish" amali bor (faqat admin).
+        if (existing && existing.isClosed !== false) {
+            return res.status(409).json({ error: 'Bu kun yopilgan — qayta ochish kerak' });
+        }
 
         // Boshlang'ich qoldiqni ham server taklif qiladi — oldingi yopilishdan
         const computed = await computeExpectedCash(prisma, clinicId as string, date);
@@ -2651,6 +2674,7 @@ app.post('/api/cash-register/open', authenticateToken, requireRole('RECEPTIONIST
             create: {
                 clinicId, date, shift: shiftNo,
                 countedCash: 0, expectedCash: 0, difference: 0,
+                isClosed: false,
                 ...data,
             },
         });
@@ -2710,6 +2734,7 @@ app.post('/api/cash-register/close', authenticateToken, async (req, res) => {
             countedClick: optionalAmount(countedClick),
             expectedClick: computed.expectedClick,
             note: note ? String(note) : null,
+            isClosed: true,
             closedByName: user?.name || null,
             closedByRole: user?.role || null,
             closedAt: new Date(),

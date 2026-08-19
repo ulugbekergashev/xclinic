@@ -419,6 +419,9 @@ model CashRegisterDay {
   closedByRole  String?
   closedAt      DateTime @default(now())
   /// Smenani KIM ochgani. Ilgari faqat yopilish yozilardi. Migratsiya 0008.
+  /// Qator bor-yo'qligi endi "yopilgan" degani emas: ochilgan smenada ham
+  /// qator bo'ladi. Migratsiya 0012.
+  isClosed      Boolean  @default(true)
   openedAt      DateTime?
   openedByName  String?
   openedByRole  String?
