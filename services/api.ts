@@ -1212,6 +1212,40 @@ export const api = {
     },
 
     // ─── Moliyaviy hisobot ──────────────────────────────────────────────────
+    // ─── Ekspluatatsiya: sxema versiyasi va zaxira nusxa ────────────────────
+    // Faqat klinika administratori uchun — backend ham shu rolni talab qiladi.
+    maintenance: {
+        schemaStatus: () => fetchJson<{
+            current: string | null;
+            baseline: boolean;
+            appliedCount: number;
+            applied: { version: string; appliedAt: string; durationMs: number | null; note: string | null }[];
+            pending: string[];
+            pendingCount: number;
+        }>('/admin/schema-status'),
+
+        backups: () => fetchJson<{
+            file: string; sizeBytes: number; createdAt: string;
+            hasUploads: boolean; note: string | null;
+        }[]>('/admin/backups'),
+
+        createBackup: (note?: string) => fetchJson<{
+            file: string; sizeBytes: number; createdAt: string;
+            uploadsCount: number; durationMs: number;
+        }>('/admin/backup', { method: 'POST', body: JSON.stringify({ note: note || '' }) }),
+
+        // Tiklash DARHOL bajarilmaydi: server bazani ochiq tutadi. Bu chaqiruv
+        // faqat belgi qo'yadi, almashtirish dastur qayta ishga tushganda bo'ladi.
+        stageRestore: (file: string) => fetchJson<{ staged: true; restartRequired: true; file: string }>(
+            '/admin/backup/restore', { method: 'POST', body: JSON.stringify({ file, confirm: true }) }),
+
+        restoreState: () => fetchJson<{
+            staged: boolean; file?: string; stagedAt?: string; byName?: string | null;
+        }>('/admin/backup/restore'),
+
+        cancelRestore: () => fetchJson<{ success: true }>('/admin/backup/restore', { method: 'DELETE' }),
+    },
+
     reports: {
         // Bo'lim, manba va tannarx kesimida — server tomonda hisoblanadi
         summary: (from?: string, to?: string) => {

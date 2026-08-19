@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
 import { UserRole, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo } from '../types';
-import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown } from 'lucide-react';
+import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download } from 'lucide-react';
 import { api, API_URL } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
@@ -49,7 +49,7 @@ export const Settings: React.FC<SettingsProps> = ({
    userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, plans, reviews
 }) => {
    const { t } = useLanguage();
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'leadApi'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'leadApi' | 'maintenance'>('services');
 
    // Tashqi lid manbalari (yuboraman.uz va h.k.) uchun integratsiya kaliti
    const [leadApiInfo, setLeadApiInfo] = useState<LeadApiKeyInfo | null>(null);
@@ -837,6 +837,89 @@ export const Settings: React.FC<SettingsProps> = ({
       );
    }
 
+   /* ─── Xizmat ko'rsatish: sxema va zaxira nusxa ─────────────────────────
+      Yuklash/xato holatlari alohida saqlanadi: bitta umumiy `loading` bo'lsa,
+      nusxa olish paytida butun sahifa muzlab qolardi. */
+   const [schemaInfo, setSchemaInfo] = useState<any>(null);
+   const [backupList, setBackupList] = useState<any[]>([]);
+   const [restoreState, setRestoreState] = useState<{ staged: boolean; file?: string; stagedAt?: string; byName?: string | null } | null>(null);
+   const [maintLoading, setMaintLoading] = useState(false);
+   const [maintError, setMaintError] = useState('');
+   const [backupBusy, setBackupBusy] = useState(false);
+   const [backupNote, setBackupNote] = useState('');
+   const [restoreTarget, setRestoreTarget] = useState<any>(null);
+   const [restoreConfirmText, setRestoreConfirmText] = useState('');
+
+   const loadMaintenance = React.useCallback(async () => {
+      setMaintLoading(true);
+      setMaintError('');
+      try {
+         const [sch, list, rst] = await Promise.all([
+            api.maintenance.schemaStatus(),
+            api.maintenance.backups(),
+            api.maintenance.restoreState(),
+         ]);
+         setSchemaInfo(sch);
+         setBackupList(list);
+         setRestoreState(rst);
+      } catch (e: any) {
+         setMaintError(e?.message || 'Ma\'lumotni yuklab bo\'lmadi');
+      } finally {
+         setMaintLoading(false);
+      }
+   }, []);
+
+   React.useEffect(() => {
+      if (activeTab === 'maintenance' && userRole === UserRole.CLINIC_ADMIN) loadMaintenance();
+   }, [activeTab, userRole, loadMaintenance]);
+
+   const handleCreateBackup = async () => {
+      setBackupBusy(true);
+      setMaintError('');
+      try {
+         await api.maintenance.createBackup(backupNote);
+         setBackupNote('');
+         await loadMaintenance();
+      } catch (e: any) {
+         setMaintError(e?.message || 'Nusxa olinmadi');
+      } finally {
+         setBackupBusy(false);
+      }
+   };
+
+   const handleStageRestore = async () => {
+      if (!restoreTarget) return;
+      setBackupBusy(true);
+      setMaintError('');
+      try {
+         await api.maintenance.stageRestore(restoreTarget.file);
+         setRestoreTarget(null);
+         setRestoreConfirmText('');
+         await loadMaintenance();
+      } catch (e: any) {
+         setMaintError(e?.message || 'Tiklashni belgilab bo\'lmadi');
+      } finally {
+         setBackupBusy(false);
+      }
+   };
+
+   const handleCancelRestore = async () => {
+      setBackupBusy(true);
+      try {
+         await api.maintenance.cancelRestore();
+         await loadMaintenance();
+      } catch (e: any) {
+         setMaintError(e?.message || 'Bekor qilib bo\'lmadi');
+      } finally {
+         setBackupBusy(false);
+      }
+   };
+
+   const fmtBytes = (n: number) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`;
+   const fmtWhen = (iso: string) => {
+      try { return new Date(iso).toLocaleString('uz-UZ'); } catch { return iso; }
+   };
+
    return (
       <div className="space-y-6 animate-fade-in">
          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('settings.title')}</h1>
@@ -855,6 +938,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   // Kalitni faqat klinika egasi ko'radi — backend ham shu rolni talab qiladi.
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'leadApi', name: 'Lid integratsiyasi', icon: Link2 }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: 'Ruxsatlar', icon: Shield }] : []),
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: 'Xizmat ko’rsatish', icon: HardDrive }] : []),
                ].map((item) => (
                   <button
                      key={item.id}
@@ -1237,6 +1321,158 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                            </p>
                         </div>
                         </>)}
+                     </Card>
+                  </div>
+               )}
+
+               {/* Xizmat ko'rsatish: sxema versiyasi va zaxira nusxa */}
+               {activeTab === 'maintenance' && userRole === UserRole.CLINIC_ADMIN && (
+                  <div className="space-y-6">
+
+                     {/* Belgilangan tiklash — sahifaning eng tepasida, chunki bu kutilayotgan amal */}
+                     {restoreState?.staged && (
+                        <Card className="p-4 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
+                           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                 <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                                    Tiklash belgilangan: {restoreState.file}
+                                 </p>
+                                 <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                                    Dastur qayta ishga tushganda baza shu nusxadan tiklanadi.
+                                    Joriy baza avtomatik saqlanadi.
+                                 </p>
+                              </div>
+                              <Button variant="secondary" size="sm" onClick={handleCancelRestore} disabled={backupBusy}>
+                                 Bekor qilish
+                              </Button>
+                           </div>
+                        </Card>
+                     )}
+
+                     {maintError && (
+                        <Card className="p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20">
+                           <div className="flex items-start gap-3">
+                              <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                              <p className="text-sm text-red-700 dark:text-red-300 flex-1">{maintError}</p>
+                              <Button variant="secondary" size="sm" onClick={loadMaintenance}>Qayta urinish</Button>
+                           </div>
+                        </Card>
+                     )}
+
+                     {/* ─── Baza holati ───────────────────────────────────── */}
+                     <Card className="p-6">
+                        <div className="flex items-center gap-3 mb-2">
+                           <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
+                              <Database className="w-5 h-5 text-primary-600 dark:text-primary-300" />
+                           </div>
+                           <h3 className="text-xl font-bold text-gray-900 dark:text-white">Baza holati</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                           Qo'llab-quvvatlashga murojaat qilganda birinchi so'raladigan ma'lumot.
+                        </p>
+
+                        {maintLoading && !schemaInfo ? (
+                           <div className="space-y-2">
+                              <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                              <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-2/3 animate-pulse" />
+                           </div>
+                        ) : schemaInfo ? (
+                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              <div>
+                                 <p className="text-xs uppercase tracking-wide text-gray-400">Sxema versiyasi</p>
+                                 <p className="text-sm font-mono font-semibold text-gray-900 dark:text-white mt-1 break-all">
+                                    {schemaInfo.current || (schemaInfo.baseline ? 'boshlang’ich holat' : '—')}
+                                 </p>
+                              </div>
+                              <div>
+                                 <p className="text-xs uppercase tracking-wide text-gray-400">Qo'llanilgan</p>
+                                 <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">
+                                    {schemaInfo.appliedCount} ta migratsiya
+                                 </p>
+                              </div>
+                              <div>
+                                 <p className="text-xs uppercase tracking-wide text-gray-400">Kutilmoqda</p>
+                                 <p className={`text-sm font-semibold mt-1 ${schemaInfo.pendingCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                    {schemaInfo.pendingCount > 0 ? `${schemaInfo.pendingCount} ta` : 'yo’q'}
+                                 </p>
+                              </div>
+                           </div>
+                        ) : (
+                           <p className="text-sm text-gray-400">Ma'lumot yo'q</p>
+                        )}
+
+                        {schemaInfo?.pendingCount > 0 && (
+                           <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                              <p className="text-sm text-amber-800 dark:text-amber-200">
+                                 Qo'llanilmagan o'zgarishlar bor. Dasturni qayta ishga tushiring.
+                              </p>
+                           </div>
+                        )}
+                     </Card>
+
+                     {/* ─── Zaxira nusxa ──────────────────────────────────── */}
+                     <Card className="p-6">
+                        <div className="flex items-center gap-3 mb-2">
+                           <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
+                              <HardDrive className="w-5 h-5 text-primary-600 dark:text-primary-300" />
+                           </div>
+                           <h3 className="text-xl font-bold text-gray-900 dark:text-white">Zaxira nusxa</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                           Baza bilan birga bemor fotolari va tekshiruv fayllari ham saqlanadi.
+                           Nusxalar <code className="text-xs">%APPDATA%\xclinic\backups</code> papkasida.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-2 mb-6">
+                           <Input
+                              value={backupNote}
+                              onChange={(e: any) => setBackupNote(e.target.value)}
+                              placeholder="Izoh (ixtiyoriy): masalan, yangilanishdan oldin"
+                              className="flex-1"
+                           />
+                           <Button onClick={handleCreateBackup} disabled={backupBusy}>
+                              {backupBusy ? 'Bajarilmoqda…' : 'Hozir nusxa olish'}
+                           </Button>
+                        </div>
+
+                        {maintLoading && backupList.length === 0 ? (
+                           <div className="space-y-2">
+                              {[0, 1, 2].map((i) => (
+                                 <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                              ))}
+                           </div>
+                        ) : backupList.length === 0 ? (
+                           <div className="text-center py-8 border border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
+                              <HardDrive className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                                 Nusxa hali yo'q. Birinchisini hozir oling.
+                              </p>
+                           </div>
+                        ) : (
+                           <div className="space-y-2">
+                              {backupList.map((b) => (
+                                 <div key={b.file}
+                                    className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                    <div className="min-w-0 flex-1">
+                                       <p className="text-sm font-mono text-gray-900 dark:text-white truncate">{b.file}</p>
+                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                          {fmtWhen(b.createdAt)} · {fmtBytes(b.sizeBytes)}
+                                          {b.hasUploads ? ' · fayllar arxivi bor' : ' · faqat baza'}
+                                       </p>
+                                       {b.note && (
+                                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 italic truncate">{b.note}</p>
+                                       )}
+                                    </div>
+                                    <Button variant="secondary" size="sm"
+                                       onClick={() => { setRestoreTarget(b); setRestoreConfirmText(''); }}
+                                       disabled={backupBusy || restoreState?.staged}>
+                                       <Download className="w-4 h-4 mr-1.5" /> Tiklash
+                                    </Button>
+                                 </div>
+                              ))}
+                           </div>
+                        )}
                      </Card>
                   </div>
                )}
@@ -2275,6 +2511,61 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                </div>
             </div>
          </Modal>
+      {/* Tiklashni tasdiqlash. Amal QAYTARILMAYDI, shuning uchun oddiy "Ha" yetarli
+          emas: foydalanuvchi nusxa sanasini o'z qo'li bilan yozib tasdiqlaydi. */}
+      {restoreTarget && (
+         <Modal isOpen={true} onClose={() => setRestoreTarget(null)} title="Zaxiradan tiklash">
+            <div className="space-y-4">
+               <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <div className="flex items-start gap-3">
+                     <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                     <div className="text-sm text-red-800 dark:text-red-200 space-y-2">
+                        <p className="font-semibold">
+                           {fmtWhen(restoreTarget.createdAt)} dan KEYIN kiritilgan barcha ma'lumot yo'qoladi.
+                        </p>
+                        <p>
+                           Bu qabullar, to'lovlar, tahlil natijalari va boshqa hamma narsaga tegishli.
+                           Joriy baza almashtirishdan oldin avtomatik saqlanadi, lekin unga qaytish
+                           faqat qo'lda mumkin.
+                        </p>
+                     </div>
+                  </div>
+               </div>
+
+               <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+                  <p><span className="text-gray-400">Nusxa:</span> <span className="font-mono">{restoreTarget.file}</span></p>
+                  <p><span className="text-gray-400">Hajmi:</span> {fmtBytes(restoreTarget.sizeBytes)}</p>
+                  <p><span className="text-gray-400">Fayllar arxivi:</span> {restoreTarget.hasUploads ? 'bor' : 'yo’q'}</p>
+               </div>
+
+               <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                     Tasdiqlash uchun <span className="font-mono font-bold">TIKLASH</span> deb yozing
+                  </label>
+                  <Input
+                     value={restoreConfirmText}
+                     onChange={(e: any) => setRestoreConfirmText(e.target.value)}
+                     placeholder="TIKLASH"
+                  />
+               </div>
+
+               <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Tiklash darhol bajarilmaydi: server bazani ochiq tutadi. Belgi qo'yiladi va
+                  almashtirish dastur qayta ishga tushganda bo'ladi. Shu paytgacha bekor qilish mumkin.
+               </p>
+
+               <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="secondary" onClick={() => setRestoreTarget(null)}>Bekor qilish</Button>
+                  <Button
+                     onClick={handleStageRestore}
+                     disabled={backupBusy || restoreConfirmText.trim().toUpperCase() !== 'TIKLASH'}
+                  >
+                     Tiklashni belgilash
+                  </Button>
+               </div>
+            </div>
+         </Modal>
+      )}
       </div>
    );
 };
