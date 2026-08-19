@@ -1,0 +1,342 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   XClinic — klinik kontur: bemor tarixi, allergiya, qabulni qulflash.
+
+   MUAMMO. Shifokorning ish stolida bemor haqida faqat ism, yosh, jins, telefon
+   va shikoyat bor edi. Ya'ni bir oy oldin xirurg ko'rgan bemor kelganda
+   terapevt HECH NARSA ko'rmaydi: na allergiyani, na surunkali kasalliklarni,
+   na oldingi qabullarni, na tahlil natijalarini.
+
+   Allergiya esa qabul bayonining JSON matnida yotardi (`Visit.examData`,
+   `allergies` kaliti) — uni qidirib ham, ko'rsatib ham bo'lmasdi. Bu
+   GAP-ANALYSIS dagi C12 xatosining eng qimmat qismi: allergiya bemor
+   xavfsizligi masalasi.
+
+   Bu modul bitta so'rov bilan "avval nima bo'lgan" degan savolga javob beradi.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+import type express from 'express';
+import { tashkentDateStr } from './tashkentTime';
+
+type Deps = {
+    prisma: any;
+    authenticateToken: any;
+    getScopedClinicId: (req: any) => string | null;
+    assertPatientOwnership: (req: any, res: any, patientId: string) => Promise<boolean>;
+};
+
+const round = (n: number) => Math.round(n * 100) / 100;
+
+export function registerClinicalRoutes(app: express.Express, deps: Deps) {
+    const { prisma, authenticateToken: auth, getScopedClinicId, assertPatientOwnership } = deps;
+
+    const route = (
+        method: 'get' | 'post' | 'put' | 'delete',
+        path: string,
+        handler: (req: any, res: any, clinicId: string) => Promise<any>,
+    ) => {
+        (app as any)[method](path, auth, async (req: any, res: any) => {
+            try {
+                const clinicId = getScopedClinicId(req);
+                if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
+                await handler(req, res, clinicId);
+            } catch (e: any) {
+                console.error(`[${method.toUpperCase()} ${path}]`, e?.message || e);
+                res.status(500).json({ error: e?.message || 'Server xatoligi' });
+            }
+        });
+    };
+
+    // ═══ BEMOR TARIXI (bitta so'rov) ═════════════════════════════════════════
+
+    /**
+     * GET /api/patients/:id/summary
+     *
+     * Shifokor begona bemorni ko'rganda bilishi kerak bo'lgan hamma narsa —
+     * BITTA so'rovda. Ish stolida panel shu javobdan quriladi.
+     *
+     * Tartib ataylab shunday: allergiya birinchi, chunki u xavfsizlik masalasi.
+     */
+    route('get', '/api/patients/:id/summary', async (req, res, clinicId) => {
+        const patientId = req.params.id;
+        if (!(await assertPatientOwnership(req, res, patientId))) return;
+
+        const [patient, allergies, chronic, visits, labs, studies, prescriptions, charges, admissions] =
+            await Promise.all([
+                prisma.patient.findUnique({
+                    where: { id: patientId },
+                    select: {
+                        id: true, firstName: true, lastName: true, dob: true, gender: true,
+                        phone: true, cardNumber: true, balance: true, medicalHistory: true,
+                    },
+                }),
+                prisma.patientAllergy.findMany({
+                    where: { patientId, isActive: true },
+                    orderBy: [{ severity: 'desc' }, { notedAt: 'desc' }],
+                }),
+                prisma.patientDiagnosis.findMany({
+                    where: { patientId, isChronic: true },
+                    include: { icd10: { select: { code: true, name: true } } },
+                    orderBy: { date: 'desc' },
+                }),
+                // Oxirgi qabullar — BOSHQA bo'limlarniki ham. Aynan shu narsa
+                // ilgari ko'rinmasdi.
+                prisma.visit.findMany({
+                    where: { patientId, clinicId },
+                    include: { department: { select: { name: true, color: true } } },
+                    orderBy: { date: 'desc' },
+                    take: 5,
+                }),
+                prisma.labOrder.findMany({
+                    where: { patientId, clinicId, status: 'Completed' },
+                    include: {
+                        items: {
+                            include: {
+                                results: {
+                                    include: { parameter: { select: { name: true, unit: true, refLow: true, refHigh: true } } },
+                                },
+                            },
+                        },
+                    },
+                    orderBy: { completedAt: 'desc' },
+                    take: 3,
+                }),
+                prisma.diagnosticStudy.findMany({
+                    where: { patientId, clinicId, status: 'Completed' },
+                    select: { id: true, modality: true, name: true, conclusion: true, performedAt: true },
+                    orderBy: { performedAt: 'desc' },
+                    take: 3,
+                }),
+                // Faol retseptlar — "hozir nima ichadi" savoliga javob
+                prisma.prescription.findMany({
+                    where: { patientId, clinicId, status: 'Active' },
+                    include: { items: true },
+                    orderBy: { createdAt: 'desc' },
+                    take: 3,
+                }),
+                prisma.visitCharge.findMany({
+                    where: { patientId, clinicId, status: 'Unpaid' },
+                    select: { total: true, paidAmount: true },
+                }),
+                prisma.admission.findMany({
+                    where: { patientId, clinicId },
+                    select: { id: true, admittedAt: true, dischargedAt: true, status: true, diagnosis: true },
+                    orderBy: { admittedAt: 'desc' },
+                    take: 3,
+                }),
+            ]);
+
+        if (!patient) return res.status(404).json({ error: 'Bemor topilmadi' });
+
+        const due = round(charges.reduce((s: number, c: any) => s + (c.total - (c.paidAmount || 0)), 0));
+
+        // Norma chegarasidan chiqqan natijalar — shifokor birinchi shuni ko'radi
+        const abnormal: any[] = [];
+        for (const order of labs) {
+            for (const item of order.items || []) {
+                for (const r of item.results || []) {
+                    if (r.flag && r.flag !== 'Normal') {
+                        abnormal.push({
+                            name: r.parameter?.name || '—',
+                            value: r.value, unit: r.parameter?.unit || null,
+                            flag: r.flag,
+                            refLow: r.parameter?.refLow ?? null,
+                            refHigh: r.parameter?.refHigh ?? null,
+                            at: order.completedAt,
+                        });
+                    }
+                }
+            }
+        }
+
+        res.json({
+            patient,
+            allergies,
+            chronic: chronic.map((d: any) => ({
+                id: d.id, code: d.code, name: d.icd10?.name || d.code, date: d.date, notes: d.notes,
+            })),
+            recentVisits: visits.map((v: any) => ({
+                id: v.id, date: v.date, status: v.status,
+                department: v.department?.name || null,
+                color: v.department?.color || null,
+                doctorName: v.doctorName || null,
+                diagnosis: v.diagnosis || null,
+                disposition: v.disposition || null,
+            })),
+            recentLabs: labs.map((o: any) => ({
+                id: o.id, completedAt: o.completedAt,
+                tests: (o.items || []).map((i: any) => i.testName),
+                seen: !!o.seenByDoctorAt,
+            })),
+            abnormalResults: abnormal.slice(0, 10),
+            recentStudies: studies,
+            activeMedications: prescriptions.flatMap((rx: any) =>
+                (rx.items || []).map((i: any) => ({
+                    name: i.name, dosage: i.dosage, frequency: i.frequency,
+                    date: rx.date, prescriptionId: rx.id,
+                })),
+            ),
+            admissions,
+            due,
+        });
+    });
+
+    // ═══ ALLERGIYA ═══════════════════════════════════════════════════════════
+
+    route('get', '/api/patients/:id/allergies', async (req, res, clinicId) => {
+        if (!(await assertPatientOwnership(req, res, req.params.id))) return;
+        const items = await prisma.patientAllergy.findMany({
+            where: { patientId: req.params.id },
+            orderBy: [{ isActive: 'desc' }, { notedAt: 'desc' }],
+        });
+        res.json(items);
+    });
+
+    route('post', '/api/patients/:id/allergies', async (req, res, clinicId) => {
+        const user = (req as any).user;
+        if (!['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        if (!(await assertPatientOwnership(req, res, req.params.id))) return;
+
+        const { substance, reaction, severity } = req.body;
+        if (!substance || !String(substance).trim()) {
+            return res.status(400).json({ error: 'Modda nomi majburiy' });
+        }
+        const allowed = ['Mild', 'Severe', 'Unknown'];
+        const item = await prisma.patientAllergy.create({
+            data: {
+                clinicId, patientId: req.params.id,
+                substance: String(substance).trim(),
+                reaction: reaction ? String(reaction).trim() : null,
+                severity: allowed.includes(severity) ? severity : 'Unknown',
+                notedByName: user?.name || null,
+            },
+        });
+        res.json(item);
+    });
+
+    /** Allergiya O'CHIRILMAYDI, faolsizlantiriladi: tibbiy tarix saqlanadi */
+    route('delete', '/api/patients/:id/allergies/:allergyId', async (req, res, clinicId) => {
+        const user = (req as any).user;
+        if (!['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const rec = await prisma.patientAllergy.findUnique({ where: { id: req.params.allergyId } });
+        if (!rec || rec.clinicId !== clinicId || rec.patientId !== req.params.id) {
+            return res.status(404).json({ error: 'Topilmadi' });
+        }
+        await prisma.patientAllergy.update({
+            where: { id: req.params.allergyId }, data: { isActive: false },
+        });
+        res.json({ success: true, deactivated: true });
+    });
+
+    // ═══ NATIJA KO'RILDI ═════════════════════════════════════════════════════
+
+    /* Ilgari natija kelganda shifokorga hech narsa xabar bermasdi: navbatda
+       "tayyor" va "kutilmoqda" bir xil ko'rinardi. Endi ko'rilmagan natija
+       belgilanadi va shifokor ochganda belgi o'chadi. */
+
+    route('post', '/api/lab-orders/:id/seen', async (req, res, clinicId) => {
+        const order = await prisma.labOrder.findUnique({ where: { id: req.params.id } });
+        if (!order || order.clinicId !== clinicId) return res.status(404).json({ error: 'Topilmadi' });
+        await prisma.labOrder.update({
+            where: { id: req.params.id }, data: { seenByDoctorAt: new Date() },
+        });
+        res.json({ success: true });
+    });
+
+    route('post', '/api/studies/:id/seen', async (req, res, clinicId) => {
+        const study = await prisma.diagnosticStudy.findUnique({ where: { id: req.params.id } });
+        if (!study || study.clinicId !== clinicId) return res.status(404).json({ error: 'Topilmadi' });
+        await prisma.diagnosticStudy.update({
+            where: { id: req.params.id }, data: { seenByDoctorAt: new Date() },
+        });
+        res.json({ success: true });
+    });
+
+    /**
+     * GET /api/visits/pending-results
+     *
+     * Natijasi tayyor, lekin shifokor ko'rmagan qabullar. SANA bilan
+     * CHEKLANMAYDI: tahlil bir kundan ko'p vaqt olsa, qabul "bugungi navbat"
+     * dan chiqib ketardi va umuman ko'rinmasdi (GAP-ANALYSIS, B22).
+     */
+    route('get', '/api/visits/pending-results', async (req, res, clinicId) => {
+        const user = (req as any).user;
+        const doctorFilter = user?.role === 'DOCTOR' && user?.doctorId
+            ? { doctorId: user.doctorId }
+            : {};
+
+        const visits = await prisma.visit.findMany({
+            where: {
+                clinicId,
+                status: 'AwaitingResults',
+                ...doctorFilter,
+            },
+            include: {
+                patient: { select: { firstName: true, lastName: true } },
+                department: { select: { name: true } },
+                labOrders: { select: { id: true, status: true, completedAt: true, seenByDoctorAt: true } },
+                studies: { select: { id: true, status: true, performedAt: true, seenByDoctorAt: true } },
+            },
+            orderBy: { date: 'desc' },
+            take: 100,
+        });
+
+        // "Tayyor va ko'rilmagan" — ekranda aynan shu belgi kerak
+        const rows = visits.map((v: any) => {
+            const readyLabs = (v.labOrders || []).filter((o: any) => o.status === 'Completed');
+            const readyStudies = (v.studies || []).filter((s: any) => s.status === 'Completed');
+            const unseen = readyLabs.filter((o: any) => !o.seenByDoctorAt).length
+                + readyStudies.filter((s: any) => !s.seenByDoctorAt).length;
+            const pending = (v.labOrders || []).length - readyLabs.length
+                + (v.studies || []).length - readyStudies.length;
+            return {
+                visitId: v.id, date: v.date, queueNumber: v.queueNumber,
+                patientName: `${v.patient?.lastName || ''} ${v.patient?.firstName || ''}`.trim(),
+                department: v.department?.name || null,
+                doctorName: v.doctorName || null,
+                awaitingSince: v.awaitingSince,
+                readyCount: readyLabs.length + readyStudies.length,
+                unseenCount: unseen,
+                stillPending: pending,
+            };
+        });
+
+        // Ko'rilmagan natijasi borlar tepada
+        rows.sort((a: any, b: any) => b.unseenCount - a.unseenCount);
+        res.json(rows);
+    });
+
+    // ═══ QABULNI QULFLASH ════════════════════════════════════════════════════
+
+    /**
+     * Yakunlangan qabulni qulflash. Ilgari `PUT /api/visits/:id` har qanday
+     * holatdagi qabulni tahrirlardi — oylar oldingi bayonni jimgina qayta
+     * yozish mumkin edi.
+     */
+    route('post', '/api/visits/:id/lock', async (req, res, clinicId) => {
+        const user = (req as any).user;
+        if (!['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const visit = await prisma.visit.findUnique({ where: { id: req.params.id } });
+        if (!visit || visit.clinicId !== clinicId) return res.status(404).json({ error: 'Qabul topilmadi' });
+        if (visit.lockedAt) return res.status(409).json({ error: 'Qabul allaqachon qulflangan' });
+
+        const updated = await prisma.visit.update({
+            where: { id: req.params.id },
+            data: {
+                lockedAt: new Date(),
+                lockedByName: user?.name || null,
+                // Qulflash yakunlashni ham bildiradi
+                ...(visit.status !== 'Completed' ? { status: 'Completed', checkOutTime: new Date() } : {}),
+                ...(req.body?.disposition ? { disposition: String(req.body.disposition) } : {}),
+            },
+        });
+        res.json(updated);
+    });
+
+    console.log('✅ Klinik endpointlar ulandi');
+}

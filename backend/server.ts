@@ -80,6 +80,7 @@ import { registerReportRoutes } from './reports';
 import { registerFileRoutes } from './files';
 import { runMigrations, registerMaintenanceRoutes } from './maintenance';
 import { tashkentDateStr } from './tashkentTime';
+import { registerClinicalRoutes } from './clinical';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
 const { smsService, normalizeUzPhone } = require('./smsService');
@@ -4673,6 +4674,11 @@ app.delete('/api/diagnoses/:id', authenticateToken, async (req, res) => {
 // ─── Ko'p profilli klinika modullari ─────────────────────────────────────────
 // Bo'limlar, qabul shablonlari, laboratoriya, diagnostika, statsionar, dorixona.
 // Alohida faylda — server.ts allaqachon 6000 qatordan oshgan.
+/* DIQQAT: klinik marshrutlar multiprofile'dan OLDIN ro'yxatdan o'tadi.
+   Sabab: `/api/visits/pending-results` va `/api/visits/:id` bir-biriga
+   to'g'ri keladi — Express birinchi mos kelganini oladi, va agar `:id`
+   oldin turса, "pending-results" id deb qabul qilinib 404 qaytarardi. */
+registerClinicalRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
 registerMultiprofileRoutes(app, { prisma, authenticateToken, getScopedClinicId, upload, uploadsDir });
 registerBillingRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerInventoryRoutes(app, { prisma, authenticateToken, getScopedClinicId });
