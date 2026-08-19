@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import { Patient, Appointment, Transaction, UserRole, Doctor, Lead, LabOrder, Clinic, Service, PaymentMethod } from '../types';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
-import { getCurrentMonthRange } from '../utils/dateUtils';
+import { getCurrentMonthRange, todayISO } from '../utils/dateUtils';
 import { transactionBelongsToDoctor, calculateAppointmentTotal, isAppointmentPaid } from '../utils/financialCalculations';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigate } from 'react-router-dom';
@@ -62,7 +62,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   const [intensityView, setIntensityView] = useState<'month' | 'year'>('year');
   const [activeTab, setActiveTab] = useState<'overview' | 'ai'>('overview');
   const isReceptionist = userRole === UserRole.RECEPTIONIST;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
   const { startDate: defaultStart, endDate: defaultEnd } = getCurrentMonthRange();
   const [startDate, setStartDate] = useState(isReceptionist ? today : defaultStart);
   const [endDate, setEndDate] = useState(isReceptionist ? today : defaultEnd);

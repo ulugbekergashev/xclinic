@@ -1,5 +1,6 @@
 ﻿
 import React, { useState, useEffect, useMemo } from 'react';
+import { todayISO } from './utils/dateUtils';
 import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Calendar as CalendarIcon,
@@ -713,7 +714,7 @@ const AppContent: React.FC = () => {
           doctorId: doctor.id,
           doctorName: `Dr. ${doctor.lastName} ${doctor.firstName}`,
           type: appointmentData.type || 'Konsultatsiya',
-          date: appointmentData.date || new Date().toISOString().split('T')[0],
+          date: appointmentData.date || todayISO(),
           time: appointmentData.time || '12:00',
           duration: appointmentData.duration || 60,
           status: 'Pending',

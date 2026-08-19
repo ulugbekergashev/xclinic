@@ -11,6 +11,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { tashkentDateStr } from './tashkentTime';
 
 type Deps = {
     prisma: any;
@@ -18,7 +19,8 @@ type Deps = {
     getScopedClinicId: (req: any) => string | null;
 };
 
-const nowDate = () => new Date().toISOString().split('T')[0];
+// Sana Toshkent bo'yicha: UTC ishlatilsa tunda kechagi kun yozilardi
+const nowDate = () => tashkentDateStr();
 const round = (n: number) => Math.round(n * 100) / 100;
 
 export type ChargeSource = 'Service' | 'Lab' | 'Study' | 'Medication' | 'Bed' | 'Other';

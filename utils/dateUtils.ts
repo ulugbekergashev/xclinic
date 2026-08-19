@@ -10,6 +10,22 @@ export const formatDateToISO = (date: Date) => {
 };
 
 /**
+ * Bugungi sana `YYYY-MM-DD` — KOMPYUTER vaqti bo'yicha (klinikada u Toshkent).
+ *
+ * Nima uchun alohida funksiya. Loyihada 28 joyda shunday yozilgan edi:
+ *
+ *     new Date().toISOString().split('T')[0]
+ *
+ * `toISOString()` UTC beradi, Toshkent esa UTC+5. Ya'ni mahalliy 00:00 dan
+ * 05:00 gacha bu ifoda KECHAGI sanani qaytarardi: tunda ochilgan qabul kechagi
+ * navbatga tushardi, tunda qabul qilingan to'lov yopilgan smenaga yozilardi.
+ * Server tomonida ham shu tuzatildi (backend/tashkentTime.ts) — ikki tomon bir
+ * xil kunni ko'rishi shart, aks holda filtr "bugun" bo'yicha hech narsa
+ * topmaydi.
+ */
+export const todayISO = () => formatDateToISO(new Date());
+
+/**
  * 'YYYY-MM-DD' satrini 'DD.MM.YYYY' ko'rinishida qaytaradi.
  * new Date() ISHLATILMAYDI — UTC/lokal zona siljishi bo'lmaydi (tug'ilgan sana bug fix).
  */

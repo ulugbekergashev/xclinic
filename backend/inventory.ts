@@ -15,6 +15,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { tashkentDateStr, tashkentRangeBounds } from './tashkentTime';
 
 type Deps = {
     prisma: any;
@@ -23,7 +24,7 @@ type Deps = {
 };
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => tashkentDateStr();
 
 /**
  * FEFO bo'yicha chiqim: muddati eng yaqin partiyadan boshlab yechadi.
@@ -170,10 +171,13 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
                 clinicId,
                 ...(itemId ? { itemId: String(itemId) } : {}),
                 ...(visitId ? { visitId: String(visitId) } : {}),
+                /* Chegaralar Toshkent kuni bo'yicha. Ilgari `gte` UTC,
+                   `lte` esa lokal vaqtda o'lchanardi (reports.ts dagi bilan
+                   bir xil xato) va davr boshidagi harakatlar tushib qolardi. */
                 ...(from || to ? {
                     createdAt: {
-                        ...(from ? { gte: new Date(String(from)) } : {}),
-                        ...(to ? { lte: new Date(String(to) + 'T23:59:59') } : {}),
+                        ...(from ? { gte: tashkentRangeBounds(String(from), String(from)).start } : {}),
+                        ...(to ? { lte: tashkentRangeBounds(String(to), String(to)).end } : {}),
                     },
                 } : {}),
             },
@@ -334,7 +338,8 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
     /** Muddati o'tgan/yaqinlashgan va minimal qoldiqdan tushganlar */
     route('get', '/api/inventory-alerts', async (req, res, clinicId) => {
         const days = Number(req.query.days) || 60;
-        const limit = new Date(Date.now() + days * 864e5).toISOString().split('T')[0];
+        // Chegara ham Toshkent kuni bo'yicha
+        const limit = tashkentDateStr(days);
         const now = today();
 
         const [batches, low] = await Promise.all([

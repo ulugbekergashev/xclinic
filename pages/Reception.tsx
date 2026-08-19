@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { todayISO } from '../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import {
     UserPlus, Search, ArrowRight, Printer, Clock, Stethoscope,
@@ -31,7 +32,7 @@ interface Props {
 }
 
 const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => todayISO();
 
 export const Reception: React.FC<Props> = ({
     clinicId, patients, doctors, departments, services, currentClinic, onPatientAdded, addToast,

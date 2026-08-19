@@ -1,4 +1,5 @@
 import { Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch } from '../types';
+import { todayISO } from '../utils/dateUtils';
 
 // Demo rejimida kassa yopilishlari faqat sessiya davomida saqlanadi
 const DEMO_CASH_REGISTER: CashRegisterDay[] = [];
@@ -1639,7 +1640,7 @@ export const api = {
                 if (initialCost && initialCost > 0) {
                     DEMO_EXPENSES.push({
                         id: `demo-exp-${Date.now()}`,
-                        date: new Date().toISOString().split('T')[0],
+                        date: todayISO(),
                         amount: initialCost,
                         category: 'Inventory',
                         title: `Ombor: ${newItem.name}`,
@@ -1680,7 +1681,7 @@ export const api = {
                     if (data.type === 'IN' && data.cost && data.cost > 0) {
                         DEMO_EXPENSES.push({
                             id: `demo-exp-${Date.now()}`,
-                            date: new Date().toISOString().split('T')[0],
+                            date: todayISO(),
                             amount: data.cost,
                             category: 'Inventory',
                             title: `Ombor: ${item.name}`,

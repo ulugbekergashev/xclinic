@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { todayISO } from '../utils/dateUtils';
 import { Plus, Check, Calendar, CreditCard, X, Clock } from 'lucide-react';
 import { Button, Card, Modal, Input, Select, Badge } from './Common';
 import { api } from '../services/api';
@@ -28,7 +29,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
       totalAmount: '',
       initialPayment: '',
       months: '3',
-      startDate: new Date().toISOString().split('T')[0]
+      startDate: todayISO()
    });
 
    // Pay Modal

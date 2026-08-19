@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { todayISO } from '../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import {
     Stethoscope, RefreshCw, Clock, Volume2, CheckCircle,
@@ -33,7 +34,7 @@ interface Props {
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => todayISO();
 
 /** Necha daqiqadan beri kutyapti */
 const waitedMin = (v: Visit) => {

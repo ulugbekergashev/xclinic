@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { todayISO } from '../utils/dateUtils';
 import { Card, Button } from '../components/Common';
 import { Patient, Doctor, Transaction, Clinic, MessageTemplate, AutomationRule, MessageLog, MessageChannel, AutomationTrigger, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, RuleSchedule } from '../types';
 import { SegmentBuilder } from '../components/SegmentBuilder';
@@ -466,7 +467,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
             patientName: `${previewPatient.firstName} ${previewPatient.lastName}`,
             firstName: previewPatient.firstName,
             lastName: previewPatient.lastName,
-            date: new Date().toISOString().split('T')[0],
+            date: todayISO(),
             time: '',
             clinicName: currentClinic?.name || '',
             doctorName: '',

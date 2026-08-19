@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { todayISO } from '../utils/dateUtils';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
     LineChart, Line,
@@ -47,7 +48,7 @@ interface Props {
 
 const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(Math.round(n || 0));
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]; };
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => todayISO();
 
 // Bo'limlar diagrammasi uchun ranglar — bo'limning o'z rangi bo'lmasa shulardan
 const PALETTE = ['#0E5F55', '#2563EB', '#DC2626', '#7C3AED', '#0891B2', '#D97706', '#DB2777', '#059669'];

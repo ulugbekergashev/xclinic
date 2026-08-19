@@ -9,7 +9,7 @@ import { InstallmentsTab } from '../components/InstallmentsTab';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, SubscriptionPlan, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate } from '../types';
 import { api, getFileUrl } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
-import { formatDobDDMMYYYY, calcAge } from '../utils/dateUtils';
+import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
 import { calculateAppointmentTotal } from '../utils/financialCalculations';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { maskPhone } from '../utils/accessControl';
@@ -106,7 +106,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const [isApptModalOpen, setIsApptModalOpen] = useState(false);
    const [apptData, setApptData] = useState({
       doctorId: defaultDoctorId,
-      date: new Date().toISOString().split('T')[0],
+      date: todayISO(),
       time: '09:00',
       type: 'Konsultatsiya',
       categoryId: '',
@@ -184,7 +184,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    }, [appointments, patientId, patient?.id]);
 
    const allProceduresHistory = React.useMemo(() => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayISO();
       const current = pendingProcedures.map((p: any) => ({
          id: p.id,
          serviceName: p.serviceName,
@@ -336,7 +336,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             code: selectedCode.code,
             name: selectedCode.name, // Send name for backend to create if missing
             description: selectedCode.description, // Send description
-            date: new Date().toISOString().split('T')[0],
+            date: todayISO(),
             notes: diagnosisNote,
             status: 'Active' as 'Active' | 'Resolved' | 'Chronic',
             clinicId: patient.clinicId
@@ -376,7 +376,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          setEncounterData(data);
          setEncounterTemplateId(templateId);
          // Bayon ochiq qabulga yoziladi; qabul bo'lmasa yangisi ochiladi.
-         const today = new Date().toISOString().split('T')[0];
+         const today = todayISO();
          const open = visits.find(v => v.status !== 'Completed' && v.status !== 'Cancelled');
          if (open) {
             await api.visits.update(open.id, {
@@ -426,7 +426,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                status: 'Paid',
                type: editPaymentMethod as any,
                service: `${editingTransaction.service} (Qarzdorlik yopildi)`,
-               date: new Date().toISOString().split('T')[0]
+               date: todayISO()
             });
 
             // 2. Reduce the original Pending amount
@@ -440,7 +440,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                status: 'Paid',
                amount: newAmount,
                type: editPaymentMethod as any,
-               date: new Date().toISOString().split('T')[0]
+               date: todayISO()
             });
          }
       } else {
@@ -596,7 +596,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             finalTransaction = await onAddTransaction({
                patientId: patient.id,
                patientName: `${patient.lastName} ${patient.firstName}`,
-               date: paymentData.appointmentDate || new Date().toISOString().split('T')[0],
+               date: paymentData.appointmentDate || todayISO(),
                amount: totalAmount,
                service: paymentData.service,
                type: paymentData.type as any,
@@ -612,7 +612,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             finalTransaction = await onAddTransaction({
                patientId: patient.id,
                patientName: `${patient.lastName} ${patient.firstName}`,
-               date: paymentData.appointmentDate || new Date().toISOString().split('T')[0],
+               date: paymentData.appointmentDate || todayISO(),
                amount: totalAmount,
                service: paymentData.service,
                type: paymentData.type as any,
@@ -629,7 +629,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             finalTransaction = await onAddTransaction({
                patientId: patient.id,
                patientName: `${patient.lastName} ${patient.firstName}`,
-               date: paymentData.appointmentDate || new Date().toISOString().split('T')[0],
+               date: paymentData.appointmentDate || todayISO(),
                amount: paidAmount,
                service: `${paymentData.service} (Qisman to'lov)`,
                type: paymentData.type as any,
@@ -644,7 +644,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             await onAddTransaction({
                patientId: patient.id,
                patientName: `${patient.lastName} ${patient.firstName}`,
-               date: paymentData.appointmentDate || new Date().toISOString().split('T')[0],
+               date: paymentData.appointmentDate || todayISO(),
                amount: debtAmount,
                service: `${paymentData.service} (Qarz)`,
                type: paymentData.type as any,
@@ -749,7 +749,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          categoryId: apptData.categoryId || null // Add categoryId
       });
       setIsApptModalOpen(false);
-      setApptData({ doctorId: defaultDoctorId, date: new Date().toISOString().split('T')[0], time: '09:00', type: 'Konsultatsiya', categoryId: '', duration: 60, notes: '' });
+      setApptData({ doctorId: defaultDoctorId, date: todayISO(), time: '09:00', type: 'Konsultatsiya', categoryId: '', duration: 60, notes: '' });
    };
 
    const openApptModal = () => {
@@ -764,7 +764,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
    const handleCompleteVisit = async (procedures: any[], total: number) => {
       // 1. Double-check if we are already processing or have processed this exact content recently
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayISO();
 
       // Generate a simple hash/signature for this batch of procedures
       const batchSignature = `${today}-${total}-${procedures.map(p => p.id).join(',')}`;
@@ -1389,7 +1389,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                           type: 'Cash',
                                           status: 'Paid',
                                           doctorId: doctors.length > 0 ? doctors[0].id : '',
-                                          appointmentDate: new Date().toISOString().split('T')[0],
+                                          appointmentDate: todayISO(),
                                           discountPercent: ''
                                        });
                                        setIsPaymentModalOpen(true);

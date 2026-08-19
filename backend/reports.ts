@@ -13,6 +13,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { tashkentDateStr, tashkentMonthStart, tashkentRangeBounds, TASHKENT_OFFSET_MS } from './tashkentTime';
 
 type Deps = {
     prisma: any;
@@ -21,12 +22,13 @@ type Deps = {
 };
 
 const round = (n: number) => Math.round(n * 100) / 100;
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => tashkentDateStr();
 
-const monthStart = () => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
-};
+const monthStart = () => tashkentMonthStart();
+
+/** `Date` ni Toshkent kunining `YYYY-MM-DD` ko'rinishiga o'giradi */
+const toTashkentDay = (d: Date) =>
+    new Date(d.getTime() + TASHKENT_OFFSET_MS).toISOString().split('T')[0];
 
 /** Manba turlarining o'zbekcha nomi — hisobot sarlavhalarida ishlatiladi */
 const SOURCE_LABELS: Record<string, string> = {
@@ -64,13 +66,19 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
     route('get', '/api/reports/summary', async (req, res, clinicId) => {
         const from = String(req.query.from || monthStart());
         const to = String(req.query.to || today());
+        const { start: rangeStart, end: rangeEnd } = tashkentRangeBounds(from, to);
 
         const [charges, expenses, departments, services, recipes, doctors] = await Promise.all([
             prisma.visitCharge.findMany({
                 where: {
                     clinicId,
                     status: { not: 'Cancelled' },
-                    createdAt: { gte: new Date(from), lte: new Date(to + 'T23:59:59') },
+                    /* Ilgari shu yerda `new Date(from)` va `new Date(to + 'T23:59:59')`
+                       edi. ECMAScript qoidasi bo'yicha birinchisi UTC, ikkinchisi
+                       LOKAL vaqt deb o'qiladi — ya'ni bir filtrning ikki chegarasi
+                       turli zonalarda o'lchanardi va davr boshidagi 5 soat
+                       hisobotga tushmasdi. Endi ikkalasi ham Toshkent kuni. */
+                    createdAt: { gte: rangeStart, lte: rangeEnd },
                 },
                 include: { visit: { select: { departmentId: true, doctorId: true, doctorName: true, date: true } } },
             }),
@@ -142,7 +150,9 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 dr.revenue += total; dr.count++;
             }
 
-            const day = (c.visit?.date) || c.createdAt.toISOString().split('T')[0];
+            // Qabul sanasi bo'lmasa — yozuv vaqtini TOSHKENT kuniga o'giramiz,
+            // aks holda tunda kiritilgan qator kechagi kunga tushardi
+            const day = (c.visit?.date) || toTashkentDay(c.createdAt);
             if (!daily.has(day)) daily.set(day, { date: day, revenue: 0, collected: 0 });
             const dd = daily.get(day)!;
             dd.revenue += total; dd.collected += paid;
@@ -218,7 +228,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             if (!byPatient.has(key)) {
                 byPatient.set(key, {
                     patientId: c.patientId, patientName: c.patientName,
-                    due: 0, count: 0, oldestDate: c.visit?.date || c.createdAt.toISOString().split('T')[0],
+                    due: 0, count: 0, oldestDate: c.visit?.date || toTashkentDay(c.createdAt),
                 });
             }
             const g = byPatient.get(key);

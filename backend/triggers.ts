@@ -19,11 +19,12 @@ import { prisma } from './db';
 import { resolveSegment } from './segments';
 import { schedulePeriodKey } from './ruleExtras';
 
-// Toshkent vaqti (UTC+5, DST yo'q)
-const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
-export const tashkentNowMs = () => Date.now() + TASHKENT_OFFSET_MS;
-export const tashkentDateStr = (offsetDays = 0) =>
-    new Date(Date.now() + TASHKENT_OFFSET_MS + offsetDays * 86400000).toISOString().split('T')[0];
+/* Vaqt zonasi yordamchilari ./tashkentTime da — bitta joyda saqlanadi.
+   Import — shu fayl ichida ishlatish uchun, export — tashqi import'lar
+   buzilmasligi uchun (`export ... from` nomlarni lokal ko'rinishga OLIB
+   KELMAYDI, shuning uchun ikkalasi ham kerak). */
+import { tashkentNowMs, tashkentDateStr, tashkentHour } from './tashkentTime';
+export { tashkentNowMs, tashkentDateStr, tashkentHour };
 
 /** Bemor tug'ilgan kunini MM-DD ga keltirish (YYYY-MM-DD yoki DD.MM.YYYY) */
 export function dobToMonthDay(dob: string): string {
@@ -444,7 +445,7 @@ export const TRIGGERS: TriggerDef[] = [
 ];
 
 /** Hozir Toshkent bo'yicha soat nechada */
-export const tashkentHour = () => new Date(tashkentNowMs()).getUTCHours();
+// tashkentHour ./tashkentTime dan re-export qilinadi (fayl boshida)
 
 /** Trigger hozir ishlashi mumkinmi (tinch soatlar tekshiruvi) */
 export function isWithinSendWindow(def: TriggerDef): boolean {

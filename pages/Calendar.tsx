@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { todayISO } from '../utils/dateUtils';
 import { Card, Button, Modal, Input, Select, Badge, SearchableSelect } from '../components/Common';
 import {
   ChevronLeft, ChevronRight, Plus, Clock, User, FileText,
@@ -59,7 +60,7 @@ export const Calendar: React.FC<CalendarProps> = ({
     doctorId: '',
     type: '',
     categoryId: '',
-    date: new Date().toISOString().split('T')[0],
+    date: todayISO(),
     time: '09:00',
     duration: 60,
     notes: ''
@@ -108,7 +109,7 @@ export const Calendar: React.FC<CalendarProps> = ({
       doctorId: initialDoctorId || (userRole === UserRole.DOCTOR && doctorId ? doctorId : '') || (doctors.length > 0 ? doctors[0].id : ''),
       type: '',
       categoryId: '',
-      date: initialDate || new Date().toISOString().split('T')[0],
+      date: initialDate || todayISO(),
       time: initialTime || '09:00',
       duration: 60,
       notes: ''

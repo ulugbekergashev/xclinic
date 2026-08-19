@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { todayISO } from '../utils/dateUtils';
 import {
     Search, Plus, MoreHorizontal, MessageSquare, Phone, Calendar as CalendarIcon,
     Facebook, RefreshCw, CheckCircle, X, ExternalLink, Trash2, Filter,
@@ -130,7 +131,7 @@ export const Leads: React.FC<LeadsProps> = ({
     // Appt Data for Conversion
     const [apptData, setApptData] = useState({
         doctorId: '',
-        date: new Date().toISOString().split('T')[0],
+        date: todayISO(),
         time: '09:00',
         type: t('leads.convertModal.procedure'),
         categoryId: '',

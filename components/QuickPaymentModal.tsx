@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { todayISO } from '../utils/dateUtils';
 import { Modal, Button } from './Common';
 import { Patient, Doctor, Transaction, PaymentMethod } from '../types';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
@@ -52,7 +53,7 @@ export const QuickPaymentModal: React.FC<QuickPaymentModalProps> = ({
         try {
             const patient = patients.find(p => p.id === form.patientId);
             const doctor = doctors.find(d => d.id === form.doctorId);
-            const today = new Date().toISOString().split('T')[0];
+            const today = todayISO();
             await onAddTransaction({
                 patientName: patient ? `${patient.lastName} ${patient.firstName}` : '',
                 date: presetDate || today,

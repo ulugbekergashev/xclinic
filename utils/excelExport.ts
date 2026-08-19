@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { todayISO } from './dateUtils';
 import { Transaction, Expense, Doctor, EXPENSE_CATEGORY_LABELS } from '../types';
 import { TotalFinancials, DoctorShareSummary } from './financialCalculations';
 import { PAYMENT_METHODS, getPaymentMethodLabel } from './paymentMethods';
@@ -111,6 +112,6 @@ export function exportFinanceToExcel(data: FinanceExportData) {
     XLSX.utils.book_append_sheet(wb, wsDebtors, 'Qarzdorlar');
 
     // Kassa eksporti (kassa_*.xlsx) bilan aralashmasligi uchun alohida nom
-    const fileName = `moliya_hisobot_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const fileName = `moliya_hisobot_${todayISO()}.xlsx`;
     XLSX.writeFile(wb, fileName);
 }

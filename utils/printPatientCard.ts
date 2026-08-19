@@ -1,4 +1,5 @@
 import { Patient, Clinic, Doctor, PatientDiagnosis, EncounterTemplate } from '../types';
+import { todayISO } from './dateUtils';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Bemor kartasi (vipiska) — chop etish uchun A4 blank.
@@ -70,7 +71,7 @@ function encounterRows(encounter?: EncounterInfo): string {
 export function printPatientCard({
     patient, clinic, doctor, encounter, diagnoses, procedures, complaints, departmentName,
 }: PrintCardParams): void {
-    const todayIso = new Date().toISOString().split('T')[0];
+    const todayIso = todayISO();
     const age = calcAge(patient.dob);
 
     const activeDiagnoses = diagnoses

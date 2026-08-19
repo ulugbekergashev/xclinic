@@ -12,6 +12,7 @@
 import type express from 'express';
 import { createCharge, cancelChargesBySource } from './billing';
 import { applyServiceRecipe } from './inventory';
+import { tashkentDateStr } from './tashkentTime';
 import path from 'path';
 import fs from 'fs';
 
@@ -33,7 +34,8 @@ function removeUploadedFile(url: string | null | undefined, uploadsDir: string) 
     } catch (e) { console.warn('Faylni o\'chirib bo\'lmadi:', e); }
 }
 
-const nowDate = () => new Date().toISOString().split('T')[0];
+// Sana Toshkent bo'yicha — navbat raqami va koyka haqi shu sanaga bog'lanadi
+const nowDate = () => tashkentDateStr();
 
 /** Yosh (to'liq yil) — tahlil normasini tanlashda kerak */
 function ageFromDob(dob?: string | null): number | null {
@@ -1038,7 +1040,8 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     /** Muddati o'tgan yoki yaqinlashgan partiyalar — Ombor sahifasidagi ogohlantirish */
     route('get', '/api/inventory-expiring', async (req, res, clinicId) => {
         const days = Number(req.query.days) || 60;
-        const limit = new Date(Date.now() + days * 864e5).toISOString().split('T')[0];
+        // Chegara ham Toshkent kuni bo'yicha: expiryDate matn sifatida saqlanadi
+        const limit = tashkentDateStr(days);
         const batches = await prisma.inventoryBatch.findMany({
             where: {
                 quantity: { gt: 0 },
