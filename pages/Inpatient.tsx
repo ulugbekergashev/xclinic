@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     BedDouble, Plus, X, AlertCircle, LogOut, Stethoscope,
-    Pill, CalendarDays, Search,
+    Pill, CalendarDays, Search, Check, Printer, ArrowRightLeft,
+    Sparkles, Activity, Wallet, Loader2, ClipboardList,
 } from 'lucide-react';
 import { Ward, Bed, Admission, Patient, Department, InventoryItem } from '../types';
 import { api } from '../services/api';
+import { Clinic } from '../types';
+import { printDischarge } from '../utils/printForms';
+import { VitalsChart } from '../components/VitalsChart';
+import { todayISO } from '../utils/dateUtils';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Statsionar — palata, koyka, yotqizish, obxod.
@@ -31,6 +36,9 @@ interface Props {
     doctors?: any[];
     inventoryItems?: InventoryItem[];
     currentUserName?: string;
+    /** Bosma epikriz shapkasi uchun */
+    currentClinic?: Clinic | null;
+    userRole?: string;
 }
 
 const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
@@ -45,10 +53,11 @@ const daysIn = (from: string, to?: string | null) => {
 
 export const Inpatient: React.FC<Props> = ({
     clinicId, patients = [], departments = [], doctors = [], inventoryItems = [], currentUserName,
+    currentClinic, userRole,
 }) => {
     const [wards, setWards] = useState<Ward[]>([]);
     const [admissions, setAdmissions] = useState<Admission[]>([]);
-    const [tab, setTab] = useState<'beds' | 'active' | 'archive'>('beds');
+    const [tab, setTab] = useState<'beds' | 'active' | 'archive' | 'meds'>('beds');
     const [search, setSearch] = useState('');
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -116,16 +125,205 @@ export const Inpatient: React.FC<Props> = ({
         finally { setSaving(false); }
     };
 
-    const discharge = async (a: Admission) => {
-        const summary = prompt('Chiqarish xulosasi (ixtiyoriy):') ?? undefined;
+    /* ─── Reliz 4: dori varag'i, o'lchovlar, ko'chirish, epikriz ───────────── */
+
+    const canGiveMeds = ['NURSE', 'DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(userRole || '');
+    const canTransfer = ['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(userRole || '');
+
+    // Bitta bemorning kunlik dori varag'i
+    const [mar, setMar] = useState<any>(null);
+    const [marDate, setMarDate] = useState(todayISO());
+    const [marBusy, setMarBusy] = useState('');
+    const [skipFor, setSkipFor] = useState<any | null>(null);
+    const [skipReason, setSkipReason] = useState('');
+
+    // Koyka haqi: ekran ochilganda quvib yetadi
+    const [bedDays, setBedDays] = useState<{ charged: number; total: number } | null>(null);
+
+    // Harorat varag'i
+    const [vitals, setVitals] = useState<any[]>([]);
+
+    // Ko'chirish
+    const [transferFor, setTransferFor] = useState<Admission | null>(null);
+    const [transferBed, setTransferBed] = useState('');
+    const [transferReason, setTransferReason] = useState('');
+    const [transferHistory, setTransferHistory] = useState<any[]>([]);
+
+    // Chiqarish: epikrizning to'rt qismi
+    const [dischargeFor, setDischargeFor] = useState<Admission | null>(null);
+    const [dischargeForm, setDischargeForm] = useState({
+        admissionDiagnosis: '', finalDiagnosis: '', treatmentGiven: '', recommendations: '',
+    });
+
+    // Bo'lim bo'yicha kunlik ro'yxat (hamshira ekrani)
+    const [schedule, setSchedule] = useState<any>(null);
+    const [schedDept, setSchedDept] = useState('');
+    const [schedLoading, setSchedLoading] = useState(false);
+
+    /* Bemor kartasi ochilganda uchta narsa yuklanadi. Koyka haqi ATAYLAB shu
+       yerda hisoblanadi: hisob quvib yetuvchi va idempotent, ya'ni kartani
+       ochish uni faqat aniqlashtiradi. Dastur kunlab o'chirilgan bo'lsa ham
+       raqam to'g'ri chiqadi. */
+    const loadDetailExtras = useCallback(async (adm: Admission) => {
+        setMar(null); setVitals([]); setBedDays(null); setTransferHistory([]);
+        const date = todayISO();
+        setMarDate(date);
+        const [marRes, vitRes, bedRes, trRes] = await Promise.all([
+            api.admissions.mar(adm.id, date).catch(() => null),
+            api.inpatient.vitals(adm.patientId, { admissionId: adm.id }).catch(() => []),
+            adm.status === 'Active'
+                ? api.admissions.chargeBedDays(adm.id).catch(() => null)
+                : Promise.resolve(null),
+            api.admissions.transfers(adm.id).catch(() => []),
+        ]);
+        setMar(marRes);
+        setVitals(vitRes || []);
+        setBedDays(bedRes);
+        setTransferHistory(trRes || []);
+        // Koyka haqi qator qo'shgan bo'lsa, "jami" o'zgargan — ro'yxatni yangilaymiz
+        if (bedRes && bedRes.charged > 0) {
+            const fresh = await api.admissions.getAll().catch(() => null);
+            if (fresh) setAdmissions(fresh);
+        }
+    }, []);
+
+    const openDetail = (adm: Admission | null) => {
+        setDetail(adm);
+        if (adm) loadDetailExtras(adm);
+    };
+
+    const reloadMar = async (date = marDate) => {
+        if (!detail) return;
+        setMar(await api.admissions.mar(detail.id, date).catch(() => null));
+    };
+
+    /** Dori berildi. Ombor chiqimi va hisob qatori serverda o'zi yuriladi. */
+    const giveMed = async (orderId: string, dose?: string | null) => {
+        setMarBusy(orderId); setError('');
+        try {
+            const res = await api.inpatient.administer(orderId, { dose: dose || undefined });
+            await reloadMar();
+            if (res?.charge) {
+                // Bemor hisobiga qator tushdi — jami o'zgardi
+                const fresh = await api.admissions.getAll().catch(() => null);
+                if (fresh) {
+                    setAdmissions(fresh);
+                    setDetail(d => (d ? fresh.find(x => x.id === d.id) || d : d));
+                }
+            }
+        } catch (e: any) {
+            setError(e?.message || 'Belgilanmadi');
+        } finally { setMarBusy(''); }
+    };
+
+    /** Berilmadi — SABAB majburiy: "belgi yo'q" bilan "bermadim" bir xil emas */
+    const skipMed = async () => {
+        if (!skipFor || !skipReason.trim()) return;
+        setMarBusy(skipFor.id); setError('');
+        try {
+            await api.inpatient.administer(skipFor.id, {
+                status: 'Refused', skipReason: skipReason.trim(),
+            });
+            setSkipFor(null); setSkipReason('');
+            await reloadMar();
+        } catch (e: any) {
+            setError(e?.message || 'Belgilanmadi');
+        } finally { setMarBusy(''); }
+    };
+
+    const openTransfer = (adm: Admission) => {
+        setTransferFor(adm);
+        setTransferBed('');
+        setTransferReason('');
+    };
+
+    const doTransfer = async () => {
+        if (!transferFor || !transferBed) return;
         setSaving(true); setError('');
         try {
-            await api.admissions.discharge(a.id, summary);
+            await api.admissions.transfer(transferFor.id, {
+                toBedId: transferBed,
+                reason: transferReason.trim() || undefined,
+            });
+            setTransferFor(null);
             await reload();
-            setDetail(null);
-        } catch (e: any) { setError(e.message || 'Chiqarib bo\'lmadi'); }
-        finally { setSaving(false); }
+            const fresh = await api.admissions.getAll();
+            setDetail(d => (d ? fresh.find(x => x.id === d.id) || null : null));
+            if (detail) setTransferHistory(await api.admissions.transfers(detail.id).catch(() => []));
+        } catch (e: any) {
+            setError(e?.message || "Ko'chirilmadi");
+        } finally { setSaving(false); }
     };
+
+    const openDischarge = (adm: Admission) => {
+        setDischargeFor(adm);
+        setDischargeForm({
+            // Kirishdagi tashxis yotqizishda yozilgan bo'lsa — o'shani olamiz
+            admissionDiagnosis: (adm as any).admissionDiagnosis || adm.diagnosis || '',
+            finalDiagnosis: (adm as any).finalDiagnosis || '',
+            treatmentGiven: (adm as any).treatmentGiven || '',
+            recommendations: (adm as any).recommendations || '',
+        });
+    };
+
+    const doDischarge = async (andPrint: boolean) => {
+        if (!dischargeFor) return;
+        setSaving(true); setError('');
+        try {
+            /* Chiqarishdan OLDIN koyka haqi hisoblanadi: chiqarilgan kun ham
+               hisobga kiradi, va keyin `status` Discharged bo'lgach quvib
+               yetuvchi hisob boshqa chaqirilmaydi. */
+            await api.admissions.chargeBedDays(dischargeFor.id).catch(() => null);
+            const updated = await api.admissions.discharge(dischargeFor.id, dischargeForm);
+            await reload();
+            setDischargeFor(null);
+            setDetail(null);
+            if (andPrint) {
+                const patient = patients.find(p => p.id === dischargeFor.patientId);
+                printDischarge({ ...dischargeFor, ...updated, patient }, currentClinic || undefined);
+            }
+        } catch (e: any) {
+            setError(e?.message || "Chiqarib bo'lmadi");
+        } finally { setSaving(false); }
+    };
+
+    /** Koyka tozalandi — B53: ilgari koyka abadiy "tozalanmoqda" bo'lib qolardi */
+    const markBedReady = async (bedId: string) => {
+        setSaving(true); setError('');
+        try {
+            await api.inpatient.bedReady(bedId);
+            await reload();
+        } catch (e: any) {
+            setError(e?.message || "Bo'shatilmadi");
+        } finally { setSaving(false); }
+    };
+
+    const loadSchedule = useCallback(async () => {
+        setSchedLoading(true); setError('');
+        try {
+            setSchedule(await api.inpatient.medSchedule({
+                date: todayISO(),
+                departmentId: schedDept || undefined,
+            }));
+        } catch (e: any) {
+            setError(e?.message || "Ro'yxat yuklanmadi");
+        } finally { setSchedLoading(false); }
+    }, [schedDept]);
+
+    useEffect(() => {
+        if (tab === 'meds') loadSchedule();
+    }, [tab, loadSchedule]);
+
+    /** Bo'sh koykalar — ko'chirish oynasi uchun */
+    const freeBeds = useMemo(() => {
+        const out: { id: string; label: string }[] = [];
+        for (const w of wards) {
+            for (const b of (w.beds || [])) {
+                if (b.status === 'Free') out.push({ id: b.id, label: `${w.name} / ${b.label}` });
+            }
+        }
+        return out;
+    }, [wards]);
 
     const addRound = async () => {
         if (!detail) return;
@@ -135,9 +333,19 @@ export const Inpatient: React.FC<Props> = ({
                 doctorName: currentUserName || null,
                 notes: roundForm.notes || null,
                 plan: roundForm.plan || null,
-                vitalSigns: {
-                    temperature: roundForm.temperature, bp: roundForm.bp, pulse: roundForm.pulse,
-                },
+                /* "120/80" satri grafikka tushmaydi — serverdagi moslashtirish
+                   `bpSys`/`bpDia` kalitlarini kutadi. Shuning uchun bu yerda
+                   ajratamiz. `bp` ham qoladi: eski ekranlar uni o'qiydi. */
+                vitalSigns: (() => {
+                    const [sys, dia] = String(roundForm.bp || '').split('/').map(x => x.trim());
+                    return {
+                        temperature: roundForm.temperature,
+                        bp: roundForm.bp,
+                        pulse: roundForm.pulse,
+                        ...(sys ? { bpSys: sys } : {}),
+                        ...(dia ? { bpDia: dia } : {}),
+                    };
+                })(),
             });
             const fresh = await api.admissions.getAll();
             setAdmissions(fresh);
@@ -151,9 +359,18 @@ export const Inpatient: React.FC<Props> = ({
         if (!detail || !medForm.name.trim()) { setError('Dori nomini kiriting'); return; }
         setSaving(true); setError('');
         try {
+            /* Nomni OMBORDAGI pozitsiya bilan bog'laymiz. Busiz `medicationId`
+               bo'sh qolardi va dori berilganda ombordan chiqim ham, bemor
+               hisobiga qator ham YOZILMASDI: server aynan shu maydonga
+               qaraydi. Ro'yxatdan tanlanmagan nom bo'sh bog'lanish bilan
+               ketadi — bu ham normal, shunchaki chiqim bo'lmaydi. */
+            const typed = medForm.name.trim().toLowerCase();
+            const item = inventoryItems.find(i => (i.name || '').trim().toLowerCase() === typed);
+
             await api.admissions.addMedication(detail.id, {
                 name: medForm.name.trim(), dosage: medForm.dosage || null,
                 route: medForm.route || null, frequency: medForm.frequency || null,
+                medicationId: item?.id || null,
             });
             const fresh = await api.admissions.getAll();
             setAdmissions(fresh);
@@ -211,7 +428,13 @@ export const Inpatient: React.FC<Props> = ({
 
             {/* Bo'limlar */}
             <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-                {([['beds', 'Palatalar'], ['active', `Yotganlar (${active.length})`], ['archive', 'Arxiv']] as const).map(([k, label]) => (
+                {([
+                    ['beds', 'Palatalar'],
+                    ['active', `Yotganlar (${active.length})`],
+                    // Hamshiraning asosiy ekrani: "bugun kimga nima berilishi kerak"
+                    ['meds', "Dori varag'i"],
+                    ['archive', 'Arxiv'],
+                ] as const).map(([k, label]) => (
                     <button key={k} onClick={() => setTab(k as any)}
                         className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === k
                             ? 'border-primary-600 text-primary-600 dark:text-primary-400'
@@ -242,15 +465,25 @@ export const Inpatient: React.FC<Props> = ({
                                     {(w.beds || []).map(b => {
                                         const occ = b.admissions?.[0];
                                         return (
-                                            <button key={b.id}
-                                                onClick={() => { if (b.status === 'Free') setAdmitBed({ bed: b, ward: w }); else if (occ) setDetail(admissions.find(a => a.id === occ.id) || null); }}
-                                                className={`text-left p-3 rounded-lg border-2 transition-colors ${BED_UI[b.status] || BED_UI.Blocked} hover:opacity-80`}
-                                            >
-                                                <p className="text-sm font-medium text-gray-900 dark:text-white">{b.label}</p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                                                    {occ ? occ.patientName : BED_LABEL[b.status]}
-                                                </p>
-                                            </button>
+                                            <div key={b.id}
+                                                className={`p-3 rounded-lg border-2 transition-colors ${BED_UI[b.status] || BED_UI.Blocked}`}>
+                                                <button
+                                                    onClick={() => { if (b.status === 'Free') setAdmitBed({ bed: b, ward: w }); else if (occ) openDetail(admissions.find(a => a.id === occ.id) || null); }}
+                                                    className="w-full text-left hover:opacity-80">
+                                                    <p className="text-sm font-medium text-gray-900 dark:text-white">{b.label}</p>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                                        {occ ? occ.patientName : BED_LABEL[b.status]}
+                                                    </p>
+                                                </button>
+                                                {/* B53: ilgari koyka chiqarishdan keyin ABADIY "tozalanmoqda"
+                                                    bo'lib qolardi va palata asta-sekin to'lib borardi. */}
+                                                {b.status === 'Cleaning' && (
+                                                    <button onClick={() => markBedReady(b.id)} disabled={saving}
+                                                        className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-white/70 dark:bg-gray-900/40 text-amber-800 dark:text-amber-200 hover:bg-white disabled:opacity-50">
+                                                        <Sparkles className="w-3 h-3" /> Koyka tayyor
+                                                    </button>
+                                                )}
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -261,7 +494,7 @@ export const Inpatient: React.FC<Props> = ({
             )}
 
             {/* Yotganlar / arxiv */}
-            {tab !== 'beds' && (
+            {(tab === 'active' || tab === 'archive') && (
                 <>
                     <div className="relative">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -293,12 +526,12 @@ export const Inpatient: React.FC<Props> = ({
                                                 <p className="font-semibold text-gray-900 dark:text-white tabular-nums">{fmt(a.dailyRate * days)} so'm</p>
                                                 <p className="text-xs text-gray-400">{fmt(a.dailyRate)} × {days} kun</p>
                                                 <div className="flex gap-2 mt-2 justify-end">
-                                                    <button onClick={() => setDetail(a)}
+                                                    <button onClick={() => openDetail(a)}
                                                         className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                                                         Ochish
                                                     </button>
                                                     {a.status === 'Active' && (
-                                                        <button onClick={() => discharge(a)}
+                                                        <button onClick={() => openDischarge(a)}
                                                             className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
                                                             Chiqarish
                                                         </button>
@@ -362,6 +595,122 @@ export const Inpatient: React.FC<Props> = ({
             )}
 
             {/* ── Bemor kartasi (obxod + dorilar) ───────────────────────────── */}
+            {/* ── Bo'lim bo'yicha kunlik dori varag'i ───────────────────────
+                Hamshiraning asosiy ekrani: bitta ro'yxatda butun bo'lim.
+                Ilgari har bemorni alohida ochish kerak edi, ya'ni dori berish
+                paytida hamshira o'n marta oyna ochib yopardi. */}
+            {tab === 'meds' && (
+                <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <select value={schedDept} onChange={e => setSchedDept(e.target.value)} className={inputCls + ' max-w-xs'}>
+                            <option value="">Barcha bo'limlar</option>
+                            {departments.filter(d => d.isActive).map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                        </select>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {schedule?.date || todayISO()}
+                        </span>
+                        <button onClick={loadSchedule} disabled={schedLoading}
+                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+                            {schedLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
+                            Yangilash
+                        </button>
+                    </div>
+
+                    {schedLoading && !schedule ? (
+                        <div className="space-y-2">
+                            {[0, 1, 2].map(i => (
+                                <div key={i} className="h-20 bg-gray-100 dark:bg-gray-700/40 rounded-xl animate-pulse" />
+                            ))}
+                        </div>
+                    ) : (schedule?.rows || []).length === 0 ? (
+                        <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <Pill className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+                            <p className="text-gray-500 dark:text-gray-400">Bugun tayinlangan dori yo'q</p>
+                            <p className="text-xs text-gray-400 mt-1">
+                                Dori bemor kartasidan tayinlanadi: "Yotganlar" bo'limida bemorni ochib, "Dori tayinlash".
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {schedule.rows.map((row: any) => (
+                                <div key={row.admissionId} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                                    <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-2">
+                                        <p className="font-semibold text-gray-900 dark:text-white">{row.patientName}</p>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                                            {[row.ward, row.bed].filter(Boolean).join(' / ') || 'koyka yo\'q'}
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                const adm = admissions.find(a => a.id === row.admissionId);
+                                                if (adm) openDetail(adm);
+                                            }}
+                                            className="ml-auto text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
+                                            Kartani ochish
+                                        </button>
+                                    </div>
+
+                                    {(row.orders || []).length === 0 ? (
+                                        <p className="px-4 py-3 text-sm text-gray-400">Bugunga tayinlov yo'q</p>
+                                    ) : (
+                                        <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                                            {row.orders.map((o: any) => {
+                                                const given = (o.marks || []).filter((m: any) => m.status === 'Given').length;
+                                                return (
+                                                    <div key={o.id} className="px-4 py-2.5 flex flex-wrap items-center gap-2">
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-sm text-gray-900 dark:text-white truncate">
+                                                                {o.name}
+                                                                {o.dosage ? <span className="text-gray-500"> · {o.dosage}</span> : null}
+                                                            </p>
+                                                            <p className="text-xs text-gray-400">
+                                                                {[o.route, o.frequency].filter(Boolean).join(' · ')}
+                                                            </p>
+                                                        </div>
+
+                                                        {(o.marks || []).length > 0 && (
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {o.marks.map((m: any, i: number) => (
+                                                                    <span key={i}
+                                                                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${m.status === 'Given'
+                                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                                                                        {new Date(m.givenAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        {canGiveMeds && (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    setMarBusy(o.id);
+                                                                    try {
+                                                                        await api.inpatient.administer(o.id, { dose: o.dosage || undefined });
+                                                                        await loadSchedule();
+                                                                    } catch (e: any) {
+                                                                        setError(e?.message || 'Belgilanmadi');
+                                                                    } finally { setMarBusy(''); }
+                                                                }}
+                                                                disabled={marBusy === o.id}
+                                                                className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
+                                                                {marBusy === o.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                                                Berildi{given > 0 ? ` (${given})` : ''}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {detail && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDetail(null)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-3xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -374,10 +723,27 @@ export const Inpatient: React.FC<Props> = ({
                                 </p>
                             </div>
                             <div className="ml-auto flex items-center gap-2">
+                                {detail.status === 'Active' && canTransfer && (
+                                    <button onClick={() => openTransfer(detail)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        <ArrowRightLeft className="w-3.5 h-3.5" /> Ko'chirish
+                                    </button>
+                                )}
                                 {detail.status === 'Active' && (
-                                    <button onClick={() => discharge(detail)}
+                                    <button onClick={() => openDischarge(detail)}
                                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
                                         <LogOut className="w-3.5 h-3.5" /> Chiqarish
+                                    </button>
+                                )}
+                                {/* Arxivdagi yotishni qayta bosib chiqarish — bemor
+                                    varaqni yo'qotsa yoki nusxa kerak bo'lsa */}
+                                {detail.status === 'Discharged' && (
+                                    <button onClick={() => printDischarge(
+                                        { ...detail, patient: patients.find(p => p.id === detail.patientId) },
+                                        currentClinic || undefined,
+                                    )}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        <Printer className="w-3.5 h-3.5" /> Epikriz
                                     </button>
                                 )}
                                 <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
@@ -385,6 +751,127 @@ export const Inpatient: React.FC<Props> = ({
                         </div>
 
                         <div className="p-5 overflow-y-auto space-y-6">
+                            {/* ── Koyka haqi ─────────────────────────────────
+                                Ilgari `dailyRate` bor edi, lekin hisoblaydigan
+                                kod yo'q: bemor sakkiz kun yotib chiqar, hisobda
+                                nol turardi (B44). Karta ochilganda hisob quvib
+                                yetadi va takroriy qator yaratmaydi. */}
+                            {detail.status === 'Active' && detail.dailyRate > 0 && (
+                                <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
+                                    <Wallet className="w-4 h-4 text-gray-400 shrink-0" />
+                                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                                        Koyka: <b className="tabular-nums">{fmt(detail.dailyRate)}</b> so'm/kun
+                                    </span>
+                                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                                        Jami hisoblangan: <b className="tabular-nums">{fmt(detail.totalCharges || 0)}</b> so'm
+                                    </span>
+                                    {bedDays && bedDays.charged > 0 && (
+                                        <span className="text-xs text-emerald-700 dark:text-emerald-400">
+                                            +{bedDays.charged} kun hozir yozildi
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── Harorat varag'i ───────────────────────────── */}
+                            <div>
+                                <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                                    <Activity className="w-4 h-4" /> Harorat varag'i
+                                </h4>
+                                <VitalsChart vitals={vitals} />
+                            </div>
+
+                            {/* ── Kunlik dori varag'i ───────────────────────── */}
+                            {mar && (mar.orders || []).length > 0 && (
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                                        <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                                            <ClipboardList className="w-4 h-4" /> Dori varag'i
+                                        </h4>
+                                        <input type="date" value={marDate}
+                                            onChange={e => { setMarDate(e.target.value); reloadMar(e.target.value); }}
+                                            className="ml-auto px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                    </div>
+
+                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700">
+                                        {mar.orders.map((o: any) => (
+                                            <div key={o.id} className="p-3">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                                            {o.name}
+                                                            {o.dosage ? <span className="text-gray-500 font-normal"> · {o.dosage}</span> : null}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400">
+                                                            {[o.route, o.frequency].filter(Boolean).join(' · ') || 'Qabul tartibi ko\'rsatilmagan'}
+                                                            {o.givenToday > 0 && (
+                                                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold"> · bugun {o.givenToday} marta berildi</span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+
+                                                    {canGiveMeds && detail.status === 'Active' && (
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            <button onClick={() => giveMed(o.id, o.dosage)} disabled={marBusy === o.id}
+                                                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
+                                                                {marBusy === o.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                                                Berildi
+                                                            </button>
+                                                            <button onClick={() => { setSkipFor(o); setSkipReason(''); }}
+                                                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                                                Berilmadi
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Shu kundagi belgilar — kim va qachon */}
+                                                {(o.administrations || []).length > 0 && (
+                                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                                        {o.administrations.map((m: any) => (
+                                                            <span key={m.id}
+                                                                title={m.skipReason || m.note || ''}
+                                                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${m.status === 'Given'
+                                                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                                                                {new Date(m.givenAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
+                                                                {' · '}
+                                                                {m.status === 'Given' ? 'berildi' : m.status === 'Refused' ? 'rad etdi' : "o'tkazildi"}
+                                                                {m.givenByName ? ` · ${m.givenByName}` : ''}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {!canGiveMeds && (
+                                        <p className="text-[11px] text-gray-400 mt-1.5">
+                                            Belgi qo'yish hamshira, shifokor va adminda.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── Ko'chirish tarixi ─────────────────────────── */}
+                            {transferHistory.length > 0 && (
+                                <div>
+                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                                        <ArrowRightLeft className="w-4 h-4" /> Ko'chirishlar
+                                    </h4>
+                                    <div className="space-y-1">
+                                        {transferHistory.map((t: any) => (
+                                            <p key={t.id} className="text-xs text-gray-600 dark:text-gray-300">
+                                                {fmtDate(t.movedAt)}
+                                                {t.movedByName ? ` · ${t.movedByName}` : ''}
+                                                {t.reason ? ` — ${t.reason}` : ''}
+                                            </p>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+
                             {/* Obxod qo'shish */}
                             {detail.status === 'Active' && (
                                 <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
@@ -470,12 +957,33 @@ export const Inpatient: React.FC<Props> = ({
                                 </div>
                             )}
 
-                            {detail.dischargeSummary && (
-                                <div>
-                                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Chiqarish xulosasi</h4>
-                                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{detail.dischargeSummary}</p>
-                                </div>
-                            )}
+                            {/* Epikriz: to'rt qism. Eski yotishlarda faqat bitta
+                                matn bor — u ham ko'rsatiladi. */}
+                            {(() => {
+                                const d: any = detail;
+                                const parts: [string, string | null][] = [
+                                    ['Kirishdagi tashxis', d.admissionDiagnosis],
+                                    ['Yakuniy tashxis', d.finalDiagnosis],
+                                    ["O'tkazilgan davolash", d.treatmentGiven],
+                                    ['Tavsiyalar', d.recommendations],
+                                    ["Qo'shimcha", d.dischargeSummary],
+                                ];
+                                const filled = parts.filter(([, v]) => v && String(v).trim());
+                                if (filled.length === 0) return null;
+                                return (
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Chiqarish epikrizi</h4>
+                                        <div className="space-y-2">
+                                            {filled.map(([k, v]) => (
+                                                <div key={k}>
+                                                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{k}</p>
+                                                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{v}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>
@@ -522,6 +1030,135 @@ export const Inpatient: React.FC<Props> = ({
                     </div>
                 </div>
             )}
+            {/* ── Dori berilmadi: SABAB majburiy ────────────────────────────
+                "Belgi yo'q" bilan "bermadim, chunki bemor rad etdi" — bu ikki
+                xil holat. Ikkinchisi tibbiy fakt va yozilishi kerak. */}
+            {skipFor && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setSkipFor(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Dori berilmadi</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{skipFor.name}</p>
+                        <input value={skipReason} autoFocus
+                            onChange={e => setSkipReason(e.target.value)}
+                            placeholder="Sababi: bemor rad etdi, tomir topilmadi..."
+                            className={inputCls} />
+                        <p className="text-[11px] text-gray-400 mt-1.5">
+                            Sabab yozuvda qoladi va o'chirilmaydi.
+                        </p>
+                        <div className="flex justify-end gap-2 mt-4">
+                            <button onClick={() => setSkipFor(null)}
+                                className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                Bekor
+                            </button>
+                            <button onClick={skipMed} disabled={!skipReason.trim() || marBusy === skipFor.id}
+                                className="px-3 py-1.5 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50">
+                                Saqlash
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Ko'chirish ────────────────────────────────────────────────
+                Band koyka ro'yxatda YO'Q: server ham rad etadi, lekin
+                tanlanmaydigan variantni ko'rsatishning ma'nosi yo'q. */}
+            {transferFor && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setTransferFor(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Boshqa koykaga ko'chirish</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                            {transferFor.patientName} · hozir: {transferFor.bed ? `${transferFor.bed.ward?.name} / ${transferFor.bed.label}` : 'koyka biriktirilmagan'}
+                        </p>
+
+                        {freeBeds.length === 0 ? (
+                            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                                <p className="text-sm text-amber-800 dark:text-amber-200">
+                                    Bo'sh koyka yo'q. Tozalangan koykani "Koyka tayyor" bilan bo'shatish kerak.
+                                </p>
+                            </div>
+                        ) : (
+                            <>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Yangi koyka</label>
+                                <select value={transferBed} onChange={e => setTransferBed(e.target.value)} className={inputCls}>
+                                    <option value="">Tanlang</option>
+                                    {freeBeds.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+                                </select>
+
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 mt-3">Sababi</label>
+                                <input value={transferReason} onChange={e => setTransferReason(e.target.value)}
+                                    placeholder="Reanimatsiyadan palataga, bemor iltimosi..." className={inputCls} />
+                                <p className="text-[11px] text-gray-400 mt-1.5">
+                                    Ko'chirish tarixda qoladi: bemor qayerda qancha yotgani ko'rinadi.
+                                    Bo'shagan koyka tozalashga o'tadi.
+                                </p>
+                            </>
+                        )}
+
+                        <div className="flex justify-end gap-2 mt-4">
+                            <button onClick={() => setTransferFor(null)}
+                                className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                Bekor
+                            </button>
+                            <button onClick={doTransfer} disabled={saving || !transferBed}
+                                className="px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+                                Ko'chirish
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Chiqarish: epikrizning to'rt qismi ────────────────────────
+                Ilgari bu `prompt()` edi — bitta qatorli oyna, unda epikriz
+                yozib bo'lmaydi. */}
+            {dischargeFor && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setDischargeFor(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-gray-200 dark:border-gray-700">
+                            <h3 className="font-semibold text-gray-900 dark:text-white">Chiqarish epikrizi</h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {dischargeFor.patientName} · {daysIn(dischargeFor.admittedAt, null)} kun yotdi
+                            </p>
+                        </div>
+
+                        <div className="p-5 overflow-y-auto space-y-3">
+                            {([
+                                ['admissionDiagnosis', 'Kirishdagi tashxis', 2],
+                                ['finalDiagnosis', 'Yakuniy tashxis', 2],
+                                ['treatmentGiven', "O'tkazilgan davolash", 4],
+                                ['recommendations', 'Tavsiyalar', 3],
+                            ] as const).map(([key, label, rows]) => (
+                                <div key={key}>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{label}</label>
+                                    <textarea rows={rows} value={(dischargeForm as any)[key]}
+                                        onChange={e => setDischargeForm(f => ({ ...f, [key]: e.target.value }))}
+                                        className={inputCls} />
+                                </div>
+                            ))}
+                            <p className="text-[11px] text-gray-400">
+                                Bo'sh qoldirilgan qism qog'ozda "Kiritilmagan" deb chiqadi. Chiqarishdan
+                                oldin koyka haqi oxirgi kunga qadar hisoblanadi.
+                            </p>
+                        </div>
+
+                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex flex-wrap justify-end gap-2">
+                            <button onClick={() => setDischargeFor(null)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                Bekor qilish
+                            </button>
+                            <button onClick={() => doDischarge(false)} disabled={saving}
+                                className="px-4 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+                                Chiqarish
+                            </button>
+                            <button onClick={() => doDischarge(true)} disabled={saving}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+                                <Printer className="w-4 h-4" /> Chiqarish va bosish
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

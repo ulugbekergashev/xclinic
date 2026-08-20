@@ -199,3 +199,60 @@ export function printStudyConclusion(study: any, clinic?: PrintClinic | null): b
 
     return printDocument('Tekshiruv xulosasi', body);
 }
+
+/* ═══ 4. CHIQARISH EPIKRIZI ══════════════════════════════════════════════════
+
+   Statsionardan chiqqan bemor qo'lida qoladigan asosiy hujjat. Boshqa
+   klinikada davolashni davom ettirish uchun aynan shu varaq o'qiladi.
+
+   To'rt qism ATAYLAB alohida: kirishdagi tashxis, yakuniy tashxis,
+   o'tkazilgan davolash, tavsiyalar. Ilgari bitta erkin matn edi
+   (`dischargeSummary`) va undan rasmiy blank tuzib bo'lmasdi. Eski
+   yozuvlar uchun o'sha matn ham chiqadi. */
+
+export function printDischarge(adm: any, clinic?: PrintClinic | null): boolean {
+    const days = (() => {
+        const from = new Date(adm?.admittedAt || Date.now()).getTime();
+        const to = adm?.dischargedAt ? new Date(adm.dischargedAt).getTime() : Date.now();
+        return Math.max(1, Math.ceil((to - from) / 864e5));
+    })();
+
+    const section = (title: string, text?: string | null) =>
+        `<div class="box"><div class="box-title">${esc(title)}</div>${esc(text || 'Kiritilmagan')}</div>`;
+
+    const rounds: any[] = Array.isArray(adm?.rounds) ? adm.rounds : [];
+    const meds: any[] = Array.isArray(adm?.medicationOrders) ? adm.medicationOrders : [];
+
+    const body = `
+    ${clinicHeader(clinic)}
+    <div class="title">Chiqarish epikrizi</div>
+    <div class="subtitle">
+      ${esc(fmtDate(adm?.admittedAt))} — ${esc(fmtDate(adm?.dischargedAt))} · ${days} kun
+    </div>
+    ${patientRows(adm?.patient || { lastName: adm?.patientName }, [
+        ...(adm?.bed?.ward?.name ? [['Palata', `${adm.bed.ward.name} / ${adm.bed.label || ''}`] as [string, string]] : []),
+        ...(adm?.doctorName ? [['Davolagan shifokor', adm.doctorName] as [string, string]] : []),
+    ])}
+    ${section('Kirishdagi tashxis', adm?.admissionDiagnosis || adm?.diagnosis)}
+    ${section('Yakuniy tashxis', adm?.finalDiagnosis)}
+    ${section("O'tkazilgan davolash", adm?.treatmentGiven)}
+    ${meds.length
+            ? `<table class="grid">
+        <thead><tr><th>Dori</th><th style="width:26mm">Doza</th><th style="width:26mm">Yo'li</th><th style="width:34mm">Qabul</th></tr></thead>
+        <tbody>${meds.map((m: any) => `<tr>
+          <td>${esc(m.name)}</td><td>${esc(m.dosage || '')}</td>
+          <td>${esc(m.route || '')}</td><td>${esc(m.frequency || '')}</td>
+        </tr>`).join('')}</tbody>
+      </table>`
+            : ''}
+    ${section('Tavsiyalar', adm?.recommendations)}
+    ${adm?.dischargeSummary
+            /* Eski yozuvlarda faqat bitta matn bor — uni yo'qotmaymiz */
+            ? `<div class="box"><div class="box-title">Qo'shimcha</div>${esc(adm.dischargeSummary)}</div>`
+            : ''}
+    ${rounds.length ? `<div class="note">Obxodlar soni: ${rounds.length}.</div>` : ''}
+    ${signatureBlock('Davolagan shifokor', adm?.doctorName)}
+    ${letterheadFooter(clinic)}`;
+
+    return printDocument('Chiqarish epikrizi', body);
+}

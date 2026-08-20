@@ -1512,6 +1512,8 @@ const AppContent: React.FC = () => {
                   doctors={doctors}
                   inventoryItems={inventoryItems}
                   currentUserName={userName}
+                  currentClinic={currentClinic}
+                  userRole={userRole}
                 />
               } />
 

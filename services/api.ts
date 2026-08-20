@@ -1424,14 +1424,71 @@ export const api = {
             isDemoMode() ? demoWrite<Admission>() : fetchJson<Admission>('/admissions', { method: 'POST', body: JSON.stringify(data) }),
         update: (id: string, data: Partial<Admission>) =>
             isDemoMode() ? demoWrite<Admission>() : fetchJson<Admission>(`/admissions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-        discharge: (id: string, dischargeSummary?: string) =>
+        /** Epikrizning to'rt qismi (reliz 4). Eski shakl — bitta matn — ham ishlaydi. */
+        discharge: (id: string, data?: string | {
+            dischargeSummary?: string;
+            admissionDiagnosis?: string;
+            finalDiagnosis?: string;
+            treatmentGiven?: string;
+            recommendations?: string;
+        }) =>
             isDemoMode() ? demoWrite<Admission>() : fetchJson<Admission>(`/admissions/${id}/discharge`, {
-                method: 'POST', body: JSON.stringify({ dischargeSummary }),
+                method: 'POST',
+                body: JSON.stringify(typeof data === 'string' ? { dischargeSummary: data } : (data || {})),
             }),
         addRound: (id: string, data: Omit<Partial<InpatientRound>, 'vitalSigns'> & { vitalSigns?: any }) =>
             isDemoMode() ? demoWrite<InpatientRound>() : fetchJson<InpatientRound>(`/admissions/${id}/rounds`, { method: 'POST', body: JSON.stringify(data) }),
         addMedication: (id: string, data: Partial<MedicationOrder>) =>
             isDemoMode() ? demoWrite<MedicationOrder>() : fetchJson<MedicationOrder>(`/admissions/${id}/medications`, { method: 'POST', body: JSON.stringify(data) }),
+
+        /* ─── Reliz 4: statsionar ─────────────────────────────────────────
+           Koyka haqi QUVIB YETUVCHI: har chaqiriqda yotgan kunlarni oxirigacha
+           hisoblaydi va takroriy qator yaratmaydi. Shuning uchun uni ekran
+           ochilganda chaqirish xavfsiz. */
+        chargeBedDays: (id: string) => fetchJson<{
+            charged: number; from: string | null; to: string | null; total: number; skipped?: string;
+        }>(`/admissions/${id}/charge-bed-days`, { method: 'POST' }),
+
+        /** Kunlik dori varag'i: tayinlovlar + shu kundagi belgilar */
+        mar: (id: string, date?: string) =>
+            fetchJson<any>(`/admissions/${id}/mar${date ? `?date=${date}` : ''}`),
+
+        transfer: (id: string, data: { toBedId?: string | null; toDepartmentId?: string | null; reason?: string }) =>
+            fetchJson<any>(`/admissions/${id}/transfer`, { method: 'POST', body: JSON.stringify(data) }),
+
+        transfers: (id: string) => fetchJson<any[]>(`/admissions/${id}/transfers`),
+    },
+
+    /* Statsionar: bo'lim bo'yicha kunlik ro'yxat, dori berilishi, o'lchovlar */
+    inpatient: {
+        medSchedule: (params?: { date?: string; departmentId?: string }) => {
+            const q = new URLSearchParams();
+            if (params?.date) q.set('date', params.date);
+            if (params?.departmentId) q.set('departmentId', params.departmentId);
+            const qs = q.toString();
+            return fetchJson<any>(`/inpatient/med-schedule${qs ? `?${qs}` : ''}`);
+        },
+        /** Dori berilgani (yoki berilmagani) — fakt yoziladi, ombor va hisob o'zi yuriladi */
+        administer: (orderId: string, data: {
+            dose?: string; quantity?: number;
+            status?: 'Given' | 'Skipped' | 'Refused';
+            skipReason?: string; note?: string;
+        }) => fetchJson<any>(`/medication-orders/${orderId}/administer`, { method: 'POST', body: JSON.stringify(data) }),
+
+        vitals: (patientId: string, params?: { kind?: string; from?: string; to?: string; admissionId?: string }) => {
+            const q = new URLSearchParams();
+            Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
+            const qs = q.toString();
+            return fetchJson<any[]>(`/patients/${patientId}/vitals${qs ? `?${qs}` : ''}`);
+        },
+        addVitals: (data: {
+            patientId: string; admissionId?: string | null; visitId?: string | null;
+            measuredAt?: string;
+            measurements: { kind: string; value: number; unit?: string }[];
+        }) => fetchJson<any[]>('/vitals', { method: 'POST', body: JSON.stringify(data) }),
+
+        /** Koyka tozalandi: Cleaning -> Free. Ilgari koyka abadiy tozalashda qolardi. */
+        bedReady: (bedId: string) => fetchJson<any>(`/beds/${bedId}/ready`, { method: 'POST' }),
     },
 
     // ─── Retsept ────────────────────────────────────────────────────────────
