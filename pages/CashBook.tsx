@@ -10,7 +10,7 @@ import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import {
     Transaction, Expense, ExpenseCategory, Doctor, Clinic, Patient, Appointment,
     CashRegisterDay, CashMovement, CashMovementType, CashAuditLog, PaymentMethod,
-    EXPENSE_CATEGORY_LABELS, CASH_MOVEMENT_LABELS, VisitCharge,
+    EXPENSE_CATEGORY_LABELS, CASH_MOVEMENT_LABELS, VisitCharge, Department,
 } from '../types';
 import { ReceiptModal } from '../components/ReceiptModal';
 import {
@@ -76,6 +76,8 @@ interface CashBookProps {
     onDeleteCashMovement?: (id: string) => Promise<void>;
     onUpdateTransaction?: (id: string, data: Partial<Transaction>) => Promise<void>;
     onDeleteTransaction?: (id: string) => Promise<void>;
+    /** Xarajatni bo'limga bog'lash uchun (hisobotda kesim shundan chiqadi) */
+    departments?: Department[];
     /** Chegirma va qaytarish huquqi rolga bog'liq — server ham tekshiradi */
     userRole?: string;
     currentUserName?: string;
@@ -462,7 +464,7 @@ export const CashBook: React.FC<CashBookProps> = ({
     charges = [], onChargesChanged,
     movements = [], onAddCashMovement, onDeleteCashMovement,
     onUpdateTransaction, onDeleteTransaction,
-    userRole, currentUserName, addToast,
+    userRole, currentUserName, addToast, departments = [],
 }) => {
     const today = formatDateToISO(new Date());
     const [view, setView] = useState<'day' | 'month'>('day');
@@ -484,6 +486,7 @@ export const CashBook: React.FC<CashBookProps> = ({
         amount: '',
         method: 'Cash' as PaymentMethod,
         note: '',
+        departmentId: '',
     });
 
     // Chek / o'chirish / kassa harakati
@@ -900,7 +903,7 @@ export const CashBook: React.FC<CashBookProps> = ({
     const [presetPayment, setPresetPayment] = useState<{ patientId?: string; doctorId?: string; service?: string; amount?: number } | null>(null);
 
     const openExpenseModal = () => {
-        setExpenseForm({ category: 'Other', title: '', amount: '', method: 'Cash', note: '' });
+        setExpenseForm({ category: 'Other', title: '', amount: '', method: 'Cash', note: '', departmentId: '' });
         setIsExpenseOpen(true);
     };
 
@@ -919,6 +922,10 @@ export const CashBook: React.FC<CashBookProps> = ({
                 title: expenseForm.title.trim(),
                 method: expenseForm.method,
                 note: expenseForm.note.trim() || undefined,
+                /* Bo'lim — "qaysi bo'lim foydali" hisoboti aynan shundan
+                   quriladi. Bo'sh qoldirilsa xarajat "umumiy" bo'lib
+                   qoladi va hisobotda alohida qatorda ko'rinadi. */
+                departmentId: expenseForm.departmentId || undefined,
                 clinicId,
             } as Omit<Expense, 'id'>);
             setIsExpenseOpen(false);
@@ -1709,6 +1716,26 @@ export const CashBook: React.FC<CashBookProps> = ({
                         onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value as ExpenseCategory }))}
                         options={KASSA_EXPENSE_CATEGORIES.map(c => ({ value: c, label: EXPENSE_CATEGORY_LABELS[c] }))}
                     />
+
+                    {/* Bo'lim ixtiyoriy: "qaysi bo'lim foydali" hisoboti
+                        shundan quriladi. Bo'sh qolsa — "umumiy xarajat". */}
+                    {departments.length > 0 && (
+                        <div>
+                            <Select
+                                label="Bo'lim"
+                                value={expenseForm.departmentId}
+                                onChange={e => setExpenseForm(f => ({ ...f, departmentId: e.target.value }))}
+                            >
+                                <option value="">Umumiy (bo'limsiz)</option>
+                                {departments.filter(d => d.isActive).map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </Select>
+                            <p className="text-[11px] text-gray-400 mt-1">
+                                Bo'lim ko'rsatilsa, xarajat o'sha bo'lim foydasidan chiqadi.
+                            </p>
+                        </div>
+                    )}
 
                     <Input
                         label="Nomi *"

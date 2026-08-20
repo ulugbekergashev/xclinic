@@ -2436,7 +2436,7 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'clinicId is required' });
         }
 
-        const { date, amount, category, title, method, note, doctorId, receptionistId } = req.body;
+        const { date, amount, category, title, method, note, doctorId, receptionistId, departmentId } = req.body;
         if (!EXPENSE_CATEGORIES.includes(category)) {
             return res.status(400).json({ error: 'Noto\'g\'ri kategoriya' });
         }
@@ -2446,6 +2446,16 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
         const parsedAmount = parseFloat(amount);
         if (!parsedAmount || parsedAmount <= 0) {
             return res.status(400).json({ error: 'Summa noto\'g\'ri' });
+        }
+
+        /* BO'LIM (migratsiya 0022). Ustun qo'shilgan edi, lekin endpoint uni
+           QABUL QILMASDI — "qaysi bo'lim qancha xarajat qildi" hisoboti har
+           doim nol ko'rsatardi. Sahnalar testi shu yerda yiqildi. */
+        if (departmentId) {
+            const dep = await prisma.department.findUnique({ where: { id: String(departmentId) } });
+            if (!dep || dep.clinicId !== clinicId) {
+                return res.status(404).json({ error: "Bo'lim topilmadi" });
+            }
         }
 
         const expense = await prisma.expense.create({
@@ -2458,6 +2468,7 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
                 note: note || null,
                 doctorId: doctorId || null,
                 receptionistId: receptionistId || null,
+                departmentId: departmentId ? String(departmentId) : null,
                 clinicId: clinicId as string,
             }
         });
@@ -2472,7 +2483,7 @@ app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'expense', req.params.id))) return;
 
-        const { date, amount, category, title, method, note, doctorId, receptionistId } = req.body;
+        const { date, amount, category, title, method, note, doctorId, receptionistId, departmentId } = req.body;
         if (category && !EXPENSE_CATEGORIES.includes(category)) {
             return res.status(400).json({ error: 'Noto\'g\'ri kategoriya' });
         }
@@ -2488,6 +2499,7 @@ app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
                 ...(note !== undefined && { note: note || null }),
                 ...(doctorId !== undefined && { doctorId: doctorId || null }),
                 ...(receptionistId !== undefined && { receptionistId: receptionistId || null }),
+                ...(departmentId !== undefined && { departmentId: departmentId || null }),
             }
         });
         res.json(expense);

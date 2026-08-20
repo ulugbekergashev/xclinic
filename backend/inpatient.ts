@@ -254,8 +254,14 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
                     clinicId,
                     itemId: order.medicationId,
                     quantity: qty,
-                    reason: 'Statsionar',
-                    note: `MAR ${record.id} · ${order.admission.patientName}`,
+                    /* Sabab 'Service': dori bemorga BERILGAN va hisobiga
+                       tushgan — bu behuda ketish emas. Ilgari bu yerda
+                       'Statsionar' turardi va chiqimlar hisobotida dori
+                       "behuda ketgan" ustuniga tushib, zararni oshirib
+                       ko'rsatardi (sahnalar testi ko'rsatdi). Statsionar
+                       ekani izohda qoladi. */
+                    reason: 'Service',
+                    note: `Statsionar · MAR ${record.id} · ${order.admission.patientName}`,
                     userName: user?.name || null,
                 });
                 stockMoves = moves.length;

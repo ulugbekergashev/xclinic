@@ -164,6 +164,7 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                     onChargesChanged={props.onChargesChanged}
                     // Chegirma va qaytarish tugmalari rolga qarab ko'rinadi
                     userRole={userRole}
+                    departments={props.departments}
                     currentUserName={props.currentUserName}
                     addToast={props.addToast}
                 />
