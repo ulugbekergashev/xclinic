@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
 import { UserRole, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
-import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse } from 'lucide-react';
+import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History } from 'lucide-react';
 import { api, API_URL } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
@@ -32,6 +32,20 @@ const DOCTOR_COLORS = [
    { name: 'To\'q ko\'k', value: '#6366F1' },
    { name: 'To\'q sariq', value: '#FB923C' },
 ];
+
+
+const ROLE_LABEL: Record<string, string> = {
+   CLINIC_ADMIN: 'Klinika egasi', DOCTOR: 'Shifokor', RECEPTIONIST: 'Registrator',
+   NURSE: 'Hamshira', LAB_TECHNICIAN: 'Laborant', SUPER_ADMIN: 'Super admin',
+};
+const ACTION_LABEL: Record<string, string> = {
+   View: "Ko'rdi", Create: "Yaratdi", Update: "O'zgartirdi",
+   Delete: "O'chirdi", Print: "Bosdi", Export: "Yukladi",
+};
+const ENTITY_LABEL: Record<string, string> = {
+   Patient: 'Bemor kartasi', Visit: 'Qabul', PatientDocument: 'Hujjat',
+   PatientPhoto: 'Surat', DiagnosticStudy: 'Tekshiruv', LabOrder: 'Tahlil',
+};
 
 interface SettingsProps {
    userRole: UserRole;
@@ -63,7 +77,7 @@ export const Settings: React.FC<SettingsProps> = ({
    userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, plans, reviews
 }) => {
    const { t } = useLanguage();
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'leadApi' | 'maintenance' | 'departments'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'accessLog' | 'leadApi' | 'maintenance' | 'departments'>('services');
 
    // Tashqi lid manbalari (yuboraman.uz va h.k.) uchun integratsiya kaliti
    const [leadApiInfo, setLeadApiInfo] = useState<LeadApiKeyInfo | null>(null);
@@ -961,6 +975,39 @@ export const Settings: React.FC<SettingsProps> = ({
       if (activeTab === 'departments' && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
    }, [activeTab, userRole, loadDepartments]);
 
+   /* ─── Kirish jurnali (reliz 6) ─────────────────────────────────────────
+      Faqat egaga ko'rinadi. Ro'yxat 500 yozuv bilan cheklangan — jurnal
+      tez o'sadigan jadval, va butun tarixni ekranga tortishning ma'nosi yo'q. */
+   const [logData, setLogData] = useState<any>(null);
+   const [logLoading, setLogLoading] = useState(false);
+   const [logError, setLogError] = useState('');
+   const [logFrom, setLogFrom] = useState(() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      return d.toISOString().slice(0, 10);
+   });
+   const [logTo, setLogTo] = useState(() => new Date().toISOString().slice(0, 10));
+   const [logAction, setLogAction] = useState('');
+
+   const loadAccessLog = React.useCallback(async () => {
+      setLogLoading(true);
+      setLogError('');
+      try {
+         setLogData(await api.compliance.accessLog({
+            from: logFrom, to: logTo,
+            action: logAction || undefined,
+         }));
+      } catch (e: any) {
+         setLogError(e?.message || 'Jurnal yuklanmadi');
+      } finally {
+         setLogLoading(false);
+      }
+   }, [logFrom, logTo, logAction]);
+
+   React.useEffect(() => {
+      if (activeTab === 'accessLog' && userRole === UserRole.CLINIC_ADMIN) loadAccessLog();
+   }, [activeTab, userRole, loadAccessLog]);
+
    /* ─── Hamshiralar (reliz 4) ────────────────────────────────────────────
       Ro'yxat ota-komponentdan kelmaydi: bu bo'lim faqat egaga ko'rinadi va
       butun ilovaga hamshiralar keshi kerak emas. */
@@ -1132,6 +1179,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   // Kalitni faqat klinika egasi ko'radi — backend ham shu rolni talab qiladi.
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'leadApi', name: 'Lid integratsiyasi', icon: Link2 }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: 'Ruxsatlar', icon: Shield }] : []),
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'accessLog', name: 'Kirish jurnali', icon: History }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: 'Bo’limlar', icon: Building2 }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: 'Xizmat ko’rsatish', icon: HardDrive }] : []),
                ].map((item) => (
@@ -2240,6 +2288,113 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                               </div>
                            ))}
                         </div>
+                     )}
+                  </Card>
+               )}
+
+               {/* ── Kirish jurnali (reliz 6) ───────────────────────────────
+                   Kim bemor kartasini ochgani va o'zgartirgani. Huquqiy asos —
+                   vrach siri (25-modda 3-qismi).
+
+                   FAQAT EGAGA: "kim kartani ko'rdi" yozuvining o'zi ham nozik
+                   ma'lumot, va shifokor kim uning murojaatlarini tekshirganini
+                   ko'rmasligi kerak. Server ham shu rolni talab qiladi. */}
+               {activeTab === 'accessLog' && userRole === UserRole.CLINIC_ADMIN && (
+                  <Card className="p-6">
+                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-5">
+                        <div>
+                           <h3 className="text-lg font-medium text-gray-900 dark:text-white">Kirish jurnali</h3>
+                           <p className="text-sm text-gray-500">
+                              Bemor kartasini kim ochgani va o'zgartirgani.
+                              {logData?.retentionMonths ? ` ${logData.retentionMonths} oy saqlanadi.` : ''}
+                           </p>
+                        </div>
+                        <Button size="sm" variant="secondary" onClick={loadAccessLog} disabled={logLoading}>
+                           <RefreshCw className={`w-4 h-4 mr-1.5 ${logLoading ? 'animate-spin' : ''}`} /> Yangilash
+                        </Button>
+                     </div>
+
+                     <div className="flex flex-wrap items-end gap-3 mb-4">
+                        <div>
+                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Boshlanish</label>
+                           <input type="date" value={logFrom} onChange={e => setLogFrom(e.target.value)}
+                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm" />
+                        </div>
+                        <div>
+                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Tugash</label>
+                           <input type="date" value={logTo} onChange={e => setLogTo(e.target.value)}
+                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm" />
+                        </div>
+                        <div>
+                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Amal</label>
+                           <select value={logAction} onChange={e => setLogAction(e.target.value)}
+                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm">
+                              <option value="">Barchasi</option>
+                              <option value="View">Ko'rish</option>
+                              <option value="Create">Yaratish</option>
+                              <option value="Update">O'zgartirish</option>
+                              <option value="Print">Bosish</option>
+                           </select>
+                        </div>
+                     </div>
+
+                     {logError && (
+                        <div className="flex items-start gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                           <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                           <p className="text-sm text-red-700 dark:text-red-300">{logError}</p>
+                        </div>
+                     )}
+
+                     {logLoading && !logData ? (
+                        <div className="space-y-2">
+                           {[0, 1, 2].map(i => <div key={i} className="h-10 bg-gray-100 dark:bg-gray-700/40 rounded animate-pulse" />)}
+                        </div>
+                     ) : !logData || logData.items.length === 0 ? (
+                        <div className="text-center py-10">
+                           <Shield className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                           <p className="text-sm text-gray-500">Bu davrda yozuv yo'q</p>
+                        </div>
+                     ) : (
+                        <>
+                           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                              <table className="w-full min-w-[640px]">
+                                 <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+                                    <tr>
+                                       {['Vaqt', 'Kim', 'Roli', 'Amal', 'Nima', 'Bemor'].map(h => (
+                                          <th key={h} className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                             {h}
+                                          </th>
+                                       ))}
+                                    </tr>
+                                 </thead>
+                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                    {logData.items.map((l: any) => (
+                                       <tr key={l.id}>
+                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                             {new Date(l.at).toLocaleString('uz-UZ')}
+                                          </td>
+                                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">{l.userName || '—'}</td>
+                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{ROLE_LABEL[l.userRole] || l.userRole || '—'}</td>
+                                          <td className="px-3 py-2">
+                                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${l.action === 'View'
+                                                ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                                                {ACTION_LABEL[l.action] || l.action}
+                                             </span>
+                                          </td>
+                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{ENTITY_LABEL[l.entityType] || l.entityType}</td>
+                                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">{l.patientName || '—'}</td>
+                                       </tr>
+                                    ))}
+                                 </tbody>
+                              </table>
+                           </div>
+                           <p className="text-[11px] text-gray-400 mt-2">
+                              {logData.total} yozuv
+                              {logData.truncated ? ` — oxirgi ${logData.items.length} tasi ko'rsatilgan, davrni toraytiring` : ''}.
+                              Jurnalga faqat server yozadi: tashqaridan yozib bo'lmaydi.
+                           </p>
+                        </>
                      )}
                   </Card>
                )}

@@ -256,3 +256,60 @@ export function printDischarge(adm: any, clinic?: PrintClinic | null): boolean {
 
     return printDocument('Chiqarish epikrizi', body);
 }
+
+/* ═══ 5. BEMOR HUJJATI (rozilik, shartnoma) ══════════════════════════════════
+
+   Bu blank boshqalardan farq qiladi: asosiy narsa MATN, va u tizimdan emas,
+   HUJJATNING O'ZIDAN olinadi (`textSnapshot`). Sabab: shablon keyin
+   o'zgaradi, bemor imzolagan matn esa o'zgarmasligi kerak.
+
+   Imzo joyi IKKITA: bemor va klinika xodimi. Faqat xodim imzosi bo'lgan
+   rozilikning huquqiy kuchi yo'q. */
+
+export function printPatientDocument(doc: any, clinic?: PrintClinic | null): boolean {
+    const p = doc?.patient || {};
+    const signed = !!doc?.signedAt;
+
+    const body = `
+    ${clinicHeader(clinic || doc?.clinic)}
+    <div class="title">${esc(doc?.title || 'Hujjat')}</div>
+    <div class="subtitle">
+      ${doc?.number ? `№ ${esc(doc.number)} · ` : ''}${esc(fmtDate(doc?.createdAt))}
+      ${signed ? ` · imzolangan ${esc(fmtDate(doc.signedAt))}` : ''}
+    </div>
+
+    <table class="rows">
+      <tr><td class="k">Bemor:</td><td>${esc(`${p.lastName || ''} ${p.firstName || ''}`.trim() || '—')}</td></tr>
+      <tr><td class="k">Tug'ilgan sana:</td><td>${esc(fmtDate(p.dob))}</td></tr>
+      ${p.cardNumber ? `<tr><td class="k">Karta raqami:</td><td>${esc(p.cardNumber)}</td></tr>` : ''}
+      ${p.phone ? `<tr><td class="k">Telefon:</td><td>${esc(p.phone)}</td></tr>` : ''}
+      ${p.address ? `<tr><td class="k">Manzil:</td><td>${esc(p.address)}</td></tr>` : ''}
+    </table>
+
+    <!-- Matn hujjatning o'zidan: imzolangan variant o'zgarmaydi.
+         white-space:pre-wrap — satr ko'chishlari saqlanadi. -->
+    <div style="white-space: pre-wrap; line-height: 1.5; margin: 10px 0 4px; font-size: 11.5pt">${esc(doc?.textSnapshot || '')}</div>
+
+    <div style="margin-top: 14mm">
+      <table style="width:100%">
+        <tr>
+          <td style="width:50%; padding-right:8mm">
+            <div style="border-bottom:1px solid #000; height:8mm"></div>
+            <div style="font-size:9.5pt; text-align:center; margin-top:2px">
+              Bemor${p.lastName ? ` — ${esc(p.lastName)} ${esc(p.firstName || '')}` : ''}
+            </div>
+          </td>
+          <td style="width:50%; padding-left:8mm">
+            <div style="border-bottom:1px solid #000; height:8mm"></div>
+            <div style="font-size:9.5pt; text-align:center; margin-top:2px">
+              Klinika xodimi${doc?.signedByName ? ` — ${esc(doc.signedByName)}` : ''}
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    ${letterheadFooter(clinic || doc?.clinic)}`;
+
+    return printDocument(doc?.title || 'Hujjat', body);
+}

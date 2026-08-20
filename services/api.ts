@@ -1342,6 +1342,36 @@ export const api = {
             fetchJson<any>(`/reports/departments?from=${from}&to=${to}`),
     },
 
+    /* Huquqiy kontur (reliz 6): bemor hujjatlari va kirish jurnali.
+       Jurnalga YOZISH endpointi yo'q — u serverda avtomatik yoziladi. */
+    compliance: {
+        documents: (params?: { patientId?: string; kind?: string }) => {
+            const q = new URLSearchParams();
+            Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
+            const qs = q.toString();
+            return fetchJson<any[]>(`/patient-documents${qs ? `?${qs}` : ''}`);
+        },
+        /** Bosma varaq uchun: klinika shapkasi, bemor ma'lumoti va sarlavha bilan */
+        document: (id: string) => fetchJson<any>(`/patient-documents/${id}`),
+        createDocument: (data: {
+            patientId: string; visitId?: string | null;
+            kind: 'Consent' | 'Contract' | 'DataConsent' | 'Discharge' | 'Other';
+            textSnapshot?: string;
+        }) => fetchJson<any>('/patient-documents', { method: 'POST', body: JSON.stringify(data) }),
+        sign: (id: string, data?: { patientSigned?: boolean }) =>
+            fetchJson<any>(`/patient-documents/${id}/sign`, { method: 'POST', body: JSON.stringify(data || {}) }),
+
+        /** Faqat klinika egasi — server ham shu rolni talab qiladi */
+        accessLog: (params?: { patientId?: string; from?: string; to?: string; action?: string; entityType?: string }) => {
+            const q = new URLSearchParams();
+            Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
+            const qs = q.toString();
+            return fetchJson<{
+                items: any[]; total: number; truncated: boolean; retentionMonths: number;
+            }>(`/access-log${qs ? `?${qs}` : ''}`);
+        },
+    },
+
     /* Shifokor ulushi: stavkalar va vedomost (reliz 5).
        Stavka tanlash tartibi serverda: xizmat > bo'lim > umumiy > Doctor.percentage. */
     payroll: {

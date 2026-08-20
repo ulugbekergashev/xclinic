@@ -6,6 +6,7 @@ import { EncounterForm, EncounterSummary } from '../components/EncounterForm';
 import { PatientPhotos } from '../components/PatientPhotos';
 import { VisitWorkflow, ProceduresSection } from '../components/ProceduresSection';
 import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
+import { PatientDocuments } from '../components/PatientDocuments';
 import { InstallmentsTab } from '../components/InstallmentsTab';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, SubscriptionPlan, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate } from '../types';
 import { api, getFileUrl } from '../services/api';
@@ -1071,6 +1072,15 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      patientId={patient.id}
                      canEdit={userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.DOCTOR}
                      // Bu ekranda toast tizimi yo'q — xabar alert bilan
+                     addToast={(_t, msg) => alert(msg)}
+                  />
+
+                  {/* Rozilik, shartnoma, ma'lumotlarga rozilik — qonun talabi
+                      (25 va 26-moddalar, ЗРУ-547). Ilgari tizimda imzolanadigan
+                      birorta qog'oz yo'q edi. */}
+                  <PatientDocuments
+                     patientId={patient.id}
+                     canCreate={userRole !== UserRole.LAB_TECHNICIAN}
                      addToast={(_t, msg) => alert(msg)}
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
