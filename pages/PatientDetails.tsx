@@ -824,9 +824,10 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   finalDoctorId = newDoctor.id;
                   finalDoctorName = `Dr. ${newDoctor.lastName}`;
                } catch (err) {
+                  /* Shifokor yaratish faqat klinika EGASIDA (reliz 4):
+                     registrator bu yerda 403 oladi. */
                   console.error('Failed to auto-create doctor', err);
-                  // Fallback to error if we absolutely can't create one
-                  throw new Error("Shifokor profilini avtomatik yaratib bo'lmadi. Iltimos, Sozlamalar bo'limida kamida bitta shifokor yarating.");
+                  throw new Error("Shifokor profili yo'q. Uni klinika egasi Sozlamalar bo'limida qo'shadi.");
                }
             } else if (doctors.length > 0) {
                finalDoctorId = doctors[0].id;

@@ -1954,6 +1954,18 @@ export const api = {
             });
         }
     },
+    /* Hamshiralar (reliz 4, qaror В17). Boshqarish faqat klinika egasida —
+       server ham shu rolni talab qiladi. */
+    nurses: {
+        getAll: () => fetchJson<any[]>('/nurses'),
+        create: (data: { firstName: string; lastName: string; phone?: string; departmentId?: string | null; username?: string; password?: string }) =>
+            fetchJson<any>('/nurses', { method: 'POST', body: JSON.stringify(data) }),
+        update: (id: string, data: Record<string, any>) =>
+            fetchJson<any>(`/nurses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+        remove: (id: string) =>
+            fetchJson<any>(`/nurses/${id}`, { method: 'DELETE' }),
+    },
+
     labTechnicians: {
         getAll: (clinicId: string) => {
             if (isDemoMode()) return Promise.resolve([...DEMO_LAB_TECHNICIANS]);

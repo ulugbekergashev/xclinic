@@ -309,6 +309,16 @@ const requireRole = (...roles: string[]) => {
     };
 };
 
+/* XODIMLAR — faqat klinika egasi.
+
+   Qaror: personal bilan EGASI shug'ullanadi (foydalanuvchi ko'rsatmasi).
+   Ilgari shifokor, registrator va laborant yaratish/o'zgartirish/o'chirish
+   rolni UMUMAN tekshirmasdi: kirgan har kim login yaratib, undan kira olardi.
+
+   O'QISH cheklanmaydi: registrator navbat yozish uchun shifokorlar
+   ro'yxatini ko'rishi kerak. */
+const STAFF = requireRole('CLINIC_ADMIN', 'SUPER_ADMIN');
+
 // :id bo'yicha mutatsiyadan oldin yozuv egaligini tekshiradi.
 // SUPER_ADMIN o'tib ketadi; aks holda record.clinicId === user.clinicId bo'lishi shart.
 // Bazaviy modellar uchun (Patient, Appointment, ... — clinicId to'g'ridan-to'g'ri saqlanadi).
@@ -3103,7 +3113,7 @@ app.get('/api/doctors', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/doctors', authenticateToken, async (req, res) => {
+app.post('/api/doctors', authenticateToken, STAFF, async (req, res) => {
     try {
         const { firstName, lastName, specialty, phone, email, status, username, password, percentage, salaryType, fixedSalary, room } = req.body;
 
@@ -3172,7 +3182,7 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
     }
 });
 
-app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
+app.put('/api/doctors/:id', authenticateToken, STAFF, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'doctor', req.params.id))) return;
         const { username } = req.body;
@@ -3221,7 +3231,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
     }
 });
 
-app.delete('/api/doctors/:id', authenticateToken, async (req, res) => {
+app.delete('/api/doctors/:id', authenticateToken, STAFF, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'doctor', req.params.id))) return;
         await prisma.doctor.update({
@@ -3255,7 +3265,7 @@ app.get('/api/receptionists', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/receptionists', authenticateToken, async (req, res) => {
+app.post('/api/receptionists', authenticateToken, STAFF, async (req, res) => {
     try {
         const { firstName, lastName, phone, username, password } = req.body;
         const clinicId = getScopedClinicId(req);
@@ -3295,7 +3305,7 @@ app.post('/api/receptionists', authenticateToken, async (req, res) => {
     }
 });
 
-app.put('/api/receptionists/:id', authenticateToken, async (req, res) => {
+app.put('/api/receptionists/:id', authenticateToken, STAFF, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'receptionist', req.params.id))) return;
         const { username } = req.body;
@@ -3330,7 +3340,7 @@ app.put('/api/receptionists/:id', authenticateToken, async (req, res) => {
     }
 });
 
-app.delete('/api/receptionists/:id', authenticateToken, async (req, res) => {
+app.delete('/api/receptionists/:id', authenticateToken, STAFF, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'receptionist', req.params.id))) return;
         await prisma.receptionist.update({
@@ -3362,7 +3372,7 @@ app.get('/api/lab-technicians', authenticateToken, async (req: any, res: any) =>
     }
 });
 
-app.post('/api/lab-technicians', authenticateToken, async (req: any, res: any) => {
+app.post('/api/lab-technicians', authenticateToken, STAFF, async (req: any, res: any) => {
     try {
         const { firstName, lastName, specialty, phone, username, password } = req.body;
         const clinicId = getScopedClinicId(req);
@@ -3389,7 +3399,7 @@ app.post('/api/lab-technicians', authenticateToken, async (req: any, res: any) =
     }
 });
 
-app.put('/api/lab-technicians/:id', authenticateToken, async (req: any, res: any) => {
+app.put('/api/lab-technicians/:id', authenticateToken, STAFF, async (req: any, res: any) => {
     try {
         if (!(await assertOwnership(req, res, 'labTechnician', req.params.id))) return;
         const { firstName, lastName, specialty, phone, status, username, password } = req.body;
@@ -3417,7 +3427,7 @@ app.put('/api/lab-technicians/:id', authenticateToken, async (req: any, res: any
     }
 });
 
-app.delete('/api/lab-technicians/:id', authenticateToken, async (req: any, res: any) => {
+app.delete('/api/lab-technicians/:id', authenticateToken, STAFF, async (req: any, res: any) => {
     try {
         if (!(await assertOwnership(req, res, 'labTechnician', req.params.id))) return;
         await (prisma as any).labTechnician.update({

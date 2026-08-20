@@ -228,8 +228,11 @@ export const Calendar: React.FC<CalendarProps> = ({
           // Notify user (optional, but good for context)
           // alert("Individual tarif bo'yicha shifokor profili avtomatik yaratildi.");
         } catch (err) {
+          /* Shifokor yaratish faqat klinika EGASIDA (reliz 4). Registrator
+             shu yerga tushsa 403 oladi — xabar shuni aytishi kerak, aks
+             holda "nimadir ishlamadi" degan tuyuq ko'chaga olib boradi. */
           console.error('Failed to auto-create doctor', err);
-          alert("Xatolik: Shifokor profilini avtomatik yaratib bo'lmadi. Iltimos, Sozlamalar bo'limida yarating.");
+          alert("Shifokor profili yo'q. Uni klinika egasi Sozlamalar bo'limida qo'shadi.");
           return;
         }
       } else if (doctors.length > 0) {

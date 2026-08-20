@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
 import { UserRole, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
-import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download } from 'lucide-react';
+import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse } from 'lucide-react';
 import { api, API_URL } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
@@ -63,7 +63,7 @@ export const Settings: React.FC<SettingsProps> = ({
    userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, plans, reviews
 }) => {
    const { t } = useLanguage();
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'leadApi' | 'maintenance' | 'departments'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'leadApi' | 'maintenance' | 'departments'>('services');
 
    // Tashqi lid manbalari (yuboraman.uz va h.k.) uchun integratsiya kaliti
    const [leadApiInfo, setLeadApiInfo] = useState<LeadApiKeyInfo | null>(null);
@@ -961,6 +961,90 @@ export const Settings: React.FC<SettingsProps> = ({
       if (activeTab === 'departments' && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
    }, [activeTab, userRole, loadDepartments]);
 
+   /* ─── Hamshiralar (reliz 4) ────────────────────────────────────────────
+      Ro'yxat ota-komponentdan kelmaydi: bu bo'lim faqat egaga ko'rinadi va
+      butun ilovaga hamshiralar keshi kerak emas. */
+   const [nurses, setNurses] = useState<any[]>([]);
+   const [nurseLoading, setNurseLoading] = useState(false);
+   const [nurseError, setNurseError] = useState('');
+   const [nurseModal, setNurseModal] = useState<any | null>(null);
+   const [nurseForm, setNurseForm] = useState({
+      firstName: '', lastName: '', phone: '', departmentId: '', username: '', password: '', status: 'Active',
+   });
+   const [nurseSaving, setNurseSaving] = useState(false);
+   const [deleteNurse, setDeleteNurse] = useState<any | null>(null);
+
+   const loadNurses = React.useCallback(async () => {
+      setNurseLoading(true);
+      setNurseError('');
+      try {
+         setNurses(await api.nurses.getAll());
+      } catch (e: any) {
+         setNurseError(e?.message || "Ro'yxatni yuklab bo'lmadi");
+      } finally {
+         setNurseLoading(false);
+      }
+   }, []);
+
+   React.useEffect(() => {
+      if (activeTab === 'nurses' && userRole === UserRole.CLINIC_ADMIN) {
+         loadNurses();
+         // Bo'lim nomlarini ko'rsatish uchun ro'yxat kerak
+         if (deptList.length === 0) loadDepartments();
+      }
+   }, [activeTab, userRole, loadNurses]);
+
+   const openNurseModal = (nr?: any) => {
+      setNurseForm({
+         firstName: nr?.firstName || '',
+         lastName: nr?.lastName || '',
+         phone: nr?.phone || '',
+         departmentId: nr?.departmentId || '',
+         username: nr?.username || '',
+         // Parol hech qachon serverdan kelmaydi: bo'sh qoldirilsa o'zgarmaydi
+         password: '',
+         status: nr?.status || 'Active',
+      });
+      setNurseModal(nr || {});
+   };
+
+   const saveNurse = async () => {
+      if (!nurseForm.firstName.trim() || !nurseForm.lastName.trim()) return;
+      setNurseSaving(true);
+      try {
+         const payload: any = {
+            firstName: nurseForm.firstName.trim(),
+            lastName: nurseForm.lastName.trim(),
+            phone: nurseForm.phone.trim() || undefined,
+            departmentId: nurseForm.departmentId || null,
+            username: nurseForm.username.trim() || undefined,
+            status: nurseForm.status,
+         };
+         if (nurseForm.password.trim()) payload.password = nurseForm.password.trim();
+
+         if (nurseModal?.id) await api.nurses.update(nurseModal.id, payload);
+         else await api.nurses.create(payload);
+
+         setNurseModal(null);
+         await loadNurses();
+      } catch (e: any) {
+         setNurseError(e?.message || 'Saqlanmadi');
+      } finally {
+         setNurseSaving(false);
+      }
+   };
+
+   const confirmDeleteNurse = async () => {
+      if (!deleteNurse?.id) return;
+      try {
+         await api.nurses.remove(deleteNurse.id);
+         setDeleteNurse(null);
+         await loadNurses();
+      } catch (e: any) {
+         setNurseError(e?.message || "O'chirilmadi");
+      }
+   };
+
    const openDeptCreate = () => {
       setDeptForm({ name: '', code: '', type: 'CLINICAL', color: DEPT_COLORS[0].value, sortOrder: String((deptList.length + 1) * 10) });
       setDeptModal({ mode: 'create', data: null });
@@ -1032,9 +1116,17 @@ export const Settings: React.FC<SettingsProps> = ({
                {[
                   { id: 'general', name: t('settings.tabs.general'), icon: User },
                   { id: 'services', name: t('settings.tabs.services'), icon: DollarSign },
-                  { id: 'doctors', name: t('settings.tabs.doctors'), icon: Users },
-                  { id: 'receptionists', name: t('settings.tabs.receptionists'), icon: Phone },
-                  { id: 'labTechnicians', name: t('settings.tabs.labTechnicians'), icon: FlaskConical },
+                  /* Personal bilan EGASI shug'ullanadi. Ilgari bu uchta
+                     bo'lim registratorga ham ko'rinardi va u login yaratib,
+                     undan kira olardi — backend rolni tekshirmasdi. Endi
+                     server 403 qaytaradi, shuning uchun bo'limlarning o'zi
+                     ham yashiriladi: bosib bo'lmaydigan tugma ko'rsatmaymiz. */
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [
+                     { id: 'doctors', name: t('settings.tabs.doctors'), icon: Users },
+                     { id: 'receptionists', name: t('settings.tabs.receptionists'), icon: Phone },
+                     { id: 'labTechnicians', name: t('settings.tabs.labTechnicians'), icon: FlaskConical },
+                     { id: 'nurses', name: 'Hamshiralar', icon: HeartPulse },
+                  ] : []),
                   { id: 'messaging', name: "SMS va Telegram", icon: MessageSquare },
                   { id: 'dmed', name: "DMED (IT-MED)", icon: Activity },
                   // Kalitni faqat klinika egasi ko'radi — backend ham shu rolni talab qiladi.
@@ -2069,6 +2161,89 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   </Card>
                )}
 
+               {/* ── Hamshiralar (reliz 4) ──────────────────────────────────
+                   Dorini hamshira beradi va dori varag'iga o'z nomidan belgi
+                   qo'yadi. Shuning uchun uning alohida logini bo'lishi kerak:
+                   shifokor logini bilan yozilgan belgi — yolg'on hujjat. */}
+               {activeTab === 'nurses' && userRole === UserRole.CLINIC_ADMIN && (
+                  <Card className="p-6">
+                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                        <div>
+                           <h3 className="text-lg font-medium text-gray-900 dark:text-white">Hamshiralar</h3>
+                           <p className="text-sm text-gray-500">
+                              Statsionarda dori berish belgisini hamshira o'z nomidan qo'yadi.
+                           </p>
+                        </div>
+                        <Button size="sm" onClick={() => openNurseModal()}>
+                           <Plus className="w-4 h-4 mr-1.5" /> Hamshira qo'shish
+                        </Button>
+                     </div>
+
+                     {nurseError && (
+                        <div className="flex items-start gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                           <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                           <p className="text-sm text-red-700 dark:text-red-300 flex-1">{nurseError}</p>
+                           <button onClick={loadNurses} className="text-sm font-medium text-red-700 dark:text-red-300 hover:underline">
+                              Qayta urinish
+                           </button>
+                        </div>
+                     )}
+
+                     {nurseLoading ? (
+                        <div className="space-y-2">
+                           {[0, 1].map(i => (
+                              <div key={i} className="h-16 bg-gray-100 dark:bg-gray-700/40 rounded-lg animate-pulse" />
+                           ))}
+                        </div>
+                     ) : nurses.length === 0 ? (
+                        <div className="text-center py-10">
+                           <HeartPulse className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                           <p className="text-sm text-gray-500">Hamshira qo'shilmagan</p>
+                           <p className="text-xs text-gray-400 mt-1">
+                              Loginsiz ham qo'shish mumkin — u holda hamshira ro'yxatda turadi, lekin tizimga kirmaydi.
+                           </p>
+                        </div>
+                     ) : (
+                        <div className="grid grid-cols-1 gap-3">
+                           {nurses.map(nr => (
+                              <div key={nr.id} className="flex items-center justify-between gap-3 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
+                                 <div className="flex items-center gap-3 min-w-0">
+                                    <div className="h-10 w-10 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center text-rose-600 dark:text-rose-400 font-bold shrink-0">
+                                       {(nr.firstName || '?')[0]}{(nr.lastName || '')[0]}
+                                    </div>
+                                    <div className="min-w-0">
+                                       <p className="font-medium text-gray-900 dark:text-white truncate">
+                                          {nr.firstName} {nr.lastName}
+                                       </p>
+                                       <p className="text-xs text-gray-500 truncate">
+                                          {deptList.find(d => d.id === nr.departmentId)?.name || "Bo'lim belgilanmagan"}
+                                          {nr.phone ? ` · ${nr.phone}` : ''}
+                                          {nr.username ? ` · login: ${nr.username}` : ' · loginsiz'}
+                                       </p>
+                                    </div>
+                                 </div>
+                                 <div className="flex items-center gap-2 shrink-0">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${nr.status === 'Active'
+                                       ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                       : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
+                                       {nr.status === 'Active' ? 'Faol' : 'Faol emas'}
+                                    </span>
+                                    <button onClick={() => openNurseModal(nr)}
+                                       className="p-2 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-md">
+                                       <Edit className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => setDeleteNurse(nr)}
+                                       className="p-2 text-gray-400 hover:text-red-600">
+                                       <Trash2 className="w-4 h-4" />
+                                    </button>
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                     )}
+                  </Card>
+               )}
+
                {/* SMS va Telegram Tab (birlashtirilgan) */}
                {activeTab === 'messaging' && (
                   <div className="space-y-6">
@@ -2838,6 +3013,85 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
             </div>
          </Modal>
       )}
+         {/* ── Hamshira: qo'shish va tahrirlash ── */}
+         <Modal
+            isOpen={!!nurseModal}
+            onClose={() => setNurseModal(null)}
+            title={nurseModal?.id ? 'Hamshirani tahrirlash' : "Hamshira qo'shish"}
+            className="max-w-md"
+         >
+            <div className="space-y-4">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input label="Ism" value={nurseForm.firstName} autoFocus
+                     onChange={e => setNurseForm(f => ({ ...f, firstName: e.target.value }))} />
+                  <Input label="Familiya" value={nurseForm.lastName}
+                     onChange={e => setNurseForm(f => ({ ...f, lastName: e.target.value }))} />
+               </div>
+               <Input label="Telefon" value={nurseForm.phone}
+                  onChange={e => setNurseForm(f => ({ ...f, phone: e.target.value }))} />
+
+               <Select label="Bo'lim" value={nurseForm.departmentId}
+                  onChange={e => setNurseForm(f => ({ ...f, departmentId: e.target.value }))}>
+                  <option value="">Belgilanmagan</option>
+                  {deptList.filter(d => d.isActive).map(d => (
+                     <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+               </Select>
+               <p className="text-xs text-gray-400 -mt-2">
+                  Bo'lim tanlansa, kunlik dori varag'i o'sha bo'lim bo'yicha ochiladi.
+               </p>
+
+               <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                     Tizimga kirish (ixtiyoriy)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                     <Input label="Login" value={nurseForm.username}
+                        onChange={e => setNurseForm(f => ({ ...f, username: e.target.value }))} />
+                     <Input label="Parol" type="password" value={nurseForm.password}
+                        placeholder={nurseModal?.id ? "o'zgartirmaslik uchun bo'sh qoldiring" : ''}
+                        onChange={e => setNurseForm(f => ({ ...f, password: e.target.value }))} />
+                  </div>
+               </div>
+
+               {nurseModal?.id && (
+                  <Select label="Holat" value={nurseForm.status}
+                     onChange={e => setNurseForm(f => ({ ...f, status: e.target.value }))}>
+                     <option value="Active">Faol</option>
+                     <option value="Inactive">Faol emas</option>
+                  </Select>
+               )}
+
+               <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="secondary" onClick={() => setNurseModal(null)}>Bekor</Button>
+                  <Button onClick={saveNurse}
+                     disabled={nurseSaving || !nurseForm.firstName.trim() || !nurseForm.lastName.trim()}>
+                     Saqlash
+                  </Button>
+               </div>
+            </div>
+         </Modal>
+
+         {/* ── Hamshirani o'chirish ── */}
+         <Modal isOpen={!!deleteNurse} onClose={() => setDeleteNurse(null)} title="O'chirish" className="max-w-sm">
+            {deleteNurse && (
+               <div className="space-y-4">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                     <b>{deleteNurse.firstName} {deleteNurse.lastName}</b> ro'yxatdan chiqariladi va
+                     tizimga kira olmaydi.
+                  </p>
+                  <p className="text-xs text-gray-500">
+                     Dori berish belgilarida uning ismi QOLADI — tibbiy yozuvni xodim ketgani
+                     uchun o'chirib bo'lmaydi.
+                  </p>
+                  <div className="flex justify-end gap-2">
+                     <Button variant="secondary" onClick={() => setDeleteNurse(null)}>Bekor</Button>
+                     <Button variant="danger" onClick={confirmDeleteNurse}>O'chirish</Button>
+                  </div>
+               </div>
+            )}
+         </Modal>
+
       </div>
    );
 };
