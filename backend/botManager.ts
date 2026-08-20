@@ -8,8 +8,13 @@ class BotManager {
     private botUsernames: Map<string, string> = new Map(); // token -> username
     private pendingPayments: Map<string, { appointmentId: string; clinicId: string }> = new Map(); // chatId -> payment info
 
-    constructor() {
-        // Start loading bots without blocking the main thread or crashing
+    /* Konstruktorda bazaga BORILMAYDI.
+       Ilgari botlar import paytida yuklanardi — ya'ni migratsiyalar
+       o'tishidan OLDIN. Yangilanishdan keyingi birinchi ishga tushishda
+       `prisma.clinic.findMany()` hali yo'q ustunni so'rab xato berardi,
+       konsolga prisma:error chiqardi va botlar 30 soniya ishlamasdi.
+       Endi yuklashni server migratsiyalardan keyin o'zi boshlaydi. */
+    public init() {
         this.loadBots().catch(err => {
             console.error("⚠️ Initial bot loading failed (likely DB issue). Server starting without bots.", err.message);
         });

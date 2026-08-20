@@ -6595,6 +6595,8 @@ runStartupMigrations()
             );
             process.exit(1);
         }
+        // Botlar — migratsiyalardan KEYIN: ular klinika jadvalini o'qiydi
+        botManager.init();
         app.listen(PORT, () => {
             console.log(`✅ XClinic server ${PORT}-portda ishga tushdi`);
         });

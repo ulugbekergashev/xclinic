@@ -94,6 +94,8 @@ model Patient {
   prescriptions    Prescription[]
   charges          VisitCharge[]
   allergies        PatientAllergy[]
+  referrals        Referral[]
+  vitals           VitalSign[]
 
   @@unique([clinicId, telegramChatId])
   /// Karta raqami klinika ichida takrorlanmaydi. SQLite da UNIQUE indeksda
@@ -188,6 +190,8 @@ model Visit {
   studies       DiagnosticStudy[]
   prescriptions Prescription[]
   charges       VisitCharge[]
+  referrals     Referral[]
+  vitals        VitalSign[]
   appointment   Appointment?         @relation(fields: [appointmentId], references: [id])
   clinic        Clinic               @relation(fields: [clinicId], references: [id])
   patient       Patient              @relation(fields: [patientId], references: [id])
@@ -348,6 +352,10 @@ model Clinic {
   /// POST /api/public/leads da X-API-Key sarlavhasi orqali klinika shu kalit bo'yicha topiladi.
   leadApiKey              String?             @unique
   leadApiKeyCreatedAt     DateTime?
+  /// Bosma blank uchun: litsenziya raqami va blank pastidagi erkin satr.
+  /// Migratsiya 0013.
+  licenseNumber           String?
+  letterheadNote          String?
   appointments            Appointment[]
   plan                    SubscriptionPlan    @relation(fields: [planId], references: [id])
   doctors                 Doctor[]
@@ -365,6 +373,10 @@ model Clinic {
   salesAgentId            String?
   salesAgent              SalesAgent?         @relation(fields: [salesAgentId], references: [id])
   labTechnicians          LabTechnician[]
+  nurses                  Nurse[]
+  referrals               Referral[]
+  administrations         MedicationAdministration[]
+  vitals                  VitalSign[]
   labOrders               LabOrder[]
   expenses                Expense[]
   messageTemplates        MessageTemplate[]
@@ -792,6 +804,10 @@ model Department {
   admissions   Admission[]
   stockFrom    StockMovement[] @relation("StockMovementFrom")
   stockTo      StockMovement[] @relation("StockMovementTo")
+  referrals    Referral[]
+  nurses       Nurse[]
+  transferFrom AdmissionTransfer[] @relation("TransferFromDept")
+  transferTo   AdmissionTransfer[] @relation("TransferToDept")
 
   @@unique([clinicId, code])
   @@index([clinicId])
@@ -977,8 +993,10 @@ model Bed {
   /// Free | Occupied | Cleaning | Blocked
   status String @default("Free")
 
-  ward       Ward        @relation(fields: [wardId], references: [id], onDelete: Cascade)
-  admissions Admission[]
+  ward         Ward                @relation(fields: [wardId], references: [id], onDelete: Cascade)
+  admissions   Admission[]
+  transferFrom AdmissionTransfer[] @relation("TransferFromBed")
+  transferTo   AdmissionTransfer[] @relation("TransferToBed")
 
   @@index([wardId])
 }
@@ -1004,6 +1022,12 @@ model Admission {
   /// Oxirgi marta koyka haqi yozilgan sana (YYYY-MM-DD) — takroriy yozuvni oldini oladi
   lastChargedDate  String?
   totalCharges     Float     @default(0)
+  /// Chiqarish epikrizining to'rt qismi. `dischargeSummary` eski yotishlar
+  /// uchun joyida qoladi. Migratsiya 0019.
+  admissionDiagnosis String?
+  finalDiagnosis     String?
+  treatmentGiven     String?
+  recommendations    String?
 
   clinic           Clinic            @relation(fields: [clinicId], references: [id])
   patient          Patient           @relation(fields: [patientId], references: [id])
@@ -1011,6 +1035,10 @@ model Admission {
   bed              Bed?              @relation(fields: [bedId], references: [id])
   rounds           InpatientRound[]
   medicationOrders MedicationOrder[]
+  administrations  MedicationAdministration[]
+  vitals           VitalSign[]
+  transfers        AdmissionTransfer[]
+  charges          VisitCharge[]
 
   @@index([clinicId])
   @@index([patientId])
@@ -1106,8 +1134,9 @@ model MedicationOrder {
   status       String   @default("Active")
   createdAt    DateTime @default(now())
 
-  admission  Admission      @relation(fields: [admissionId], references: [id], onDelete: Cascade)
-  medication InventoryItem? @relation(fields: [medicationId], references: [id])
+  admission       Admission                  @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  medication      InventoryItem?             @relation(fields: [medicationId], references: [id])
+  administrations MedicationAdministration[]
 
   @@index([admissionId])
 }
@@ -1152,17 +1181,23 @@ model VisitCharge {
   /// shifokorning xizmatini o'z ichiga oladi. Migratsiya 0007.
   doctorId      String?
   doctorName    String?
+  /// Statsionar yotishiga bog'lanish: koyka haqi va dorilarda qabul yo'q.
+  /// Migratsiya 0015.
+  admissionId   String?
 
-  clinic   Clinic          @relation(fields: [clinicId], references: [id])
-  visit    Visit?          @relation(fields: [visitId], references: [id])
-  patient  Patient?        @relation(fields: [patientId], references: [id])
-  payments ChargePayment[]
+  clinic          Clinic                     @relation(fields: [clinicId], references: [id])
+  visit           Visit?                     @relation(fields: [visitId], references: [id])
+  patient         Patient?                   @relation(fields: [patientId], references: [id])
+  admission       Admission?                 @relation(fields: [admissionId], references: [id])
+  payments        ChargePayment[]
+  administrations MedicationAdministration[]
 
   @@index([clinicId, status])
   @@index([doctorId])
   @@index([visitId])
   @@index([patientId])
   @@index([sourceId])
+  @@index([admissionId])
 }
 
 
@@ -1314,4 +1349,135 @@ model PatientAllergy {
 
   @@index([patientId])
   @@index([clinicId])
+}
+
+/// ═══ RELIZ 4: statsionar va yo'llanma ═══════════════════════════════════════
+
+/// YO'LLANMA — raqami va holati bor hujjat (migratsiya 0014).
+/// Ilgari shifokor og'zida aytardi, bemor qo'lida qog'oz qolmasdi.
+model Referral {
+  id                 String   @id @default(uuid())
+  clinicId           String
+  patientId          String
+  visitId            String?
+  /// Qog'ozdagi raqam. Klinika ichida takrorlanmaydi.
+  number             String
+  /// Lab | Study | Consult | Cashier
+  kind               String
+  targetDepartmentId String?
+  /// Issued | Used | Cancelled
+  status             String   @default("Issued")
+  issuedAt           DateTime @default(now())
+  issuedByName       String?
+  /// Berilgan paytdagi xizmatlar va summa (JSON). Narx keyin o'zgarsa ham
+  /// bemor qo'lidagi qog'oz bilan tizim bir xil qolishi kerak.
+  payload            String?
+
+  clinic            Clinic      @relation(fields: [clinicId], references: [id])
+  patient           Patient     @relation(fields: [patientId], references: [id])
+  visit             Visit?      @relation(fields: [visitId], references: [id])
+  targetDepartment  Department? @relation(fields: [targetDepartmentId], references: [id])
+
+  @@unique([clinicId, number])
+  @@index([clinicId, status])
+  @@index([patientId])
+  @@index([visitId])
+}
+
+/// Dori BERILGANINING fakti (migratsiya 0016).
+/// `MedicationOrder` — tayinlash, bu — bajarilish. Ilgari fakt hech qayerda
+/// yozilmasdi: ombor dorini "bor" deb hisoblardi, hisobda ko'rinmasdi.
+model MedicationAdministration {
+  id          String   @id @default(uuid())
+  clinicId    String
+  orderId     String
+  /// Bo'lim bo'yicha kunlik ro'yxat uchun to'g'ridan-to'g'ri kalit
+  admissionId String
+  givenAt     DateTime @default(now())
+  givenByName String?
+  dose        String?
+  /// Given | Skipped | Refused — berilmagani ham fakt
+  status      String   @default("Given")
+  skipReason  String?
+  chargeId    String?
+  note        String?
+
+  clinic    Clinic          @relation(fields: [clinicId], references: [id])
+  order     MedicationOrder @relation(fields: [orderId], references: [id])
+  admission Admission       @relation(fields: [admissionId], references: [id])
+  charge    VisitCharge?    @relation(fields: [chargeId], references: [id])
+
+  @@index([orderId])
+  @@index([admissionId, givenAt])
+  @@index([clinicId])
+}
+
+/// Harorat varag'i uchun o'lchovlar (migratsiya 0017).
+/// Har o'lchov alohida qator: JSON dan grafik qurib bo'lmaydi.
+model VitalSign {
+  id             String   @id @default(uuid())
+  clinicId       String
+  patientId      String
+  admissionId    String?
+  visitId        String?
+  measuredAt     DateTime @default(now())
+  /// Temp | BpSys | BpDia | Pulse | Weight | Height | SpO2
+  kind           String
+  value          Float
+  unit           String?
+  measuredByName String?
+
+  clinic    Clinic     @relation(fields: [clinicId], references: [id])
+  patient   Patient    @relation(fields: [patientId], references: [id])
+  admission Admission? @relation(fields: [admissionId], references: [id])
+  visit     Visit?     @relation(fields: [visitId], references: [id])
+
+  @@index([patientId, kind, measuredAt])
+  @@index([admissionId])
+  @@index([clinicId])
+}
+
+/// Bo'lim va koyka almashinuvi (migratsiya 0018).
+/// Ilgari `Admission.bedId` ustiga yozilardi va tarix yo'qolardi.
+model AdmissionTransfer {
+  id               String   @id @default(uuid())
+  admissionId      String
+  fromBedId        String?
+  toBedId          String?
+  fromDepartmentId String?
+  toDepartmentId   String?
+  movedAt          DateTime @default(now())
+  movedByName      String?
+  reason           String?
+
+  admission      Admission   @relation(fields: [admissionId], references: [id])
+  fromBed        Bed?        @relation("TransferFromBed", fields: [fromBedId], references: [id])
+  toBed          Bed?        @relation("TransferToBed", fields: [toBedId], references: [id])
+  fromDepartment Department? @relation("TransferFromDept", fields: [fromDepartmentId], references: [id])
+  toDepartment   Department? @relation("TransferToDept", fields: [toDepartmentId], references: [id])
+
+  @@index([admissionId, movedAt])
+}
+
+/// HAMSHIRA (migratsiya 0020, qaror В17).
+/// Dorini shifokor emas, hamshira beradi — jurnalda haqiqiy ijrochi turishi
+/// kerak. Tuzilishi laborant qolipida: login, parol, rol tekshiruvi.
+model Nurse {
+  id           String   @id @default(uuid())
+  firstName    String
+  lastName     String
+  phone        String?
+  status       String   @default("Active")
+  clinicId     String
+  /// Kunlik dori ro'yxati "mening bo'limim" bo'yicha ochiladi
+  departmentId String?
+  username     String?  @unique
+  password     String?
+  createdAt    DateTime @default(now())
+
+  clinic     Clinic      @relation(fields: [clinicId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  @@index([clinicId])
+  @@index([departmentId])
 }
