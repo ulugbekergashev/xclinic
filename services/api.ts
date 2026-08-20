@@ -1361,6 +1361,14 @@ export const api = {
             fetchJson<any>(`/reports/doctors?from=${from}&to=${to}`),
         departmentsReport: (from: string, to: string) =>
             fetchJson<any>(`/reports/departments?from=${from}&to=${to}`),
+
+        /** Oldingi SHU UZUNLIKDAGI davr bilan solishtirish */
+        compare: (from: string, to: string) =>
+            fetchJson<{ current: any; previous: any; delta: Record<string, { abs: number; pct: number | null }> }>(
+                `/reports/compare?from=${from}&to=${to}`),
+
+        /** Smena svodi: laboratoriya va diagnostika bo'yicha kunlik ish */
+        labShift: (date: string) => fetchJson<any>(`/reports/lab-shift?date=${date}`),
     },
 
     /* Huquqiy kontur (reliz 6): bemor hujjatlari va kirish jurnali.

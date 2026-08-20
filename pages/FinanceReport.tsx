@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
     TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Users,
-    Building2, Package, Percent, X,
+    Building2, Package, Percent, X, Activity,
 } from 'lucide-react';
 import { Department } from '../types';
 import { api } from '../services/api';
@@ -53,6 +53,29 @@ const today = () => todayISO();
 // Bo'limlar diagrammasi uchun ranglar — bo'limning o'z rangi bo'lmasa shulardan
 const PALETTE = ['#0E5F55', '#2563EB', '#DC2626', '#7C3AED', '#0891B2', '#D97706', '#DB2777', '#059669'];
 
+
+/** Svod qatori — bitta o'lchov, izohi bilan */
+const LAB_STATUS: Record<string, string> = {
+    Ordered: 'Buyurtma berildi', Collected: 'Proba olindi',
+    InProgress: 'Bajarilmoqda', Completed: 'Tayyor', Cancelled: 'Bekor qilindi',
+};
+
+const Row: React.FC<{
+    label: string; value: React.ReactNode; unit?: string; hint?: string;
+    tone?: 'ok' | 'bad' | 'warn';
+}> = ({ label, value, unit, hint, tone }) => (
+    <div className="flex items-baseline gap-2 text-sm">
+        <span className="text-gray-600 dark:text-gray-300">{label}</span>
+        {hint && <span className="text-[11px] text-gray-400">{hint}</span>}
+        <span className={`ml-auto font-semibold tabular-nums ${tone === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
+            : tone === 'bad' ? 'text-red-600 dark:text-red-400'
+                : tone === 'warn' ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-gray-900 dark:text-white'}`}>
+            {value}{unit ? <span className="text-[11px] font-normal text-gray-400 ml-1">{unit}</span> : null}
+        </span>
+    </div>
+);
+
 export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) => {
     const [from, setFrom] = useState(monthStart());
     const [to, setTo] = useState(today());
@@ -90,12 +113,32 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
        bilan ishlaydi va bir-birini tushuntiradi. "Bo'lim zarar" degan
        raqamdan keyin darhol "chunki 4 mln behuda ketgan" degan raqamga
        o'tish kerak. */
-    const [view, setView] = useState<'summary' | 'doctors' | 'departments' | 'writeoffs'>('summary');
+    const [view, setView] = useState<'summary' | 'doctors' | 'departments' | 'writeoffs' | 'labshift'>('summary');
+
+    /* Solishtirish: bitta raqam ("shu oy 40 mln") o'zi hech narsa aytmaydi.
+       Javob faqat oldingi davr yonida turganda paydo bo'ladi. */
+    const [cmp, setCmp] = useState<any>(null);
     const [extra, setExtra] = useState<Record<string, any>>({});
     const [extraLoading, setExtraLoading] = useState(false);
 
+    /* Solishtirish umumiy ko'rinishda: davr o'zgarganda qayta hisoblanadi */
+    useEffect(() => {
+        if (view !== 'summary') return;
+        api.reports.compare(from, to).then(setCmp).catch(() => setCmp(null));
+    }, [view, from, to]);
+
     const loadExtra = useCallback(async () => {
         if (view === 'summary') return;
+        if (view === 'labshift') {
+            setExtraLoading(true);
+            try {
+                const res = await api.reports.labShift(to);
+                setExtra(prev => ({ ...prev, labshift: res }));
+            }
+            catch (e: any) { setError(e?.message || 'Svod yuklanmadi'); }
+            finally { setExtraLoading(false); }
+            return;
+        }
         setExtraLoading(true);
         setError('');
         try {
@@ -182,6 +225,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     ['doctors', 'Shifokorlar'],
                     ['departments', "Bo'limlar"],
                     ['writeoffs', 'Chiqimlar'],
+                    ['labshift', 'Smena svodi'],
                 ] as const).map(([k, label]) => (
                     <button key={k} onClick={() => setView(k)}
                         className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${view === k
@@ -381,10 +425,154 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 )
             )}
 
+            {/* ── SMENA SVODI: laboratoriya va diagnostika ──────────────────
+                Kun oxirida kassa yopiladi, lekin laborantning kunlik ishi
+                hech qayerda ko'rinmasdi. */}
+            {view === 'labshift' && (
+                extraLoading || !extra.labshift ? (
+                    <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
+                ) : (
+                    <>
+                        <p className="text-xs text-gray-400">
+                            Sana: {extra.labshift.date} (davr oxiri bo'yicha). Svod bir kunlik.
+                        </p>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* Laboratoriya */}
+                            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                                <h3 className="px-4 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                                    <Package className="w-4 h-4 text-gray-400" /> Laboratoriya
+                                </h3>
+                                <div className="p-4 space-y-2">
+                                    <Row label="Buyurtma" value={extra.labshift.lab.total} />
+                                    <Row label="Proba olindi" value={extra.labshift.lab.collected} tone="ok" />
+                                    <Row label="Proba olinmadi" value={extra.labshift.lab.notCollected}
+                                        tone={extra.labshift.lab.notCollected > 0 ? 'warn' : undefined}
+                                        hint="bemor kelmagan yoki unutilgan" />
+                                    {extra.labshift.lab.urgent > 0 && (
+                                        <Row label="Shoshilinch" value={extra.labshift.lab.urgent} />
+                                    )}
+                                    <Row label="To'lanmagan" value={extra.labshift.lab.unpaidCount}
+                                        tone={extra.labshift.lab.unpaidCount > 0 ? 'bad' : undefined}
+                                        hint={extra.labshift.lab.unpaidSum > 0 ? `${fmt(extra.labshift.lab.unpaidSum)} UZS` : undefined} />
+                                    <Row label="Tushum" value={fmt(extra.labshift.lab.revenue)} unit="UZS" />
+                                    {extra.labshift.lab.avgTurnaroundHours != null && (
+                                        <Row label="O'rtacha bajarish" value={extra.labshift.lab.avgTurnaroundHours} unit="soat"
+                                            hint="probadan natijagacha" />
+                                    )}
+
+                                    {Object.keys(extra.labshift.lab.byStatus || {}).length > 0 && (
+                                        <div className="pt-2 mt-2 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-2">
+                                            {Object.entries(extra.labshift.lab.byStatus).map(([k, v]: any) => (
+                                                <span key={k} className="px-2 py-0.5 rounded text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                                    {LAB_STATUS[k] || k}: <b>{v}</b>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {Object.keys(extra.labshift.lab.byTechnician || {}).length > 0 && (
+                                        <div className="pt-2 flex flex-wrap gap-2">
+                                            {Object.entries(extra.labshift.lab.byTechnician).map(([k, v]: any) => (
+                                                <span key={k} className="px-2 py-0.5 rounded text-[11px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
+                                                    {k}: <b>{v}</b>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Diagnostika */}
+                            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                                <h3 className="px-4 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                                    <Activity className="w-4 h-4 text-gray-400" /> Diagnostika
+                                </h3>
+                                <div className="p-4 space-y-2">
+                                    <Row label="Tekshiruv" value={extra.labshift.studies.total} />
+                                    <Row label="To'lanmagan" value={extra.labshift.studies.unpaidCount}
+                                        tone={extra.labshift.studies.unpaidCount > 0 ? 'bad' : undefined}
+                                        hint={extra.labshift.studies.unpaidSum > 0 ? `${fmt(extra.labshift.studies.unpaidSum)} UZS` : undefined} />
+                                    <Row label="Tushum" value={fmt(extra.labshift.studies.revenue)} unit="UZS" />
+
+                                    {Object.keys(extra.labshift.studies.byModality || {}).length > 0 && (
+                                        <div className="pt-2 mt-2 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-2">
+                                            {Object.entries(extra.labshift.studies.byModality).map(([k, v]: any) => (
+                                                <span key={k} className="px-2 py-0.5 rounded text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                                    {k}: <b>{v}</b>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <p className="text-[11px] text-gray-400">
+                            Brak va qayta bajarish hisobga OLINMAYDI: tizimda bunday tushuncha yo'q.
+                            Uni qo'shish alohida qaror — probani bekor qilish sababi kerak bo'ladi.
+                        </p>
+                    </>
+                )
+            )}
+
             {view === 'summary' && (loading ? (
                 <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
             ) : !t ? null : (
                 <>
+                    {/* ── Oldingi davr bilan solishtirish ────────────────────
+                        "Shu oy 40 mln" o'zi hech narsa aytmaydi: ko'pmi,
+                        kammi? Javob oldingi shu uzunlikdagi davr yonida
+                        turganda paydo bo'ladi. */}
+                    {cmp && (
+                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                            <div className="flex flex-wrap items-baseline gap-2 mb-3">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    Oldingi davrga nisbatan
+                                </p>
+                                <span className="text-[11px] text-gray-400">
+                                    {cmp.previous.from} — {cmp.previous.to} ({cmp.previous.days} kun)
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+                                {([
+                                    ['revenue', 'Tushum', true],
+                                    ['collected', 'Olingan pul', true],
+                                    ['expense', 'Xarajat', true],
+                                    ['profit', 'Foyda', true],
+                                    ['visits', 'Qabullar', false],
+                                    ['avgCheck', "O'rtacha chek", true],
+                                ] as const).map(([key, label, money]) => {
+                                    const d = cmp.delta[key];
+                                    const cur = cmp.current[key];
+                                    const up = d.abs > 0;
+                                    /* Xarajat o'sishi YAXSHI emas — rangni ma'noga
+                                       qarab tanlaymiz, o'sish belgisiga emas. */
+                                    const goodWhenUp = key !== 'expense';
+                                    const tone = d.abs === 0 ? 'flat' : (up === goodWhenUp ? 'good' : 'bad');
+                                    return (
+                                        <div key={key}>
+                                            <p className="text-[11px] text-gray-500 dark:text-gray-400">{label}</p>
+                                            <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">
+                                                {money ? fmt(cur) : cur}
+                                            </p>
+                                            <p className={`text-[11px] tabular-nums ${tone === 'good' ? 'text-emerald-600 dark:text-emerald-400'
+                                                : tone === 'bad' ? 'text-red-600 dark:text-red-400'
+                                                    : 'text-gray-400'}`}>
+                                                {d.abs > 0 ? '+' : ''}{money ? fmt(d.abs) : d.abs}
+                                                {d.pct != null
+                                                    ? ` (${d.pct > 0 ? '+' : ''}${d.pct}%)`
+                                                    /* Oldingi davr nol bo'lsa foiz yo'q:
+                                                       "cheksiz o'sish" ma'nosiz raqam */
+                                                    : (cur > 0 ? ' (yangi)' : '')}
+                                            </p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Asosiy raqamlar */}
                     <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
                         <Tile label="Tushum" value={fmt(t.revenue)} unit="UZS" icon={TrendingUp}

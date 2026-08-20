@@ -589,5 +589,205 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
         });
     });
 
+    /**
+     * DAVRLARNI SOLISHTIRISH.
+     *
+     * Nima uchun. Hisobot bitta davrni ko'rsatadi: "shu oy 40 mln". Bu raqam
+     * O'ZI hech narsa aytmaydi — ko'pmi yoki kammi? Javob faqat oldingi davr
+     * bilan yonma-yon turganda paydo bo'ladi (GAP-ANALYSIS, 5-sahna, 7-band).
+     *
+     * Oldingi davr — SHU UZUNLIKDAGI oldingi oraliq, "o'tgan oy" emas:
+     * foydalanuvchi 10 kunlik davrni tanlasa, oldingi 10 kun bilan
+     * solishtiriladi. Aks holda 10 kun 30 kun bilan taqqoslanib, "tushum
+     * uch marta kamaydi" degan bema'nilik chiqadi.
+     *
+     * Alohida endpoint: to'liq hisobot og'ir (retseptlar, tannarx), va uni
+     * har safar ikki marta hisoblash kerak emas.
+     */
+    route('get', '/api/reports/compare', async (req, res, clinicId) => {
+        if (!ownerOnly(req, res)) return;
+        const { from, to } = period(req);
+
+        /* Davr uzunligi KUNLARDA, ikkala chegara ham kiradi */
+        const dayMs = 864e5;
+        const fromT = new Date(`${from}T00:00:00.000Z`).getTime();
+        const toT = new Date(`${to}T00:00:00.000Z`).getTime();
+        if (!isFinite(fromT) || !isFinite(toT) || toT < fromT) {
+            return res.status(400).json({ error: "Davr noto'g'ri" });
+        }
+        const days = Math.round((toT - fromT) / dayMs) + 1;
+        const prevTo = new Date(fromT - dayMs).toISOString().slice(0, 10);
+        const prevFrom = new Date(fromT - days * dayMs).toISOString().slice(0, 10);
+
+        /** Bitta davrning asosiy raqamlari */
+        const measure = async (a: string, b: string) => {
+            const { start, end } = tashkentRangeBounds(a, b);
+            const [charges, expenses, payments, visits] = await Promise.all([
+                prisma.visitCharge.findMany({
+                    where: {
+                        clinicId,
+                        status: { not: 'Cancelled' },
+                        OR: [
+                            { visit: { date: { gte: a, lte: b } } },
+                            { visitId: null, createdAt: { gte: start, lte: end } },
+                        ],
+                    },
+                    select: { total: true, paidAmount: true, patientId: true },
+                }),
+                prisma.expense.findMany({
+                    where: { clinicId, date: { gte: a, lte: b } },
+                    select: { amount: true },
+                }),
+                prisma.chargePayment.findMany({
+                    where: { clinicId, createdAt: { gte: start, lte: end } },
+                    select: { amount: true },
+                }),
+                prisma.visit.count({ where: { clinicId, date: { gte: a, lte: b } } }),
+            ]);
+
+            const revenue = round(charges.reduce((s: number, c: any) => s + c.total, 0));
+            const collected = round(payments.reduce((s: number, p: any) => s + (p.amount || 0), 0));
+            const expense = round(expenses.reduce((s: number, e: any) => s + (e.amount || 0), 0));
+            const patients = new Set(charges.map((c: any) => c.patientId).filter(Boolean)).size;
+
+            return {
+                from: a, to: b, days,
+                revenue,
+                collected,
+                due: round(revenue - charges.reduce((s: number, c: any) => s + (c.paidAmount || 0), 0)),
+                expense,
+                profit: round(collected - expense),
+                visits,
+                patients,
+                avgCheck: charges.length > 0 ? round(revenue / charges.length) : 0,
+            };
+        };
+
+        const [current, previous] = await Promise.all([
+            measure(from, to),
+            measure(prevFrom, prevTo),
+        ]);
+
+        /* Foiz o'zgarish. Oldingi davr NOL bo'lsa foiz yo'q: "cheksiz o'sish"
+           degan raqam ma'nosiz, ekranda "yangi" deb ko'rsatiladi. */
+        const pct = (now: number, before: number) =>
+            before > 0 ? round(((now - before) / before) * 100) : null;
+
+        const keys = ['revenue', 'collected', 'due', 'expense', 'profit', 'visits', 'patients', 'avgCheck'] as const;
+        const delta: Record<string, { abs: number; pct: number | null }> = {};
+        for (const k of keys) {
+            delta[k] = {
+                abs: round((current as any)[k] - (previous as any)[k]),
+                pct: pct((current as any)[k], (previous as any)[k]),
+            };
+        }
+
+        res.json({ current, previous, delta });
+    });
+
+    /**
+     * SMENA SVODI: laboratoriya va diagnostika.
+     *
+     * Nima uchun. Kun oxirida kassa yopiladi, lekin laboratoriya bo'yicha
+     * hech qanday svod yo'q: necha proba olindi, nechtasi bajarildi, nechtasi
+     * to'lanmagan (GAP-ANALYSIS, 4-sahna, 9 va 10-bandlar). Laborantning
+     * kunlik ishi hech qayerda ko'rinmaydi.
+     *
+     * BRAK VA QAYTA BAJARISH bu yerda YO'Q va o'ylab topilmadi: sxemada
+     * bunday tushuncha umuman yo'q. Uni qo'shish — alohida qaror (probani
+     * bekor qilish sababi kerak), va soxta raqam ko'rsatishdan ko'ra
+     * yo'qligini aytgan ma'qul.
+     */
+    route('get', '/api/reports/lab-shift', async (req, res, clinicId) => {
+        if (!ownerOnly(req, res)) return;
+        const date = String(req.query.date || today());
+        const { start, end } = tashkentRangeBounds(date, date);
+
+        const [orders, studies] = await Promise.all([
+            prisma.labOrder.findMany({
+                where: { clinicId, orderedAt: { gte: start, lte: end } },
+                select: {
+                    id: true, status: true, totalPrice: true, priority: true,
+                    orderedAt: true, sampleCollectedAt: true, completedAt: true,
+                    technicianName: true,
+                },
+            }),
+            prisma.diagnosticStudy.findMany({
+                where: { clinicId, orderedAt: { gte: start, lte: end } },
+                select: { id: true, status: true, price: true, modality: true, performedByName: true },
+            }),
+        ]);
+
+        /* To'lov holati hisob qatorlaridan olinadi — pul bitta joyda turadi */
+        const ids = orders.map((o: any) => o.id);
+        const studyIds = studies.map((s: any) => s.id);
+        const charges = (ids.length + studyIds.length) > 0
+            ? await prisma.visitCharge.findMany({
+                where: {
+                    clinicId,
+                    OR: [
+                        { source: 'Lab', sourceId: { in: ids } },
+                        { source: 'Study', sourceId: { in: studyIds } },
+                    ],
+                    status: { not: 'Cancelled' },
+                },
+                select: { source: true, sourceId: true, total: true, paidAmount: true, status: true },
+            })
+            : [];
+
+        const dueOf = (src: string, idList: string[]) => {
+            const rows = charges.filter((c: any) => c.source === src && idList.includes(String(c.sourceId)));
+            const unpaid = rows.filter((c: any) => c.status !== 'Paid');
+            return {
+                unpaidCount: unpaid.length,
+                unpaidSum: round(unpaid.reduce((s: number, c: any) => s + (c.total - (c.paidAmount || 0)), 0)),
+            };
+        };
+
+        const countBy = (rows: any[], field = 'status') => {
+            const m: Record<string, number> = {};
+            for (const r of rows) m[String(r[field])] = (m[String(r[field])] || 0) + 1;
+            return m;
+        };
+
+        /* Bajarish vaqti: proba olishdan natijagacha. Laborantning tezligi —
+           "kechikdi" degan shikoyatga javob beradigan yagona raqam. */
+        const done = orders.filter((o: any) => o.status === 'Completed' && o.completedAt);
+        const turnarounds = done
+            .map((o: any) => {
+                const from = o.sampleCollectedAt || o.orderedAt;
+                return (new Date(o.completedAt).getTime() - new Date(from).getTime()) / 3600e3;
+            })
+            .filter((h: number) => isFinite(h) && h >= 0);
+        const avgHours = turnarounds.length > 0
+            ? round(turnarounds.reduce((a: number, b: number) => a + b, 0) / turnarounds.length)
+            : null;
+
+        res.json({
+            date,
+            lab: {
+                total: orders.length,
+                byStatus: countBy(orders),
+                collected: orders.filter((o: any) => o.sampleCollectedAt).length,
+                // Proba olinmagan — bemor kelmagan yoki unutilgan
+                notCollected: orders.filter((o: any) => !o.sampleCollectedAt && o.status !== 'Cancelled').length,
+                urgent: orders.filter((o: any) => o.priority === 'Urgent').length,
+                revenue: round(orders.reduce((s: number, o: any) => s + (o.totalPrice || 0), 0)),
+                avgTurnaroundHours: avgHours,
+                byTechnician: countBy(orders.filter((o: any) => o.technicianName), 'technicianName'),
+                ...dueOf('Lab', ids),
+            },
+            studies: {
+                total: studies.length,
+                byStatus: countBy(studies),
+                byModality: countBy(studies, 'modality'),
+                revenue: round(studies.reduce((s: number, x: any) => s + (x.price || 0), 0)),
+                ...dueOf('Study', studyIds),
+            },
+            /* Ekranda aytiladi: brak hisobga olinmaydi, chunki sxemada yo'q */
+            notTracked: ['brak', 'qayta bajarish'],
+        });
+    });
+
     console.log('✅ Hisobot endpointlari ulandi');
 }
