@@ -13,6 +13,7 @@ import type express from 'express';
 import { createCharge, cancelChargesBySource } from './billing';
 import { applyServiceRecipe } from './inventory';
 import { tashkentDateStr } from './tashkentTime';
+import { logAccess } from './compliance';
 import path from 'path';
 import fs from 'fs';
 
@@ -246,6 +247,12 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             },
         });
         if (!visit || visit.clinicId !== clinicId) return res.status(404).json({ error: 'Qabul topilmadi' });
+        /* Qabul kartasi — eng to'liq tibbiy yozuv (tashxis, tahlillar,
+           retseptlar). Kim ochganini yozmaslik mumkin emas. */
+        logAccess(prisma, req, {
+            action: 'View', entityType: 'Visit',
+            entityId: visit.id, patientId: visit.patientId, clinicId,
+        });
         res.json(visit);
     });
 

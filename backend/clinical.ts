@@ -16,6 +16,7 @@
 
 import type express from 'express';
 import { tashkentDateStr } from './tashkentTime';
+import { logAccess } from './compliance';
 
 type Deps = {
     prisma: any;
@@ -147,6 +148,13 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
                 }
             }
         }
+
+        /* Shifokor stolidagi "avval nima bo'lgan" paneli — bu ham
+           bemor kartasini ko'rish. Jurnalga tushadi (qaror В14). */
+        logAccess(prisma, req, {
+            action: 'View', entityType: 'Patient',
+            entityId: patientId, patientId, clinicId,
+        });
 
         res.json({
             patient,

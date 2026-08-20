@@ -98,6 +98,8 @@ model Patient {
   allergies        PatientAllergy[]
   referrals        Referral[]
   vitals           VitalSign[]
+  documents        PatientDocument[]
+  accessLogs       AccessLog[]
 
   @@unique([clinicId, telegramChatId])
   /// Karta raqami klinika ichida takrorlanmaydi. SQLite da UNIQUE indeksda
@@ -185,6 +187,11 @@ model Visit {
   /// Yakunlangan bayon qulflanadi — keyin jimgina qayta yozib bo'lmaydi
   lockedAt      DateTime?
   lockedByName  String?
+  /// DMED (IT-MED) ga yuborish holati. Xato matni ham saqlanadi:
+  /// "yuborilmadi" bilan "PINFL bo'sh" bir xil emas. Migratsiya 0027.
+  dmedId        String?
+  dmedSyncedAt  DateTime?
+  dmedError     String?
   diagnoses     PatientDiagnosis[]
   transactions  Transaction[]
   procedures    TreatmentProcedure[]
@@ -194,6 +201,7 @@ model Visit {
   charges       VisitCharge[]
   referrals     Referral[]
   vitals        VitalSign[]
+  documents     PatientDocument[]
   appointment   Appointment?         @relation(fields: [appointmentId], references: [id])
   clinic        Clinic               @relation(fields: [clinicId], references: [id])
   patient       Patient              @relation(fields: [patientId], references: [id])
@@ -390,6 +398,8 @@ model Clinic {
   referrals               Referral[]
   doctorRates             DoctorServiceRate[]
   payrollRuns             PayrollRun[]
+  documents               PatientDocument[]
+  accessLogs              AccessLog[]
   administrations         MedicationAdministration[]
   vitals                  VitalSign[]
   labOrders               LabOrder[]
@@ -1569,4 +1579,66 @@ model PayrollLine {
   expense Expense?   @relation(fields: [expenseId], references: [id])
 
   @@index([runId])
+}
+
+/// ═══ RELIZ 6: huquqiy kontur ════════════════════════════════════════════════
+
+/// Bemor imzolaydigan hujjat (migratsiya 0026).
+///
+/// `textSnapshot` — imzolangan paytdagi MATN. Shablon keyin o'zgaradi, hujjat
+/// esa o'zgarmasligi kerak: bemor imzolagani aynan shu matn. Bu maydonsiz
+/// hujjatning huquqiy kuchi yo'q.
+model PatientDocument {
+  id                String    @id @default(uuid())
+  clinicId          String
+  patientId         String
+  visitId           String?
+  /// Consent | Contract | DataConsent | Discharge | Other
+  kind              String
+  number            String?
+  textSnapshot      String?
+  signedAt          DateTime?
+  signedByName      String?
+  patientSigned     Boolean   @default(false)
+  filePath          String?
+  /// ERI maydonlari — Б9.5 uchun oldindan (jadvalni qayta yaratmaslik uchun)
+  signature         String?
+  signerCertificate String?
+  createdAt         DateTime  @default(now())
+  createdByName     String?
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+  visit   Visit?  @relation(fields: [visitId], references: [id])
+
+  @@index([patientId, kind])
+  @@index([clinicId, createdAt])
+}
+
+/// Kim bemor kartasini ko'rgani va o'zgartirgani (migratsiya 0025).
+///
+/// Yozuvlar API orqali YARATILMAYDI: jurnalga tashqaridan yozish mumkin
+/// bo'lsa, unga ishonch yo'q. Ularni tibbiy ma'lumot qaytaradigan
+/// endpointlardagi server prosloykasi yozadi.
+model AccessLog {
+  id         String   @id @default(uuid())
+  clinicId   String
+  at         DateTime @default(now())
+  userRole   String?
+  userName   String?
+  /// Tashqi kalit EMAS: rollar turli jadvallarda yotadi
+  userId     String?
+  /// View | Create | Update | Delete | Print | Export
+  action     String
+  /// Visit | LabOrder | DiagnosticStudy | PatientDocument | Patient ...
+  entityType String
+  entityId   String?
+  patientId  String?
+
+  clinic  Clinic   @relation(fields: [clinicId], references: [id])
+  patient Patient? @relation(fields: [patientId], references: [id])
+
+  @@index([clinicId, at])
+  @@index([patientId, at])
+  @@index([entityType, entityId])
 }

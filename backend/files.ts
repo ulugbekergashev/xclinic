@@ -19,6 +19,7 @@
 
 import type express from 'express';
 import path from 'path';
+import { logAccess } from './compliance';
 import fs from 'fs';
 
 type Deps = {
@@ -97,6 +98,8 @@ export function registerFileRoutes(app: express.Express, deps: Deps) {
             // ─── Yozuvni topamiz va egasini aniqlaymiz ───────────────────────
             let storedUrl: string | null = null;
             let ownerClinicId: string | null = null;
+            // Jurnal uchun: fayl qaysi bemorga tegishli
+            let ownerPatientId: string | null = null;
 
             if (kind === 'patient-photo') {
                 const rec = await prisma.patientPhoto.findUnique({
@@ -106,6 +109,7 @@ export function registerFileRoutes(app: express.Express, deps: Deps) {
                 if (!rec) return res.status(404).json({ error: 'Topilmadi' });
                 storedUrl = rec.url;
                 ownerClinicId = rec.patient?.clinicId || null;
+                ownerPatientId = rec.patientId || null;
             } else if (kind === 'study-file') {
                 const rec = await prisma.diagnosticFile.findUnique({
                     where: { id: req.params.id },
@@ -114,6 +118,7 @@ export function registerFileRoutes(app: express.Express, deps: Deps) {
                 if (!rec) return res.status(404).json({ error: 'Topilmadi' });
                 storedUrl = rec.url;
                 ownerClinicId = rec.study?.clinicId || null;
+                ownerPatientId = rec.study?.patientId || null;
             } else {
                 const rec = await prisma.patient.findUnique({
                     where: { id: req.params.id },
@@ -122,11 +127,19 @@ export function registerFileRoutes(app: express.Express, deps: Deps) {
                 if (!rec) return res.status(404).json({ error: 'Bemor topilmadi' });
                 storedUrl = kind === 'patient-avatar' ? rec.avatarUrl : rec.portraitUrl;
                 ownerClinicId = rec.clinicId;
+                ownerPatientId = req.params.id;
             }
 
             if (user?.role !== 'SUPER_ADMIN' && ownerClinicId !== clinicId) {
                 return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
             }
+
+            /* Surat ham tibbiy ma'lumot: tish kartasining fotosi, UZI
+               tasviri. Kim ko'rganini yozamiz (qaror В14). */
+            logAccess(prisma, req, {
+                action: 'View', entityType: kind === 'study-file' ? 'DiagnosticStudy' : 'PatientPhoto',
+                entityId: req.params.id, patientId: ownerPatientId, clinicId: ownerClinicId,
+            });
 
             const base = safeBasename(storedUrl);
             if (!base) return res.status(404).json({ error: 'Fayl biriktirilmagan' });

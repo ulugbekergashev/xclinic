@@ -83,6 +83,7 @@ import { tashkentDateStr } from './tashkentTime';
 import { registerClinicalRoutes } from './clinical';
 import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
 import { registerPayrollRoutes } from './payroll';
+import { registerComplianceRoutes, logAccess, pruneAccessLog } from './compliance';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
 const { smsService, normalizeUzPhone } = require('./smsService');
@@ -1850,6 +1851,10 @@ app.get('/api/patients/:id', authenticateToken, async (req, res) => {
 app.put('/api/patients/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'patient', req.params.id))) return;
+        logAccess(prisma, req, {
+            action: 'Update', entityType: 'Patient',
+            entityId: req.params.id, patientId: req.params.id,
+        });
         const { firstName, lastName, phone, dob, lastVisit, status, gender, medicalHistory, address, telegramChatId, secondaryPhone, clinicId, avatarUrl, portraitUrl, doctorId, pinfl } = req.body;
         const updateData: any = {};
         if (firstName !== undefined) updateData.firstName = firstName;
@@ -4534,9 +4539,19 @@ app.post('/api/visits/:id/dmed-sync', authenticateToken, async (req, res) => {
         // lekin u to'ldirilgan kuni bu tekshiruvsiz begona klinikaning qabulini
         // davlat tizimiga yuborib qo'yish mumkin bo'lardi.
         if (!(await assertOwnership(req, res, 'visit', req.params.id))) return;
-        await dmedService.syncEncounter(clinicId, req.params.id);
-        res.json({ success: true });
-    } catch (error) {
+
+        /* Ilgari bu endpoint HAR DOIM `success: true` qaytarardi, hatto
+           `syncEncounter` hech narsa qilmasa ham. Ya'ni interfeys
+           "yuborildi" deb ko'rsatardi, aslida yuborilmagan. Davlat hisoboti
+           uchun bu eng yomon holat: klinika o'zini himoyalangan deb
+           o'ylaydi. Endi haqiqiy natija qaytadi. */
+        const result = await dmedService.syncEncounter(clinicId, req.params.id);
+        if (!result.success) {
+            return res.status(502).json({ success: false, error: result.error });
+        }
+        res.json({ success: true, dmedId: result.dmedId });
+    } catch (error: any) {
+        console.error('DMED sync error:', error?.message || error);
         res.status(500).json({ error: 'DMEDga yuborishda xatolik' });
     }
 });
@@ -4801,6 +4816,7 @@ registerBillingRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerInventoryRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerReportRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerPayrollRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerComplianceRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
 registerFileRoutes(app, { prisma, authenticateToken, getScopedClinicId, uploadsDir });
 
 /* Migratsiya fayllari. O'rnatilgan nusxada ncc bundle yonida yotadi,
@@ -6693,6 +6709,9 @@ runStartupMigrations()
         /* Koyka haqi: dastur o'chirilgan kunlarni quvib yetadi. Offline
            dasturda jadval (cron) ishonchsiz — kompyuter kechqurun o'chadi. */
         chargeAllPendingBedDays(prisma);
+        /* Kirish jurnalini tozalash (qaror В14: 24 oy). Shu yerda, chunki
+           tunda ishlaydigan jadvalga ishonch yo'q — dastur o'chiq bo'ladi. */
+        pruneAccessLog(prisma);
         app.listen(PORT, () => {
             console.log(`✅ XClinic server ${PORT}-portda ishga tushdi`);
         });

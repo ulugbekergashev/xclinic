@@ -138,10 +138,74 @@ class DmedService {
     }
 
     /**
-     * Sync Encounter (Visit) to DMED
+     * Qabulni DMED (IT-MED) ga yuborish.
+     *
+     * DIQQAT: TRANSPORT QISMI HALI YO'Q. Bu yerda qabulni davlat tizimiga
+     * haqiqatan yuboradigan kod yozilmagan, chunki DMED ning Encounter
+     * uchun kutgan FHIR profili va majburiy maydonlari ro'yxati bizda yo'q.
+     * O'ylab topib yozish — yuborilgan deb ko'rsatib, aslida yubormaslik
+     * degani; bu davlat hisobotida eng yomon holat.
+     *
+     * NIMA ISHLAYDI: yuborishga urinish HOLATI yoziladi. Ya'ni:
+     *   - `dmedError` — nima uchun ketmadi (masalan PINFL bo'sh);
+     *   - `dmedSyncedAt` — muvaffaqiyatli yuborilgan payt;
+     *   - `dmedId` — DMED bergan tashqi id.
+     *
+     * Shu tufayli klinika "qaysi qabullar ketmagan" degan savolga javob
+     * oladi va PINFL kabi to'ldirilmagan maydonlarni oldindan tuzatadi
+     * (GAP-ANALYSIS B103). Transport kelganda faqat shu funksiya ichi
+     * to'ldiriladi, interfeys o'zgarmaydi.
      */
-    public async syncEncounter(clinicId: string, visitId: string) {
-        console.log(`[DMED] Syncing encounter ${visitId} for clinic ${clinicId}`);
+    public async syncEncounter(clinicId: string, visitId: string): Promise<{
+        success: boolean; dmedId?: string | null; error?: string;
+    }> {
+        // `getConfig` dmedEnabled bo'lmasa null qaytaradi — alohida maydon yo'q
+        const config = await this.getConfig(clinicId);
+        if (!config) {
+            const error = 'DMED integratsiyasi yoqilmagan (Sozlamalar)';
+            await this.markVisit(visitId, { error });
+            return { success: false, error };
+        }
+
+        const visit = await prisma.visit.findUnique({
+            where: { id: visitId },
+            include: { patient: { select: { pinfl: true, firstName: true, lastName: true } } },
+        });
+        if (!visit) return { success: false, error: 'Qabul topilmadi' };
+
+        /* Oldindan tekshiruv — bu qism HAQIQATDA foydali: DMED ga PINFL siz
+           bemorni yuborib bo'lmaydi, va buni yuborishdan oldin bilish kerak. */
+        if (!visit.patient?.pinfl) {
+            const error = "Bemorda PINFL yo'q — DMED PINFL talab qiladi";
+            await this.markVisit(visitId, { error });
+            return { success: false, error };
+        }
+        if (!visit.diagnosis) {
+            const error = "Qabulda tashxis yo'q";
+            await this.markVisit(visitId, { error });
+            return { success: false, error };
+        }
+
+        const error = 'DMED ga yuborish hali ulanmagan: Encounter uchun FHIR profili kerak';
+        await this.markVisit(visitId, { error });
+        console.log(`[DMED] ${visitId}: tekshiruvlar o'tdi, transport yo'q`);
+        return { success: false, error };
+    }
+
+    /** Qabuldagi DMED holatini yozadi */
+    private async markVisit(visitId: string, data: { error?: string | null; dmedId?: string | null; synced?: boolean }) {
+        try {
+            await prisma.visit.update({
+                where: { id: visitId },
+                data: {
+                    dmedError: data.error ?? null,
+                    ...(data.dmedId ? { dmedId: data.dmedId } : {}),
+                    ...(data.synced ? { dmedSyncedAt: new Date() } : {}),
+                },
+            });
+        } catch (e: any) {
+            console.warn("[DMED] holatni yozib bo'lmadi:", e?.message || e);
+        }
     }
 
     /**
