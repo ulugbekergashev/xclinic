@@ -38,6 +38,8 @@ model Doctor {
   installmentPlans InstallmentPlan[]
   patients         Patient[]
   expenses         Expense[]
+  serviceRates     DoctorServiceRate[]
+  payrollLines     PayrollLine[]
 
   @@unique([clinicId, telegramChatId])
 }
@@ -221,6 +223,9 @@ model TreatmentProcedure {
   duration      Int?
   doctorId      String
   doctorName    String
+  /// Muolajada ikkinchi kishi — ulushi shifokordan boshqa. Migratsiya 0023.
+  assistantId   String?
+  assistantName String?
   createdAt     DateTime  @default(now())
   completedAt   DateTime?
   visit         Visit     @relation(fields: [visitId], references: [id])
@@ -268,15 +273,21 @@ model Expense {
   receptionistId  String?
   labOrderId      String?       @unique
   inventoryItemId String?
+  /// Xarajat qaysi bo'limga tegishli. NULL — umumiy xarajat, hisobotda
+  /// alohida qatorda ko'rinadi. Migratsiya 0022.
+  departmentId    String?
   createdAt       DateTime      @default(now())
   clinic          Clinic        @relation(fields: [clinicId], references: [id])
   doctor          Doctor?       @relation(fields: [doctorId], references: [id])
   receptionist    Receptionist? @relation(fields: [receptionistId], references: [id])
   labOrder        LabOrder?     @relation(fields: [labOrderId], references: [id])
+  department      Department?   @relation(fields: [departmentId], references: [id])
+  payrollLines    PayrollLine[]
 
   @@index([clinicId])
   @@index([doctorId])
   @@index([receptionistId])
+  @@index([departmentId])
 }
 
 model Service {
@@ -292,6 +303,8 @@ model Service {
   department   Department?      @relation(fields: [departmentId], references: [id])
   clinic       Clinic           @relation(fields: [clinicId], references: [id])
   recipe       ServiceRecipe[]
+  charges      VisitCharge[]
+  rates        DoctorServiceRate[]
 }
 
 model SubscriptionPlan {
@@ -375,6 +388,8 @@ model Clinic {
   labTechnicians          LabTechnician[]
   nurses                  Nurse[]
   referrals               Referral[]
+  doctorRates             DoctorServiceRate[]
+  payrollRuns             PayrollRun[]
   administrations         MedicationAdministration[]
   vitals                  VitalSign[]
   labOrders               LabOrder[]
@@ -806,6 +821,8 @@ model Department {
   stockTo      StockMovement[] @relation("StockMovementTo")
   referrals    Referral[]
   nurses       Nurse[]
+  expenses     Expense[]
+  doctorRates  DoctorServiceRate[]
   transferFrom AdmissionTransfer[] @relation("TransferFromDept")
   transferTo   AdmissionTransfer[] @relation("TransferToDept")
 
@@ -1184,11 +1201,15 @@ model VisitCharge {
   /// Statsionar yotishiga bog'lanish: koyka haqi va dorilarda qabul yo'q.
   /// Migratsiya 0015.
   admissionId   String?
+  /// Xizmat katalogiga bog'lanish. Nom o'zgaradi, id o'zgarmaydi —
+  /// hisobot va shifokor ulushi shunga tayanadi. Migratsiya 0021.
+  serviceId     Int?
 
   clinic          Clinic                     @relation(fields: [clinicId], references: [id])
   visit           Visit?                     @relation(fields: [visitId], references: [id])
   patient         Patient?                   @relation(fields: [patientId], references: [id])
   admission       Admission?                 @relation(fields: [admissionId], references: [id])
+  service         Service?                   @relation(fields: [serviceId], references: [id])
   payments        ChargePayment[]
   administrations MedicationAdministration[]
 
@@ -1198,6 +1219,7 @@ model VisitCharge {
   @@index([patientId])
   @@index([sourceId])
   @@index([admissionId])
+  @@index([serviceId])
 }
 
 
@@ -1480,4 +1502,71 @@ model Nurse {
 
   @@index([clinicId])
   @@index([departmentId])
+}
+
+/// ═══ RELIZ 5: shifokor ulushi va vedomost ═══════════════════════════════════
+
+/// Har XIZMATGA o'z foizi (migratsiya 0023).
+/// `Doctor.percentage` — stavka topilmaganda ishlatiladigan qiymat, u joyida
+/// qoladi. Ya'ni migratsiyadan keyin hisob-kitob o'zgarmaydi.
+model DoctorServiceRate {
+  id           String   @id @default(uuid())
+  clinicId     String
+  doctorId     String
+  /// NULL — stavka butun bo'limga, ikkisi ham NULL — umumiy stavka
+  serviceId    Int?
+  departmentId String?
+  percent      Float
+  /// Doctor | Assistant — bitta muolajada ikki kishi ishlaydi
+  role         String   @default("Doctor")
+  createdAt    DateTime @default(now())
+
+  clinic     Clinic      @relation(fields: [clinicId], references: [id])
+  doctor     Doctor      @relation(fields: [doctorId], references: [id])
+  service    Service?    @relation(fields: [serviceId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  @@unique([doctorId, serviceId, role])
+  @@index([doctorId])
+}
+
+/// Oylik vedomosti (migratsiya 0024).
+/// Draft holatida yaratiladi, tekshirilib tasdiqlanadi. Tasdiqlangandan keyin
+/// QAYTA HISOBLANMAYDI: o'tgan oy bugungi stavka bilan o'zgarib ketmasligi kerak.
+model PayrollRun {
+  id             String    @id @default(uuid())
+  clinicId       String
+  periodFrom     String
+  periodTo       String
+  /// Draft | Approved | Paid
+  status         String    @default("Draft")
+  createdAt      DateTime  @default(now())
+  createdByName  String?
+  approvedByName String?
+  approvedAt     DateTime?
+  note           String?
+
+  clinic Clinic        @relation(fields: [clinicId], references: [id])
+  lines  PayrollLine[]
+
+  @@index([clinicId, periodFrom])
+}
+
+model PayrollLine {
+  id        String  @id @default(uuid())
+  runId     String
+  doctorId  String?
+  /// Nom NUSXASI: xodim ketsa ham moliyaviy hujjatda ismi qoladi
+  staffName String
+  accrued   Float   @default(0)
+  paid      Float   @default(0)
+  expenseId String?
+  /// Hisob qanday chiqqani (JSON): qaysi xizmatlar, qaysi foiz
+  detail    String?
+
+  run     PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  doctor  Doctor?    @relation(fields: [doctorId], references: [id])
+  expense Expense?   @relation(fields: [expenseId], references: [id])
+
+  @@index([runId])
 }

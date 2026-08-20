@@ -82,6 +82,7 @@ import { runMigrations, registerMaintenanceRoutes } from './maintenance';
 import { tashkentDateStr } from './tashkentTime';
 import { registerClinicalRoutes } from './clinical';
 import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
+import { registerPayrollRoutes } from './payroll';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
 const { smsService, normalizeUzPhone } = require('./smsService');
@@ -3686,13 +3687,44 @@ app.get('/api/services', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/services', authenticateToken, async (req, res) => {
+app.post('/api/services', authenticateToken, requireRole('CLINIC_ADMIN', 'RECEPTIONIST', 'SUPER_ADMIN'), async (req, res) => {
     try {
+        /* Ilgari bu yerda `data: req.body` turardi. Ya'ni:
+             - `clinicId` TANADAN kelardi va boshqa klinikaning narxnomasiga
+               xizmat qo'shish mumkin edi;
+             - rol umuman tekshirilmasdi, ya'ni narxni istalgan kirgan
+               foydalanuvchi belgilay olardi.
+           Bu reliz 1 da yopilgan 17-20 teshiklar bilan bir xil sinf. */
+        const clinicId = getScopedClinicId(req);
+        if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
+
+        const { name, price, duration, cost, categoryId, departmentId } = req.body || {};
+        if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nom majburiy' });
+        if (!isFinite(Number(price))) return res.status(400).json({ error: "Narx noto'g'ri" });
+
+        if (categoryId) {
+            const cat = await prisma.serviceCategory.findUnique({ where: { id: String(categoryId) } });
+            if (!cat || cat.clinicId !== clinicId) return res.status(404).json({ error: 'Kategoriya topilmadi' });
+        }
+        if (departmentId) {
+            const dep = await prisma.department.findUnique({ where: { id: String(departmentId) } });
+            if (!dep || dep.clinicId !== clinicId) return res.status(404).json({ error: "Bo'lim topilmadi" });
+        }
+
         const service = await prisma.service.create({
-            data: req.body
+            data: {
+                clinicId,
+                name: String(name).trim(),
+                price: Number(price),
+                duration: Number(duration) || 30,
+                cost: Number(cost) || 0,
+                categoryId: categoryId ? String(categoryId) : null,
+                departmentId: departmentId ? String(departmentId) : null,
+            },
         });
         res.json(service);
-    } catch (error) {
+    } catch (error: any) {
+        console.error('Create service error:', error?.message || error);
         res.status(500).json({ error: 'Failed to create service' });
     }
 });
@@ -3706,12 +3738,23 @@ app.put('/api/services/:id', authenticateToken, async (req, res) => {
             if (!existing) return res.status(404).json({ error: 'Topilmadi' });
             if (existing.clinicId !== u?.clinicId) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         }
+        /* `clinicId` oq ro'yxatda YO'Q: xizmatni boshqa klinikaga
+           ko'chirish mumkin bo'lmasligi kerak. */
+        const { name, price, duration, cost, categoryId, departmentId } = req.body || {};
         const service = await prisma.service.update({
             where: { id: parseInt(req.params.id) },
-            data: req.body
+            data: {
+                ...(name !== undefined && { name: String(name).trim() }),
+                ...(price !== undefined && { price: Number(price) }),
+                ...(duration !== undefined && { duration: Number(duration) || 30 }),
+                ...(cost !== undefined && { cost: Number(cost) || 0 }),
+                ...(categoryId !== undefined && { categoryId: categoryId || null }),
+                ...(departmentId !== undefined && { departmentId: departmentId || null }),
+            },
         });
         res.json(service);
-    } catch (error) {
+    } catch (error: any) {
+        console.error('Update service error:', error?.message || error);
         res.status(500).json({ error: 'Failed to update service' });
     }
 });
@@ -4757,6 +4800,7 @@ registerMultiprofileRoutes(app, { prisma, authenticateToken, getScopedClinicId, 
 registerBillingRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerInventoryRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerReportRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerPayrollRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerFileRoutes(app, { prisma, authenticateToken, getScopedClinicId, uploadsDir });
 
 /* Migratsiya fayllari. O'rnatilgan nusxada ncc bundle yonida yotadi,

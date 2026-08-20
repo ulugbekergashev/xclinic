@@ -346,6 +346,8 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             clinicId, visitId: visit.id, patientId: visit.patientId,
             patientName: patient ? `${patient.lastName} ${patient.firstName}` : '',
             source: 'Service', sourceId: proc.id,
+            // Xizmat katalogidagi id — shifokor ulushi shunga qarab hisoblanadi
+            serviceId: proc.serviceId ?? null,
             name, unitPrice: basePrice, discount: disc,
             createdByName: doctorName || visit.doctorName || null,
             doctorId: proc.doctorId || null,
@@ -722,6 +724,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             clinicId, visitId: study.visitId, patientId: study.patientId,
             patientName: study.patientName,
             source: 'Study', sourceId: study.id,
+            serviceId: study.serviceId ?? null,
             name: study.name, unitPrice: study.price,
             createdByName: study.orderedByName,
             // Tekshiruvni BAJARGAN emas, BUYURGAN shifokor: ulush buyurtmachiga

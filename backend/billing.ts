@@ -52,6 +52,9 @@ export async function createCharge(prisma: any, input: {
     doctorName?: string | null;
     /** Statsionar yotishi: koyka haqi va dorilarda qabul yo'q. Migratsiya 0015. */
     admissionId?: string | null;
+    /** Xizmat katalogidagi id. Shifokor ulushi xizmatga bog'lanadi — busiz
+     *  har xizmatga o'z foizi ishlamaydi. Migratsiya 0021. */
+    serviceId?: number | null;
 }) {
     const qty = input.quantity ?? 1;
     const discount = input.discount ?? 0;
@@ -76,6 +79,7 @@ export async function createCharge(prisma: any, input: {
             doctorId: input.doctorId || null,
             doctorName: input.doctorName || null,
             admissionId: input.admissionId || null,
+            serviceId: input.serviceId ?? null,
         },
     });
 }
@@ -213,7 +217,7 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
 
-        const { visitId, patientId, patientName, name, unitPrice, quantity, discount, source } = req.body;
+        const { visitId, patientId, patientName, name, unitPrice, quantity, discount, source, serviceId } = req.body;
         if (!name || !unitPrice) return res.status(400).json({ error: 'Nom va narx majburiy' });
 
         if (visitId) {
@@ -235,6 +239,7 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             name, unitPrice: Number(unitPrice),
             quantity: Number(quantity) || 1,
             discount: Number(discount) || 0,
+            serviceId: serviceId != null && serviceId !== '' ? Number(serviceId) : null,
         });
         res.json(charge);
     });
