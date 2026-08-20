@@ -1331,6 +1331,39 @@ export const api = {
             return fetchJson<any>(`/reports/summary${qs ? `?${qs}` : ''}`);
         },
         debtors: () => isDemoMode() ? demoRead<any>({ total: 0, patients: [] }) : fetchJson<any>('/reports/debtors'),
+
+        /* Reliz 5: uch hisobot. Hammasi faqat klinika egasiga — server ham
+           shu rolni talab qiladi. */
+        writeoffs: (from: string, to: string) =>
+            fetchJson<any>(`/reports/writeoffs?from=${from}&to=${to}`),
+        doctors: (from: string, to: string) =>
+            fetchJson<any>(`/reports/doctors?from=${from}&to=${to}`),
+        departmentsReport: (from: string, to: string) =>
+            fetchJson<any>(`/reports/departments?from=${from}&to=${to}`),
+    },
+
+    /* Shifokor ulushi: stavkalar va vedomost (reliz 5).
+       Stavka tanlash tartibi serverda: xizmat > bo'lim > umumiy > Doctor.percentage. */
+    payroll: {
+        rates: (doctorId?: string) =>
+            fetchJson<any[]>(`/doctor-rates${doctorId ? `?doctorId=${doctorId}` : ''}`),
+        /** Shifokorning BARCHA stavkalarini almashtiradi (qo'shmaydi) */
+        saveRates: (doctorId: string, rates: { serviceId?: number | null; departmentId?: string | null; percent: number; role?: string }[]) =>
+            fetchJson<any[]>(`/doctor-rates/${doctorId}`, { method: 'PUT', body: JSON.stringify({ rates }) }),
+
+        /** Vedomost yaratmasdan raqamni ko'rish */
+        preview: (from: string, to: string) =>
+            fetchJson<any>(`/payroll/preview?from=${from}&to=${to}`),
+        runs: () => fetchJson<any[]>('/payroll/runs'),
+        run: (id: string) => fetchJson<any>(`/payroll/runs/${id}`),
+        createRun: (periodFrom: string, periodTo: string, note?: string) =>
+            fetchJson<any>('/payroll/runs', { method: 'POST', body: JSON.stringify({ periodFrom, periodTo, note }) }),
+        approve: (id: string) =>
+            fetchJson<any>(`/payroll/runs/${id}/approve`, { method: 'POST' }),
+        deleteRun: (id: string) =>
+            fetchJson<{ success: true }>(`/payroll/runs/${id}`, { method: 'DELETE' }),
+        payLine: (lineId: string, data?: { amount?: number; method?: string }) =>
+            fetchJson<any>(`/payroll/lines/${lineId}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
     },
 
     // ─── Bo'limlar ──────────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Wallet, BarChart3 } from 'lucide-react';
+import { Wallet, BarChart3, Percent } from 'lucide-react';
 import { CashBook } from './CashBook';
 import { FinanceReport } from './FinanceReport';
+import { Payroll } from './Payroll';
 import {
     UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
     LabOrder, Receptionist, CashRegisterDay, CashMovement, VisitCharge, Department,
@@ -17,7 +18,7 @@ import type { CashCloseArgs } from './CashBook';
 // "To'lanmagan" ro'yxatiga qo'shiladi — alohida ekran QURILMAGAN, chunki
 // CashBook allaqachon to'lov qabul qiladi va qarz yopadi.
 
-type TabKey = 'kassa' | 'hisobot';
+type TabKey = 'kassa' | 'hisobot' | 'ulush';
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType; subtitle: string }[] = [
     {
@@ -30,7 +31,13 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType; subtitle: str
         key: 'hisobot',
         label: 'Hisobot',
         icon: BarChart3,
-        subtitle: "Qancha ishlab topdik — foyda, qarz, shifokor ulushi",
+        subtitle: "Qancha ishlab topdik — foyda, qarz, bo'limlar va chiqimlar",
+    },
+    {
+        key: 'ulush',
+        label: 'Ulush',
+        icon: Percent,
+        subtitle: 'Shifokor stavkalari va oylik vedomost',
     },
 ];
 
@@ -76,7 +83,11 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
 
     const [searchParams, setSearchParams] = useSearchParams();
     const requested = searchParams.get('tab') as TabKey | null;
-    const activeTab: TabKey = requested === 'hisobot' && canSeeReports ? 'hisobot' : 'kassa';
+    /* Hisobot va ulush — faqat egaga. Registrator kassada ishlaydi va
+       manzilga qo'lda `?tab=ulush` yozib kirib olmasligi kerak. */
+    const activeTab: TabKey = canSeeReports && (requested === 'hisobot' || requested === 'ulush')
+        ? requested
+        : 'kassa';
 
     const visibleTabs = canSeeReports ? TABS : TABS.filter(t => t.key === 'kassa');
     const current = TABS.find(t => t.key === activeTab)!;
@@ -119,7 +130,14 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                 )}
             </div>
 
-            {activeTab === 'kassa' ? (
+            {activeTab === 'ulush' ? (
+                <Payroll
+                    doctors={doctors}
+                    departments={props.departments}
+                    clinicId={props.clinicId || currentClinic?.id || ''}
+                    addToast={props.addToast}
+                />
+            ) : activeTab === 'kassa' ? (
                 <CashBook
                     embedded
                     transactions={transactions}

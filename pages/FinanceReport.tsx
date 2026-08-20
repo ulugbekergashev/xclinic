@@ -85,6 +85,50 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
         [data],
     );
 
+    /* ─── Reliz 5: uch qo'shimcha kesim ─────────────────────────────────────
+       Nima uchun bo'lim (tab), alohida ekran emas: uchtasi ham BIR XIL davr
+       bilan ishlaydi va bir-birini tushuntiradi. "Bo'lim zarar" degan
+       raqamdan keyin darhol "chunki 4 mln behuda ketgan" degan raqamga
+       o'tish kerak. */
+    const [view, setView] = useState<'summary' | 'doctors' | 'departments' | 'writeoffs'>('summary');
+    const [extra, setExtra] = useState<Record<string, any>>({});
+    const [extraLoading, setExtraLoading] = useState(false);
+
+    const loadExtra = useCallback(async () => {
+        if (view === 'summary') return;
+        setExtraLoading(true);
+        setError('');
+        try {
+            const fn = view === 'doctors' ? api.reports.doctors
+                : view === 'departments' ? api.reports.departmentsReport
+                    : api.reports.writeoffs;
+            setExtra(prev => ({ ...prev, [view]: null }));
+            const res = await fn(from, to);
+            setExtra(prev => ({ ...prev, [view]: res }));
+        } catch (e: any) {
+            setError(e?.message || 'Hisobot yuklanmadi');
+        } finally {
+            setExtraLoading(false);
+        }
+    }, [view, from, to]);
+
+    useEffect(() => { loadExtra(); }, [loadExtra]);
+
+    /** Jadval sarlavhasi — uch hisobotda bir xil ko'rinish */
+    const Th: React.FC<{ children: React.ReactNode; right?: boolean }> = ({ children, right }) => (
+        <th className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 ${right ? 'text-right' : 'text-left'}`}>
+            {children}
+        </th>
+    );
+    const Td: React.FC<{ children: React.ReactNode; right?: boolean; strong?: boolean; tone?: 'ok' | 'bad' }> =
+        ({ children, right, strong, tone }) => (
+            <td className={`px-3 py-2 text-sm ${right ? 'text-right tabular-nums' : ''} ${strong ? 'font-semibold' : ''} ${tone === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
+                : tone === 'bad' ? 'text-red-600 dark:text-red-400'
+                    : 'text-gray-900 dark:text-white'}`}>
+                {children}
+            </td>
+        );
+
     const inputCls = 'px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500';
 
     const Tile: React.FC<{
@@ -131,7 +175,213 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 </div>
             )}
 
-            {loading ? (
+            {/* ── Kesim tanlash ─────────────────────────────────────────────── */}
+            <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+                {([
+                    ['summary', 'Umumiy'],
+                    ['doctors', 'Shifokorlar'],
+                    ['departments', "Bo'limlar"],
+                    ['writeoffs', 'Chiqimlar'],
+                ] as const).map(([k, label]) => (
+                    <button key={k} onClick={() => setView(k)}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${view === k
+                            ? 'border-primary-600 text-primary-600 dark:text-primary-400'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {/* ── SHIFOKORLAR ───────────────────────────────────────────────── */}
+            {view === 'doctors' && (
+                extraLoading || !extra.doctors ? (
+                    <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
+                ) : (extra.doctors.doctors || []).length === 0 ? (
+                    <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <Users className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                        <p className="text-gray-500 dark:text-gray-400">Bu davrda yozuv yo'q</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <Tile label="Yozilgan" value={fmt(extra.doctors.totals.revenue)} unit="UZS" icon={TrendingUp} />
+                            <Tile label="To'langan" value={fmt(extra.doctors.totals.paid)} unit="UZS" icon={Wallet} tone="ok" />
+                            <Tile label="Qarz" value={fmt(extra.doctors.totals.due)} unit="UZS" icon={AlertCircle} tone="bad" />
+                            <Tile label="Hisoblangan ulush" value={fmt(extra.doctors.totals.accrued)} unit="UZS"
+                                icon={Percent} hint="to'langan pul bo'yicha" />
+                        </div>
+
+                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[720px]">
+                                    <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+                                        <tr>
+                                            <Th>Shifokor</Th>
+                                            <Th right>Yozilgan</Th>
+                                            <Th right>To'langan</Th>
+                                            <Th right>Qarz</Th>
+                                            <Th right>Bemor</Th>
+                                            <Th right>O'rtacha chek</Th>
+                                            <Th right>Ulush</Th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                        {extra.doctors.doctors.map((d: any) => (
+                                            <tr key={d.doctorId || d.name}>
+                                                <Td strong>{d.name}</Td>
+                                                <Td right>{fmt(d.revenue)}</Td>
+                                                <Td right tone="ok">{fmt(d.paid)}</Td>
+                                                <Td right tone={d.due > 0 ? 'bad' : undefined}>{d.due > 0 ? fmt(d.due) : '—'}</Td>
+                                                <Td right>{d.patientCount}</Td>
+                                                <Td right>{fmt(d.avgCheck)}</Td>
+                                                <Td right strong>{fmt(d.accrued)}</Td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p className="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100 dark:border-gray-700">
+                                Ulush TO'LANGAN pul bo'yicha hisoblanadi: qarzga yozilgan ish uchun pul
+                                hali kirmagan. Qaytarishlar ulushni kamaytiradi. Vedomostdagi raqam
+                                aynan shu.
+                            </p>
+                        </div>
+                    </>
+                )
+            )}
+
+            {/* ── BO'LIMLAR ─────────────────────────────────────────────────── */}
+            {view === 'departments' && (
+                extraLoading || !extra.departments ? (
+                    <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <Tile label="Daromad" value={fmt(extra.departments.totals.revenue)} unit="UZS" icon={TrendingUp} />
+                            <Tile label="Xarajat" value={fmt(extra.departments.totals.expense)} unit="UZS" icon={TrendingDown} tone="bad" />
+                            <Tile label="Foyda" value={fmt(extra.departments.totals.profit)} unit="UZS" icon={Wallet}
+                                tone={extra.departments.totals.profit >= 0 ? 'ok' : 'bad'} />
+                            <Tile label="Koyka bandligi"
+                                value={extra.departments.totals.occupancy != null ? `${extra.departments.totals.occupancy}` : '—'}
+                                unit={extra.departments.totals.occupancy != null ? '%' : undefined}
+                                icon={Building2}
+                                hint={`${extra.departments.totals.bedDays} koyka-kun / ${extra.departments.totals.bedCount} koyka`} />
+                        </div>
+
+                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[620px]">
+                                    <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+                                        <tr>
+                                            <Th>Bo'lim</Th>
+                                            <Th right>Daromad</Th>
+                                            <Th right>To'langan</Th>
+                                            <Th right>Xarajat</Th>
+                                            <Th right>Foyda</Th>
+                                            <Th right>Koyka-kun</Th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                        {(extra.departments.departments || []).map((d: any, i: number) => (
+                                            <tr key={d.departmentId || `none-${i}`}>
+                                                <Td>
+                                                    <span className="inline-flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full shrink-0"
+                                                            style={{ backgroundColor: d.color || colorOf(d.name, i) }} />
+                                                        {d.name}
+                                                    </span>
+                                                </Td>
+                                                <Td right>{fmt(d.revenue)}</Td>
+                                                <Td right tone="ok">{fmt(d.paid)}</Td>
+                                                <Td right tone={d.expense > 0 ? 'bad' : undefined}>{d.expense > 0 ? fmt(d.expense) : '—'}</Td>
+                                                <Td right strong tone={d.profit >= 0 ? 'ok' : 'bad'}>{fmt(d.profit)}</Td>
+                                                <Td right>{d.bedDays || '—'}</Td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p className="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100 dark:border-gray-700">
+                                "Bo'limsiz" — bo'limi ko'rsatilmagan xarajat va yozuvlar. Ularni
+                                bo'limlarga majburan taqsimlamaymiz: taqsimlash qoidasini klinika
+                                o'zi belgilaydi, aks holda raqam soxta aniq bo'lib qoladi.
+                            </p>
+                        </div>
+                    </>
+                )
+            )}
+
+            {/* ── CHIQIMLAR ─────────────────────────────────────────────────── */}
+            {view === 'writeoffs' && (
+                extraLoading || !extra.writeoffs ? (
+                    <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                            <Tile label="Behuda ketgan" value={fmt(extra.writeoffs.wasteCost)} unit="UZS"
+                                icon={TrendingDown} tone="bad" hint="muddati o'tgan, buzilgan, kam chiqqan" />
+                            <Tile label="Xizmatga ishlatilgan" value={fmt(extra.writeoffs.serviceCost)} unit="UZS"
+                                icon={Package} hint="bu yo'qotish emas — daromad keltirgan" />
+                            <Tile label="Jami chiqim" value={fmt(extra.writeoffs.totalCost)} unit="UZS" icon={Package}
+                                hint={`${extra.writeoffs.movementCount} harakat`} />
+                        </div>
+
+                        {(extra.writeoffs.byReason || []).length === 0 ? (
+                            <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                                <Package className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                                <p className="text-gray-500 dark:text-gray-400">Bu davrda chiqim yo'q</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                                    <h3 className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700">
+                                        Sabab bo'yicha
+                                    </h3>
+                                    <table className="w-full">
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                            {extra.writeoffs.byReason.map((r: any) => (
+                                                <tr key={r.reason}>
+                                                    <Td>{r.label}</Td>
+                                                    <Td right>{r.count} ta</Td>
+                                                    <Td right strong tone={r.reason === 'Service' ? undefined : 'bad'}>
+                                                        {fmt(r.cost)}
+                                                    </Td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                                    <h3 className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700">
+                                        Pozitsiya bo'yicha
+                                    </h3>
+                                    <div className="max-h-80 overflow-y-auto">
+                                        <table className="w-full">
+                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                {extra.writeoffs.byItem.map((it: any) => (
+                                                    <tr key={it.itemId}>
+                                                        <Td>{it.name}</Td>
+                                                        <Td right>{it.qty} {it.unit || ''}</Td>
+                                                        <Td right strong>{fmt(it.cost)}</Td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <p className="text-[11px] text-gray-400">
+                            Summalar TANNARXDA: yo'qolgan tovarning qiymati — uni sotib olishga
+                            ketgan pul, sotish narxi emas.
+                        </p>
+                    </>
+                )
+            )}
+
+            {view === 'summary' && (loading ? (
                 <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
             ) : !t ? null : (
                 <>
@@ -329,7 +579,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                         </div>
                     </div>
                 </>
-            )}
+            ))}
         </div>
     );
 };
