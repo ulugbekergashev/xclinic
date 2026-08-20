@@ -43,6 +43,21 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
     setTimeout(() => setCopied(c => (c === text ? '' : c)), 1500);
   };
 
+  /* Parolni tugma bilan qo'yib bo'lmaydi: bazada u XESH ko'rinishida
+     yotadi, ochiq matni na serverda, na sahifada bor. Shuning uchun
+     "qo'yish" loginni qo'yadi va kursorni parol maydoniga olib boradi —
+     qolgani bitta so'z terish.
+
+     Ikkala maydonni to'ldirish uchun BRAUZER parol saqlagichi bor:
+     maydonlarga `name` va `autoComplete` qo'yilgan, shuning uchun birinchi
+     muvaffaqiyatli kirishdan keyin brauzer "saqlaymizmi?" deb so'raydi va
+     keyingi safar ikkalasini o'zi to'ldiradi. */
+  const passwordRef = React.useRef<HTMLInputElement>(null);
+  const fillLogin = (name: string) => {
+    setUsername(name);
+    setTimeout(() => passwordRef.current?.focus(), 0);
+  };
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -138,6 +153,8 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                 <input
                   type="text"
                   required
+                  name="username"
+                  autoComplete="username"
                   className="pl-10 block w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
                   placeholder={t('auth.usernamePlaceholder')}
                   value={username}
@@ -155,6 +172,9 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                 <input
                   type={showPassword ? "text" : "password"}
                   required
+                  name="password"
+                  autoComplete="current-password"
+                  ref={passwordRef}
                   className="pl-10 pr-10 block w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
                   placeholder="••••••••"
                   value={password}
@@ -207,8 +227,8 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                             className="ml-auto px-1.5 py-0.5 rounded text-[11px] text-gray-500 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700">
                             {copied === l.username ? "✓ nusxa olindi" : 'nusxa'}
                           </button>
-                          <button type="button" onClick={() => setUsername(l.username)}
-                            title="Login maydoniga qo'yish"
+                          <button type="button" onClick={() => fillLogin(l.username)}
+                            title="Login qo'yiladi va kursor parolga o'tadi"
                             className="px-1.5 py-0.5 rounded text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30">
                             qo'yish
                           </button>
