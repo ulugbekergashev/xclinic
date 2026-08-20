@@ -28,6 +28,7 @@ import type express from 'express';
 import { tashkentDateStr } from './tashkentTime';
 import { writeOff } from './inventory';
 import { createCharge } from './billing';
+import bcrypt from 'bcryptjs';
 
 type Deps = {
     prisma: any;
@@ -565,6 +566,110 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         res.json(await prisma.bed.update({
             where: { id: bed.id },
             data: { status: 'Free' },
+        }));
+    });
+
+    // ═══ HAMSHIRALAR ═════════════════════════════════════════════════════════
+
+    /* Nima uchun bu yerda, server.ts da emas: hamshira — statsionar xodimi,
+       va uning yagona vazifasi shu moduldagi dori varag'i bilan ishlash.
+
+       ROL: yaratish/o'zgartirish faqat CLINIC_ADMIN. Mavjud xodim
+       endpointlari (shifokor, laborant) buni tekshirmaydi — ya'ni registrator
+       ham login yaratishi mumkin. Bu ishlayotgan xatti-harakat, uni shu
+       relizda o'zgartirmayman (klinikada registrator xodim qo'shayotgan
+       bo'lishi mumkin), lekin YANGI rol qat'iy boshlanadi. */
+
+    const nurseSafe = {
+        id: true, firstName: true, lastName: true, phone: true,
+        status: true, clinicId: true, departmentId: true,
+        username: true, createdAt: true,
+        // `password` ATAYLAB yo'q: hech qachon tashqariga chiqmaydi
+    };
+
+    route('get', '/api/nurses', async (req, res, clinicId) => {
+        res.json(await prisma.nurse.findMany({
+            where: { clinicId, status: { not: 'Deleted' } },
+            select: nurseSafe,
+            orderBy: { lastName: 'asc' },
+        }));
+    });
+
+    route('post', '/api/nurses', async (req, res, clinicId) => {
+        if (!hasRole(req, 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const { firstName, lastName, phone, departmentId, username, password } = req.body || {};
+        if (!firstName || !lastName) return res.status(400).json({ error: 'Ism va familiya majburiy' });
+
+        if (departmentId) {
+            const dep = await prisma.department.findUnique({ where: { id: String(departmentId) } });
+            if (!dep || dep.clinicId !== clinicId) return res.status(404).json({ error: "Bo'lim topilmadi" });
+        }
+        if (username) {
+            const busy = await prisma.nurse.findUnique({ where: { username: String(username) } });
+            if (busy) return res.status(400).json({ error: 'Bu login allaqachon band' });
+        }
+
+        const data: any = {
+            clinicId,
+            firstName: String(firstName).trim(),
+            lastName: String(lastName).trim(),
+            phone: phone ? String(phone).trim() : null,
+            departmentId: departmentId ? String(departmentId) : null,
+            status: 'Active',
+        };
+        if (username) data.username = String(username).trim();
+        if (password) data.password = await bcrypt.hash(String(password), await bcrypt.genSalt(10));
+
+        const nurse = await prisma.nurse.create({ data, select: nurseSafe });
+        res.json(nurse);
+    });
+
+    route('put', '/api/nurses/:id', async (req, res, clinicId) => {
+        if (!hasRole(req, 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const existing = await prisma.nurse.findUnique({ where: { id: req.params.id } });
+        if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: 'Hamshira topilmadi' });
+
+        const { firstName, lastName, phone, departmentId, status, username, password } = req.body || {};
+        if (departmentId) {
+            const dep = await prisma.department.findUnique({ where: { id: String(departmentId) } });
+            if (!dep || dep.clinicId !== clinicId) return res.status(404).json({ error: "Bo'lim topilmadi" });
+        }
+        if (username) {
+            const busy = await prisma.nurse.findUnique({ where: { username: String(username) } });
+            if (busy && busy.id !== existing.id) return res.status(400).json({ error: 'Bu login allaqachon band' });
+        }
+
+        const data: any = {};
+        if (firstName !== undefined) data.firstName = String(firstName).trim();
+        if (lastName !== undefined) data.lastName = String(lastName).trim();
+        if (phone !== undefined) data.phone = phone ? String(phone).trim() : null;
+        if (departmentId !== undefined) data.departmentId = departmentId ? String(departmentId) : null;
+        if (status !== undefined) data.status = String(status);
+        if (username !== undefined) data.username = username ? String(username).trim() : null;
+        if (password) data.password = await bcrypt.hash(String(password), await bcrypt.genSalt(10));
+
+        res.json(await prisma.nurse.update({ where: { id: existing.id }, data, select: nurseSafe }));
+    });
+
+    /* O'chirish YUMSHOQ: dori berilishi yozuvlarida "kim berdi" nomi qoladi,
+       lekin xodim ro'yxatdan chiqadi va kira olmaydi. Tibbiy yozuvni
+       xodim ketgani uchun yo'q qilib bo'lmaydi. */
+    route('delete', '/api/nurses/:id', async (req, res, clinicId) => {
+        if (!hasRole(req, 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const existing = await prisma.nurse.findUnique({ where: { id: req.params.id } });
+        if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: 'Hamshira topilmadi' });
+
+        res.json(await prisma.nurse.update({
+            where: { id: existing.id },
+            // Login ham bo'shatiladi: o'chirilgan xodim nomi bilan kirish yo'q
+            data: { status: 'Deleted', username: null, password: null },
+            select: nurseSafe,
         }));
     });
 

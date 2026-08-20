@@ -1579,6 +1579,40 @@ app.post('/api/auth/login', async (req, res) => {
                         }
                     }
 
+                    /* HAMSHIRA (qaror В17, migratsiya 0020). Zanjirdagi
+                       o'rni: laborantdan keyin, sotuvchidan oldin. Dori
+                       berilishini o'z nomidan yozadi. */
+                    if (!userPayload) {
+                        const nurse = await (prisma as any).nurse.findUnique({
+                            where: { username: cleanUsername },
+                            include: { clinic: true },
+                        });
+
+                        if (nurse && nurse.password && await verifyAndUpgradePassword(nurse, 'nurse')) {
+                            if (nurse.status !== 'Active') {
+                                return res.status(403).json({ success: false, error: 'Hamshira akkaunti faol emas' });
+                            }
+                            if (nurse.clinic && nurse.clinic.status === 'Deleted') {
+                                return res.status(403).json({ success: false, error: "Klinika tizimdan o'chirilgan" });
+                            }
+                            userPayload = {
+                                role: 'NURSE',
+                                name: `${nurse.firstName} ${nurse.lastName}`,
+                                clinicId: nurse.clinicId,
+                                nurseId: nurse.id,
+                                departmentId: nurse.departmentId,
+                            };
+                            responseData = {
+                                success: true,
+                                role: 'NURSE',
+                                name: `${nurse.firstName} ${nurse.lastName}`,
+                                clinicId: nurse.clinicId,
+                                nurseId: nurse.id,
+                                departmentId: nurse.departmentId,
+                            };
+                        }
+                    }
+
                     if (!userPayload) {
                         // Check for sales agent
                         const salesAgent = await prisma.salesAgent.findUnique({

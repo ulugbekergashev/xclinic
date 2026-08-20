@@ -203,12 +203,30 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
 
     /** Qo'lda qator qo'shish — ro'yxatda yo'q xizmat uchun */
     route('post', '/api/charges', async (req, res, clinicId) => {
+        /* ROL. Ilgari tekshiruv YO'Q edi: hisob qatorini istalgan kirgan
+           foydalanuvchi qo'sha olardi — laborant ham, hamshira ham, ya'ni
+           bemor hisobiga pul yozish huquqi hammada edi. Hamshiraning
+           qatorlari `POST /medication-orders/:id/administer` orqali
+           SERVER o'zi yaratadi, qo'lda kiritish kerak emas. */
+        const user = (req as any).user;
+        if (!['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+
         const { visitId, patientId, patientName, name, unitPrice, quantity, discount, source } = req.body;
         if (!name || !unitPrice) return res.status(400).json({ error: 'Nom va narx majburiy' });
 
         if (visitId) {
             const visit = await prisma.visit.findUnique({ where: { id: visitId } });
             if (!visit || visit.clinicId !== clinicId) return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        /* Bemor havolasi ham tekshiriladi. Ilgari yo'q bemor id si kelganda
+           tashqi kalit buzilib 500 qaytardi — sabab ko'rinmas edi. */
+        if (patientId) {
+            const patient = await prisma.patient.findUnique({ where: { id: String(patientId) } });
+            if (!patient || patient.clinicId !== clinicId) {
+                return res.status(404).json({ error: 'Bemor topilmadi' });
+            }
         }
         const charge = await createCharge(prisma, {
             clinicId, visitId, patientId,
