@@ -247,6 +247,78 @@ app.get('/api/network-info', (_req, res) => {
 
 
 
+/* VAQTINCHA: so'rovlar izi. Muammoni topish uchun yoqilgan —
+   XCLINIC_TRACE=1 bo'lganda ishlaydi, aks holda hech narsa qilmaydi. */
+if (process.env.XCLINIC_TRACE === '1') {
+    app.use('/api', (req: any, res: any, next: any) => {
+        const started = Date.now();
+        res.on('finish', () => {
+            const who = req.user?.role || (req.headers['authorization'] ? 'token bor' : 'tokensiz');
+            console.log(`[trace] ${res.statusCode} ${req.method} ${req.originalUrl} · ${who} · ${Date.now() - started}ms`);
+        });
+        next();
+    });
+}
+
+/**
+ * Shu bazadagi LOGINLAR ro'yxati — kirish sahifasidagi eslatma uchun.
+ *
+ * Nima uchun kerak. Klinika o'z loginini unutadi, va dasturda uni
+ * ko'rsatadigan joy yo'q: parolni tiklash uchun ham avval login kerak.
+ *
+ * PAROL QAYTARILMAYDI va hech qachon qaytarilmaydi. Faqat foydalanuvchi
+ * nomlari va rollar.
+ *
+ * FAQAT SHU KOMPYUTERDAN: `127.0.0.1` yoki `::1`. Tarmoqdagi boshqa
+ * kompyuter (shifokor noutbugi) bu ro'yxatni ololmaydi — u yerda login
+ * ro'yxatini ko'rsatishning sababi yo'q.
+ */
+app.get('/api/local-logins', async (req: any, res: any) => {
+    const ip = String(req.ip || req.socket?.remoteAddress || '');
+    const isLoopback = ip.includes('127.0.0.1') || ip === '::1' || ip === '::ffff:127.0.0.1';
+    if (!isLoopback) return res.status(403).json({ error: "Faqat shu kompyuterdan" });
+
+    try {
+        const [clinics, doctors, receptionists, nurses, techs] = await Promise.all([
+            prisma.clinic.findMany({
+                where: { status: { not: 'Deleted' } },
+                select: { username: true, name: true },
+            }),
+            prisma.doctor.findMany({
+                where: { username: { not: null }, status: { not: 'Deleted' } },
+                select: { username: true, firstName: true, lastName: true },
+            }),
+            /* Registratorda `username` MAJBURIY (String, null emas), shuning
+               uchun `not: null` filtri Prisma da xato beradi. Doctor, Nurse
+               va LabTechnician da esa u ixtiyoriy. */
+            prisma.receptionist.findMany({
+                where: { status: { not: 'Deleted' } },
+                select: { username: true, firstName: true, lastName: true },
+            }),
+            (prisma as any).nurse.findMany({
+                where: { username: { not: null }, status: { not: 'Deleted' } },
+                select: { username: true, firstName: true, lastName: true },
+            }),
+            (prisma as any).labTechnician.findMany({
+                where: { username: { not: null }, status: { not: 'Deleted' } },
+                select: { username: true, firstName: true, lastName: true },
+            }),
+        ]);
+
+        const nameOf = (x: any) => `${x.lastName || ''} ${x.firstName || ''}`.trim();
+        res.json([
+            ...clinics.map((c: any) => ({ username: c.username, role: 'Klinika', name: c.name })),
+            ...doctors.map((d: any) => ({ username: d.username, role: 'Shifokor', name: nameOf(d) })),
+            ...receptionists.map((r: any) => ({ username: r.username, role: 'Registrator', name: nameOf(r) })),
+            ...nurses.map((x: any) => ({ username: x.username, role: 'Hamshira', name: nameOf(x) })),
+            ...techs.map((x: any) => ({ username: x.username, role: 'Laborant', name: nameOf(x) })),
+        ].filter((x: any) => x.username));
+    } catch (e: any) {
+        console.error('local-logins error:', e?.message || e);
+        res.json([]);
+    }
+});
+
 const authenticateToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];

@@ -143,6 +143,21 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_R
 }
 
 async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+    /* DEMO REJIMI. Demo tokeni ('demo-token') server uchun yaroqsiz, ya'ni
+       har qanday so'rov 401 qaytaradi, 401 esa sessiyani tozalab, kirish
+       sahifasiga uloqtiradi.
+
+       Eski usullar buni har birida `isDemoMode()` bilan tekshirardi. Yangi
+       modullarda (clinical, payroll, inpatient, compliance...) bu tekshiruv
+       YO'Q edi — 45 ta chaqiruv. Ya'ni demo rejimida yangi ekranlarning
+       istalgani foydalanuvchini chiqarib yuborardi.
+
+       Har biriga qo'riqchi qo'yish o'rniga bitta joyda to'xtatamiz: yangi
+       chaqiruvlar ham avtomatik himoyalangan bo'ladi. */
+    if (isDemoMode()) {
+        throw new Error("Demo rejimida bu ma'lumot mavjud emas");
+    }
+
     const headers: HeadersInit = {
         ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         ...(options.headers || {}),

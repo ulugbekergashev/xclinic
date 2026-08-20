@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button, Input, Card } from '../components/Common';
 import { UserRole } from '../types';
 import { AlertCircle, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { api } from '../services/api';
+import { api, API_BASE_URL } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
 interface SignInProps {
@@ -11,6 +11,20 @@ interface SignInProps {
 
 export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
   const { t } = useLanguage();
+  /* Shu bazadagi loginlar — kirish sahifasidagi eslatma.
+     Parol EMAS, faqat foydalanuvchi nomlari. Server ularni faqat shu
+     kompyuterdan beradi. */
+  const [logins, setLogins] = useState<{ username: string; role: string; name: string }[]>([]);
+
+  React.useEffect(() => {
+    const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (!local) return;
+    fetch(`${API_BASE_URL}/api/local-logins`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(list => setLogins(Array.isArray(list) ? list : []))
+      .catch(() => setLogins([]));
+  }, []);
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -153,16 +167,48 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
 
           <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700 text-center">
             {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
-              <div className="mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
-                <p className="text-xs text-primary-600 dark:text-primary-400 font-medium">
-                  🧪 Localhost - Demo rejimi mavjud
-                </p>
-                <p className="text-xs text-primary-500 dark:text-primary-400 mt-1">
-                  {t('auth.login')}: <code className="bg-primary-100 dark:bg-primary-900/40 px-1 rounded">demoklinikaadmin</code>
-                  <br />
-                  {t('auth.password')}: <code className="bg-primary-100 dark:bg-primary-900/40 px-1 rounded">demoklinikaparol</code>
-                </p>
-              </div>
+              <>
+                {/* Shu bazadagi HAQIQIY loginlar. Parol ko'rsatilmaydi —
+                    uni faqat klinika biladi. Bosilganda login maydonga
+                    tushadi, qo'lda terish shart emas. */}
+                {logins.length > 0 && (
+                  <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-left">
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                      Shu kompyuterdagi loginlar
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {logins.map(l => (
+                        <button key={l.username} type="button"
+                          onClick={() => setUsername(l.username)}
+                          title={`${l.role}${l.name ? ` · ${l.name}` : ''} — bosing, login qo'yiladi`}
+                          className="px-2 py-1 rounded text-xs font-medium bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-primary-400">
+                          {l.username}
+                          <span className="text-gray-400 ml-1">· {l.role}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-2">
+                      Parol ko'rsatilmaydi. Unutgan bo'lsangiz — uni tiklash kerak.
+                    </p>
+                  </div>
+                )}
+
+                {/* Demo: bir bosishda kiriladi */}
+                <button type="button"
+                  onClick={() => { setUsername('demoklinikaadmin'); setPassword('demoklinikaparol'); }}
+                  className="w-full mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg text-left hover:border-primary-400 transition-colors">
+                  <p className="text-xs text-primary-600 dark:text-primary-400 font-medium">
+                    🧪 Demo rejimi — bosing, ma'lumotlar o'zi to'ladi
+                  </p>
+                  <p className="text-xs text-primary-500 dark:text-primary-400 mt-1">
+                    demoklinikaadmin / demoklinikaparol
+                  </p>
+                  <p className="text-[11px] text-primary-400 mt-1">
+                    Demoda ma'lumotlar soxta va yangi ekranlar bo'sh ko'rinadi.
+                    Haqiqiy ish uchun yuqoridagi loginlardan foydalaning.
+                  </p>
+                </button>
+              </>
             )}
             <p className="text-xs text-gray-400">
               {t('auth.support')} <br />
