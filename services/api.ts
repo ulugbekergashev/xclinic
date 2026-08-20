@@ -1234,6 +1234,8 @@ export const api = {
             fetchJson<{ success: true }>(`/studies/${studyId}/seen`, { method: 'POST' }),
         /** Natijasi tayyor, lekin ko'rilmagan qabullar — SANA bilan cheklanmagan */
         pendingResults: () => fetchJson<any[]>('/visits/pending-results'),
+        /** Ko'rsatkich bo'yicha vaqt qatori: bitta qiymat emas, O'ZGARISH muhim */
+        labDynamics: (patientId: string) => fetchJson<any[]>(`/patients/${patientId}/lab-dynamics`),
         lockVisit: (visitId: string, disposition?: string) =>
             fetchJson<any>(`/visits/${visitId}/lock`, { method: 'POST', body: JSON.stringify({ disposition }) }),
     },

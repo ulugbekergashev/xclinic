@@ -364,6 +364,97 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
         res.json(updated);
     });
 
+    /**
+     * TAHLIL DINAMIKASI: bitta ko'rsatkich vaqt bo'yicha.
+     *
+     * Nima uchun kerak. Bitta gemoglobin qiymati kam narsa aytadi. Ma'nosi
+     * O'ZGARISHDA: 130 → 118 → 98 — bu qon yo'qotish, va uni faqat qatorlar
+     * yonma-yon turganda ko'rish mumkin (GAP-ANALYSIS, 2-sahna, 5-band).
+     * Hozir natijalar faqat o'z buyurtmasi ichida ko'rinadi.
+     *
+     * Ko'rsatkich bo'yicha guruhlaymiz, NOMI bilan emas id si bilan:
+     * bir xil nomli ko'rsatkich turli tahlillarda boshqa normaga ega
+     * bo'lishi mumkin.
+     */
+    route('get', '/api/patients/:id/lab-dynamics', async (req, res, clinicId) => {
+        if (!(await assertPatientOwnership(req, res, req.params.id))) return;
+
+        const results = await prisma.labResult.findMany({
+            where: {
+                orderItem: {
+                    order: { clinicId, patientId: req.params.id, status: 'Completed' },
+                },
+                // Matnli natijalar grafikka tushmaydi ("salbiy", "topilmadi")
+                valueNum: { not: null },
+            },
+            include: {
+                parameter: { select: { id: true, name: true, unit: true, refLow: true, refHigh: true } },
+                orderItem: {
+                    select: {
+                        testName: true,
+                        order: { select: { completedAt: true, orderedAt: true } },
+                    },
+                },
+            },
+            orderBy: { enteredAt: 'asc' },
+            take: 1000,
+        });
+
+        const byParam = new Map<string, any>();
+        for (const r of results) {
+            const key = r.parameterId;
+            if (!byParam.has(key)) {
+                byParam.set(key, {
+                    parameterId: key,
+                    name: r.parameter?.name || '—',
+                    unit: r.parameter?.unit || null,
+                    refLow: r.parameter?.refLow ?? null,
+                    refHigh: r.parameter?.refHigh ?? null,
+                    testName: r.orderItem?.testName || null,
+                    points: [] as any[],
+                });
+            }
+            byParam.get(key).points.push({
+                at: r.orderItem?.order?.completedAt || r.enteredAt,
+                value: r.valueNum,
+                flag: r.flag,
+            });
+        }
+
+        /* Bitta o'lchov — dinamika emas. Lekin uni ham qaytaramiz: shifokor
+           "o'lchangan, lekin taqqoslash uchun yetarli emas" degan holatni
+           ko'rishi kerak, ro'yxatda umuman yo'qligini emas. */
+        const series = Array.from(byParam.values()).map((p: any) => {
+            const pts = p.points;
+            const last = pts[pts.length - 1];
+            const prev = pts.length > 1 ? pts[pts.length - 2] : null;
+            return {
+                ...p,
+                count: pts.length,
+                last: last?.value ?? null,
+                lastAt: last?.at ?? null,
+                lastFlag: last?.flag ?? null,
+                // O'zgarish: oxirgi ikki o'lchov orasida
+                delta: prev ? Math.round((last.value - prev.value) * 100) / 100 : null,
+            };
+        });
+
+        /* Tartib: normadan chetdagilar tepada, keyin o'lchovi ko'p bo'lganlar.
+           Shifokor ekranning boshiga qaraydi va muammoni o'sha yerda ko'radi. */
+        series.sort((a: any, b: any) => {
+            const aBad = a.lastFlag && a.lastFlag !== 'Normal' ? 1 : 0;
+            const bBad = b.lastFlag && b.lastFlag !== 'Normal' ? 1 : 0;
+            if (aBad !== bBad) return bBad - aBad;
+            return b.count - a.count;
+        });
+
+        logAccess(prisma, req, {
+            action: 'View', entityType: 'LabOrder',
+            patientId: req.params.id, clinicId,
+        });
+        res.json(series);
+    });
+
     // ═══ YO'LLANMA ═══════════════════════════════════════════════════════════
 
     /* Nima uchun kerak. Hozir shifokor "kassaga boring, keyin UZI ga" deb

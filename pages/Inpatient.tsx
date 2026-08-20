@@ -829,6 +829,32 @@ export const Inpatient: React.FC<Props> = ({
                                 </div>
                             )}
 
+                            {/* ── Bugungi obxod ─────────────────────────────
+                                Kunlik obxod majburiy emas edi va "bugun yozuv
+                                yo'q" degan ogohlantirish ham yo'q edi: bemor
+                                bir necha kun yozuvsiz yotib qolishi mumkin
+                                (GAP-ANALYSIS, 3-sahna, 6-band). Taqiq emas —
+                                eslatma: yozuvni majburlab bo'lmaydi, lekin
+                                uning yo'qligi ko'rinib turishi kerak. */}
+                            {detail.status === 'Active' && !(detail.rounds || []).some(r => r.date === todayISO()) && (
+                                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                                    <CalendarDays className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                                            Bugun obxod yozuvi yo'q
+                                        </p>
+                                        <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                                            {(() => {
+                                                const last = (detail.rounds || [])[0];
+                                                if (!last) return 'Yotgandan beri birorta obxod yozilmagan.';
+                                                const days = Math.max(0, Math.round((Date.now() - new Date(last.date).getTime()) / 864e5));
+                                                return `Oxirgi yozuv: ${last.date}${days > 0 ? ` (${days} kun oldin)` : ''}.`;
+                                            })()}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* ── Harorat varag'i ───────────────────────────── */}
                             <div>
                                 <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-2">

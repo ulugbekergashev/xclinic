@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, CreditCard, FileText, User, Activity, Phone, MapPin, Clock, Edit, Printer, Send, Package, UserPlus, UserCheck, Plus } from 'lucide-react';
+import { ArrowLeft, Calendar, CreditCard, FileText, User, Activity, Phone, MapPin, Clock, Edit, Printer, Send, Package, UserPlus, UserCheck, Plus, FlaskConical } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, Select } from '../components/Common';
 import { EncounterForm, EncounterSummary } from '../components/EncounterForm';
 import { PatientPhotos } from '../components/PatientPhotos';
 import { VisitWorkflow, ProceduresSection } from '../components/ProceduresSection';
 import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 import { PatientDocuments } from '../components/PatientDocuments';
+import { LabDynamics } from '../components/LabDynamics';
 import { InstallmentsTab } from '../components/InstallmentsTab';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, SubscriptionPlan, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate } from '../types';
 import { api, getFileUrl } from '../services/api';
@@ -59,7 +60,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const patientId = patientIdProp || patientIdParam || null;
    const { t } = useLanguage();
 
-   const [activeTab, setActiveTab] = useState<'overview' | 'chart' | 'appointments' | 'payments' | 'materials' | 'installments'>('overview');
+   const [activeTab, setActiveTab] = useState<'overview' | 'chart' | 'labs' | 'appointments' | 'payments' | 'materials' | 'installments'>('overview');
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
@@ -1034,6 +1035,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      { id: 'overview', label: t('patients.details.tabs.overview'), icon: User },
                      { id: 'chart', label: t('patients.details.tabs.chart'), icon: Activity },
                      { id: 'photos', label: t('patients.details.tabs.photos'), icon: FileText },
+                     /* Dinamika: bitta qiymat kam narsa aytadi, o'zgarish muhim */
+                     { id: 'labs', label: 'Tahlil dinamikasi', icon: FlaskConical },
                      { id: 'appointments', label: t('patients.details.tabs.appointments'), icon: Calendar },
                      { id: 'payments', label: t('patients.details.tabs.payments'), icon: CreditCard },
                      { id: 'installments', label: "Bo'lib to'lash", icon: Clock },
@@ -1190,6 +1193,11 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         onSave={handleSaveEncounter}
                      />
                   </div>
+               )}
+
+               {/* Tahlil dinamikasi (reliz 6+) */}
+               {activeTab === 'labs' && (
+                  <LabDynamics patientId={patient.id} />
                )}
 
                {/* Photos Tab */}
