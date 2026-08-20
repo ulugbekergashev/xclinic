@@ -11,6 +11,7 @@ import {
 import { api } from '../services/api';
 import { EncounterForm } from '../components/EncounterForm';
 import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
+import { printReferral } from '../utils/printForms';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Qabul ish stoli — shifokorning asosiy ekrani.
@@ -121,6 +122,43 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
         if (kind === 'lab') await api.clinical.markLabSeen(id);
         else await api.clinical.markStudySeen(id);
     }, "Ko'rilgan deb belgilandi");
+
+    /* YO'LLANMA. Bemor qo'lida qog'oz bo'lishi kerak: kassir undan nima
+       to'lanishini o'qiydi, bemor esa nima uchun to'layotganini biladi.
+       Ilgari bu og'zaki edi — "kassaga boring, UZI uchun to'lang"
+       (GAP-ANALYSIS B7).
+
+       Ro'yxat TO'LANMAGAN qatorlardan olinadi: to'langanini yana kassaga
+       yuborishning ma'nosi yo'q. */
+    const [refBusy, setRefBusy] = useState(false);
+
+    const unpaidCharges = charges.filter(c => c.status === 'Unpaid');
+
+    const issueReferral = async () => {
+        if (!visit) return;
+        setRefBusy(true);
+        try {
+            const created = await api.referrals.create({
+                patientId: visit.patientId,
+                visitId: visit.id,
+                kind: 'Cashier',
+                items: unpaidCharges.map(c => ({
+                    name: c.name,
+                    price: c.unitPrice,
+                    quantity: c.quantity || 1,
+                })),
+            });
+            // Bosma varaq uchun klinika shapkasi kerak — alohida so'rov
+            const full = await api.referrals.get(created.id);
+            const opened = printReferral(full, full.clinic);
+            addToast(opened ? 'success' : 'info',
+                opened ? `Yo'llanma № ${created.number}` : `Yo'llanma № ${created.number} yaratildi, lekin bosma oyna bloklandi`);
+        } catch (e: any) {
+            addToast('error', e?.message || "Yo'llanma chiqarilmadi");
+        } finally {
+            setRefBusy(false);
+        }
+    };
 
     const sendToLab = () => guard(() => api.labOrders.create({
         patientId: visit!.patientId,
@@ -270,8 +308,12 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                         <b>{fmt(money.due)} so'm</b> to'lanmagan — bemorni kassaga yo'naltiring.
                         {money.unpaidCount > 1 ? ` (${money.unpaidCount} ta xizmat)` : ''}
                     </p>
+                    <button onClick={issueReferral} disabled={refBusy}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50">
+                        <Printer className="w-4 h-4" /> Yo'llanma chiqarish
+                    </button>
                     <button onClick={() => navigate('/finance')}
-                        className="ml-auto text-sm font-medium text-amber-800 dark:text-amber-200 hover:underline">
+                        className="text-sm font-medium text-amber-800 dark:text-amber-200 hover:underline">
                         Kassaga o'tish
                     </button>
                 </div>

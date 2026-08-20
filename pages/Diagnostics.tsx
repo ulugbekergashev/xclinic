@@ -3,8 +3,9 @@ import {
     Activity, Plus, Search, X, Trash2, AlertCircle, CheckCircle,
     Clock, Printer, Image as ImageIcon, Upload,
 } from 'lucide-react';
-import { DiagnosticStudy, Modality, MODALITY_LABELS, Patient, Department, Service } from '../types';
+import { DiagnosticStudy, Modality, MODALITY_LABELS, Patient, Department, Service, Clinic } from '../types';
 import { api, getFileUrl, API_URL } from '../services/api';
+import { printStudyConclusion } from '../utils/printForms';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Diagnostika — UZI, EKG, rentgen va boshqalar.
@@ -31,6 +32,8 @@ interface Props {
     doctors?: any[];
     currentUserName?: string;
     token?: string;
+    /** Bosma blank shapkasi uchun */
+    currentClinic?: Clinic | null;
 }
 
 const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
@@ -38,6 +41,7 @@ const fmtDate = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString(
 
 export const Diagnostics: React.FC<Props> = ({
     clinicId, patients = [], departments = [], services = [], doctors = [], currentUserName, token,
+    currentClinic,
 }) => {
     const [studies, setStudies] = useState<DiagnosticStudy[]>([]);
     const [search, setSearch] = useState('');
@@ -120,6 +124,26 @@ export const Diagnostics: React.FC<Props> = ({
             if (markCompleted) setEditing(null);
         } catch (e: any) { setError(e.message || 'Saqlanmadi'); }
         finally { setSaving(false); }
+    };
+
+    /* Ilgari bu tugma `window.print()` chaqirardi — dastur oynasi bosilardi.
+       Xulosa esa rasmiy hujjat: klinika shapkasi, litsenziya, imzo joyi.
+       Ekranda hozir kiritilayotgan matn ham qog'ozga tushishi kerak, shuning
+       uchun `draft` dan olinadi, bazadagi eski qiymatdan emas. */
+    const printConclusion = () => {
+        if (!editing) return;
+        const patient = patients.find(p => p.id === editing.patientId);
+        const opened = printStudyConclusion(
+            {
+                ...editing,
+                findings: draft.findings ?? editing.findings,
+                conclusion: draft.conclusion ?? editing.conclusion,
+                modalityLabel: MODALITY_LABELS[editing.modality],
+                patient,
+            },
+            currentClinic || undefined,
+        );
+        if (!opened) setError('Bosma oyna bloklandi');
     };
 
     // Rasm yuklash — bemor fotolari bilan bir xil endpoint mexanizmi
@@ -309,7 +333,7 @@ export const Diagnostics: React.FC<Props> = ({
                                 </p>
                             </div>
                             <div className="ml-auto flex items-center gap-2">
-                                <button onClick={() => window.print()} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Chop etish">
+                                <button onClick={printConclusion} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Xulosani chop etish">
                                     <Printer className="w-5 h-5" />
                                 </button>
                                 <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>

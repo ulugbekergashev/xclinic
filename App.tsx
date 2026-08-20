@@ -1494,6 +1494,7 @@ const AppContent: React.FC = () => {
                   services={services}
                   doctors={doctors}
                   currentUserName={userName}
+                  currentClinic={currentClinic}
                   token={(() => {
                     try {
                       const raw = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
@@ -1523,6 +1524,7 @@ const AppContent: React.FC = () => {
                   patients={patients}
                   departments={departments}
                   currentUserName={userName}
+                  currentClinic={currentClinic}
                   onExpensesChanged={refreshExpenses}
                   defaultDoctorName={(() => {
                     if (userRole !== UserRole.DOCTOR) return undefined;

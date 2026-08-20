@@ -3,8 +3,9 @@ import {
     FlaskConical, Plus, Search, Clock, CheckCircle, X, Trash2,
     AlertCircle, Beaker, Printer, ArrowUp, ArrowDown, Minus, Settings2,
 } from 'lucide-react';
-import { LabOrder, LabTest, LabOrderItem, LabResultRow, Patient, Department } from '../types';
+import { LabOrder, LabTest, LabOrderItem, LabResultRow, Patient, Department, Clinic } from '../types';
 import { api } from '../services/api';
+import { printLabResult } from '../utils/printForms';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Laboratoriya — tahlillar.
@@ -41,6 +42,8 @@ interface Props {
     onExpensesChanged?: () => void;
     defaultDoctorName?: string;
     currentUserName?: string;
+    /** Bosma blank shapkasi uchun: nom, litsenziya, manzil */
+    currentClinic?: Clinic | null;
 }
 
 const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
@@ -57,7 +60,7 @@ const refText = (p: LabResultRow) => {
 
 export const LabOrders: React.FC<Props> = ({
     clinicId, labOrders, setLabOrders, doctors, patients = [],
-    onExpensesChanged, defaultDoctorName, currentUserName,
+    onExpensesChanged, defaultDoctorName, currentUserName, currentClinic,
 }) => {
     const [tests, setTests] = useState<LabTest[]>([]);
     const [search, setSearch] = useState('');
@@ -153,7 +156,19 @@ export const LabOrders: React.FC<Props> = ({
         catch (e: any) { setError(e.message || 'O\'chirilmadi'); }
     };
 
-    const printResults = () => window.print();
+    /* Ilgari bu `window.print()` edi — ya'ni DASTUR OYNASI bosilardi:
+       yon menyu, tugmalar, filtrlar bilan. Bemorga beriladigan hujjat esa
+       alohida blank bo'lishi kerak: klinika shapkasi, litsenziya, normalar
+       va imzo joyi (GAP-ANALYSIS B26). */
+    const printResults = () => {
+        if (!resultsOrder) return;
+        const patient = patients.find(p => p.id === resultsOrder.patientId);
+        const opened = printLabResult(
+            { ...resultsOrder, patient },
+            currentClinic || undefined,
+        );
+        if (!opened) setError("Bosma oyna bloklandi — brauzer sozlamalarini tekshiring");
+    };
 
     const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 

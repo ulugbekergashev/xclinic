@@ -1954,6 +1954,28 @@ export const api = {
             });
         }
     },
+    /* Yo'llanma — raqami va holati bor hujjat (reliz 4).
+       `payload` da xizmatlar va summa BERILGAN paytdagi holatda saqlanadi:
+       bemor qo'lidagi qog'oz bilan tizim bir xil bo'lishi kerak. */
+    referrals: {
+        getAll: (params?: { patientId?: string; status?: string; visitId?: string }) => {
+            const q = new URLSearchParams();
+            Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
+            const qs = q.toString();
+            return fetchJson<any[]>(`/referrals${qs ? `?${qs}` : ''}`);
+        },
+        /** Bosma varaq uchun: klinika shapkasi va yoyilgan payload bilan */
+        get: (id: string) => fetchJson<any>(`/referrals/${id}`),
+        create: (data: {
+            patientId: string; visitId?: string | null;
+            kind: 'Lab' | 'Study' | 'Consult' | 'Cashier';
+            targetDepartmentId?: string | null;
+            items?: { name: string; price: number; quantity?: number }[];
+        }) => fetchJson<any>('/referrals', { method: 'POST', body: JSON.stringify(data) }),
+        use: (id: string) => fetchJson<any>(`/referrals/${id}/use`, { method: 'POST' }),
+        cancel: (id: string) => fetchJson<any>(`/referrals/${id}/cancel`, { method: 'POST' }),
+    },
+
     /* Hamshiralar (reliz 4, qaror В17). Boshqarish faqat klinika egasida —
        server ham shu rolni talab qiladi. */
     nurses: {
