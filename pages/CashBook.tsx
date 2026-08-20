@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
     ChevronLeft, ChevronRight, Download, Wallet, Banknote, CreditCard,
     TrendingDown, Users, CalendarDays, AlertCircle, Coins, Lock, LockOpen, Check,
@@ -500,6 +500,20 @@ export const CashBook: React.FC<CashBookProps> = ({
     // Yopish: terminal va Click ixtiyoriy
     const [countedCardInput, setCountedCardInput] = useState('');
     const [countedClickInput, setCountedClickInput] = useState('');
+
+    /* HOZIR KLINIKADA turgan bemorlar. Kassir oynasida odam turadi, umumiy
+       ro'yxatda esa butun klinikaning qarzi — o'tgan oyning qarzdorlari
+       ham. Kassir odamni o'sha ro'yxatdan izlashi kerak edi (GAP-ANALYSIS,
+       1-sahna, 2-band). Bu ro'yxat faqat bugungi ochiq qabullarni beradi. */
+    const [hereNow, setHereNow] = useState<any[]>([]);
+    const loadHereNow = useCallback(async () => {
+        try { setHereNow(await api.charges.pending(true)); }
+        catch { setHereNow([]); }
+    }, []);
+    useEffect(() => {
+        if (view !== 'day' || date !== today) { setHereNow([]); return; }
+        loadHereNow();
+    }, [view, date, today, loadHereNow, charges]);
 
     // Bir bemorning bir necha qatorini bitta chek bilan to'lash
     const [payingPatient, setPayingPatient] = useState<{ name: string; patientId?: string } | null>(null);
@@ -1538,6 +1552,47 @@ export const CashBook: React.FC<CashBookProps> = ({
                         )}
                     </Card>
 
+                    {/* ── Hozir klinikada: kim oynada turishi mumkin ────────
+                        Kassir ro'yxatning boshiga qaraydi va oynadagi odamni
+                        navbat raqami bo'yicha topadi. */}
+                    {hereNow.length > 0 && (
+                        <Card className="overflow-hidden">
+                            <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                                <Users className="w-4 h-4 text-primary-500 shrink-0" />
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white">Hozir klinikada</h3>
+                                <span className="text-xs text-gray-400">({hereNow.length} ta to'lovsiz)</span>
+                                <span className="ml-auto text-sm font-black text-primary-600 dark:text-primary-400 tabular-nums">
+                                    {num(hereNow.reduce((s: number, g: any) => s + (g.due || 0), 0))} UZS
+                                </span>
+                            </div>
+                            <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {hereNow.map((g: any) => (
+                                    <li key={g.patientId || g.patientName} className="px-5 py-3 flex flex-wrap items-center gap-3">
+                                        {g.queueNumber != null && (
+                                            <span className="w-9 h-9 rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 grid place-items-center font-bold text-sm shrink-0">
+                                                {g.queueNumber}
+                                            </span>
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{g.patientName}</p>
+                                            <p className="text-[11px] text-gray-400">
+                                                {(g.items || []).length} ta xizmat
+                                                {(g.items || []).length > 0 ? ` · ${g.items.map((i: any) => i.name).join(', ').slice(0, 60)}` : ''}
+                                            </p>
+                                        </div>
+                                        <span className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 shrink-0">
+                                            {num(g.due)}
+                                        </span>
+                                        <button onClick={() => openChargePayment(g.patientName, g.patientId)}
+                                            className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700">
+                                            To'lash
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Card>
+                    )}
+
                     {/* ── Smena holati ──────────────────────────────────────
                         Kim kassada turgani. Majburiy emas: ochmasdan ham
                         ishlash mumkin, lekin ochilgan bo'lsa kunni yopishda
@@ -1679,7 +1734,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     receivedByName={currentUserName}
                     role={userRole}
                     addToast={addToast}
-                    onDone={() => onChargesChanged?.()}
+                    onDone={() => { onChargesChanged?.(); loadHereNow(); }}
                 />
             )}
 

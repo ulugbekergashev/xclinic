@@ -170,29 +170,74 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
         res.json(charges);
     });
 
-    /** Bemor bo'yicha guruhlangan qarz — kassir bitta bemorni ochganda */
+    /**
+     * Bemor bo'yicha guruhlangan qarz.
+     *
+     * `now=1` — FAQAT hozir klinikada bo'lgan bemorlar: bugun ochilgan va
+     * yopilmagan qabuli borlar. Nima uchun kerak: kassir oynasida bemor
+     * turadi, ro'yxatda esa butun klinikaning qarzi — o'tgan oyning
+     * qarzdorlari ham (GAP-ANALYSIS, 1-sahna, 2-band). Kassir odamni
+     * umumiy ro'yxatdan izlashi kerak edi.
+     *
+     * Sukut bo'yicha xatti-harakat O'ZGARMAYDI: parametr berilmasa
+     * ilgarigidek butun qarz qaytadi.
+     */
     route('get', '/api/charges/pending', async (req, res, clinicId) => {
+        const onlyNow = req.query.now === '1' || req.query.now === 'true';
+
         const charges = await prisma.visitCharge.findMany({
             where: { clinicId, status: 'Unpaid' },
-            include: { visit: { select: { id: true, date: true, queueNumber: true } } },
+            include: {
+                visit: {
+                    select: {
+                        id: true, date: true, queueNumber: true, status: true,
+                        departmentId: true, doctorName: true,
+                    },
+                },
+            },
             orderBy: { createdAt: 'asc' },
         });
 
+        /* "Hozir klinikada" — bugungi va yopilmagan qabul. `AwaitingResults`
+           ham kiradi: bemor tahlilga ketgan, lekin ketmagan — u qaytib
+           keladi va kassaga o'sha yerda o'tadi. */
+        const today = nowDate();
+        const isHere = (c: any) => !!c.visit
+            && c.visit.date === today
+            && !['Completed', 'Cancelled'].includes(String(c.visit.status));
+
+        const rows = onlyNow ? charges.filter(isHere) : charges;
+
         // Bemor bo'yicha yig'amiz — kassir "kim qancha qarz" ni bir qarashda ko'rsin
         const byPatient = new Map<string, any>();
-        for (const c of charges) {
+        for (const c of rows) {
             const key = c.patientId || `noname:${c.patientName}`;
             if (!byPatient.has(key)) {
                 byPatient.set(key, {
                     patientId: c.patientId, patientName: c.patientName,
                     due: 0, items: [] as any[],
+                    // Kassir uchun: navbat raqami va bo'lim — bemorni tanish uchun
+                    here: false, queueNumber: null as number | null,
+                    department: null as string | null, visitId: null as string | null,
                 });
             }
             const g = byPatient.get(key);
             g.due = round(g.due + (c.total - (c.paidAmount || 0)));
             g.items.push(c);
+            if (isHere(c)) {
+                g.here = true;
+                g.queueNumber = g.queueNumber ?? c.visit.queueNumber;
+                g.visitId = g.visitId || c.visit.id;
+                g.department = g.department || c.visit.departmentId;
+            }
         }
-        res.json(Array.from(byPatient.values()).sort((a, b) => b.due - a.due));
+
+        /* Tartib: HOZIR turganlar tepada, keyin summa bo'yicha. Kassir
+           ro'yxatning boshiga qaraydi va o'sha yerda oynadagi odamni ko'radi. */
+        res.json(Array.from(byPatient.values()).sort((a, b) => {
+            if (a.here !== b.here) return a.here ? -1 : 1;
+            return b.due - a.due;
+        }));
     });
 
     route('get', '/api/visits/:id/charges', async (req, res, clinicId) => {

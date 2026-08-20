@@ -202,7 +202,15 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `API request failed: ${response.statusText}`);
+        const err: any = new Error(errorData.error || `API request failed: ${response.statusText}`);
+        /* Javob TANASINI ham beramiz. Sabab: 409 ba'zan ma'lumot bilan
+           keladi — masalan "qabul allaqachon ochilgan" javobida mavjud
+           `visitId` bo'ladi, va interfeys "o'shani ochamizmi?" deb
+           so'rashi kerak. Ilgari faqat matn qolib, id yo'qolardi.
+           Eski chaqiruvchilar `e.message` ni o'qiydi — ular buzilmaydi. */
+        err.status = response.status;
+        err.data = errorData;
+        throw err;
     }
     return response.json();
 }
@@ -1151,7 +1159,10 @@ export const api = {
         },
         getById: (id: string) =>
             isDemoMode() ? demoMissing<Visit>('qabullar') : fetchJson<Visit>(`/visits/${id}`),
-        create: (data: Partial<Visit>) =>
+        /** `force` — bugun shu bo'limda qabul ochilgan bo'lsa ham ataylab
+         *  yangisini ochish (ertalab va kechqurun alohida murojaat).
+         *  Bo'lmasa server 409 va mavjud `visitId` ni qaytaradi. */
+        create: (data: Partial<Visit> & { force?: boolean }) =>
             isDemoMode() ? demoWrite<Visit>() : fetchJson<Visit>('/visits', { method: 'POST', body: JSON.stringify(data) }),
         // Qabulga xizmat qo'shish — narx shu orqali kassaga tushadi
         addProcedure: (visitId: string, data: { serviceId?: number; procedureName?: string; price?: number; discount?: number; notes?: string; doctorId?: string; doctorName?: string }) =>
@@ -1237,7 +1248,11 @@ export const api = {
             return fetchJson<VisitCharge[]>(`/charges${qs ? `?${qs}` : ''}`);
         },
         // Kassa ekrani: bemor bo'yicha guruhlangan qarz
-        pending: () => isDemoMode() ? demoRead<PendingPatient[]>([]) : fetchJson<PendingPatient[]>('/charges/pending'),
+        /** `now` — faqat hozir klinikada bo'lgan bemorlar (bugungi ochiq qabul).
+         *  Kassir oynasidagi odamni umumiy qarz ro'yxatidan izlamasligi uchun. */
+        pending: (now?: boolean) => isDemoMode()
+            ? demoRead<PendingPatient[]>([])
+            : fetchJson<PendingPatient[]>(`/charges/pending${now ? '?now=1' : ''}`),
         byVisit: (visitId: string) =>
             isDemoMode()
                 ? demoRead<{ charges: VisitCharge[]; summary: ChargeSummary }>({ charges: [], summary: { total: 0, paid: 0, due: 0, unpaidCount: 0 } })
@@ -2155,10 +2170,17 @@ export const api = {
         },
     },
     labOrders: {
+        /** Javobda `paid` va `due` ham keladi: laborant to'lovsiz natija
+         *  bermaydi, shuning uchun holatni ro'yxatda ko'rishi kerak. */
         getAll: (clinicId: string) => {
             if (isDemoMode()) return Promise.resolve([...DEMO_LAB_ORDERS]);
             return fetchJson<any[]>(`/lab-orders?clinicId=${clinicId}`);
         },
+        /** Proba olindi. To'lov yo'q bo'lsa ham bajariladi, lekin ogohlantiradi:
+         *  qon olingan bo'lsa — olingan, faktni yozmaslik yomonroq. */
+        collect: (id: string) =>
+            isDemoMode() ? demoWrite<any>() : fetchJson<{ order: any; unpaidWarning: string | null }>(
+                `/lab-orders/${id}/collect`, { method: 'POST' }),
         create: (data: any) => {
             if (isDemoMode()) {
                 const newOrder = { 

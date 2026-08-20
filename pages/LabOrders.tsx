@@ -160,6 +160,18 @@ export const LabOrders: React.FC<Props> = ({
        yon menyu, tugmalar, filtrlar bilan. Bemorga beriladigan hujjat esa
        alohida blank bo'lishi kerak: klinika shapkasi, litsenziya, normalar
        va imzo joyi (GAP-ANALYSIS B26). */
+    /** Proba olindi. To'lov yo'q bo'lsa ham bajariladi — faktni yozmaslik yomonroq. */
+    const collectSample = async (order: LabOrder) => {
+        setSaving(true); setError('');
+        try {
+            const res = await api.labOrders.collect(order.id);
+            await reload();
+            if (res?.unpaidWarning) setError(res.unpaidWarning);
+        } catch (e: any) {
+            setError(e?.message || 'Belgilanmadi');
+        } finally { setSaving(false); }
+    };
+
     const printResults = () => {
         if (!resultsOrder) return;
         const patient = patients.find(p => p.id === resultsOrder.patientId);
@@ -243,6 +255,24 @@ export const LabOrders: React.FC<Props> = ({
                                             {order.priority === 'Urgent' && (
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Shoshilinch</span>
                                             )}
+                                            {/* TO'LANDIMI — laborant uchun asosiy savol: to'lovsiz
+                                                natija berilmaydi. Ilgari buni ro'yxatda ko'rish
+                                                imkoni yo'q edi, laborant kassaga qo'ng'iroq qilardi. */}
+                                            {(order as any).paid === true && (
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                                    To'langan
+                                                </span>
+                                            )}
+                                            {(order as any).paid === false && (
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                                    To'lanmagan{(order as any).due ? ` · ${fmt((order as any).due)}` : ''}
+                                                </span>
+                                            )}
+                                            {(order as any).sampleCollectedAt && (
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                                    Proba olindi
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                             {(order.items || []).map(i => i.testName).join(', ') || '—'}
@@ -254,6 +284,15 @@ export const LabOrders: React.FC<Props> = ({
                                     <div className="text-right shrink-0">
                                         <p className="font-semibold text-gray-900 dark:text-white tabular-nums">{fmt(order.totalPrice || 0)} so'm</p>
                                         <div className="flex gap-2 mt-2">
+                                            {/* Bemor keldi va proba olindi. Sana maydoni bor edi,
+                                                lekin uni faqat umumiy tahrirlash orqali
+                                                o'zgartirish mumkin edi. */}
+                                            {!(order as any).sampleCollectedAt && order.status !== 'Completed' && order.status !== 'Cancelled' && (
+                                                <button onClick={() => collectSample(order)} disabled={saving}
+                                                    className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:border-primary-400 disabled:opacity-50">
+                                                    Proba olindi
+                                                </button>
+                                            )}
                                             <button onClick={() => openResults(order)}
                                                 className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                                                 Natijalar

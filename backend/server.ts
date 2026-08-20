@@ -3476,11 +3476,106 @@ app.get('/api/lab-orders', authenticateToken, async (req: any, res: any) => {
             include: { items: true },
             orderBy: { orderedAt: 'desc' }
         });
-        res.json(orders);
+
+        /* TO'LANDIMI. Laborant uchun bu asosiy savol: to'lovsiz natija
+           berilmaydi (402), lekin ro'yxatda buni ko'rish imkoni YO'Q edi —
+           laborant har buyurtmani ochib tekshirardi yoki kassaga qo'ng'iroq
+           qilardi (GAP-ANALYSIS, 1-sahna, 3-band).
+
+           Manba — hisob qatori: `source: 'Lab'`, `sourceId` = buyurtma id si.
+           Alohida maydon qo'shmaymiz: pul holati bitta joyda turishi kerak,
+           aks holda ikkisi bir-biridan uzoqlashadi. */
+        const chargeRows = orders.length > 0
+            ? await prisma.visitCharge.findMany({
+                where: {
+                    clinicId: clinicId as string,
+                    source: 'Lab',
+                    sourceId: { in: orders.map((o: any) => o.id) },
+                    status: { not: 'Cancelled' },
+                },
+                select: { sourceId: true, total: true, paidAmount: true, status: true },
+            })
+            : [];
+        const payByOrder = new Map<string, { paid: boolean; due: number }>();
+        for (const c of chargeRows) {
+            const prev = payByOrder.get(String(c.sourceId)) || { paid: true, due: 0 };
+            const due = Math.round(((c.total || 0) - (c.paidAmount || 0)) * 100) / 100;
+            payByOrder.set(String(c.sourceId), {
+                paid: prev.paid && c.status === 'Paid',
+                due: Math.round((prev.due + Math.max(0, due)) * 100) / 100,
+            });
+        }
+
+        res.json(orders.map((o: any) => {
+            const pay = payByOrder.get(o.id);
+            return {
+                ...o,
+                // Qator umuman yo'q bo'lsa (eski yozuv) — to'lov holati noma'lum
+                paid: pay ? pay.paid : null,
+                due: pay ? pay.due : null,
+            };
+        }));
     } catch (error: any) {
+        console.error('Lab orders fetch error:', error?.message || error);
         res.status(500).json({ error: 'Failed to fetch lab orders' });
     }
 });
+
+/**
+ * PROBA OLINDI.
+ *
+ * Nima uchun alohida amal. `sampleCollectedAt` maydoni bor edi, lekin uni
+ * faqat umumiy PUT orqali o'zgartirish mumkin edi — ya'ni "bemor keldi,
+ * qon olindi" degan oddiy ish uchun laborant butun buyurtmani tahrirlashi
+ * kerak edi (GAP-ANALYSIS, 1-sahna, 4-band).
+ *
+ * To'lovni TEKSHIRAMIZ, lekin TAQIQLAMAYMIZ: qon olingan bo'lsa, olingan.
+ * Faktni yozmaslik — yomonroq. Javobda `unpaidWarning` qaytadi.
+ */
+app.post('/api/lab-orders/:id/collect', authenticateToken,
+    requireRole('LAB_TECHNICIAN', 'RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN'), async (req: any, res: any) => {
+        try {
+            const clinicId = getScopedClinicId(req);
+            if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
+
+            const order = await prisma.labOrder.findUnique({ where: { id: req.params.id } });
+            if (!order || order.clinicId !== clinicId) {
+                return res.status(404).json({ error: 'Buyurtma topilmadi' });
+            }
+            if (order.sampleCollectedAt) {
+                return res.status(409).json({ error: 'Proba allaqachon olingan' });
+            }
+            if (order.status === 'Completed' || order.status === 'Cancelled') {
+                return res.status(409).json({ error: 'Buyurtma yopilgan' });
+            }
+
+            const charge = await prisma.visitCharge.findFirst({
+                where: { clinicId, source: 'Lab', sourceId: order.id, status: { not: 'Cancelled' } },
+                select: { total: true, paidAmount: true, status: true },
+            });
+            const unpaid = charge ? charge.status !== 'Paid' : false;
+
+            const updated = await prisma.labOrder.update({
+                where: { id: order.id },
+                data: {
+                    sampleCollectedAt: new Date(),
+                    status: 'Collected',
+                    technicianId: (req as any).user?.technicianId || order.technicianId,
+                    technicianName: (req as any).user?.name || order.technicianName,
+                },
+            });
+
+            res.json({
+                order: updated,
+                unpaidWarning: unpaid
+                    ? `Diqqat: to'lov to'liq emas (qarz ${Math.round(((charge?.total || 0) - (charge?.paidAmount || 0)))})`
+                    : null,
+            });
+        } catch (error: any) {
+            console.error('Lab collect error:', error?.message || error);
+            res.status(500).json({ error: 'Probani belgilashda xatolik' });
+        }
+    });
 
 app.post('/api/lab-orders', authenticateToken, async (req: any, res: any) => {
     try {

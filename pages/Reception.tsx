@@ -151,6 +151,59 @@ export const Reception: React.FC<Props> = ({
             reset();
             loadToday();
         } catch (e: any) {
+            /* 409 — bugun shu bo'limda qabul allaqachon ochilgan. Bu XATO
+               emas, holat: registratura ikki marta bosgan yoki bemor
+               qaytib kelgan. Ilgari server tekshirmasdi va ikkinchi navbat
+               raqami bilan ikkinchi konsultatsiya ochilardi — bemor ikki
+               marta to'lardi (GAP-ANALYSIS, 1-sahna, 9-band).
+
+               Jimgina biriktirib qo'ymaymiz ham: qarorni odam qabul qiladi. */
+            if (e?.status === 409 && e?.data?.visitId) {
+                setDuplicate({
+                    visitId: e.data.visitId,
+                    queueNumber: e.data.queueNumber ?? null,
+                    status: e.data.status || '',
+                });
+            } else {
+                setError(e.message || 'Qabul ochilmadi');
+            }
+        } finally { setSaving(false); }
+    };
+
+    /* Takroriy qabul: mavjudini ochish yoki ataylab yangisini yaratish */
+    const [duplicate, setDuplicate] = useState<{ visitId: string; queueNumber: number | null; status: string } | null>(null);
+
+    const openExisting = () => {
+        if (!duplicate) return;
+        const id = duplicate.visitId;
+        setDuplicate(null);
+        navigate(`/visit/${id}`);
+    };
+
+    const forceNew = async () => {
+        setDuplicate(null);
+        setSaving(true); setError('');
+        try {
+            const doc = doctors.find(d => d.id === doctorId);
+            const visit = await api.visits.create({
+                patientId: patient!.id,
+                departmentId,
+                doctorId: doctorId || undefined,
+                doctorName: doc ? `${doc.firstName} ${doc.lastName}` : undefined,
+                complaints: complaints || undefined,
+                date: today(),
+                status: 'Waiting',
+                force: true,
+            });
+            if (serviceId) {
+                try { await api.visits.addProcedure(visit.id, { serviceId: Number(serviceId) }); }
+                catch (err) { console.error("Xizmat qo'shilmadi", err); }
+            }
+            setLastTicket({ ...visit, patient: patient! });
+            addToast('success', `Ikkinchi qabul ochildi — navbat №${visit.queueNumber ?? '—'}`);
+            reset();
+            loadToday();
+        } catch (e: any) {
             setError(e.message || 'Qabul ochilmadi');
         } finally { setSaving(false); }
     };
@@ -433,6 +486,52 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     </div>
                 </div>
             )}
+            {/* ── Takroriy qabul ────────────────────────────────────────────
+                Ilgari server tekshirmasdi: registratura ikki marta bosса,
+                o'sha bemorga o'sha bo'limda ikkinchi navbat raqami va ikkinchi
+                konsultatsiya ochilardi — bemor ikki marta to'lardi.
+
+                Qaror odamda: mavjudini ochish yoki ataylab yangisini yaratish
+                (ertalab va kechqurun alohida murojaat bo'lishi mumkin). */}
+            {duplicate && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDuplicate(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-start gap-3 mb-4">
+                            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-semibold text-gray-900 dark:text-white">
+                                    Bu bemorga bugun qabul ochilgan
+                                </h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                    Shu bo'limda navbat №{duplicate.queueNumber ?? '—'}
+                                    {duplicate.status ? `, holati: ${duplicate.status}` : ''}.
+                                </p>
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                            Yangi qabul ochilsa, konsultatsiya narxi IKKINCHI marta
+                            hisobga tushadi. Bemor qaytib kelgan bo'lsa — mavjud qabulni ochish kerak.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            <button onClick={openExisting}
+                                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+                                Mavjud qabulni ochish
+                            </button>
+                            <button onClick={forceNew} disabled={saving}
+                                className="flex-1 px-4 py-2 border border-amber-400 text-amber-700 dark:text-amber-300 rounded-lg text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50">
+                                Baribir yangisini ochish
+                            </button>
+                        </div>
+                        <button onClick={() => setDuplicate(null)}
+                            className="w-full mt-2 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                            Bekor qilish
+                        </button>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

@@ -266,6 +266,37 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
 
         const visitDate = date || nowDate();
 
+        /* TAKRORIY QABUL. Ilgari tekshiruv yo'q edi: registratura bir kunda
+           ikki marta bosса, o'sha bemorga o'sha bo'limda IKKINCHI qabul va
+           ikkinchi navbat raqami ochilardi — konsultatsiya ikki marta
+           hisobga tushardi (GAP-ANALYSIS, 1-sahna, 9-band).
+
+           BOSHQA bo'limga ochish bemalol: ko'p profilli klinikada bemor bir
+           kunda terapevt va UZI ga borishi normal.
+
+           Jimgina biriktirib qo'ymaydi: 409 va mavjud qabulning id si
+           qaytadi, qarorni odam qabul qiladi. `force: true` bilan ataylab
+           ikkinchisini ochish mumkin (masalan ertalab va kechqurun ikki
+           alohida murojaat). */
+        if (!req.body?.force) {
+            const open = await prisma.visit.findFirst({
+                where: {
+                    clinicId, patientId, date: visitDate,
+                    departmentId: departmentId || null,
+                    status: { notIn: ['Completed', 'Cancelled'] },
+                },
+                select: { id: true, queueNumber: true, status: true, doctorName: true },
+            });
+            if (open) {
+                return res.status(409).json({
+                    error: "Bu bemorga bugun shu bo'limda qabul allaqachon ochilgan",
+                    visitId: open.id,
+                    queueNumber: open.queueNumber,
+                    status: open.status,
+                });
+            }
+        }
+
         // Navbat raqami: har bo'limda har kuni 1 dan boshlanadi.
         // Registratura talonga shu raqamni bosadi, shifokor shu tartibda chaqiradi.
         const last = await prisma.visit.findFirst({
