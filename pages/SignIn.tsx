@@ -25,6 +25,24 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
       .catch(() => setLogins([]));
   }, []);
 
+  /* Nusxa olish. 127.0.0.1 xavfsiz kontekst hisoblanadi, shuning uchun
+     clipboard API ishlaydi; ishlamasa eski usulga tushamiz. */
+  const [copied, setCopied] = useState('');
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* qo'lda tanlansin */ }
+      document.body.removeChild(ta);
+    }
+    setCopied(text);
+    setTimeout(() => setCopied(c => (c === text ? '' : c)), 1500);
+  };
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -169,22 +187,32 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
             {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
               <>
                 {/* Shu bazadagi HAQIQIY loginlar. Parol ko'rsatilmaydi —
-                    uni faqat klinika biladi. Bosilganda login maydonga
-                    tushadi, qo'lda terish shart emas. */}
+                    uni faqat klinika biladi. Har qiymatni NUSXA olish yoki
+                    bosib maydonga qo'yish mumkin. */}
                 {logins.length > 0 && (
                   <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-left">
                     <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">
                       Shu kompyuterdagi loginlar
                     </p>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="space-y-1.5">
                       {logins.map(l => (
-                        <button key={l.username} type="button"
-                          onClick={() => setUsername(l.username)}
-                          title={`${l.role}${l.name ? ` · ${l.name}` : ''} — bosing, login qo'yiladi`}
-                          className="px-2 py-1 rounded text-xs font-medium bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-primary-400">
-                          {l.username}
-                          <span className="text-gray-400 ml-1">· {l.role}</span>
-                        </button>
+                        <div key={l.username} className="flex items-center gap-2">
+                          {/* Matn TANLANADI: qo'lda ham nusxa olish mumkin */}
+                          <code className="px-1.5 py-0.5 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-800 dark:text-gray-100 select-all">
+                            {l.username}
+                          </code>
+                          <span className="text-[11px] text-gray-400">{l.role}</span>
+                          <button type="button" onClick={() => copy(l.username)}
+                            title="Nusxa olish"
+                            className="ml-auto px-1.5 py-0.5 rounded text-[11px] text-gray-500 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            {copied === l.username ? "✓ nusxa olindi" : 'nusxa'}
+                          </button>
+                          <button type="button" onClick={() => setUsername(l.username)}
+                            title="Login maydoniga qo'yish"
+                            className="px-1.5 py-0.5 rounded text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30">
+                            qo'yish
+                          </button>
+                        </div>
                       ))}
                     </div>
                     <p className="text-[11px] text-gray-400 mt-2">
@@ -193,21 +221,40 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                   </div>
                 )}
 
-                {/* Demo: bir bosishda kiriladi */}
-                <button type="button"
-                  onClick={() => { setUsername('demoklinikaadmin'); setPassword('demoklinikaparol'); }}
-                  className="w-full mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg text-left hover:border-primary-400 transition-colors">
-                  <p className="text-xs text-primary-600 dark:text-primary-400 font-medium">
-                    🧪 Demo rejimi — bosing, ma'lumotlar o'zi to'ladi
+                {/* Demo: qiymatlar NUSXA olish uchun ochiq turadi */}
+                <div className="mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg text-left">
+                  <p className="text-xs text-primary-700 dark:text-primary-300 font-medium mb-2">
+                    🧪 Demo rejimi
                   </p>
-                  <p className="text-xs text-primary-500 dark:text-primary-400 mt-1">
-                    demoklinikaadmin / demoklinikaparol
-                  </p>
-                  <p className="text-[11px] text-primary-400 mt-1">
+
+                  {([
+                    ['Login', 'demoklinikaadmin'],
+                    ['Parol', 'demoklinikaparol'],
+                  ] as const).map(([label, value]) => (
+                    <div key={value} className="flex items-center gap-2 mb-1">
+                      <span className="text-[11px] text-primary-500 dark:text-primary-400 w-10">{label}</span>
+                      <code className="px-1.5 py-0.5 rounded bg-white dark:bg-primary-900/40 border border-primary-200 dark:border-primary-800 text-xs text-primary-800 dark:text-primary-200 select-all">
+                        {value}
+                      </code>
+                      <button type="button" onClick={() => copy(value)}
+                        title="Nusxa olish"
+                        className="ml-auto px-1.5 py-0.5 rounded text-[11px] text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40">
+                        {copied === value ? "✓ nusxa olindi" : 'nusxa'}
+                      </button>
+                    </div>
+                  ))}
+
+                  <button type="button"
+                    onClick={() => { setUsername('demoklinikaadmin'); setPassword('demoklinikaparol'); }}
+                    className="mt-2 w-full px-2 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-primary-900/40 border border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:border-primary-500">
+                    Ikkalasini maydonlarga qo'yish
+                  </button>
+
+                  <p className="text-[11px] text-primary-500 dark:text-primary-400 mt-2">
                     Demoda ma'lumotlar soxta va yangi ekranlar bo'sh ko'rinadi.
-                    Haqiqiy ish uchun yuqoridagi loginlardan foydalaning.
+                    Haqiqiy ish uchun yuqoridagi login bilan kiring.
                   </p>
-                </button>
+                </div>
               </>
             )}
             <p className="text-xs text-gray-400">
