@@ -356,5 +356,172 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
         res.json(updated);
     });
 
+    // ═══ YO'LLANMA ═══════════════════════════════════════════════════════════
+
+    /* Nima uchun kerak. Hozir shifokor "kassaga boring, keyin UZI ga" deb
+       og'zida aytadi (GAP-ANALYSIS B7, A29). Bemor kassaga kelib nima
+       to'lashini o'zi tushuntiradi, kassir eshitib yozadi, bemor qo'lida esa
+       hech qanday qog'oz qolmaydi.
+
+       Yo'llanma — raqami, holati va BERILGAN PAYTDAGI narxi bor hujjat. */
+
+    /** Yo'llanma raqami: YIL-KETMAKET. Klinika ichida takrorlanmaydi. */
+    async function nextReferralNumber(clinicId: string): Promise<string> {
+        const prefix = `${new Date().getFullYear()}-`;
+        const last = await prisma.referral.findFirst({
+            where: { clinicId, number: { startsWith: prefix } },
+            orderBy: { number: 'desc' },
+            select: { number: true },
+        });
+        const lastSeq = last ? parseInt(String(last.number).slice(prefix.length), 10) || 0 : 0;
+        // To'rt xonali: qog'ozda o'qishga qulay, yiliga 9999 ta yetadi
+        return `${prefix}${String(lastSeq + 1).padStart(4, '0')}`;
+    }
+
+    const REFERRAL_KINDS = ['Lab', 'Study', 'Consult', 'Cashier'];
+
+    route('post', '/api/referrals', async (req, res, clinicId) => {
+        const user = (req as any).user;
+        if (!['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const { patientId, visitId, kind, targetDepartmentId, items } = req.body || {};
+        if (!patientId) return res.status(400).json({ error: "Bemor ko'rsatilmagan" });
+        if (!REFERRAL_KINDS.includes(String(kind))) {
+            return res.status(400).json({ error: `Yo'llanma turi noto'g'ri (${REFERRAL_KINDS.join(', ')})` });
+        }
+        if (!(await assertPatientOwnership(req, res, String(patientId)))) return;
+
+        /* Kelgan HAR BIR havola tekshiriladi: tanada boshqa klinikaning
+           qabuli yoki bo'limi ko'rsatilishi mumkin. Bu relizlarda topilgan
+           17-20 teshiklarning darsi: clinicId ni tekshirish yetmaydi. */
+        if (visitId) {
+            const visit = await prisma.visit.findUnique({ where: { id: String(visitId) } });
+            if (!visit || visit.clinicId !== clinicId) return res.status(404).json({ error: 'Qabul topilmadi' });
+        }
+        if (targetDepartmentId) {
+            const dep = await prisma.department.findUnique({ where: { id: String(targetDepartmentId) } });
+            if (!dep || dep.clinicId !== clinicId) return res.status(404).json({ error: "Bo'lim topilmadi" });
+        }
+
+        /* `payload` — qog'ozdagi ro'yxat va summa. Narx keyin o'zgarsa ham
+           bemor qo'lidagi varaq bilan tizim bir xil qolishi kerak. */
+        const list = Array.isArray(items) ? items : [];
+        const clean = list
+            .map((it: any) => ({
+                name: String(it?.name || '').trim().slice(0, 200),
+                price: round(Number(it?.price) || 0),
+                quantity: Number(it?.quantity) > 0 ? Number(it.quantity) : 1,
+            }))
+            .filter((it: any) => it.name);
+        const total = round(clean.reduce((sum: number, it: any) => sum + it.price * it.quantity, 0));
+
+        /* Raqam unikal, ya'ni ikki yo'llanma bir vaqtda bir raqamni olishga
+           urinishi mumkin. Unikal indeks xato bersa (P2002) qayta olamiz. */
+        let created: any = null;
+        let lastError: any = null;
+        for (let attempt = 0; attempt < 5 && !created; attempt++) {
+            try {
+                created = await prisma.referral.create({
+                    data: {
+                        clinicId,
+                        patientId: String(patientId),
+                        visitId: visitId ? String(visitId) : null,
+                        number: await nextReferralNumber(clinicId),
+                        kind: String(kind),
+                        targetDepartmentId: targetDepartmentId ? String(targetDepartmentId) : null,
+                        issuedByName: user?.name || null,
+                        payload: clean.length ? JSON.stringify({ items: clean, total }) : null,
+                    },
+                });
+            } catch (e: any) {
+                lastError = e;
+                if (e?.code !== 'P2002') throw e;
+            }
+        }
+        if (!created) throw lastError;
+        res.json(created);
+    });
+
+    route('get', '/api/referrals', async (req, res, clinicId) => {
+        const { patientId, status, visitId } = req.query;
+        if (patientId && !(await assertPatientOwnership(req, res, String(patientId)))) return;
+        const items = await prisma.referral.findMany({
+            where: {
+                clinicId,
+                ...(patientId ? { patientId: String(patientId) } : {}),
+                ...(status ? { status: String(status) } : {}),
+                ...(visitId ? { visitId: String(visitId) } : {}),
+            },
+            include: {
+                patient: { select: { firstName: true, lastName: true, phone: true, dob: true, gender: true } },
+                targetDepartment: { select: { name: true } },
+            },
+            orderBy: { issuedAt: 'desc' },
+            take: 200,
+        });
+        res.json(items);
+    });
+
+    /** Bosma varaq uchun: klinika shapkasi va yoyilgan payload bilan */
+    route('get', '/api/referrals/:id', async (req, res, clinicId) => {
+        const item = await prisma.referral.findUnique({
+            where: { id: req.params.id },
+            include: {
+                patient: {
+                    select: {
+                        firstName: true, lastName: true, phone: true,
+                        dob: true, gender: true, cardNumber: true,
+                    },
+                },
+                targetDepartment: { select: { name: true } },
+            },
+        });
+        if (!item || item.clinicId !== clinicId) return res.status(404).json({ error: "Yo'llanma topilmadi" });
+
+        const clinic = await prisma.clinic.findUnique({
+            where: { id: clinicId },
+            select: { name: true, phone: true, address: true, licenseNumber: true, letterheadNote: true },
+        });
+
+        let payload: any = null;
+        // Buzuq JSON butun varaqni yo'q qilmasligi kerak
+        try { payload = item.payload ? JSON.parse(item.payload) : null; } catch { payload = null; }
+        res.json({ ...item, clinic, payload });
+    });
+
+    /* Yo'llanma ISHLATILDI. Kassir to'lovni qabul qilganda yoki laborant
+       bemorni qabul qilganda bosiladi: shu paytdan keyin o'sha qog'oz bilan
+       ikkinchi marta kelib bo'lmaydi. */
+    route('post', '/api/referrals/:id/use', async (req, res, clinicId) => {
+        const item = await prisma.referral.findUnique({ where: { id: req.params.id } });
+        if (!item || item.clinicId !== clinicId) return res.status(404).json({ error: "Yo'llanma topilmadi" });
+        if (item.status === 'Cancelled') return res.status(409).json({ error: 'Bekor qilingan' });
+        if (item.status === 'Used') return res.status(409).json({ error: 'Allaqachon ishlatilgan' });
+
+        res.json(await prisma.referral.update({
+            where: { id: item.id },
+            data: { status: 'Used' },
+        }));
+    });
+
+    route('post', '/api/referrals/:id/cancel', async (req, res, clinicId) => {
+        const user = (req as any).user;
+        if (!['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const item = await prisma.referral.findUnique({ where: { id: req.params.id } });
+        if (!item || item.clinicId !== clinicId) return res.status(404).json({ error: "Yo'llanma topilmadi" });
+        /* Ishlatilganini bekor qilib bo'lmaydi: bemor allaqachon to'lagan yoki
+           xizmatni olgan. Bunday holat pul qaytarish orqali yechiladi. */
+        if (item.status === 'Used') {
+            return res.status(409).json({ error: "Ishlatilgan yo'llanmani bekor qilib bo'lmaydi" });
+        }
+        res.json(await prisma.referral.update({
+            where: { id: item.id },
+            data: { status: 'Cancelled' },
+        }));
+    });
+
     console.log('✅ Klinik endpointlar ulandi');
 }
