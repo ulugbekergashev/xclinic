@@ -50,6 +50,8 @@ export async function createCharge(prisma: any, input: {
        kerak (GAP-ANALYSIS, A17 va C11). */
     doctorId?: string | null;
     doctorName?: string | null;
+    /** Statsionar yotishi: koyka haqi va dorilarda qabul yo'q. Migratsiya 0015. */
+    admissionId?: string | null;
 }) {
     const qty = input.quantity ?? 1;
     const discount = input.discount ?? 0;
@@ -73,6 +75,7 @@ export async function createCharge(prisma: any, input: {
             createdByName: input.createdByName || null,
             doctorId: input.doctorId || null,
             doctorName: input.doctorName || null,
+            admissionId: input.admissionId || null,
         },
     });
 }

@@ -931,12 +931,20 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         if (!existing) return res.status(403).json({ error: "Ruxsat yo'q" });
         if (existing.status === 'Discharged') return res.status(400).json({ error: 'Allaqachon chiqarilgan' });
 
+        /* Epikrizning to'rt qismi (migratsiya 0019). `dischargeSummary`
+           hamon qabul qilinadi — eski mijoz buzilmaydi va eski yotishlarning
+           matni joyida qoladi. */
+        const b = req.body || {};
         const admission = await prisma.admission.update({
             where: { id: req.params.id },
             data: {
                 status: 'Discharged',
                 dischargedAt: new Date(),
-                dischargeSummary: req.body?.dischargeSummary || null,
+                dischargeSummary: b.dischargeSummary || null,
+                admissionDiagnosis: b.admissionDiagnosis || existing.admissionDiagnosis || null,
+                finalDiagnosis: b.finalDiagnosis || null,
+                treatmentGiven: b.treatmentGiven || null,
+                recommendations: b.recommendations || null,
             },
         });
         if (existing.bedId) await prisma.bed.update({ where: { id: existing.bedId }, data: { status: 'Cleaning' } });
@@ -944,7 +952,8 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     });
 
     route('post', '/api/admissions/:id/rounds', async (req, res, clinicId) => {
-        if (!(await owns('admission', req.params.id, clinicId))) return res.status(403).json({ error: "Ruxsat yo'q" });
+        const adm = await owns('admission', req.params.id, clinicId);
+        if (!adm) return res.status(403).json({ error: "Ruxsat yo'q" });
         const { date, doctorId, doctorName, vitalSigns, notes, plan } = req.body;
         const round = await prisma.inpatientRound.create({
             data: {
@@ -954,6 +963,41 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 notes: notes || null, plan: plan || null,
             },
         });
+
+        /* Ko'rsatkichlar QO'SHIMCHA ravishda `VitalSign` ga yoziladi
+           (migratsiya 0017). JSON maydon joyida qoladi: eski ekranlar
+           ilgarigidek o'qiydi, harorat grafigi esa yangi jadvaldan quriladi.
+           Xato bo'lsa obhod yozuvi baribir saqlanib qoladi. */
+        try {
+            const map: Record<string, string> = {
+                temp: 'Temp', temperature: 'Temp',
+                bpSys: 'BpSys', systolic: 'BpSys',
+                bpDia: 'BpDia', diastolic: 'BpDia',
+                pulse: 'Pulse', heartRate: 'Pulse',
+                weight: 'Weight', height: 'Height',
+                spo2: 'SpO2', oxygen: 'SpO2',
+            };
+            const units: Record<string, string> = {
+                Temp: '°C', BpSys: 'mmHg', BpDia: 'mmHg', Pulse: 'urish/min',
+                Weight: 'kg', Height: 'sm', SpO2: '%',
+            };
+            for (const [key, raw] of Object.entries(vitalSigns || {})) {
+                const kind = map[key];
+                const value = Number(raw);
+                if (!kind || !isFinite(value)) continue;
+                await prisma.vitalSign.create({
+                    data: {
+                        clinicId, patientId: adm.patientId,
+                        admissionId: adm.id,
+                        kind, value, unit: units[kind] || null,
+                        measuredByName: doctorName || (req as any).user?.name || null,
+                    },
+                });
+            }
+        } catch (e: any) {
+            console.error("Obhod ko'rsatkichlarini yozib bo'lmadi:", e?.message || e);
+        }
+
         res.json(round);
     });
 

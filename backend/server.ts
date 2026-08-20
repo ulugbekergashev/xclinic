@@ -81,6 +81,7 @@ import { registerFileRoutes } from './files';
 import { runMigrations, registerMaintenanceRoutes } from './maintenance';
 import { tashkentDateStr } from './tashkentTime';
 import { registerClinicalRoutes } from './clinical';
+import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
 const { smsService, normalizeUzPhone } = require('./smsService');
@@ -4704,6 +4705,10 @@ app.delete('/api/diagnoses/:id', authenticateToken, async (req, res) => {
    to'g'ri keladi — Express birinchi mos kelganini oladi, va agar `:id`
    oldin turса, "pending-results" id deb qabul qilinib 404 qaytarardi. */
 registerClinicalRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
+/* Statsionar ham multiprofile'dan OLDIN: `/api/admissions/:id/charge-bed-days`
+   va `/api/admissions/:id` bir-biriga to'g'ri kelmaydi, lekin tartib bir xil
+   qoidada bo'lgani ma'qul — keyingi qo'shimchalar tuzoqqa tushmasin. */
+registerInpatientRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerMultiprofileRoutes(app, { prisma, authenticateToken, getScopedClinicId, upload, uploadsDir });
 registerBillingRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerInventoryRoutes(app, { prisma, authenticateToken, getScopedClinicId });
@@ -6597,6 +6602,9 @@ runStartupMigrations()
         }
         // Botlar — migratsiyalardan KEYIN: ular klinika jadvalini o'qiydi
         botManager.init();
+        /* Koyka haqi: dastur o'chirilgan kunlarni quvib yetadi. Offline
+           dasturda jadval (cron) ishonchsiz — kompyuter kechqurun o'chadi. */
+        chargeAllPendingBedDays(prisma);
         app.listen(PORT, () => {
             console.log(`✅ XClinic server ${PORT}-portda ishga tushdi`);
         });
