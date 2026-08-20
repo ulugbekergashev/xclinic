@@ -6,10 +6,11 @@ import {
 } from 'recharts';
 import {
     TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Users,
-    Building2, Package, Percent, X, Activity,
+    Building2, Package, Percent, X, Activity, Download,
 } from 'lucide-react';
 import { Department } from '../types';
 import { api } from '../services/api';
+import { exportReportToExcel } from '../utils/reportExport';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Moliyaviy hisobot — ko'p profilli klinika uchun.
@@ -172,6 +173,34 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             </td>
         );
 
+    const [exporting, setExporting] = useState(false);
+
+    /* Eksport HAMMA kesimni oladi, faqat ochiq turganini emas: egasi
+       "yuklab olish" deganda butun hisobotni kutadi, to'rt marta vkladka
+       bosib emas. Yuklanmagan kesimlar shu yerda so'raladi. */
+    const exportAll = async () => {
+        setExporting(true);
+        setError('');
+        try {
+            const [doctors, departments, writeoffs, compare, labShift] = await Promise.all([
+                extra.doctors ? Promise.resolve(extra.doctors) : api.reports.doctors(from, to).catch(() => null),
+                extra.departments ? Promise.resolve(extra.departments) : api.reports.departmentsReport(from, to).catch(() => null),
+                extra.writeoffs ? Promise.resolve(extra.writeoffs) : api.reports.writeoffs(from, to).catch(() => null),
+                cmp ? Promise.resolve(cmp) : api.reports.compare(from, to).catch(() => null),
+                extra.labshift ? Promise.resolve(extra.labshift) : api.reports.labShift(to).catch(() => null),
+            ]);
+            exportReportToExcel({
+                from, to,
+                clinicName: departments?.clinicName || undefined,
+                summary: data, doctors, departments, writeoffs, compare, labShift,
+            });
+        } catch (e: any) {
+            setError(e?.message || 'Eksport qilinmadi');
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const inputCls = 'px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500';
 
     const Tile: React.FC<{
@@ -205,6 +234,11 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                         <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} />
                     </div>
                 </div>
+                <button onClick={exportAll} disabled={exporting}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:border-primary-400 disabled:opacity-50"
+                    title="Barcha kesimlar bitta faylda">
+                    <Download className="w-4 h-4" /> {exporting ? '...' : 'Excel'}
+                </button>
                 <button onClick={load} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Yangilash">
                     <RefreshCw className="w-5 h-5" />
                 </button>
