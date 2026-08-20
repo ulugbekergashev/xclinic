@@ -404,6 +404,39 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
 
         const first = charges[0];
         const paidAt = new Date();
+
+        /* AVANSDAN TO'LASH.
+           `POST /api/transactions` avans hisobini yuritadi: 'Avans' xizmati
+           balansni oshiradi, `type: 'Balance'` esa kamaytiradi. Lekin BU
+           endpoint cheklarni to'g'ridan-to'g'ri yaratadi va o'sha mantiqni
+           chetlab o'tardi — ya'ni avansdan to'lov balansni KAMAYTIRMASDI va
+           bemor bir xil avansni cheksiz sarflay olardi. Reliz 3 dagi o'z
+           xatoim.
+
+           Tekshiruv to'lovdan OLDIN: yetmagan avansni yozib qo'yib, keyin
+           minusga tushirish — eng yomon variant. */
+        const balanceSpend = round(
+            methodSplit.filter((m) => m.method === 'Balance')
+                .reduce((sum, m) => sum + m.amount, 0),
+        );
+        if (balanceSpend > 0) {
+            if (!first.patientId) {
+                return res.status(400).json({ error: "Avansdan to'lash uchun bemor ko'rsatilishi kerak" });
+            }
+            const patient = await prisma.patient.findUnique({
+                where: { id: first.patientId },
+                select: { balance: true, clinicId: true },
+            });
+            if (!patient || patient.clinicId !== clinicId) {
+                return res.status(404).json({ error: 'Bemor topilmadi' });
+            }
+            const have = round(patient.balance || 0);
+            if (balanceSpend > have + 0.001) {
+                return res.status(400).json({
+                    error: `Avans yetarli emas: hisobda ${Math.round(have)}, kerak ${Math.round(balanceSpend)}`,
+                });
+            }
+        }
         const chargeById = new Map(charges.map((c: any) => [c.id, c]));
         const serviceLabel = charges
             .filter((c: any) => plan.has(c.id))
@@ -466,6 +499,16 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
                     ...(fully ? { paidAt, transactionId: lastTxId } : {}),
                 },
             }));
+        }
+
+        /* Avans sarflandi — hisobdan yechamiz. To'lov muvaffaqiyatli
+           bo'lgandan KEYIN: qatorlar yangilanmasa avans ham sarflanmasligi
+           kerak. */
+        if (balanceSpend > 0 && first.patientId) {
+            await prisma.patient.update({
+                where: { id: first.patientId },
+                data: { balance: { decrement: balanceSpend } },
+            });
         }
 
         // Kassa izi: ilgari to'lov jurnalga TUSHMASDI — GAP-ANALYSIS, A19.
@@ -539,6 +582,16 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
                 createdByName: user?.name || null,
             },
         });
+
+        /* Avansga QAYTARISH. Usul 'Balance' bo'lsa pul yashikdan chiqmaydi —
+           bemorning hisobiga qaytadi va keyingi xizmatga ishlatiladi.
+           Buni yozmasa, qaytarish "hech qayerga" ketardi. */
+        if (String(method) === 'Balance' && charge.patientId) {
+            await prisma.patient.update({
+                where: { id: charge.patientId },
+                data: { balance: { increment: back } },
+            });
+        }
 
         const newPaid = round(paid - back);
         const updated = await prisma.visitCharge.update({

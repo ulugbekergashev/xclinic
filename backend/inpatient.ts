@@ -196,6 +196,62 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         res.json(result);
     });
 
+    /* ═══ YOTISH HISOBI ═══════════════════════════════════════════════════════
+
+       Statsionar to'lovi tartibi yo'q edi: depozit, oraliq hisob, chiqarishda
+       yakuniy hisob — hech narsa (GAP-ANALYSIS, 3-sahna, 10-band).
+
+       QAROR В7 ga ko'ra alohida depozit sxemasi KERAK EMAS: `Patient.balance`
+       allaqachon avans uchun ishlaydi, 'Avans' xizmati bilan to'lov balansni
+       oshiradi, `type: 'Balance'` esa kamaytiradi. Ya'ni depozit = avans, va
+       yangi jadval o'ylab topish shart emas.
+
+       Bu endpoint bitta savolga javob beradi: shu yotishga qancha yozilgan,
+       qancha to'langan, qancha qoldi va bemorning avansi bor-yo'qmi. */
+    route('get', '/api/admissions/:id/billing', async (req, res, clinicId) => {
+        const adm = await ownAdmission(req.params.id, clinicId);
+        if (!adm) return res.status(404).json({ error: 'Yotish topilmadi' });
+
+        const [charges, patient] = await Promise.all([
+            prisma.visitCharge.findMany({
+                where: { clinicId, admissionId: adm.id, status: { not: 'Cancelled' } },
+                orderBy: { createdAt: 'asc' },
+            }),
+            prisma.patient.findUnique({
+                where: { id: adm.patientId },
+                select: { balance: true, firstName: true, lastName: true },
+            }),
+        ]);
+
+        const accrued = round(charges.reduce((s: number, c: any) => s + c.total, 0));
+        const paid = round(charges.reduce((s: number, c: any) => s + (c.paidAmount || 0), 0));
+
+        // Manba bo'yicha: koyka, dori, xizmat — "nima uchun bunday summa"
+        const bySource: Record<string, { count: number; total: number; paid: number }> = {};
+        for (const c of charges) {
+            const k = String(c.source);
+            if (!bySource[k]) bySource[k] = { count: 0, total: 0, paid: 0 };
+            bySource[k].count++;
+            bySource[k].total = round(bySource[k].total + c.total);
+            bySource[k].paid = round(bySource[k].paid + (c.paidAmount || 0));
+        }
+
+        res.json({
+            admissionId: adm.id,
+            patientName: adm.patientName,
+            status: adm.status,
+            dailyRate: adm.dailyRate,
+            accrued,
+            paid,
+            due: round(accrued - paid),
+            /* Avans — bu ayni depozit. Statsionarga yotqizishda kassa
+               'Avans' xizmati bilan pul oladi, keyin shu hisobdan yechiladi. */
+            advance: round(patient?.balance || 0),
+            bySource,
+            charges,
+        });
+    });
+
     // ═══ DORI BERILISHI (MAR) ════════════════════════════════════════════════
 
     /* Nima uchun bu eng muhim endpoint. "Dori berildi" degan yozuv uch narsani

@@ -2161,6 +2161,30 @@ export const CashBook: React.FC<CashBookProps> = ({
                         )}
                     </div>
 
+                    {/* YOPILMAGAN QATORLAR. Kassa sog' kelishi mumkin, lekin
+                        kunning xizmatlari to'lanmagan bo'lib qolishi ham
+                        mumkin: kassir hammasini to'g'ri sanaydi, bemorlarning
+                        yarmi esa to'lamasdan ketgan. Ilgari kun yopilishida bu
+                        savol umuman berilmasdi. Taqiq emas — ko'rinishi kerak. */}
+                    {serverExpected?.openCharges && serverExpected.openCharges.count > 0 && (
+                        <div className="rounded-xl p-4 border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20">
+                            <div className="flex items-start gap-2">
+                                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                                        Bugun {serverExpected.openCharges.count} xizmat to'lanmagan
+                                        — {num(serverExpected.openCharges.due)} UZS
+                                    </p>
+                                    <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+                                        {serverExpected.openCharges.patients} bemor. Kassa to'g'ri kelishi
+                                        mumkin, lekin bu pul olinmagan. Kunni yopish taqiqlanmaydi —
+                                        bilib turishingiz uchun.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div>
                         <Input
                             label="Kassada haqiqatda sanalgan naqd (UZS)"

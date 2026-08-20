@@ -1285,7 +1285,11 @@ export const api = {
         /** Kutilayotgan naqd — SERVER hisobi, tahrirlanmaydi */
         expected: (date: string) => fetchJson<{
             date: string; openingCash: number; expectedCash: number;
-            expectedCard: number; expectedClick: number; sources: Record<string, any>;
+            expectedCard: number; expectedClick: number;
+            /** Kunning YOPILMAGAN xizmat qatorlari — kassa sog' bo'lsa ham
+             *  bemorlarning yarmi to'lamasdan ketgan bo'lishi mumkin. */
+            openCharges?: { count: number; patients: number; due: number };
+            sources: Record<string, any>;
         }>(`/cash-register/expected?date=${date}`),
         open: (data: { date: string; shift?: number; openingCash?: number }) =>
             fetchJson<any>('/cash-register/open', { method: 'POST', body: JSON.stringify(data) }),
@@ -1503,12 +1507,16 @@ export const api = {
         update: (id: string, data: Partial<Admission>) =>
             isDemoMode() ? demoWrite<Admission>() : fetchJson<Admission>(`/admissions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
         /** Epikrizning to'rt qismi (reliz 4). Eski shakl — bitta matn — ham ishlaydi. */
+        /** `confirmDebt` — qarz bo'lsa ham chiqarish. Busiz server 409 va
+         *  qarz summasini qaytaradi: bemorni ushlab turmaydi, lekin
+         *  jimgina ham o'tkazmaydi. */
         discharge: (id: string, data?: string | {
             dischargeSummary?: string;
             admissionDiagnosis?: string;
             finalDiagnosis?: string;
             treatmentGiven?: string;
             recommendations?: string;
+            confirmDebt?: boolean;
         }) =>
             isDemoMode() ? demoWrite<Admission>() : fetchJson<Admission>(`/admissions/${id}/discharge`, {
                 method: 'POST',
@@ -1526,6 +1534,13 @@ export const api = {
         chargeBedDays: (id: string) => fetchJson<{
             charged: number; from: string | null; to: string | null; total: number; skipped?: string;
         }>(`/admissions/${id}/charge-bed-days`, { method: 'POST' }),
+
+        /** Yotish hisobi: yozilgan, to'langan, qarz, avans (depozit) */
+        billing: (id: string) => fetchJson<{
+            accrued: number; paid: number; due: number; advance: number;
+            bySource: Record<string, { count: number; total: number; paid: number }>;
+            charges: any[];
+        }>(`/admissions/${id}/billing`),
 
         /** Kunlik dori varag'i: tayinlovlar + shu kundagi belgilar */
         mar: (id: string, date?: string) =>

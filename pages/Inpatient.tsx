@@ -41,7 +41,13 @@ interface Props {
     userRole?: string;
 }
 
-const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
+const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(Math.round(n || 0));
+
+/** Hisob qatorlarining manbasi — "nima uchun bunday summa" savoliga javob */
+const SOURCE_LABEL: Record<string, string> = {
+    Bed: 'Koyka', Medication: 'Dorilar', Service: 'Xizmatlar',
+    Lab: 'Tahlillar', Study: 'Tekshiruvlar', Other: 'Boshqa',
+};
 const fmtDate = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('uz-UZ') : '—';
 
 /** Yotgan kunlar soni — kunlik hisobni ko'rsatish uchun */
@@ -140,6 +146,10 @@ export const Inpatient: React.FC<Props> = ({
     // Koyka haqi: ekran ochilganda quvib yetadi
     const [bedDays, setBedDays] = useState<{ charged: number; total: number } | null>(null);
 
+    /* Yotish hisobi: yozilgan, to'langan, qarz, avans. Depozit alohida
+       sxema emas — u `Patient.balance` dagi avans (qaror В7). */
+    const [billing, setBilling] = useState<any>(null);
+
     // Harorat varag'i
     const [vitals, setVitals] = useState<any[]>([]);
 
@@ -165,7 +175,7 @@ export const Inpatient: React.FC<Props> = ({
        ochish uni faqat aniqlashtiradi. Dastur kunlab o'chirilgan bo'lsa ham
        raqam to'g'ri chiqadi. */
     const loadDetailExtras = useCallback(async (adm: Admission) => {
-        setMar(null); setVitals([]); setBedDays(null); setTransferHistory([]);
+        setMar(null); setVitals([]); setBedDays(null); setTransferHistory([]); setBilling(null);
         const date = todayISO();
         setMarDate(date);
         const [marRes, vitRes, bedRes, trRes] = await Promise.all([
@@ -180,6 +190,8 @@ export const Inpatient: React.FC<Props> = ({
         setVitals(vitRes || []);
         setBedDays(bedRes);
         setTransferHistory(trRes || []);
+        // Hisob koyka haqidan KEYIN: yangi kunlar qo'shilgan bo'lsa ular ham kirsin
+        setBilling(await api.admissions.billing(adm.id).catch(() => null));
         // Koyka haqi qator qo'shgan bo'lsa, "jami" o'zgargan — ro'yxatni yangilaymiz
         if (bedRes && bedRes.charged > 0) {
             const fresh = await api.admissions.getAll().catch(() => null);
@@ -266,7 +278,12 @@ export const Inpatient: React.FC<Props> = ({
         });
     };
 
-    const doDischarge = async (andPrint: boolean) => {
+    /* Qarz bilan chiqarish tasdig'i. Server 409 beradi, biz "baribir
+       chiqarish" tugmasini ko'rsatamiz: bemorni pul uchun ushlab turish
+       to'g'ri emas, lekin qarzni ko'rmasdan chiqarib yuborish ham. */
+    const [debtConfirm, setDebtConfirm] = useState<{ due: number; count: number } | null>(null);
+
+    const doDischarge = async (andPrint: boolean, confirmDebt = false) => {
         if (!dischargeFor) return;
         setSaving(true); setError('');
         try {
@@ -274,7 +291,7 @@ export const Inpatient: React.FC<Props> = ({
                hisobga kiradi, va keyin `status` Discharged bo'lgach quvib
                yetuvchi hisob boshqa chaqirilmaydi. */
             await api.admissions.chargeBedDays(dischargeFor.id).catch(() => null);
-            const updated = await api.admissions.discharge(dischargeFor.id, dischargeForm);
+            const updated = await api.admissions.discharge(dischargeFor.id, { ...dischargeForm, confirmDebt });
             await reload();
             setDischargeFor(null);
             setDetail(null);
@@ -283,7 +300,11 @@ export const Inpatient: React.FC<Props> = ({
                 printDischarge({ ...dischargeFor, ...updated, patient }, currentClinic || undefined);
             }
         } catch (e: any) {
-            setError(e?.message || "Chiqarib bo'lmadi");
+            if (e?.status === 409 && e?.data?.needsConfirm) {
+                setDebtConfirm({ due: e.data.due || 0, count: e.data.count || 0 });
+            } else {
+                setError(e?.message || "Chiqarib bo'lmadi");
+            }
         } finally { setSaving(false); }
     };
 
@@ -756,19 +777,54 @@ export const Inpatient: React.FC<Props> = ({
                                 kod yo'q: bemor sakkiz kun yotib chiqar, hisobda
                                 nol turardi (B44). Karta ochilganda hisob quvib
                                 yetadi va takroriy qator yaratmaydi. */}
-                            {detail.status === 'Active' && detail.dailyRate > 0 && (
-                                <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
-                                    <Wallet className="w-4 h-4 text-gray-400 shrink-0" />
-                                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                                        Koyka: <b className="tabular-nums">{fmt(detail.dailyRate)}</b> so'm/kun
-                                    </span>
-                                    <span className="text-sm text-gray-500 dark:text-gray-400">
-                                        Jami hisoblangan: <b className="tabular-nums">{fmt(detail.totalCharges || 0)}</b> so'm
-                                    </span>
-                                    {bedDays && bedDays.charged > 0 && (
-                                        <span className="text-xs text-emerald-700 dark:text-emerald-400">
-                                            +{bedDays.charged} kun hozir yozildi
+                            {/* ── Yotish hisobi ──────────────────────────────
+                                Statsionar to'lovi tartibi yo'q edi: depozit,
+                                oraliq hisob, chiqarishda yakuniy hisob — hech
+                                narsa. Depozit alohida sxema emas: u avans
+                                (`Patient.balance`), qaror В7. */}
+                            {billing && (
+                                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
+                                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                                        <span className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+                                            <Wallet className="w-4 h-4 text-gray-400" />
+                                            Yozilgan: <b className="tabular-nums">{fmt(billing.accrued)}</b>
                                         </span>
+                                        <span className="text-sm text-emerald-600 dark:text-emerald-400">
+                                            To'langan: <b className="tabular-nums">{fmt(billing.paid)}</b>
+                                        </span>
+                                        <span className={`text-sm ${billing.due > 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-gray-400'}`}>
+                                            Qarz: <b className="tabular-nums">{fmt(billing.due)}</b>
+                                        </span>
+                                        {billing.advance > 0 && (
+                                            <span className="text-sm text-primary-600 dark:text-primary-400">
+                                                Avansda: <b className="tabular-nums">{fmt(billing.advance)}</b>
+                                            </span>
+                                        )}
+                                        {detail.status === 'Active' && detail.dailyRate > 0 && (
+                                            <span className="text-xs text-gray-400 ml-auto">
+                                                koyka {fmt(detail.dailyRate)}/kun
+                                                {bedDays && bedDays.charged > 0 ? ` · +${bedDays.charged} kun yozildi` : ''}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Nima uchun bunday summa: koyka, dori, xizmat */}
+                                    {Object.keys(billing.bySource || {}).length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                            {Object.entries(billing.bySource).map(([src, v]: any) => (
+                                                <span key={src} className="text-[11px] text-gray-500 dark:text-gray-400">
+                                                    {SOURCE_LABEL[src] || src}: <b className="tabular-nums">{fmt(v.total)}</b>
+                                                    {v.paid > 0 && v.paid < v.total ? ` (to'landi ${fmt(v.paid)})` : ''}
+                                                    {v.count > 1 ? ` · ${v.count} ta` : ''}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {billing.due > 0 && billing.advance > 0 && (
+                                        <p className="text-[11px] text-primary-700 dark:text-primary-300 mt-2">
+                                            Bemorning avansi bor — kassada "Hisobdan (Avans)" usuli bilan yopish mumkin.
+                                        </p>
                                     )}
                                 </div>
                             )}
@@ -1030,6 +1086,40 @@ export const Inpatient: React.FC<Props> = ({
                     </div>
                 </div>
             )}
+            {/* ── Qarz bilan chiqarish tasdig'i ────────────────────────────
+                Taqiqlamaymiz: bemorni pul uchun ushlab turish tibbiy ham,
+                huquqiy ham to'g'ri emas. Lekin jimgina ham o'tkazmaymiz. */}
+            {debtConfirm && (
+                <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4" onClick={() => setDebtConfirm(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-start gap-3 mb-4">
+                            <Wallet className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-semibold text-gray-900 dark:text-white">To'lanmagan qarz bor</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                    {debtConfirm.count} qator, jami <b className="tabular-nums">{fmt(debtConfirm.due)}</b> so'm.
+                                </p>
+                            </div>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                            Chiqarish taqiqlanmaydi. Lekin qarz bemorning kartasida qoladi va
+                            kassada ko'rinib turadi.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            <button onClick={() => { setDebtConfirm(null); }}
+                                className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+                                Avval to'lash
+                            </button>
+                            <button onClick={() => { setDebtConfirm(null); doDischarge(true, true); }}
+                                disabled={saving}
+                                className="flex-1 px-4 py-2 border border-amber-400 text-amber-700 dark:text-amber-300 rounded-lg text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50">
+                                Qarz bilan chiqarish
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ── Dori berilmadi: SABAB majburiy ────────────────────────────
                 "Belgi yo'q" bilan "bermadim, chunki bemor rad etdi" — bu ikki
                 xil holat. Ikkinchisi tibbiy fakt va yozilishi kerak. */}

@@ -79,7 +79,7 @@ import { registerInventoryRoutes } from './inventory';
 import { registerReportRoutes } from './reports';
 import { registerFileRoutes } from './files';
 import { runMigrations, registerMaintenanceRoutes } from './maintenance';
-import { tashkentDateStr } from './tashkentTime';
+import { tashkentDateStr, tashkentDayBounds } from './tashkentTime';
 import { registerClinicalRoutes } from './clinical';
 import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
 import { registerPayrollRoutes } from './payroll';
@@ -2630,11 +2630,42 @@ async function computeExpectedCash(prisma: any, clinicId: string, date: string) 
     const openingCash = r(prevClosure?.countedCash || 0);
     const expectedCash = r(openingCash + cash + cashIn - cashExpense - encashment - refundCash);
 
+    /* YOPILMAGAN QATORLAR.
+       Smena kassa bo'yicha sog' bo'lishi mumkin, lekin kunning xizmatlari
+       to'lanmagan bo'lib qolishi ham mumkin: kassir hammasini to'g'ri
+       sanaydi, lekin bemorlarning yarmi to'lamasdan ketgan. Ilgari kun
+       yopilganda bu savol UMUMAN berilmasdi (GAP-ANALYSIS, 4-sahna, 2-band).
+
+       Bu TAQIQ emas: kassir bemorni majburlay olmaydi. Bu raqam — kun
+       yopilishida ko'rinib turishi kerak bo'lgan haqiqat. */
+    const { start: dayStart, end: dayEnd } = tashkentDayBounds(date);
+    const openCharges = await prisma.visitCharge.findMany({
+        where: {
+            clinicId,
+            status: 'Unpaid',
+            OR: [
+                { visit: { date } },
+                // Qabulsiz qatorlar (statsionar, to'g'ridan-to'g'ri xizmat) —
+                // Toshkent kuni chegaralari bo'yicha
+                { visitId: null, createdAt: { gte: dayStart, lte: dayEnd } },
+            ],
+        },
+        select: { total: true, paidAmount: true, patientId: true, patientName: true, name: true },
+    });
+    const openDue = r(openCharges.reduce((sum: number, c: any) => sum + (c.total - (c.paidAmount || 0)), 0));
+    const openPatients = new Set(openCharges.map((c: any) => c.patientId || c.patientName)).size;
+
     return {
         openingCash,
         expectedCash,
         expectedCard: card,
         expectedClick: click,
+        /* Kun yopilishida ko'rsatiladigan ogohlantirish */
+        openCharges: {
+            count: openCharges.length,
+            patients: openPatients,
+            due: openDue,
+        },
         sources: {
             cashPayments: cash,
             cardPayments: card,

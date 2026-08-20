@@ -972,6 +972,28 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         if (!existing) return res.status(403).json({ error: "Ruxsat yo'q" });
         if (existing.status === 'Discharged') return res.status(400).json({ error: 'Allaqachon chiqarilgan' });
 
+        /* QARZ BILAN CHIQARISH.
+           Taqiqlamaymiz: bemorni pul uchun ushlab turish — tibbiy ham,
+           huquqiy ham to'g'ri emas. Lekin JIMGINA ham o'tkazmaymiz: qarz
+           bo'lsa chiqarish `confirmDebt: true` ni talab qiladi, ya'ni
+           odam ataylab tasdiqlaydi va bu qaror uning qo'lida bo'ladi
+           (GAP-ANALYSIS, 3-sahna, 10-band). */
+        if (!req.body?.confirmDebt) {
+            const open = await prisma.visitCharge.findMany({
+                where: { clinicId, admissionId: existing.id, status: 'Unpaid' },
+                select: { total: true, paidAmount: true },
+            });
+            const due = Math.round(open.reduce((s: number, c: any) => s + (c.total - (c.paidAmount || 0)), 0));
+            if (due > 0) {
+                return res.status(409).json({
+                    error: `Yotish bo'yicha to'lanmagan qarz: ${due}`,
+                    due,
+                    count: open.length,
+                    needsConfirm: true,
+                });
+            }
+        }
+
         /* Epikrizning to'rt qismi (migratsiya 0019). `dischargeSummary`
            hamon qabul qilinadi — eski mijoz buzilmaydi va eski yotishlarning
            matni joyida qoladi. */
