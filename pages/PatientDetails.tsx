@@ -24,22 +24,37 @@ import { printPatientCard } from '../utils/printPatientCard';
 import { ReceiptModal } from '../components/ReceiptModal';
 
 interface PatientDetailsProps {
-   patientId: string | null;
-   patients: Patient[];
-   appointments: Appointment[];
-   transactions: Transaction[];
-   doctors: Doctor[];
-   services: Service[];
-   categories: ServiceCategory[];
+   /* IXTIYORIY: komponent uni URL dan ham oladi
+      (`patientIdProp || patientIdParam`). Marshrut orqali ochilganda
+      prop umuman uzatilmaydi. */
+   patientId?: string | null;
+   /* IXTIYORIY, chunki pastda standart qiymat berilgan (`patients = []`).
+
+      Ilgari ular TALAB QILINADIGAN deb e'lon qilingan edi, ya'ni
+      standart qiymat hech qachon ishlamaydigan o'lik kod edi.
+      `strictNullChecks` yoqilganda TypeScript shu ziddiyatni ko'radi
+      va turni `never` ga siqadi — natijada `p.id` ga murojaat
+      «Property 'id' does not exist on type 'never'» beradi. Shu bitta
+      nomuvofiqlik faqat mana shu faylda 147 ta xato keltirardi.
+
+      To'g'ri yechim standart qiymatni olib tashlash emas: komponent
+      ro'yxatsiz ham ishlashi kerak (ma'lumot hali yuklanmagan bo'lishi
+      mumkin). Shuning uchun e'lon haqiqatga moslashtiriladi. */
+   patients?: Patient[];
+   appointments?: Appointment[];
+   transactions?: Transaction[];
+   doctors?: Doctor[];
+   services?: Service[];
+   categories?: ServiceCategory[];
    currentClinic?: Clinic;
    userRole?: UserRole;
    doctorId?: string; // Kirgan shifokor (DOCTOR roli) — shifokor tanlovlarida defolt
    showPatientPhone?: boolean; // Ruxsatlar: bemor telefon raqamini ko'rsatish
    onBack: () => void;
    onUpdatePatient: (id: string, data: Partial<Patient>) => void;
-   onAddTransaction: (data: Omit<Transaction, 'id'>) => Promise<Transaction | void>;
+   onAddTransaction: (data: Omit<Transaction, 'id' | 'clinicId'>) => Promise<Transaction | void>;
    onUpdateTransaction: (id: string, data: Partial<Transaction>) => void;
-   onAddAppointment: (appt: Omit<Appointment, 'id'>) => Promise<void>;
+   onAddAppointment: (appt: Omit<Appointment, 'id' | 'clinicId'>) => Promise<void>;
    onUpdateAppointment: (id: string, data: Partial<Appointment>) => Promise<void>;
 }
 
@@ -61,7 +76,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const patientId = patientIdProp || patientIdParam || null;
    const { t } = useLanguage();
 
-   const [activeTab, setActiveTab] = useState<'overview' | 'chart' | 'labs' | 'appointments' | 'payments' | 'materials' | 'installments'>('overview');
+   const [activeTab, setActiveTab] = useState<'overview' | 'chart' | 'labs' | 'photos' | 'appointments' | 'payments' | 'materials' | 'installments'>('overview');
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
@@ -259,7 +274,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             : await api.patients.uploadPortrait(patient.id, file);
          
          if (res.success) {
-            onUpdatePatient(patient.id, { [type === 'avatar' ? 'avatarUrl' : 'portraitUrl']: res.url });
+            if (!patient) return;
+         onUpdatePatient(patient.id, { [type === 'avatar' ? 'avatarUrl' : 'portraitUrl']: res.url });
             toast.error(t('common.save'));
          }
       } catch (error) {
@@ -319,12 +335,12 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          }).catch(console.error);
          /* `patient.id` uzatiladi — server bemorga mos kelmaydigan
             shablonlarni chiqarib tashlaydi (jins va yosh, B-09). */
-         api.encounterTemplates.getAll(undefined, patient.id).then(setTemplates).catch(console.error);
+         api.encounterTemplates.getAll(undefined, patient?.id).then(setTemplates).catch(console.error);
 
          // Fetch inventory data
          if (currentClinic) {
             api.inventory.getAll(currentClinic.id).then(setInventoryItems).catch(console.error);
-            api.inventory.getLogs(currentClinic.id, patientId).then(setMaterialLogs).catch(console.error);
+            api.inventory.getLogs(currentClinic?.id ?? undefined, patientId).then(setMaterialLogs).catch(console.error);
          }
       }
    }, [patientId, currentClinic]);
@@ -333,7 +349,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
    const handleAssignDoctor = (doctorId: string) => {
       const selectedDoctor = doctors.find(d => d.id === doctorId);
-      if (selectedDoctor) {
+      if (selectedDoctor && patient) {
          onUpdatePatient(patient.id, {
             doctorId: selectedDoctor.id,
             doctorName: `${formatDoctorName(selectedDoctor)}`
@@ -467,7 +483,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             // 1. Create a new Paid transaction for the partial amount
             await onAddTransaction({
                ...editingTransaction,
-               id: undefined as any,
                amount: newAmount,
                status: 'Paid',
                type: editPaymentMethod as any,
@@ -520,7 +535,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             note: materialData.note || `Bemor: ${patient?.firstName} ${patient?.lastName}`,
             // Ism yuborilmasa server tokendan oladi — «Doctor» degan qotib
             // qolgan matn o'rniga haqiqiy foydalanuvchi yoziladi
-            userName: myDoctor?.name,
+            userName: myDoctor ? `${myDoctor.firstName} ${myDoctor.lastName}`.trim() : undefined,
          });
 
          // Refresh logs and items
@@ -798,9 +813,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          time: apptData.time,
          duration: Number(apptData.duration),
          status: 'Pending',
-         notes: apptData.notes,
-         clinicId: patient.clinicId,
-         categoryId: apptData.categoryId || null // Add categoryId
+         notes: apptData.notes
       });
       setIsApptModalOpen(false);
       setApptData({ doctorId: defaultDoctorId, date: todayISO(), time: '09:00', type: 'Konsultatsiya', categoryId: '', duration: 60, notes: '' });
@@ -902,8 +915,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
                duration: 60,
                status: 'Completed',
-               notes: `Bajarilgan ishlar:\n` + proceduresText,
-               clinicId: patient.clinicId
+               notes: `Bajarilgan ishlar:\n` + proceduresText
             });
             toast.error(t('patients.details.alerts.visitSaved'));
          } else {
@@ -1383,7 +1395,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                  {patientAppointments.filter(app => {
                                     if (!app || !app.date) return false;
-                                    const isPaid = (patientTransactions || []).some(t => t && t.date === app.date && (t.status === 'Paid' || t.status === 'paid'));
+                                    const isPaid = (patientTransactions || []).some(t => t && t.date === app.date && t.status === 'Paid');
                                     return (app.status === 'Completed' || app.status === 'Checked-In') && !isPaid;
                                  }).map(app => {
                                     const doctor = (doctors || []).find(d => d && d.id === app.doctorId);
@@ -1432,8 +1444,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                                          type: 'Balance' as any,
                                                          status: 'Paid',
                                                          doctorId: app.doctorId,
-                                                         doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
-                                                         clinicId: patient.clinicId
+                                                         doctorName: doctor ? `${formatDoctorName(doctor)}` : ''
                                                       });
                                                       toast.success("To'lov avans hisobidan muvaffaqiyatli amalga oshirildi!");
                                                    }
@@ -1603,7 +1614,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                                    await api.stock.reverse(log.id);
                                                    if (currentClinic) {
                                                       const [updatedLogs, updatedItems] = await Promise.all([
-                                                         api.inventory.getLogs(currentClinic.id, patientId),
+                                                         api.inventory.getLogs(currentClinic.id, patientId ?? undefined),
                                                          api.inventory.getAll(currentClinic.id),
                                                       ]);
                                                       setMaterialLogs(updatedLogs);
@@ -2238,7 +2249,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                  <span className="text-sm text-gray-600">{d.date}</span>
                               </div>
                               <div className="text-sm pl-4 border-l-2 border-gray-300">
-                                 {formatDiagnosisNotes(d.notes)}
+                                 {formatDiagnosisNotes(d.notes || '')}
                               </div>
                            </div>
                         ))}

@@ -43,8 +43,8 @@ interface DashboardProps {
   onUpdateAppointment?: (id: string, data: Partial<Appointment>) => Promise<void>;
   onUpdateTransaction?: (id: string, data: Partial<Transaction>) => Promise<void>;
   onAddPatient?: (data: Omit<Patient, 'id' | 'clinicId'>) => Promise<Patient | void>;
-  onAddTransaction?: (tx: Omit<Transaction, 'id'>) => Promise<any>;
-  onAddAppointment?: (appt: Omit<Appointment, 'id'>) => Promise<any>;
+  onAddTransaction?: (tx: Omit<Transaction, 'id' | 'clinicId'>) => Promise<any>;
+  onAddAppointment?: (appt: Omit<Appointment, 'id' | 'clinicId'>) => Promise<any>;
   addToast?: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
@@ -352,7 +352,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   const overdueLabPatients = useMemo(() => {
     return new Set(
       labOrders
-        .filter(o => ['Pending', 'In-Progress'].includes(o.status) && o.deadline < today)
+        .filter(o => ['Pending', 'In-Progress'].includes(o.status) && (o.deadline || '') < today)
         .map(o => o.patientName)
     );
   }, [labOrders, today]);
@@ -398,7 +398,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
           patientId: payingDebt.patientId,
           doctorId: payingDebt.doctorId,
           doctorName: payingDebt.doctorName,
-          clinicId: payingDebt.clinicId,
           amount: paid,
           status: 'Paid',
           type: debtPayMethod,
@@ -868,7 +867,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                       <stop offset="95%" stopColor="#059669" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" dark:stroke="#374151" strokeOpacity={0.4} />
+                  {/* `dark:stroke` — Tailwind sintaksisi, lekin bu JS PROPI:
+                      recharts uni tanimaydi va u hech qachon ishlamagan,
+                      ya'ni to'q mavzuda panjara ochiq rangda qolardi.
+                      Rang endi ikkala mavzuda ham ko'rinadigan qilib,
+                      shaffoflik orqali beriladi. */}
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#9CA3AF" strokeOpacity={0.25} />
                   <XAxis
                     dataKey="name"
                     axisLine={false}
@@ -1045,7 +1049,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                         {app.review ? (
                           <div className="flex items-center gap-0.5 text-yellow-500">
                             {[...Array(5)].map((_, i) => (
-                              <Star key={i} className={`w-3 h-3 ${i < app.review.rating ? 'fill-current' : 'text-gray-200'}`} />
+                              <Star key={i} className={`w-3 h-3 ${i < (app.review?.rating || 0) ? 'fill-current' : 'text-gray-200'}`} />
                             ))}
                           </div>
                         ) : (
@@ -1200,7 +1204,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                     <stop offset="100%" stopColor="#E11D48" stopOpacity={1} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" dark:stroke="#374151" strokeOpacity={0.4} />
+                {/* `dark:stroke` — Tailwind sintaksisi, lekin bu JS PROPI:
+                      recharts uni tanimaydi va u hech qachon ishlamagan,
+                      ya'ni to'q mavzuda panjara ochiq rangda qolardi.
+                      Rang endi ikkala mavzuda ham ko'rinadigan qilib,
+                      shaffoflik orqali beriladi. */}
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#9CA3AF" strokeOpacity={0.25} />
                 <XAxis
                   dataKey="name"
                   axisLine={false}
@@ -1214,7 +1223,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                   tick={{ fill: '#9CA3AF', fontSize: 10, fontWeight: 700 }}
                 />
                 <Tooltip
-                  cursor={{ fill: 'rgba(0,0,0,0.05)', radius: [8, 8, 4, 4] }}
+                  cursor={{ fill: 'rgba(0,0,0,0.05)' }}
                   contentStyle={{ backgroundColor: '#1F2937', borderRadius: '12px', border: 'none', color: '#fff' }}
                   labelStyle={{ fontWeight: 'bold', marginBottom: '4px' }}
                 />

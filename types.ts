@@ -25,7 +25,16 @@ export interface Doctor {
   specialty: string;
   phone: string;
   email?: string;
-  status: 'Active' | 'On Leave';
+  /* `Deleted` — YUMSHOQ O'CHIRISH. Backend shifokorni bazadan
+     olib tashlamaydi, holatini shunga o'zgartiradi va login/parolni
+     tozalaydi (`backend/inpatient.ts`), chunki uning nomi eski
+     tashriflar va cheklarda qolishi kerak.
+
+     Bu qiymat turda e'lon qilinmagan edi, ya'ni o'chirilgan
+     shifokorni chetlab o'tuvchi filtrlar («status !== 'Deleted'»)
+     tur nuqtai nazaridan MA'NOSIZ ko'rinardi va typecheck ularni
+     xato deb belgilardi. */
+  status: 'Active' | 'On Leave' | 'Deleted';
   clinicId: string;
   username?: string;
   password?: string;
@@ -38,6 +47,9 @@ export interface Doctor {
   endHour?: number | null;
   /** Kabinet raqami — talonda va navbat tablosida. Migratsiya 0004 */
   room?: string | null;
+  /* Bazada bor va Registraturada shifokorlarni bo'lim bo'yicha
+     filtrlashda ISHLATILADI, lekin bu yerda e'lon qilinmagan edi. */
+  departmentId?: string | null;
 }
 
 export interface Receptionist {
@@ -231,6 +243,12 @@ export interface TriggerDescriptor {
   label: string;
   respectCooldown: boolean;
   supportsDoctorFilter: boolean;
+  /* Backend (`backend/triggers.ts`) bu ikki maydonni ham yuboradi va
+     ular Xabarlar bo'limida ISHLATILADI — segment tanlash va jadval
+     bo'yicha yuborish shu bayroqlarga qarab ko'rsatiladi. E'londa
+     yo'q edi. */
+  supportsSegment?: boolean;
+  supportsSchedule?: boolean;
   /** Tinch soatlar — trigger faqat shu oraliqda yuboradi (Toshkent vaqti) */
   sendWindow?: { fromHour: number; toHour: number };
   offset?: {
@@ -330,7 +348,10 @@ export interface AudienceSegment {
 export interface SegmentFieldDescriptor {
   id: string;
   label: string;
-  type: 'enum' | 'bool' | 'number' | 'months_ago' | 'days_ago' | 'text' | 'month_of_year';
+  /* `enum_months` backendda BOR (`backend/segmentFields.ts`) va u
+     yerda ishlatiladi («muolaja + necha oy o'tgan»). Bu yerda tushib
+     qolgani uchun interfeysdagi mos shox o'lik kod deb baholanardi. */
+  type: 'enum' | 'bool' | 'number' | 'months_ago' | 'days_ago' | 'text' | 'month_of_year' | 'enum_months';
   group: string;
   operators: { id: string; label: string; arity: 0 | 1 | 2 }[];
   options?: { value: string; label: string }[];
@@ -439,6 +460,12 @@ export interface Service {
   clinicId: string;
   categoryId?: string;
   category?: ServiceCategory;
+  /* Bazada (`schema.prisma`, `model Service`) bu ustun bor va u
+     Registratura, Qabul va «Xizmat qo'shish» oynasida ISHLATILADI —
+     lekin bu yerda e'lon qilinmagan edi. Typecheck buni ko'rmasdi,
+     chunki `@types/react` o'rnatilmagani uchun komponent proplari
+     `any` bo'lib qolardi. */
+  departmentId?: string | null;
 }
 
 export interface ServiceCategory {
@@ -490,6 +517,9 @@ export interface Clinic {
   endHour?: number;
   enableReceipts?: boolean;
   notificationMode?: 'telegram_only' | 'sms_only' | 'both';
+  /* Bazada bor (`model Clinic`, `telegramChatId`) va Sozlamalarda
+     ishlatiladi, lekin e'lon qilinmagan edi. */
+  telegramChatId?: string | null;
   eskizEmail?: string;
   hasPassword?: boolean;
   isConnected?: boolean;
@@ -996,7 +1026,10 @@ export interface Prescription {
   date: string;
   status: string;
   notes?: string | null;
-  items?: PrescriptionItem[];
+  /* Yaratishda qatorda hali `id` va `prescriptionId` bo'lmaydi —
+     ularni server beradi. Shuning uchun qisman element ham qabul
+     qilinadi. */
+  items?: (PrescriptionItem | Partial<PrescriptionItem>)[];
 }
 
 export interface PrescriptionItem {

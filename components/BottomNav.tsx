@@ -1,4 +1,5 @@
 import React from 'react';
+import type { TranslationKey } from '../i18n/translations';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Users, Calendar, DollarSign, Activity, Package, Settings, MoreHorizontal, MessageSquare, Wallet, BedDouble } from 'lucide-react';
 import { UserRole, AccessControl } from '../types';
@@ -69,7 +70,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
                             <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-primary-50 dark:bg-primary-900/30 scale-110' : ''}`}>
                                 <Icon className={`w-5 h-5 ${active ? 'fill-current' : ''}`} />
                             </div>
-                            <span className="text-[10px] font-medium mt-1 truncate max-w-full px-1">{t(item.labelKey)}</span>
+                            <span className="text-[10px] font-medium mt-1 truncate max-w-full px-1">{t(item.labelKey as TranslationKey)}</span>
                             {active && (
                                 <div className="absolute bottom-1 w-1 h-1 bg-primary-600 dark:bg-primary-400 rounded-full" />
                             )}

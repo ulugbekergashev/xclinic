@@ -133,7 +133,7 @@ export const LabOrders: React.FC<Props> = ({
             const full = await api.labResults.get(order.id);
             setResultsOrder(full);
             const d: Record<string, string> = {};
-            full.items.forEach(item => (item.parameters || []).forEach(p => {
+            full.items.forEach((item: any) => (item.parameters || []).forEach((p: any) => {
                 d[`${item.id}:${p.parameterId}`] = p.value || '';
             }));
             setDraft(d);

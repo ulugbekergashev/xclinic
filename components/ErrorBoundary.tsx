@@ -25,18 +25,15 @@ interface State {
     info: string;
 }
 
-/* Loyihada `@types/react` o'rnatilmagan (denta7 dan shunday kelgan), shuning uchun
-   `React.Component` ning tiplari yo'q va `this.setState` / `this.props` ni TS
-   ko'rmaydi. Bazani shu yerda bir marta tiplab olamiz — bu @types/react keyin
-   qo'shilsa ham, qo'shilmasa ham ishlaydi. Xato to'sig'ini hook bilan yozib
-   bo'lmaydi, shuning uchun klass shart. */
-const Base = React.Component as unknown as new (props: Props) => {
-    props: Props;
-    state: State;
-    setState(next: Partial<State>): void;
-};
+/* Xato to'sig'ini hook bilan yozib bo'lmaydi, shuning uchun klass shart.
 
-export class ErrorBoundary extends Base {
+   Ilgari bu yerda `React.Component` qo'lda tiplab olinardi, chunki
+   loyihada `@types/react` UMUMAN o'rnatilmagan edi (denta7 dan shunday
+   kelgan). O'sha yo'qlik butun frontendni tekshiruvsiz qoldirgan edi:
+   har bir komponentning proplari `any` bo'lib, `noImplicitAny` yoqilsa
+   10 524 xato chiqardi. Turlar o'rnatilgach bu chetlab o'tish keraksiz
+   qoldi va u JSX da ishlashga xalaqit berardi. */
+export class ErrorBoundary extends React.Component<Props, State> {
     state: State = { error: null, info: '' };
 
     static getDerivedStateFromError(error: Error): Partial<State> {

@@ -160,7 +160,7 @@ export const Reception: React.FC<Props> = ({
     useEffect(() => {
         setDoctorId('');
         const first = services.find(s => s.departmentId === departmentId);
-        setServiceId(first ? first.id : '');
+        setServiceId(first?.id ?? '');
     }, [departmentId, services]);
 
     const reset = () => {

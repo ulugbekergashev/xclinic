@@ -25,7 +25,25 @@
       ]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+
+    /* QAT'IY REJIM — YOQILGAN.
+
+       Ilgari `"strict": true` yoqilsa 10 718 xato chiqardi va shu
+       sababli o'chiq turardi. Sabab kodda emas edi: loyihada
+       `@types/react` UMUMAN o'rnatilmagan edi (denta7 dan shunday
+       kelgan). Ya'ni `import React from 'react'` tur ta'riflarisiz
+       qolib, `noImplicitAny` o'chiq bo'lgani uchun JIMGINA `any` ga
+       aylanardi — butun frontend, har bir komponentning har bir
+       propi tekshiruvsiz edi.
+
+       Turlar o'rnatilgach o'sha 10 718 xato 12 taga tushdi.
+       Ularning hammasi tuzatildi va ular orasida haqiqiy nosozliklar
+       bor edi: `onClick={openAddModal}` sichqoncha hodisasini sanaga
+       uzatardi, `Select` `disabled` variantni chizmasdi,
+       `dark:stroke` hech qachon ishlamagan, «Suratlar» tabi turda
+       yo'q edi, `Doctor.status` da `Deleted` tushib qolgan edi. */
+    "strict": true
   },
   "include": [
     "App.tsx",

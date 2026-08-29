@@ -176,7 +176,14 @@ export const Input: React.FC<InputProps> = ({ label, error, helperText, classNam
 // --- Select ---
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
-  options?: { value: string; label: string }[];
+  /* `disabled` — variant ko'rinadi, lekin tanlanmaydi. Masalan
+     «Balansdan to'lash»: bemorning balansi bo'sh bo'lsa u ko'rinib
+     tursin (nima uchun yo'qligi tushunarli bo'lsin), lekin tanlanmasin.
+
+     Chaqiruvchilar buni ALLAQACHON uzatardi, lekin e'londa ham,
+     renderda ham yo'q edi — ya'ni jimgina tashlab yuborilardi va
+     variant baribir tanlanardi. */
+  options?: { value: string; label: string; disabled?: boolean }[];
 }
 
 export const Select: React.FC<SelectProps> = ({ label, options, children, className = '', ...props }) => {
@@ -197,7 +204,7 @@ export const Select: React.FC<SelectProps> = ({ label, options, children, classN
         id={selectId}
       >
         {options ? options.map(opt => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+          <option key={opt.value} value={opt.value} disabled={opt.disabled}>{opt.label}</option>
         )) : children}
       </select>
       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">

@@ -4,10 +4,8 @@ import { Wallet, BarChart3, Percent } from 'lucide-react';
 import { CashBook } from './CashBook';
 import { FinanceReport } from './FinanceReport';
 import { Payroll } from './Payroll';
-import {
-    UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
-    LabOrder, Receptionist, CashRegisterDay, CashMovement, VisitCharge, Department,
-} from '../types';
+import { UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
+    LabOrder, Receptionist, CashRegisterDay, CashMovement, VisitCharge, Department, Service } from '../types';
 import type { CashCloseArgs } from './CashBook';
 
 // Moliya bo'limi — bitta menyu punkti, ikkita tab:
@@ -46,7 +44,11 @@ interface FinanceHubProps {
     transactions: Transaction[];
     expenses: Expense[];
     appointments: Appointment[];
-    services: { name: string; price: number; duration: number }[];
+    /* `Service` — yagona haqiqat manbai (`types.ts`). Bu yerda uning
+    QISQARTIRILGAN nusxasi yozilgan edi va u haqiqatdan farq qilardi:
+    `duration` u yerda ixtiyoriy, bu yerda majburiy. Nusxa turlar
+    ajralib ketishiga olib keladi. */
+    services: Service[];
     patients: Patient[];
     doctors: Doctor[];
     receptionists?: Receptionist[];
@@ -55,7 +57,7 @@ interface FinanceHubProps {
     doctorId: string;
     clinicId?: string;
     onPatientClick: (id: string) => void;
-    onAddTransaction?: (tx: Omit<Transaction, 'id'>) => Promise<any>;
+    onAddTransaction?: (tx: Omit<Transaction, 'id' | 'clinicId'>) => Promise<any>;
     onAddExpense?: (expense: Omit<Expense, 'id'>) => Promise<any>;
     onUpdateExpense?: (id: string, data: Partial<Expense>) => Promise<void>;
     onDeleteExpense?: (id: string) => Promise<void>;

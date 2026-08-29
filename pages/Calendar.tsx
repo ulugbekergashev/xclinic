@@ -14,7 +14,7 @@ import {
   XCircle, CheckCircle, Send, Bell, Edit2, Loader2,
   Search
 } from 'lucide-react';
-import { Appointment, Patient, Doctor, UserRole, Clinic, ServiceCategory } from '../types';
+import { Appointment, Patient, Doctor, UserRole, Clinic, ServiceCategory, Service } from '../types';
 import { api } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -22,12 +22,16 @@ interface CalendarProps {
   appointments: Appointment[];
   patients: Patient[];
   doctors: Doctor[];
-  services: { name: string; price: number; duration: number }[];
+  /* `Service` — yagona haqiqat manbai (`types.ts`). Bu yerda uning
+  QISQARTIRILGAN nusxasi yozilgan edi va u haqiqatdan farq qilardi:
+  `duration` u yerda ixtiyoriy, bu yerda majburiy. Nusxa turlar
+  ajralib ketishiga olib keladi. */
+  services: Service[];
   categories: ServiceCategory[];
-  onAddAppointment: (appt: Omit<Appointment, 'id'>) => Promise<void>;
+  onAddAppointment: (appt: Omit<Appointment, 'id' | 'clinicId'>) => Promise<void>;
   onUpdateAppointment: (id: string, data: Partial<Appointment>) => Promise<void>;
   onDeleteAppointment: (id: string) => void;
-  onAddPatient: (patient: Omit<Patient, 'id'>) => Promise<Patient | undefined>;
+  onAddPatient: (patient: Omit<Patient, 'id' | 'clinicId'>) => Promise<Patient | undefined>;
   userRole: UserRole;
   doctorId: string;
   currentClinic?: Clinic;
@@ -894,7 +898,11 @@ Baribir yozilsinmi?`
           </div>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          <Button onClick={openAddModal} className="flex-1 sm:flex-none"><Plus className="w-4 h-4 mr-2" /> {t('calendar.newAppointment')}</Button>
+          {/* `openAddModal(initialDate?, initialTime?, initialDoctorId?)` —
+              to'g'ridan-to'g'ri `onClick` ga berilsa, React unga SICHQONCHA
+              HODISASINI birinchi argument qilib uzatadi va u `initialDate`
+              bo'lib tushadi. Argumentsiz chaqiramiz. */}
+          <Button onClick={() => openAddModal()} className="flex-1 sm:flex-none"><Plus className="w-4 h-4 mr-2" /> {t('calendar.newAppointment')}</Button>
         </div>
       </div>
 

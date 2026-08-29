@@ -208,7 +208,7 @@ async function fetchJson<T>(url: string, options: RequestInit = {}, isRetry = fa
     /* Token XOTIRADAN olinadi, `localStorage` dan emas (S1.3) — u endi
        diskda saqlanmaydi. */
     const token = auth.getToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token) (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
 
     const response = await fetchWithRetry(`${API_URL}${url}`, {
         ...options,

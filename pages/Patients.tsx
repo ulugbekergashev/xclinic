@@ -21,7 +21,7 @@ interface PatientsProps {
   appointments: Appointment[];
   transactions: Transaction[];
   onPatientClick: (id: string) => void;
-  onAddPatient: (patient: Omit<Patient, 'id'>) => Promise<any>;
+  onAddPatient: (patient: Omit<Patient, 'id' | 'clinicId'>) => Promise<any>;
   onDeletePatient: (id: string) => void;
   onUpdatePatient: (id: string, data: Partial<Patient>) => Promise<void>;
   currentClinic?: Clinic;

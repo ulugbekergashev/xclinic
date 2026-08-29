@@ -78,7 +78,11 @@ export const AddProcedureModal: React.FC<AddProcedureModalProps> = ({
             return;
         }
         const service = services.find(s => s.id === selectedServiceId);
-        if (!service) return;
+        /* `Service.id` turda IXTIYORIY (katalogdan kelmagan, qo'lda
+           tuzilgan xizmat bo'lishi mumkin). Idsiz xizmat kassaga
+           bog'lanmaydi va hisobotda ko'rinmaydi, shuning uchun uni
+           navbatga qo'shmaymiz. */
+        if (!service || service.id === undefined) return;
 
         setQueue([...queue, {
             serviceId: service.id,

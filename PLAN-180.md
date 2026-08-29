@@ -960,6 +960,15 @@ Bular rejada yo'q edi — ish davomida chiqdi.
 | Hafta ko'rinishida 6 shifokor bitta ustunni bo'lishardi — ismlar «Tosh…» ga aylanardi | `pages/Calendar.tsx` | foydalanuvchi ko'rsatdi |
 | Kunlik ko'rinishda ustunlar UMUMAN yo'q edi: `grid-cols-[...${n}...]` — dinamik Tailwind klassi hech qachon yaratilmaydi | `pages/Calendar.tsx` | foydalanuvchi ko'rsatdi |
 | **Moliya ochilmasdi** (`Cannot access 'totals' before initialization`) — S4.1 dagi `t`→`totals` qayta nomlash callback PARAMETRLARINI ham almashtirgan: `.filter(t => totals…)`. 7 joyda | `pages/CashBook.tsx` | foydalanuvchi ko'rsatdi |
+| **`@types/react` umuman o'rnatilmagan edi** — butun frontend tekshiruvsiz: `noImplicitAny` 10 524 xato berardi | `package.json` | `strict` ni yoqishga urinilganda |
+| `onClick={openAddModal}` — React sichqoncha hodisasini `initialDate` ga uzatardi | `pages/Calendar.tsx` | strict |
+| `Select` `disabled` variantni chizmasdi — «Balansdan» balans 0 da ham tanlanardi | `components/Common.tsx` | strict |
+| `dark:stroke` — Tailwind sintaksisi JS propida, hech qachon ishlamagan | `pages/Dashboard.tsx` | strict |
+| «Suratlar» tabi turda yo'q edi | `pages/PatientDetails.tsx` | strict |
+| `Doctor.status` da `Deleted` tushib qolgan — o'chirilganlarni chetlab o'tuvchi filtrlar «ma'nosiz» ko'rinardi | `types.ts` | strict |
+| `Service.departmentId`, `Doctor.departmentId`, `Clinic.telegramChatId`, `TriggerDescriptor.supportsSegment/Schedule`, `SegmentFieldDescriptor.enum_months` — bazada bor, turda yo'q | `types.ts` | strict |
+| SMS shablonlarida `{ism}`/`{summa}` — qo'llab-quvvatlanmaydigan tokenlar, bemorga xom holda ketardi | `backend/demoSeed.ts` | sahifalarni ko'zdan kechirish |
+| Namoyish ma'lumotida xizmat bo'limga qaramay tanlanardi (xirurgda «Pediatr konsultatsiyasi») | `backend/demoSeed.ts` | Shifokorlar statistikasi |
 | Bosh sahifadagi doiraviy diagramma legendasi kartadan toshib, pastdagi bo'limlar ustiga tushardi (17 tur, 36px joy) | `pages/Dashboard.tsx` | bosh panelga blok qo'shilganda |
 | O'sha diagrammada rang SARALASHDAN OLDIN berilardi — tilim rangi bilan o'rni mos kelmasdi | `pages/Dashboard.tsx` | o'sha yerda |
 | «Moliyaviy Oqim» izohida xom inglizcha kalitlar: «revenue : 0», «appointments : 19» | `pages/Dashboard.tsx` | o'sha yerda |

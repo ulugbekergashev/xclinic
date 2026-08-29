@@ -437,7 +437,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                             <YAxis dataKey="name" type="category" stroke="#9ca3af" fontSize={12} width={80} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
-                                formatter={(value: number) => `${formatNumber(value)} UZS`}
+                                formatter={(value: any) => `${formatNumber(Number(value))} UZS`}
                             />
                             <Bar dataKey="revenue" radius={[0, 8, 8, 0]}>
                                 {analyticsData.map((entry, index) => (
@@ -479,7 +479,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                             <YAxis stroke="#9ca3af" fontSize={12} domain={[0, 100]} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
-                                formatter={(value: number) => `${value}%`}
+                                formatter={(value: any) => `${value}%`}
                             />
                             <Bar dataKey="completionRate" name={t('doctors.analytics.thEfficiency')} fill="#3b82f6" radius={[8, 8, 0, 0]}>
                                 {analyticsData.map((entry, index) => (
@@ -500,7 +500,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                             <YAxis stroke="#9ca3af" fontSize={12} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
-                                formatter={(value: number) => `${formatNumber(value)} UZS`}
+                                formatter={(value: any) => `${formatNumber(Number(value))} UZS`}
                             />
                             <Bar dataKey="avgRevenue" name={t('doctors.analytics.thAverage')} fill="#f59e0b" radius={[8, 8, 0, 0]} />
                         </BarChart>

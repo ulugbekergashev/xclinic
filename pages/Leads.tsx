@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { TranslationKey } from '../i18n/translations';
 import { formatUzPhone } from '../shared/validation';
 import { formatFullName } from '../utils/format';
 import { confirmAction } from '../services/confirm';
@@ -160,7 +161,7 @@ export const Leads: React.FC<LeadsProps> = ({
             clinicId: '' // This gets overwritten by the parent
         });
         setIsAddModalOpen(false);
-        setFormData({ name: '', phone: '+998', service: '', source: '', notes: '' });
+        setFormData({ name: '', phone: '+998', service: '', source: '', notes: '', status: 'New' });
     };
 
     const moveLead = (leadId: string, newStatus: string) => {
@@ -450,7 +451,7 @@ export const Leads: React.FC<LeadsProps> = ({
                                 <div className={`p-3 border-b border-gray-200/50 dark:border-gray-700/50 rounded-t-xl transition-colors ${isDragOverTarget ? 'bg-gray-100 dark:bg-gray-700/50' : ''}`}>
                                     <div className="flex items-center justify-between pointer-events-none">
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${stage.color}`}>
-                                            {t(`leads.stages.${stage.id.toLowerCase()}`)}
+                                            {t(`leads.stages.${stage.id.toLowerCase()}` as TranslationKey)}
                                         </span>
                                         <span className="text-xs font-medium text-gray-500 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-700">
                                             {columnLeads.length}
@@ -543,7 +544,7 @@ export const Leads: React.FC<LeadsProps> = ({
                                                         }
                                                     >
                                                         {s.id === 'Booked' ? <UserPlus className="w-3 h-3 inline-block mr-0.5" /> : <ArrowRight className="w-3 h-3 inline-block mr-0.5" />}
-                                                        {t(`leads.stages.${s.id.toLowerCase()}`)}
+                                                        {t(`leads.stages.${s.id.toLowerCase()}` as TranslationKey)}
                                                     </button>
                                                 ))}
                                             </div>
@@ -911,7 +912,7 @@ export const Leads: React.FC<LeadsProps> = ({
                                     <span className={`inline-block px-2.5 py-0.5 rounded text-xs font-bold ${
                                         STAGES.find(s => s.id === selectedLeadForDetail.status)?.color || 'bg-gray-100 text-gray-700'
                                     }`}>
-                                        {t(`leads.stages.${selectedLeadForDetail.status.toLowerCase()}`)}
+                                        {t(`leads.stages.${selectedLeadForDetail.status.toLowerCase()}` as TranslationKey)}
                                     </span>
                                 </div>
                                 <div className="space-y-1">

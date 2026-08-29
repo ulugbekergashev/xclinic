@@ -204,7 +204,11 @@ const AppContent: React.FC = () => {
       try {
         const { role, name, clinicId: storedClinicId, doctorId: storedDoctorId, receptionistId: storedReceptionistId, technicianId: storedTechnicianId } = storedAuth;
         if (role && name) {
-          setUserRole(role);
+          /* `role` sessiyadan SATR bo'lib keladi (JSON da enum yo'q).
+             Ilgari u to'g'ridan-to'g'ri uzatilardi va typecheck buni
+             ko'rmasdi. Endi aniq aytamiz: bu qiymat `UserRole` deb
+             qabul qilinadi. */
+          setUserRole(role as UserRole);
           setUserName(name);
           if (storedClinicId) setClinicId(storedClinicId);
           if (storedDoctorId) setDoctorId(storedDoctorId);
@@ -491,7 +495,7 @@ const sinceDate = (n: number) =>
   };
 
   // Patient Actions
-  const addPatient = async (patient: Omit<Patient, 'id'>) => {
+  const addPatient = async (patient: Omit<Patient, 'id' | 'clinicId'>) => {
     try {
       /* Takror tekshiruvi SERVERGA ko'chdi.
 
@@ -559,7 +563,7 @@ const sinceDate = (n: number) =>
   };
 
   // Appointment Actions
-  const addAppointment = async (appt: Omit<Appointment, 'id'>) => {
+  const addAppointment = async (appt: Omit<Appointment, 'id' | 'clinicId'>) => {
     try {
       const newAppt = await api.appointments.create({ ...appt, clinicId });
       setAppointments(prev => {
@@ -597,7 +601,7 @@ const sinceDate = (n: number) =>
   };
 
   // Transaction Actions
-  const addTransaction = async (tx: Omit<Transaction, 'id'>) => {
+  const addTransaction = async (tx: Omit<Transaction, 'id' | 'clinicId'>) => {
     try {
       const newTx = await api.transactions.create({ ...tx, clinicId });
       setTransactions(prev => {
@@ -889,7 +893,6 @@ const sinceDate = (n: number) =>
           duration: appointmentData.duration || 60,
           status: 'Pending',
           notes: lead.service ? `Qiziqish bildirdi: ${lead.service}` : '',
-          clinicId,
         });
       }
 
@@ -933,7 +936,7 @@ const sinceDate = (n: number) =>
     } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
   };
 
-  const addDoctor = async (doctor: Omit<Doctor, 'id'>) => {
+  const addDoctor = async (doctor: Omit<Doctor, 'id' | 'clinicId'>) => {
     try {
       const newDoc = await api.doctors.create({ ...doctor, clinicId });
       setDoctors(prev => {
@@ -1901,7 +1904,6 @@ const sinceDate = (n: number) =>
 
                   <Route path="/doctors/:doctorId" element={
                     <DoctorDetails
-                      doctorId="" // Will be handled by useParams in a wrapper or directly if we use useParams inside DoctorDetails, but wait, let's just make DoctorDetails use useParams or pass a wrapper.
                       doctors={doctors}
                       appointments={appointments}
                       transactions={transactions}

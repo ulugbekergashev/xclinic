@@ -62,7 +62,7 @@ interface SettingsProps {
    onDeleteService?: (id: number) => Promise<void>;
    onAddCategory: (category: Omit<ServiceCategory, 'id' | 'clinicId'>) => void;
    onDeleteCategory: (id: string) => void;
-   onAddDoctor: (doctor: Omit<Doctor, 'id'>) => void;
+   onAddDoctor: (doctor: Omit<Doctor, 'id' | 'clinicId'>) => void;
    onUpdateDoctor: (id: string, doctor: Partial<Doctor>) => void;
    onDeleteDoctor: (id: string) => void;
    onAddReceptionist?: (receptionist: Omit<Receptionist, 'id'>) => void;

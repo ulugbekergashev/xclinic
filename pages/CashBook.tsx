@@ -68,7 +68,7 @@ interface CashBookProps {
     appointments?: Appointment[];
     services?: { name: string; price: number; duration?: number }[];
     clinicId?: string;
-    onAddTransaction?: (tx: Omit<Transaction, 'id'>) => Promise<any>;
+    onAddTransaction?: (tx: Omit<Transaction, 'id' | 'clinicId'>) => Promise<any>;
     /** Buyurtma berilganda avtomatik yaratilgan to'lanmagan hisob qatorlari */
     charges?: VisitCharge[];
     onChargesChanged?: () => void;
@@ -523,9 +523,17 @@ export const CashBook: React.FC<CashBookProps> = ({
        Interfeys ham o'zi hisoblaydi (day.totals.drawer), lekin yopilishda
        yozib qoladigan raqam serverdan. Ikkisi farq qilsa — buni kassirga
        ko'rsatamiz, jimgina yashirmaymiz. */
+    /* Tur `api.reports`/`api.cashRegister.expected` dagi bilan MOS
+       bo'lishi kerak. Bu yerda uning NUSXASI yozilgan va u eskirib
+       qolgan: server `openCharges` ni ham qaytaradi (kunning
+       yopilmagan xizmat qatorlari) va u pastda ishlatiladi, lekin
+       e'londa yo'q edi. Typecheck buni ko'rmasdi, chunki React
+       turlari umuman o'rnatilmagan edi. */
     const [serverExpected, setServerExpected] = useState<{
         openingCash: number; expectedCash: number;
-        expectedCard: number; expectedClick: number; sources: Record<string, any>;
+        expectedCard: number; expectedClick: number;
+        openCharges?: { count: number; patients: number; due: number };
+        sources: Record<string, any>;
     } | null>(null);
     const [expectedLoading, setExpectedLoading] = useState(false);
     const [expectedError, setExpectedError] = useState('');
@@ -927,7 +935,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     type: debtMethod,
                     service: `${payingDebt.service} (Qarzdorlik yopildi)`,
                     date,
-                } as Omit<Transaction, 'id'>);
+                } as Omit<Transaction, 'id' | 'clinicId'>);
                 await onUpdateTransaction(payingDebt.id, { amount: payingDebt.amount - paid });
             } else {
                 await onUpdateTransaction(payingDebt.id, { status: 'Paid', type: debtMethod, date });
