@@ -219,6 +219,11 @@ async function startBackend() {
     const env = {
         ...safeEnv,
         ELECTRON_RUN: 'true',
+        /* Aktivatsiya tekshiruvi FAQAT paketlangan nusxada yoqiladi —
+           xaridor oladigan holat aynan shu. Ishlab chiqishda va
+           sinovlarda u o'chiq, aks holda har o'zgarishdan keyin
+           kalit kiritish kerak bo'lardi. */
+        LICENSE_ENFORCE: isDev ? '0' : '1',
         ELECTRON_USER_DATA_PATH: app.getPath('userData'),
         PORT: BACKEND_PORT.toString(),
         // .env fayllari override:true bilan yuklanib PORT ni bekor qiladi — bu esa qilmaydi

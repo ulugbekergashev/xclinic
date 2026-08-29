@@ -39,6 +39,7 @@ import {
   DollarSign, Settings as SettingsIcon, Menu, X, Moon, Sun, LogOut,
   Activity, RefreshCw, AlertTriangle, Loader2, Package, Search, UserCheck, Plus, Edit, Trash2, ListOrdered, FlaskConical, MessageSquare, Wallet, Scan, BedDouble, UserPlus, Stethoscope, Sparkles} from 'lucide-react';
 import { SignIn } from './pages/SignIn';
+import { FirstRunSetup } from './pages/FirstRunSetup';
 import { QueueBoard } from './pages/QueueBoard';
 import { UserRole, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, Service, InventoryItem, ServiceCategory, Lead, LabTechnician, LabOrder, CashRegisterDay, CashMovement, Department, VisitCharge } from './types';
 import { ToastContainer, ToastMessage } from './components/Common';
@@ -50,7 +51,7 @@ import { LogoWordmark } from './components/Logo';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { useHotkeys } from './hooks/useHotkeys';
 import { startLiveUpdates, stopLiveUpdates } from './hooks/useLiveUpdates';
-import { API_URL, getAuthToken } from './services/api';
+import { API_URL, API_BASE_URL, getAuthToken } from './services/api';
 import * as auth from './services/authStore';
 import { connectToast, disconnectToast } from './services/toast';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -1231,9 +1232,57 @@ const sinceDate = (n: number) =>
   }, [isAuthenticated, mustChangePassword]);
 
 
+  /* ── BIRINCHI ISHGA TUSHIRISH ─────────────────────────────────────
+     Yangi o'rnatmada baza bo'sh: klinika ham, admin ham yo'q. Bunday
+     holatda kirish sahifasini ko'rsatish ma'nosiz — kiradigan login
+     mavjud emas. Server holatni `/api/license/status` orqali aytadi:
+
+       clinicExists: false  -> to'liq sozlash (klinika + admin + kalit)
+       activated: false     -> klinika bor, lekin kalit yo'q/eskirgan
+                               (masalan baza boshqa kompyuterga ko'chgan)
+
+     So'rov FAQAT tizimga kirilmagan holatda yuboriladi va javob
+     kelmasa ekran avvalgidek kirish sahifasi bo'lib qolaveradi —
+     tekshiruv ishlamay qolsa ham dasturga kirish yo'li yopilmasin. */
+  const [licenseState, setLicenseState] = useState<
+    { activated: boolean; clinicExists: boolean; machineId: string; enforced?: boolean } | null
+  >(null);
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+    let alive = true;
+    fetch(`${API_BASE_URL}/api/license/status`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (alive && d) setLicenseState(d); })
+      .catch(() => { /* eski server — sozlash ekrani ko'rsatilmaydi */ });
+    return () => { alive = false; };
+  }, [isAuthenticated]);
+
   // --- Main Render ---
   if (!isAuthenticated) {
     if (!authChecked) return null;
+
+    /* Navbat tablosi televizorda ochiq qoladi — u sozlashga bog'liq
+       emas va klinika uni login qilmasdan ishlatadi. */
+    const onBoard = location.pathname.startsWith('/board/');
+
+    /* `enforced` — server tekshiruvni haqiqatan yoqganini bildiradi.
+       Usiz bu shart ishlab turgan o'rnatmalarni kirish sahifasidan
+       ajratib qo'yardi: ularda `licenseKey` yo'q, ya'ni
+       `activated: false`, lekin tekshiruv ham o'chiq. */
+    const needsSetup = !!licenseState?.enforced
+        && (!licenseState.clinicExists || !licenseState.activated);
+
+    if (needsSetup && !onBoard && licenseState) {
+      return (
+        <FirstRunSetup
+          machineId={licenseState.machineId}
+          activateOnly={licenseState.clinicExists}
+          onDone={() => setLicenseState({ ...licenseState, activated: true, clinicExists: true })}
+        />
+      );
+    }
+
     return (
       <>
         <Routes>

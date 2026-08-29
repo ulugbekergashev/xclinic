@@ -961,6 +961,10 @@ Bular rejada yo'q edi — ish davomida chiqdi.
 | Kunlik ko'rinishda ustunlar UMUMAN yo'q edi: `grid-cols-[...${n}...]` — dinamik Tailwind klassi hech qachon yaratilmaydi | `pages/Calendar.tsx` | foydalanuvchi ko'rsatdi |
 | **Moliya ochilmasdi** (`Cannot access 'totals' before initialization`) — S4.1 dagi `t`→`totals` qayta nomlash callback PARAMETRLARINI ham almashtirgan: `.filter(t => totals…)`. 7 joyda | `pages/CashBook.tsx` | foydalanuvchi ko'rsatdi |
 | **`@types/react` umuman o'rnatilmagan edi** — butun frontend tekshiruvsiz: `noImplicitAny` 10 524 xato berardi | `package.json` | `strict` ni yoqishga urinilganda |
+| Yangi o'rnatmada klinika ham, admin ham yaratilmasdi — xaridor kirolmasdi. `starter.db` kutilardi, lekin u yo'q edi | `backend/license.ts` (yangi) | sotishga tayyorlik tekshiruvi |
+| Litsenziya mexanizmi o'lik edi: fayllar bor, marshrutlar yozilmagan, middleware ulanmagan | `backend/server.ts` | dentalocal bilan solishtirganda |
+| Litsenziya middleware'i frontendning O'Z fayllarini ham bloklardi — aktivlashtirilmagan nusxa BO'M-BO'SH oq sahifa ko'rsatardi | `backend/licenseMiddleware.ts` | bo'sh bazada sinaganda |
+| `.env` haqiqiy muhit o'zgaruvchisini bosib ketardi — operator bergan sozlama jimgina e'tiborsiz qolardi | `backend/server.ts` | bo'sh bazada sinaganda |
 | `onClick={openAddModal}` — React sichqoncha hodisasini `initialDate` ga uzatardi | `pages/Calendar.tsx` | strict |
 | `Select` `disabled` variantni chizmasdi — «Balansdan» balans 0 da ham tanlanardi | `components/Common.tsx` | strict |
 | `dark:stroke` — Tailwind sintaksisi JS propida, hech qachon ishlamagan | `pages/Dashboard.tsx` | strict |

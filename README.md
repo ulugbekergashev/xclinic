@@ -40,6 +40,59 @@ npm run electron:build        # dist-electron/ ichida NSIS o'rnatuvchi
 
 ---
 
+## Klinikaga sotish va o'rnatish
+
+XClinic **bir marta sotiladi**. Obuna, tarif va muddat yo'q.
+Nusxadan himoya — aktivatsiya kaliti orqali: u mashina
+identifikatoridan hisoblanadi va faqat o'sha kompyuterda ishlaydi.
+
+### Xaridor tomonida
+
+1. O'rnatuvchini yurgizadi va dasturni ochadi
+2. **Birinchi sozlash** ekrani chiqadi va unda **mashina identifikatori**
+   ko'rinadi (masalan `HWID-D181C74D0481596B`)
+3. Xaridor «nusxa olish» tugmasi bilan kodni oladi va sizga yuboradi
+4. Sizdan kalit kelgach: klinika nomi, administrator logini va parolini
+   kiritadi, kalitni qo'yadi va «Sozlashni yakunlash» ni bosadi
+5. Tayyor — o'sha login bilan kiradi
+
+Bo'lim, xizmat va narxlarni keyin Sozlamalardan o'zi kiritadi.
+
+### Siz tomonda
+
+```bash
+cd backend
+npx ts-node --transpile-only scripts/generateKey.ts <MASHINA-ID>
+```
+
+Admin parolini unutsa — alohida kalit:
+
+```bash
+npx ts-node --transpile-only scripts/generateKey.ts <MASHINA-ID> --recovery
+```
+
+Ikkalasi **boshqa-boshqa tuzdan** hisoblanadi: xaridordagi aktivatsiya
+kaliti bilan admin parolini tiklab bo'lmaydi.
+
+> **Tuzlar** `backend/licenseService.ts` da. Ular ochiq repozitoriyaga
+> chiqsa himoya ma'nosini yo'qotadi.
+
+### Nima qachon tekshiriladi
+
+Aktivatsiya tekshiruvi **faqat paketlangan nusxada** yoqiladi — Electron
+backendga `LICENSE_ENFORCE=1` beradi. Ishlab chiqishda va sinovlarda u
+o'chiq, aks holda har o'zgarishdan keyin kalit kiritish kerak bo'lardi.
+Qo'lda sinash uchun:
+
+```bash
+cd backend && LICENSE_ENFORCE=1 npx ts-node server.ts
+```
+
+Aktivlashtirilmagan nusxada `/api/*` marshrutlari `403 LICENSE_REQUIRED`
+qaytaradi; sozlash, kirish va statik fayllar ochiq qoladi.
+
+---
+
 ## Arxitektura
 
 | Qatlam | Texnologiya |

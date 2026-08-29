@@ -367,6 +367,10 @@ model Clinic {
   monthlyRevenue          Float
   telegramChatId          String?
   botToken                String?
+  /// Aktivatsiya kaliti. Mashina identifikatoridan hisoblanadi, shuning
+  /// uchun baza boshqa kompyuterga ko'chirilsa kalit yaroqsiz bo'ladi.
+  /// Migratsiya 0032.
+  licenseKey              String?
   subscriptionType        String              @default("Paid")
   smsBalance              Float               @default(0)
   smsLimit                Int                 @default(0)

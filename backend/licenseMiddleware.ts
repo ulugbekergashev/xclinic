@@ -14,8 +14,18 @@ export const createLicenseMiddleware = (prisma: any) => {
             '/api/network-info'
         ];
 
-        // Static files (photos) should probably be allowed so the activation screen can look nice
-        if (req.path.startsWith('/uploads/')) {
+        /* TEKSHIRUV FAQAT API GA TEGISHLI.
+
+           Ilgari bu yerda faqat `/uploads/` chetlab o'tilardi, ya'ni
+           frontendning O'Z fayllari — `/assets/index-….js`, css,
+           shriftlar — ham 403 olardi. Natijada aktivlashtirilmagan
+           nusxada `index.html` yuklanar, lekin JS bloklangani uchun
+           ekran BO'M-BO'SH oq qolardi. Xaridor aynan shuni ko'rardi
+           va nima qilishni bilmasdi.
+
+           Statik fayllar hech qanday ma'lumot bermaydi — himoya
+           qilinishi kerak bo'lgan narsa API. */
+        if (!req.path.startsWith('/api/')) {
             return next();
         }
 

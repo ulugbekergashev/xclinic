@@ -15,6 +15,23 @@ import fs from 'fs';
    .env ikki joydan qidiriladi: bundle yonidan va foydalanuvchining AppData
    papkasidan (o'rnatilgandan keyin sozlamalar shu yerda tahrirlanadi). */
 const userDataPathEnv = (process.env.ELECTRON_USER_DATA_PATH || '').replace(/['"]/g, '').trim() || undefined;
+
+/* ANIQ BERILGAN MUHIT O'ZGARUVCHISI ENG USTUN.
+
+   `.env` fayllar `override: true` bilan yuklanadi — bu ATAYLAB: klinika
+   kompyuteridagi sozlama (foydalanuvchi katalogidagi `.env`) paket
+   ichidan chiqqan standart `.env` dan ustun turishi kerak.
+
+   Lekin u haqiqiy MUHIT o'zgaruvchisini ham bosib ketardi. Ya'ni
+   `DATABASE_URL=... npx ts-node server.ts` deb yozilsa, `.env` dagi
+   qiymat g'olib chiqar va buyruq jimgina e'tiborsiz qolardi — buni
+   payqash qiyin, chunki hech qanday xato chiqmaydi.
+
+   Endi ishga tushishdan OLDIN berilgan o'zgaruvchilar eslab qolinadi va
+   fayllar yuklangach qaytariladi. Fayllar bir-biriga nisbatan avvalgidek
+   ishlaydi, operatorning buyrug'i esa hammasidan ustun bo'ladi. */
+const envBeforeFiles = { ...process.env };
+
 [
     path.join(__dirname, '.env'),
     userDataPathEnv ? path.join(userDataPathEnv, '.env') : null,
@@ -23,6 +40,10 @@ const userDataPathEnv = (process.env.ELECTRON_USER_DATA_PATH || '').replace(/['"
         if (fs.existsSync(envPath as string)) dotenv.config({ path: envPath as string, override: true });
     } catch { /* .env ixtiyoriy — bo'lmasa standart qiymatlar ishlaydi */ }
 });
+
+for (const [k, v] of Object.entries(envBeforeFiles)) {
+    if (v !== undefined) process.env[k] = v;
+}
 
 import express from 'express';
 const app = express();
@@ -80,6 +101,8 @@ import { registerPatientMergeRoutes } from './patientMerge';
 import { registerEventRoutes, emitEvent } from './events';
 import { som } from './money';
 import { registerReportRoutes } from './reports';
+import { registerLicenseRoutes } from './license';
+import { createLicenseMiddleware } from './licenseMiddleware';
 import { registerFileRoutes } from './files';
 import {
     runMigrations, registerMaintenanceRoutes, startBackupScheduler,
@@ -221,6 +244,42 @@ app.use(express.json({
 // Tashqi lid manbalari ko'pincha oddiy forma (x-www-form-urlencoded) yuboradi —
 // JSON'dan tashqari uni ham qabul qilamiz.
 app.use(express.urlencoded({ extended: true }));
+
+/* ── AKTIVATSIYA TEKSHIRUVI ───────────────────────────────────────────────
+   Aktivlashtirilmagan nusxa faqat sozlash va kirish marshrutlariga
+   ruxsat oladi (`licenseMiddleware.ts` dagi ro'yxat).
+
+   MAJBURLASH ATAYLAB SHARTLI. Sabab: tekshiruvni so'zsiz yoqish ISHLAB
+   TURGAN o'rnatmalarni darhol yopib qo'yadi — ularning bazasida
+   `licenseKey` yo'q, chunki u endi qo'shildi (migratsiya 0032). Klinika
+   ertalab ishga kelib, dastur ochilmasligini ko'rardi.
+
+   Shuning uchun:
+     · paketlangan Electron nusxasi (`app.isPackaged`) — HAR DOIM tekshiradi;
+       xaridor oladigan holat aynan shu
+     · `LICENSE_ENFORCE=1` — sinovlar va qo'lda tekshirish uchun
+     · qolgan holatlarda (ts-node bilan ishlab chiqish) — tekshirilmaydi,
+       lekin bir marta ogohlantirish yoziladi, jimgina o'tkazib
+       yuborilmaydi
+
+   Belgi ATAYLAB YAGONA va aniq: `LICENSE_ENFORCE=1`. Uni paketlangan
+   Electron o'zi beradi (`electron/main.ts`).
+
+   Ilgari bu yerda `ELECTRON_USER_DATA_PATH` bor-yo'qligiga qaralardi.
+   Bu noto'g'ri belgi edi: o'sha o'zgaruvchini API sinov jgurnali ham
+   beradi (baza nusxasini alohida katalogda saqlash uchun), natijada
+   tekshiruv sinovlarda ham yoqilib, ularning hammasi 403 olardi.
+   Muhit o'zgaruvchisining ma'nosi bittadan ortiq bo'lsa, u belgi
+   sifatida yaramaydi. */
+const LICENSE_ENFORCED = process.env.LICENSE_ENFORCE === '1';
+
+if (LICENSE_ENFORCED) {
+    app.use(createLicenseMiddleware(prisma));
+    console.log('🔒 Aktivatsiya tekshiruvi yoqilgan');
+} else {
+    console.log('⚠️  Aktivatsiya tekshiruvi O\'CHIQ (ishlab chiqish rejimi). ' +
+        'Paketlangan nusxada u avtomatik yoqiladi; sinash uchun LICENSE_ENFORCE=1.');
+}
 /* `app.use('/uploads', express.static(uploadsDir))` OLIB TASHLANDI.
 
    Sabab: papka autentifikatsiyasiz ochiq edi — fayl nomini bilgan (yoki
@@ -5757,6 +5816,10 @@ registerInventoryRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerPatientMergeRoutes(app, { prisma, authenticateToken, requireRole, getScopedClinicId, normalizeUzPhone });
 registerEventRoutes(app, { authenticateToken, getScopedClinicId });
 registerReportRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+
+/* Aktivatsiya va birinchi sozlash. Bu marshrutlar AVTORIZATSIYASIZ
+   ishlaydi — ular aynan tizimga hali kirib bo'lmaydigan holat uchun. */
+registerLicenseRoutes(app, { prisma });
 registerPayrollRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerComplianceRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
 registerFileRoutes(app, { prisma, authenticateToken, getScopedClinicId, uploadsDir });
