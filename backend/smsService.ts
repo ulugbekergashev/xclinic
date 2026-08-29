@@ -19,25 +19,12 @@ export const toEskizTemplate = (text: string): string => (text || '').replace(TE
 // bo'sh joy va registr farqlarini yo'qotamiz.
 const normalizeForMatch = (text: string): string => (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-/**
- * ⚠️ Bu funksiya `utils/phone.ts` dagi nusxasi bilan bir xil bo'lishi shart —
- * frontend yuboriladigan bemorlar sonini o'sha nusxa bilan hisoblaydi.
- *
- * O'zbekiston raqamini Eskiz kutadigan 998XXXXXXXXX ko'rinishiga keltiradi.
- * Bemor telefoni erkin matn sifatida kiritilgani uchun ( "+998 90 123 45 67",
- * "(90) 123-45-67", "90 123 45 67" ... ) faqat raqamlarni ajratib olamiz.
- * Tanib bo'lmasa null qaytaradi — buzuq raqamni Eskizga yubormaymiz.
- */
-export function normalizeUzPhone(phone?: string | null): string | null {
-    const digits = (phone || '').replace(/\D/g, '');
-    if (!digits) return null;
-    if (digits.length === 12 && digits.startsWith('998')) return digits;
-    if (digits.length === 13 && digits.startsWith('0998')) return digits.slice(1);
-    if (digits.length === 9) return `998${digits}`;
-    // Ichki formatlar: 0XX XXX XX XX yoki 8XX XXX XX XX
-    if (digits.length === 10 && (digits.startsWith('0') || digits.startsWith('8'))) return `998${digits.slice(1)}`;
-    return null;
-}
+/* Mantiq `shared/validation.ts` ga ko'chirildi (S3.1) — u yerdan front ham
+   o'qiydi. Ilgari bu yerda va `utils/phone.ts` da IKKI NUSXA turardi va
+   ularni qo'lda bir xil ushlab turish kerak edi. Re-eksport qoldirildi:
+   bu funksiyani import qiladigan joylar buzilmasin. */
+import { normalizeUzPhone } from '../shared/validation';
+export { normalizeUzPhone };
 
 class SmsService {
     /**

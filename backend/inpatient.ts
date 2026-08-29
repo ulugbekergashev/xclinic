@@ -25,8 +25,11 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
 import { writeOff } from './inventory';
+import { emitEvent } from './events';
+import { validateVital, VITAL_KINDS as SHARED_VITAL_KINDS } from '../shared/validation';
 import { createCharge } from './billing';
 import bcrypt from 'bcryptjs';
 
@@ -36,7 +39,9 @@ type Deps = {
     getScopedClinicId: (req: any) => string | null;
 };
 
-const round = (n: number) => Math.round(n * 100) / 100;
+/* Pul — BUTUN so'm, `money.ts` dagi yagona qoida. Ilgari bu yerda
+   o'zining nusxasi turardi va modullar orasida aniqlik farq qilardi. */
+const round = som;
 
 /** 'YYYY-MM-DD' ni bir kun oldinga suradi */
 function nextDay(date: string): string {
@@ -51,7 +56,10 @@ function dayOfLocal(v: Date | string): string {
     return new Date(t).toISOString().slice(0, 10);
 }
 
-const VITAL_KINDS = ['Temp', 'BpSys', 'BpDia', 'Pulse', 'Weight', 'Height', 'SpO2'];
+/* O'lchov turlari va CHEGARALARI `shared/validation.ts` da — front ham
+   shu ro'yxatdan o'qiydi (S3.1). Ilgari bu yerdagi ro'yxat frontdagisi
+   bilan qo'lda ushlab turilardi. */
+const VITAL_KINDS = SHARED_VITAL_KINDS;
 const VITAL_UNITS: Record<string, string> = {
     Temp: '°C', BpSys: 'mmHg', BpDia: 'mmHg', Pulse: 'urish/min',
     Weight: 'kg', Height: 'sm', SpO2: '%',
@@ -186,7 +194,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
     // ═══ KOYKA HAQI ══════════════════════════════════════════════════════════
 
     route('post', '/api/admissions/:id/charge-bed-days', async (req, res, clinicId) => {
-        if (!hasRole(req, 'CLINIC_ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST')) {
+        if (!hasRole(req, 'CLINIC_ADMIN', 'RECEPTIONIST')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const adm = await ownAdmission(req.params.id, clinicId);
@@ -262,7 +270,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
        Ilgari uchtasi ham yo'q edi. */
     route('post', '/api/medication-orders/:id/administer', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!hasRole(req, 'NURSE', 'DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'NURSE', 'DOCTOR', 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
 
@@ -471,7 +479,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
 
     route('post', '/api/vitals', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!hasRole(req, 'NURSE', 'DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'NURSE', 'DOCTOR', 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const { patientId, admissionId, visitId, measurements, measuredAt } = req.body || {};
@@ -488,11 +496,27 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         }
 
         const list = Array.isArray(measurements) ? measurements : [];
-        const clean = list
-            .map((m: any) => ({ kind: String(m?.kind || ''), value: Number(m?.value), unit: m?.unit }))
-            .filter((m: any) => VITAL_KINDS.includes(m.kind) && isFinite(m.value));
-        if (clean.length === 0) {
-            return res.status(400).json({ error: `O'lchov yo'q yoki turi noto'g'ri (${VITAL_KINDS.join(', ')})` });
+        if (list.length === 0) {
+            return res.status(400).json({ error: `O'lchov yo'q (${VITAL_KINDS.join(', ')})` });
+        }
+
+        /* FIZIOLOGIK CHEGARA (S3.2, audit B-10).
+
+           Bu yerda ilgari `isFinite(m.value)` turardi — ya'ni harorat 500,
+           puls −40 va AD 9999 to'g'ri son sifatida o'tib, saqlanardi.
+
+           Endi har o'lchov `shared/validation.ts` dagi chegara bo'yicha
+           tekshiriladi. Xato TOPILGANDA HECH NARSA saqlanmaydi: bitta
+           o'lchov noto'g'ri bo'lsa, boshqasini yozib qo'yish yarim holat
+           yaratadi va hamshira nima saqlanganini bilmaydi. */
+        const clean: { kind: string; value: number; unit?: string }[] = [];
+        for (const m of list) {
+            const kind = String(m?.kind || '');
+            const check = validateVital(kind, m?.value);
+            if (!check.ok) {
+                return res.status(400).json({ error: check.error, code: 'VITAL_OUT_OF_RANGE', kind });
+            }
+            clean.push({ kind, value: check.value, unit: m?.unit });
         }
 
         const when = measuredAt ? new Date(measuredAt) : new Date();
@@ -546,7 +570,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
        kim va nima uchun. */
     route('post', '/api/admissions/:id/transfer', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!hasRole(req, 'DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'DOCTOR', 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const adm = await ownAdmission(req.params.id, clinicId);
@@ -599,6 +623,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
             include: { bed: { include: { ward: true } } },
         });
 
+        emitEvent(clinicId, 'admission.changed', { admissionId: updated.id, reason: 'transfer' });
         res.json({ admission: updated, transfer });
     });
 
@@ -617,7 +642,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
        qaytaradigan hech narsa yo'q edi — palata asta-sekin "band" bo'lib
        tugaydi. */
     route('post', '/api/beds/:id/ready', async (req, res, clinicId) => {
-        if (!hasRole(req, 'RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN', 'NURSE')) {
+        if (!hasRole(req, 'RECEPTIONIST', 'CLINIC_ADMIN', 'NURSE')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const bed = await prisma.bed.findUnique({ where: { id: req.params.id }, include: { ward: true } });
@@ -658,7 +683,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
     });
 
     route('post', '/api/nurses', async (req, res, clinicId) => {
-        if (!hasRole(req, 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const { firstName, lastName, phone, departmentId, username, password } = req.body || {};
@@ -689,7 +714,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
     });
 
     route('put', '/api/nurses/:id', async (req, res, clinicId) => {
-        if (!hasRole(req, 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const existing = await prisma.nurse.findUnique({ where: { id: req.params.id } });
@@ -721,7 +746,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
        lekin xodim ro'yxatdan chiqadi va kira olmaydi. Tibbiy yozuvni
        xodim ketgani uchun yo'q qilib bo'lmaydi. */
     route('delete', '/api/nurses/:id', async (req, res, clinicId) => {
-        if (!hasRole(req, 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const existing = await prisma.nurse.findUnique({ where: { id: req.params.id } });

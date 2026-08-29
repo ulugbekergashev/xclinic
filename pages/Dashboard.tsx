@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { formatMoney, formatNumber, formatDateLong, formatFullName } from '../utils/format';
+import type { Snapshot } from '../services/api';
+import { api } from '../services/api';
 import { motion } from 'motion/react';
-import { DentaAiMode } from './DentaAiMode';
+import { AiAssistant } from './AiAssistant';
 import { Card, Badge, Input, Modal, Button } from '../components/Common';
 import { StatCard } from '../components/StatCard';
 import {
@@ -17,7 +20,7 @@ import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymen
 import { getCurrentMonthRange, todayISO } from '../utils/dateUtils';
 import { transactionBelongsToDoctor, calculateAppointmentTotal, isAppointmentPaid } from '../utils/financialCalculations';
 import { useLanguage } from '../context/LanguageContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { AddPatientModal } from '../components/AddPatientModal';
 import { QuickPaymentModal } from '../components/QuickPaymentModal';
 import { CHART_COLORS, CHART } from '../utils/chartColors';
@@ -60,7 +63,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   const [debtPayMethod, setDebtPayMethod] = useState<PaymentMethod>('Cash');
   const [debtSaving, setDebtSaving] = useState(false);
   const [intensityView, setIntensityView] = useState<'month' | 'year'>('year');
-  const [activeTab, setActiveTab] = useState<'overview' | 'ai'>('overview');
+  /* Tab boshlang'ich holati manzildan olinadi: headerdagi AI tugmasi
+     `/?tab=ai` ga o'tadi. `location.search` ni kuzatamiz, chunki boshqa
+     sahifadan qaytganda komponent qayta yaratilmasligi mumkin. */
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<'overview' | 'ai'>(
+    new URLSearchParams(location.search).get('tab') === 'ai' ? 'ai' : 'overview'
+  );
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('tab') === 'ai') setActiveTab('ai');
+  }, [location.search]);
   const isReceptionist = userRole === UserRole.RECEPTIONIST;
   const today = todayISO();
   const { startDate: defaultStart, endDate: defaultEnd } = getCurrentMonthRange();
@@ -70,22 +82,104 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   // Filter data for doctors - only show their appointments and transactions
   const filteredAppointmentsByDoctor = useMemo(() => {
     if (userRole === UserRole.DOCTOR && doctorId) {
-      return appointments.filter(a => a.doctorId === doctorId);
+      return effectiveAppointments.filter(a => a.doctorId === doctorId);
     }
     return appointments;
   }, [appointments, userRole, doctorId]);
+
+
+  /* ─── O'Z ORALIG'INI O'ZI SO'RAYDI (FIX-PLAN 10.3) ────────────────────────
+     `App.tsx` kirishda faqat oxirgi 90 kunni yuklaydi. Bosh sahifada esa sana
+     oralig'i tanlanadi va u undan uzoqroq bo'lishi mumkin — o'shanda propdagi
+     ro'yxat TO'LIQ EMAS va undan sanalgan har qanday son JIMGINA yolg'on
+     bo'lardi. Eng yomon xato turi: ekranda ishonchli ko'rinadi.
+
+     Shuning uchun oyna tashqarisiga chiqilsa — server so'raladi. */
+  const [rangeTx, setRangeTx] = useState<Transaction[] | null>(null);
+  const [rangeAppts, setRangeAppts] = useState<Appointment[] | null>(null);
+  const [rangeLoading, setRangeLoading] = useState(false);
+
+  const WINDOW_START = useMemo(
+    () => new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0], []);
+
+  useEffect(() => {
+    const needsFetch = !!startDate && startDate < WINDOW_START;
+    if (!needsFetch || !clinicId) { setRangeTx(null); setRangeAppts(null); return; }
+
+    let alive = true;
+    setRangeLoading(true);
+    Promise.all([
+      api.transactions.getAll(clinicId, { from: startDate, to: endDate || undefined }),
+      api.appointments.getAll(clinicId, { from: startDate, to: endDate || undefined }),
+    ]).then(([tx, ap]) => {
+      if (!alive) return;
+      setRangeTx(tx); setRangeAppts(ap);
+    }).catch(() => { if (alive) { setRangeTx(null); setRangeAppts(null); } })
+      .finally(() => { if (alive) setRangeLoading(false); });
+    return () => { alive = false; };
+  }, [startDate, endDate, clinicId, WINDOW_START]);
+
+  /* Umumiy raqamlar SERVERDAN (S2.1): bemorlar soni, qarz va o'rtacha chek
+     endi brauzerdagi ro'yxatdan sanalmaydi.
+
+     Nega muhim: kirishda faqat oxirgi 45 kun va 500 bemor yuklanadi, ya'ni
+     bu yerda sanalgan har qanday son BUTUN BAZANI emas, ekranga kelgan
+     qismini o'lchardi. Bemorlar sahifasi esa boshqa qismini o'lchardi —
+     shuning uchun ikkalasi hech qachon mos kelmasdi.
+
+     Davr o'zgarganda qayta so'raladi: o'rtacha chek va tashriflar soni
+     tanlangan oraliqqa tegishli. Qarz esa davrga bog'liq emas — u ayni
+     damdagi holat. */
+  const [serverStats, setServerStats] = useState<Snapshot | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.reports.snapshot(startDate || undefined, endDate || undefined)
+      .then(d => { if (alive) setServerStats(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [clinicId, startDate, endDate]);
+
+  /* DAVOMAT KESIMI (kalendar hisobotidagi bilan bir manba).
+
+     «Qaysi kunlarda mijoz ko'p keladi» — jadval tuzishdagi asosiy
+     savol, shuning uchun u bosh sahifada ham turadi. To'liq ko'rinishi
+     Kalendar → Hisobot da.
+
+     Sanani ATAYLAB tanlangan oraliqdan olmaymiz: bosh sahifadagi
+     oraliq odatda «bugun» yoki «shu oy», u esa hafta kunlari kesimi
+     uchun juda qisqa — dushanba bir-ikki marta tushib, o'rtacha
+     ma'nosiz chiqadi. Doim oxirgi 90 kun olinadi. */
+  const [attendance, setAttendance] = useState<any>(null);
+  useEffect(() => {
+    let alive = true;
+    const to = new Date();
+    const from = new Date(to.getTime() - 90 * 86400000);
+    const iso = (d: Date) => d.toISOString().split('T')[0];
+    api.reports.attendance(iso(from), iso(to))
+      .then(d => { if (alive) setAttendance(d); })
+      .catch(() => { if (alive) setAttendance(null); });
+    return () => { alive = false; };
+  }, [clinicId]);
+
+  const weekdayChart = useMemo(() => {
+    if (!attendance?.byWeekday) return [];
+    return attendance.byWeekday.map((w: any) => ({ ...w, short: w.name.slice(0, 3) }));
+  }, [attendance]);
+
+  const effectiveTransactions = rangeTx ?? transactions;
+  const effectiveAppointments = rangeAppts ?? appointments;
 
   const filteredTransactionsByDoctor = useMemo(() => {
     if (userRole === UserRole.DOCTOR && doctorId) {
       // Qat'iy atributsiya: doctorId yoki aniq ism tengligi (taxminiy moslashtirish yo'q)
       const doctor = doctors.find(d => d.id === doctorId);
-      return transactions.filter(t => {
+      return effectiveTransactions.filter(t => {
         if (t.doctorId) return t.doctorId === doctorId;
         return doctor ? transactionBelongsToDoctor(t, doctor) : false;
       });
     }
-    return transactions;
-  }, [transactions, doctors, userRole, doctorId]);
+    return effectiveTransactions;
+  }, [effectiveTransactions, doctors, userRole, doctorId]);
 
   // --- Filter Logic ---
   const isDateInRange = (dateStr: string) => {
@@ -104,8 +198,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   const filteredTransactions = useMemo(() => filteredTransactionsByDoctor.filter(t => isDateInRange(t.date)), [filteredTransactionsByDoctor, startDate, endDate]);
 
   // Stats Calculation
-  const totalPatients = patients.length; // Patient count usually stays total DB count
-  const activePatients = patients.filter(p => p.status === 'Active').length;
+  /* SERVERDAN. Ilgari `patients.length` edi — kirishda endi faqat 500 ta
+     bemor yuklanadi, ya'ni bu son bazadagi haqiqiy sonni ko'rsatmasdi. */
+  const totalPatients = serverStats?.patients.total ?? patients.length;
+  const activePatients = serverStats?.patients.active ?? patients.filter(p => p.status === 'Active').length;
 
   const periodAppointmentsCount = filteredAppointments.length;
   const pendingAppointments = filteredAppointments.filter(a => a.status === 'Pending').length;
@@ -124,13 +220,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
 
     const colors = CHART_COLORS;
 
-    return Array.from(serviceCount.entries())
-      .map(([name, value], index) => ({
-        name,
-        value,
-        color: colors[index % colors.length]
-      }))
+    /* ENG KO'PI OLTITASI, QOLGANI «BOSHQALAR».
+
+       Ilgari HAMMA xizmat turi chiqarilardi. Klinikada ular 17-20 ta,
+       ya'ni: (a) doiraviy diagramma o'qib bo'lmaydigan tilimlarga
+       bo'linib ketardi, (b) legendaga 36px joy ajratilgan, 17 qator
+       esa unga sig'may kartadan TOSHIB chiqar va pastdagi bo'limlar
+       ustiga tushardi.
+
+       RANG SARALASHDAN KEYIN beriladi. Ilgari `index` saralashdan
+       OLDINGI o'ringa tegishli edi — ya'ni tilim rangi bilan legenda
+       rangi bir xil bo'lsa ham, ular tasodifiy tartibda tarqalardi. */
+    const sorted = Array.from(serviceCount.entries())
+      .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
+
+    /* To'rtta. Xizmat nomlari uzun («GINEKOLOG KONSULTATSIYASI»),
+       shuning uchun legendaning har qatoriga bittadan-ikkitadan
+       sig'adi — oltitasi kartaga sig'may kesilib qolgan edi. */
+    const TOP = 4;
+    const head = sorted.slice(0, TOP);
+    const tailSum = sorted.slice(TOP).reduce((sum, x) => sum + x.value, 0);
+    const shown = tailSum > 0
+      ? [...head, { name: `Boshqalar (${sorted.length - TOP})`, value: tailSum }]
+      : head;
+
+    return shown.map((x, index) => ({ ...x, color: colors[index % colors.length] }));
   }, [filteredAppointments]);
 
   // Dynamic Chart Data Aggregation
@@ -162,14 +277,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   // New Stats Calculation
   const newLeadsCount = useMemo(() => leads.filter(l => l.status === 'New').length, [leads]);
 
-  const avgCheck = useMemo(() => {
-    const completed = filteredAppointments.filter(a => a.status === 'Completed').length;
-    return completed > 0 ? Math.round(totalRevenue / completed) : 0;
-  }, [totalRevenue, filteredAppointments]);
+  /* O'rtacha chek — SERVERDAN. Ilgari bu yerda «to'langan tranzaksiyalar /
+     yakunlangan qabullar» edi, Hisobotda esa «buyurilgan summa / qatorlar».
+     Ikki xil bo'luvchi va ikki xil bo'linuvchi — audit 199 024 va 78 457
+     ni shundan topgan. Yagona ta'rif: buyurilgan summa / TASHRIFLAR soni
+     (`snapshot.ts`), chunki bitta tashrifda bir necha qator bo'ladi va
+     ular bitta chek. */
+  const avgCheck = serverStats?.period.avgCheck ?? 0;
 
-  const pendingRevenue = useMemo(() =>
-    filteredTransactions.filter(t => t.status === 'Pending').reduce((acc, t) => acc + t.amount, 0)
-    , [filteredTransactions]);
+  /* Qarz — SERVERDAN va davrga bog'liq emas. Ilgari brauzerdagi
+     `Transaction.status === 'Pending'` dan sanalardi; to'g'ri manba —
+     to'lanmagan `VisitCharge` qatorlari (`billing.ts`). */
+  const pendingRevenue = serverStats?.debt.amount ?? 0;
 
   // Seasonal Intensity Data
   const intensityData = useMemo(() => {
@@ -307,7 +426,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
     monthAppointments: filteredAppointments.length,
     monthRevenue: totalRevenue,
     newLeads: newLeadsCount,
-    debtorsCount: pendingDebts.length,
+    debtorsCount: serverStats?.debt.patients ?? pendingDebts.length,
     pendingRevenue,
     totalPatients,
     avgCheck,
@@ -317,62 +436,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   return (
     <div className="space-y-6 animate-fade-in">
 
-      {/* Nom chapda, tanlov o'ng chekkada.
-          Pastki chiziqli indikator o'rniga segment switch: chetga chiqarilgan
-          chiziq uzilib qolgandek ko'rinardi, quti esa o'zi tugagan joyini
-          ko'rsatadi. Faol segment layoutId bilan silliq siljiydi. */}
-      <div className="flex items-center justify-between gap-6 pb-4 border-b border-gray-200 dark:border-gray-700/60">
-        <h1 className="text-[22px] font-bold text-gray-900 dark:text-white tracking-tight">
-          Dashboard
-        </h1>
+      {/* Sarlavha, davr va tez amallar — BITTA QATORDA.
 
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-white/[0.04]">
-          {([
-            { id: 'overview' as const, label: t('ai.reportTab') },
-            { id: 'ai' as const, label: t('ai.tab') },
-          ]).map(tab => {
-            const on = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative px-4 py-1.5 rounded-lg text-[14.5px] font-semibold transition-colors ${
-                  on
-                    ? 'text-gray-900 dark:text-white'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-              >
-                {on && (
-                  <motion.span
-                    layoutId="dashboard-tab-pill"
-                    transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                    className="absolute inset-0 rounded-lg bg-white dark:bg-gray-800
-                               shadow-sm ring-1 ring-gray-200/70 dark:ring-white/[0.06]"
-                  />
-                )}
-                <span className="relative flex items-center gap-1.5 whitespace-nowrap">
-                  {tab.id === 'ai' && (
-                    <Sparkles className={`w-4 h-4 ${on ? 'text-violet-500' : 'text-violet-400/60'}`} />
-                  )}
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
+          Ilgari ular ikkita alohida qatorda edi, ustiga yana "Hisobot |
+          AI yordamchi" tanlovi ham turardi — ya'ni ekranning tepasidan
+          uchta qator ketardi. AI sarlavhaga chiqarilgandan keyin o'sha
+          tanlov ikkinchi nusxaga aylandi, shuning uchun olib tashlandi.
+
+          Davr va tugmalar AI rejimida yashiriladi: sana oralig'i AI
+          hisobotlariga ta'sir qilmaydi (har biri o'z davrini hisoblaydi)
+          va ekranda ikkita raqobatlashuvchi sana manbai ko'rinib qolardi.
+          Orqaga qaytish uchun sarlavha yonida strelka turadi. */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700/60">
+        <div className="flex items-center gap-2">
+          {activeTab === 'ai' && (
+            <button
+              onClick={() => { setActiveTab('overview'); navigate('/', { replace: true }); }}
+              className="p-1.5 -ml-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
+              title={t('ai.reportTab')}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
+          <h1 className="text-[22px] font-bold text-gray-900 dark:text-white tracking-tight whitespace-nowrap">
+            {activeTab === 'ai' ? t('ai.tab') : t('nav.dashboard')}
+          </h1>
         </div>
-      </div>
 
-      {/* Boshqaruvlar — faqat Hisobot bo'limida.
-          AI da yashiriladi, chunki sana oralig'i AI hisobotlariga ta'sir
-          qilmaydi (har biri o'z davrini hisoblaydi) va ekranda ikkita
-          raqobatlashuvchi sana manbai ko'rinib qolardi. */}
-      <div className={`flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-2 ${
-        activeTab === 'ai' ? 'hidden' : ''
-      }`}>
+        <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-3 ${
+          activeTab === 'ai' ? 'hidden' : ''
+        }`}>
         {!isReceptionist && (
           <div className="flex items-center gap-3 p-1.5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
             <div className="flex items-center gap-2 px-3">
               <Calendar className="w-4 h-4 text-gray-400" />
+              <span className="text-[11px] font-semibold tracking-wide text-gray-400 dark:text-gray-500 uppercase mr-1">
+                {t('common.period')}
+              </span>
               <input
                 type="date"
                 value={startDate}
@@ -426,15 +526,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
 
         </div>
       </div>
+      </div>
 
-      {activeTab === 'ai' && <DentaAiMode userRole={userRole} />}
+      {activeTab === 'ai' && <AiAssistant userRole={userRole} />}
 
       {/* UMUMIY */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
         <StatCard
-          label={t('dashboard.totalPatients')} value={totalPatients.toLocaleString()} icon={Users} color="primary"
+          label={t('dashboard.totalPatients')} value={formatMoney(totalPatients)} icon={Users} color="primary"
           subtitle={<span className="flex items-center"><span className="font-bold text-success-600 bg-success-50 dark:bg-success-900/30 px-1.5 py-0.5 rounded-full">+{activePatients}</span><span className="ml-1.5">{t('dashboard.active')}</span></span>}
         />
         <StatCard
@@ -447,15 +548,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
         />
         {showFinance && (<>
           <StatCard
-            label={t('dashboard.avgCheck')} value={avgCheck.toLocaleString()} unit="UZS" icon={TrendingUp} color="success"
+            label={t('dashboard.avgCheck')} value={formatNumber(avgCheck)} unit="UZS" icon={TrendingUp} color="success"
             subtitle={t('dashboard.perPatient')}
           />
           <StatCard
-            label={t('dashboard.pending')} value={pendingRevenue.toLocaleString()} unit="UZS" icon={Clock} color="warning"
+            label={t('dashboard.pending')} value={formatMoney(pendingRevenue)} unit="UZS" icon={Clock} color="warning"
             subtitle={t('dashboard.unpaid')}
           />
           <StatCard
-            label={t('dashboard.todayRevenue')} value={totalRevenue.toLocaleString()} unit="UZS" icon={DollarSign} color="success" variant="gradient"
+            label={t('dashboard.todayRevenue')} value={formatMoney(totalRevenue)} unit="UZS" icon={DollarSign} color="success" variant="gradient"
             subtitle={t('dashboard.selectedPeriod')}
           />
         </>)}
@@ -465,11 +566,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
       <Card className="p-6 rounded-[2rem]">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h3 className="text-xl font-black text-gray-900 dark:text-white">
+            <h2 className="text-xl font-black text-gray-900 dark:text-white">
               Bugungi <span className="text-primary">Qabullar</span>
-            </h3>
+            </h2>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">
-              {new Date().toLocaleDateString('uz-UZ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              {formatDateLong(new Date())}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -612,16 +713,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
             <Card className="p-6 rounded-[2rem] border border-red-200 dark:border-red-800/50">
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div className="min-w-0">
-                  <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                  <h2 className="text-lg font-black text-gray-900 dark:text-white">
                     Kutilayotgan <span className="text-red-500">To'lovlar</span>
-                  </h3>
+                  </h2>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
                     Qarzga yozilgan, hali yopilmagan
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <span className="px-3 py-1 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-black rounded-full whitespace-nowrap">
-                    {pendingDebtsTotal.toLocaleString()} UZS
+                    {formatMoney(pendingDebtsTotal)} UZS
                   </span>
                   <span className="text-[10px] font-bold text-gray-400">{pendingDebts.length} ta</span>
                 </div>
@@ -630,7 +731,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
               <div className="divide-y divide-gray-50 dark:divide-gray-800/60">
                 {pendingDebts.slice(0, DASH_ROW_LIMIT).map(tx => {
                   const patient = patients.find(p => p.id === tx.patientId)
-                    || patients.find(p => `${p.lastName} ${p.firstName}` === tx.patientName);
+                    || patients.find(p => `${formatFullName(p)}` === tx.patientName);
                   const serviceLabel = tx.service?.includes('|') ? tx.service.split('||')[0].split('|')[0] : (tx.service || '—');
                   return (
                     <div key={tx.id} className="flex items-center gap-3 py-3 group">
@@ -644,7 +745,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                         <p className="text-[11px] text-gray-400 truncate">{tx.date} · {serviceLabel}</p>
                       </div>
                       <span className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums whitespace-nowrap">
-                        {tx.amount.toLocaleString()}
+                        {formatMoney(tx.amount)}
                       </span>
                       {onUpdateTransaction && (
                         <button
@@ -675,9 +776,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
             <Card className="p-6 rounded-[2rem] border border-amber-200 dark:border-amber-800/50">
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div className="min-w-0">
-                  <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                  <h2 className="text-lg font-black text-gray-900 dark:text-white">
                     To'lovni <span className="text-amber-500">Kutayotgan</span>
-                  </h3>
+                  </h2>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
                     Yakunlangan, to'lov qabul qilinmagan
                   </p>
@@ -708,7 +809,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                         </p>
                       </div>
                       <span className="text-sm font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">
-                        {total > 0 ? total.toLocaleString() : '—'}
+                        {total > 0 ? formatMoney(total) : '—'}
                       </span>
                       {onAddTransaction && (
                         <button
@@ -742,9 +843,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
           {/* Revenue Chart */}
           {showFinance && <Card className="p-8 lg:col-span-2 rounded-[2rem]">
             <div className="flex items-center justify-between mb-8">
-              <h3 className="text-xl font-black text-gray-900 dark:text-white">
+              <h2 className="text-xl font-black text-gray-900 dark:text-white">
                 {t('dashboard.financialFlow')}
-              </h3>
+              </h2>
               <div className="flex gap-4">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-gray-400">
                   <div className="w-2.5 h-2.5 rounded-full bg-primary" /> {t('dashboard.income')}
@@ -777,10 +878,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                   />
                   <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 10, fontWeight: 600 }} />
                   <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 10, fontWeight: 600 }} />
+                  {/* Izoh oynasida XOM KALITLAR turardi: «revenue : 0»,
+                      «appointments : 19» — inglizcha maydon nomlari va
+                      ajratgichsiz raqam. Endi nomi tarjima qilinadi,
+                      raqam esa boshqa joylardagi kabi formatlanadi. */}
                   <Tooltip
                     contentStyle={{ backgroundColor: '#1F2937', borderRadius: '16px', border: 'none', color: '#fff', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
                     itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}
                     labelStyle={{ color: '#9CA3AF', marginBottom: '0.5rem', fontWeight: 'bold' }}
+                    formatter={(value: any, key: any) => [
+                      formatNumber(Number(value)),
+                      key === 'revenue' ? t('dashboard.income') : t('dashboard.visits'),
+                    ]}
                   />
                   <Area
                     yAxisId="left"
@@ -814,16 +923,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
 
           {/* Service Distribution */}
           <Card className="p-8 rounded-[2rem]">
-            <h3 className="text-xl font-black text-gray-900 dark:text-white mb-8">{t('dashboard.specialty')}</h3>
-            <div className="h-72 w-full">
+            <h2 className="text-xl font-black text-gray-900 dark:text-white mb-8">{t('dashboard.specialty')}</h2>
+            {/* `overflow-hidden` — himoya: xizmat turlari kutilganidan
+                ko'p bo'lsa ham legenda kartadan tashqariga chiqmaydi. */}
+            <div className="h-72 w-full overflow-hidden">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={SERVICE_DATA}
                     cx="50%"
                     cy="50%"
-                    innerRadius={65}
-                    outerRadius={95}
+                    innerRadius={52}
+                    outerRadius={78}
                     paddingAngle={8}
                     dataKey="value"
                     stroke="none"
@@ -834,7 +945,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                   </Pie>
                   <Legend
                     verticalAlign="bottom"
-                    height={36}
+                    height={72}
                     iconType="circle"
                     formatter={(value) => <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{value}</span>}
                   />
@@ -848,10 +959,62 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
           </Card>
         </div>
 
+        {attendance && attendance.totals?.booked > 0 && (
+          <Card className="p-8 rounded-[2rem] mb-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+              <h2 className="text-xl font-black text-gray-900 dark:text-white">
+                Qaysi kunlarda <span className="text-primary">gavjum</span>
+              </h2>
+              <Link to="/calendar" className="text-xs font-bold text-primary hover:underline">
+                To'liq hisobot →
+              </Link>
+            </div>
+
+            {attendance.best && attendance.worst && attendance.best.name !== attendance.worst.name && (
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">
+                Eng gavjum — <b className="text-success">{attendance.best.name}</b>, kuniga o'rtacha{' '}
+                <b>{attendance.best.avgVisits}</b> ta qabul. Eng bo'shi —{' '}
+                <b className="text-warning">{attendance.worst.name}</b>, <b>{attendance.worst.avgVisits}</b> ta.
+              </p>
+            )}
+            <p className="text-xs text-gray-400 mb-6">
+              Oxirgi 90 kun · {formatNumber(attendance.totals.booked)} yozuvdan{' '}
+              {formatNumber(attendance.totals.arrived)} tasi keldi ({attendance.totals.arrivalRate}%)
+            </p>
+
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weekdayChart} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.15} vertical={false} />
+                  <XAxis dataKey="short" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} width={30} />
+                  <Tooltip
+                    cursor={{ fill: '#374151', opacity: 0.1 }}
+                    contentStyle={{ background: '#111827', border: 'none', borderRadius: '12px', fontSize: '12px' }}
+                    itemStyle={{ color: '#fff' }}
+                    labelStyle={{ color: '#9ca3af' }}
+                    formatter={(v: any) => [formatNumber(Number(v)), "Kuniga o'rtacha"]}
+                  />
+                  <Bar dataKey="avgVisits" radius={[6, 6, 0, 0]}>
+                    {weekdayChart.map((w: any) => {
+                      const max = Math.max(1, ...weekdayChart.map((x: any) => x.avgVisits || 0));
+                      return (
+                        <Cell key={w.weekday}
+                              fill={w.avgVisits >= max * 0.85 ? '#059669'
+                                  : w.avgVisits <= max * 0.45 ? '#D97706' : '#2563EB'} />
+                      );
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-6">
           <Card className="p-8 lg:col-span-2 rounded-[2rem]">
             <div className="flex items-center justify-between mb-8">
-              <h3 className="text-xl font-black text-gray-900 dark:text-white">So'nggi <span className="text-primary">Qabullar</span></h3>
+              <h2 className="text-xl font-black text-gray-900 dark:text-white">So'nggi <span className="text-primary">Qabullar</span></h2>
             </div>
 
             <div className="overflow-x-auto">
@@ -902,7 +1065,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
           </Card>
 
           <Card className="p-8 rounded-[2rem]">
-            <h3 className="text-xl font-black text-gray-900 dark:text-white mb-8">{t('dashboard.recentAppointments')}</h3>
+            <h2 className="text-xl font-black text-gray-900 dark:text-white mb-8">{t('dashboard.recentAppointments')}</h2>
             <div className="space-y-8 relative before:absolute before:inset-0 before:left-4 before:h-full before:w-0.5 before:bg-gray-100 dark:before:bg-gray-700">
               {(() => {
                 // Combine recent activities from all sources
@@ -913,7 +1076,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                   const createdDate = new Date(patient.lastVisit);
                   activities.push({
                     type: 'patient',
-                    text: `Yangi bemor ro'yxatga olindi: ${patient.lastName} ${patient.firstName}`,
+                    text: `Yangi bemor ro'yxatga olindi: ${formatFullName(patient)}`,
                     time: createdDate,
                     icon: Users,
                     color: 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400'
@@ -925,7 +1088,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                   const txDate = new Date(tx.date);
                   activities.push({
                     type: 'transaction',
-                    text: `To'lov qabul qilindi: ${tx.amount.toLocaleString()} UZS - ${tx.service}`,
+                    text: `To'lov qabul qilindi: ${formatMoney(tx.amount)} UZS - ${tx.service}`,
                     time: txDate,
                     icon: DollarSign,
                     color: 'bg-success-100 text-success-600 dark:bg-success-900/30 dark:text-success'
@@ -997,9 +1160,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
         <Card className="p-8 rounded-[2rem]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
             <div>
-              <h3 className="text-xl font-black text-gray-900 dark:text-white">
+              <h2 className="text-xl font-black text-gray-900 dark:text-white">
                 Qabullar <span className="text-danger">Intensivligi</span>
-              </h3>
+              </h2>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">
                 {intensityView === 'month' ? "Joriy oy kunlari bo'yicha" : "Oxirgi 12 oy davomida"}
               </p>
@@ -1089,7 +1252,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
               <div className="p-4 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700">
                 <p className="text-sm font-bold text-gray-900 dark:text-white">{payingDebt.patientName}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{serviceLabel} · {payingDebt.date}</p>
-                <p className="text-lg font-black text-red-500 mt-2 tabular-nums">{debtTotal.toLocaleString()} UZS</p>
+                <p className="text-lg font-black text-red-500 mt-2 tabular-nums">{formatMoney(debtTotal)} UZS</p>
               </div>
 
               <div>
@@ -1119,7 +1282,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                 />
                 {entered > 0 && remaining > 0 && (
                   <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1.5">
-                    Qoldiq qarz: {remaining.toLocaleString()} UZS (qarzdorlarda qoladi)
+                    Qoldiq qarz: {formatNumber(remaining)} UZS (qarzdorlarda qoladi)
                   </p>
                 )}
                 {entered > 0 && remaining === 0 && (

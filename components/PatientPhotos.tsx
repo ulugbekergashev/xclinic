@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { formatDateTime } from '../utils/format';
+import { confirmAction } from '../services/confirm';
+import { toast } from '../services/toast';
 import { Camera, Upload, Trash2, X, ZoomIn } from 'lucide-react';
 import { Button, Card, Modal, Input, Select, Badge } from './Common';
 import { PatientPhoto } from '../types';
@@ -88,22 +91,22 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
                 try {
                     const errorData = JSON.parse(text);
                     console.error('Server error details:', errorData);
-                    alert(`Failed to upload photo: ${errorData.details || errorData.error || 'Unknown error'}`);
+                    toast.error(`Failed to upload photo: ${errorData.details || errorData.error || 'Unknown error'}`);
                 } catch (e) {
                     console.error('Server non-JSON error:', text);
-                    alert(`Failed to upload photo: Server returned non-JSON response. Check console for details.`);
+                    toast.error(`Failed to upload photo: Server returned non-JSON response. Check console for details.`);
                 }
             }
         } catch (error) {
             console.error('Upload error:', error);
-            alert('Error uploading photo');
+            toast.error('Error uploading photo');
         } finally {
             setUploading(false);
         }
     };
 
     const handleDelete = async (photoId: string) => {
-        if (!confirm(t('patients.details.photos.deleteConfirm'))) return;
+        if (!await confirmAction({ title: t('patients.details.photos.deleteConfirm') })) return;
 
         try {
             const response = await fetch(`${API_URL}/photos/${photoId}`, {
@@ -115,7 +118,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
                 setPhotos(photos.filter(p => p.id !== photoId));
                 if (viewPhoto?.id === photoId) setViewPhoto(null);
             } else {
-                alert('Failed to delete photo');
+                toast.error('Failed to delete photo');
             }
         } catch (error) {
             console.error('Delete error:', error);
@@ -279,7 +282,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
                                         <p className="text-gray-300 mt-1">{viewPhoto.description}</p>
                                     )}
                                     <p className="text-gray-400 text-sm mt-1">
-                                        {new Date(viewPhoto.date).toLocaleString()}
+                                        {formatDateTime(viewPhoto.date)}
                                     </p>
                                 </div>
                                 <Button

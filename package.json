@@ -7,7 +7,10 @@
   "main": "electron-main/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/checkI18n.mjs && vite build",
+    "check:i18n": "node scripts/checkI18n.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --headed",
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
     "electron:compile": "tsc -p tsconfig.electron.json",
@@ -84,6 +87,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^8.2.2",
@@ -92,6 +96,7 @@
     "electron-builder": "^26.8.1",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
+    "vite-plugin-pwa": "^1.3.0",
     "wait-on": "^7.2.0"
   }
 }

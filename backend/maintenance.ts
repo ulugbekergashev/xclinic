@@ -21,6 +21,8 @@ import type express from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { tashkentDateStr, tashkentNowMs } from './tashkentTime';
+import { findBalanceMismatches } from './billing';
 
 type Deps = {
     prisma: any;
@@ -111,7 +113,16 @@ async function tableExists(prisma: any, table: string): Promise<boolean> {
  * chaqiradi: sxema tayyor bo'lmagan holatda so'rovlarni qabul qilish
  * ma'nosizdir.
  */
-export async function runMigrations(prisma: any, migrationsDir: string): Promise<MigrationResult> {
+export async function runMigrations(
+    prisma: any,
+    migrationsDir: string,
+    opts?: {
+        /** Birinchi migratsiya QO'LLANISHDAN OLDIN bir marta chaqiriladi.
+         *  Zaxira nusxa shu yerda olinadi: migratsiya tranzaksiyada qaytariladi,
+         *  lekin sxema o'zgarishi ustidan qaytish yo'li faqat nusxa. */
+        beforeApply?: (pending: string[]) => Promise<void>;
+    },
+): Promise<MigrationResult> {
     const result: MigrationResult = { applied: [], skipped: [], failed: null, baselined: false };
 
     // `SchemaMigration` ni Prisma Client emas, o'zimiz yaratamiz: bo'sh bazada
@@ -153,6 +164,20 @@ export async function runMigrations(prisma: any, migrationsDir: string): Promise
         result.baselined = true;
         console.log(`📌 Sxema boshlang'ich nuqtasi qo'yildi (${files.length} migratsiya mavjud deb belgilandi)`);
         return result;
+    }
+
+    /* Qo'llanadigan migratsiyalar bo'lsa — avval zaxira nusxa. Migratsiyaning
+       o'zi tranzaksiyada va yiqilsa qaytariladi, lekin MUVAFFAQIYATLI
+       qo'llangan sxema o'zgarishidan qaytish yo'li faqat nusxa orqali. */
+    const pendingVersions = files.filter((f) => !done.has(f.version)).map((f) => f.version);
+    if (pendingVersions.length > 0 && opts?.beforeApply) {
+        try {
+            await opts.beforeApply(pendingVersions);
+        } catch (e: any) {
+            // Nusxa olinmasa ham migratsiyani to'xtatmaymiz: to'xtatish serverni
+            // umuman ko'tarmaydi va klinika ishlamay qoladi. Ogohlantiramiz.
+            console.error('⚠️ Migratsiyadan oldingi nusxa olinmadi:', e?.message || e);
+        }
     }
 
     for (const f of files) {
@@ -239,6 +264,347 @@ function backupStamp(d = new Date()): string {
         + `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
+/** `xclinic-20260824-233000.db` → `2026-08-24`. Format boshqa bo'lsa `null`. */
+function backupDateStr(file: string): string | null {
+    const m = /^xclinic-(\d{4})(\d{2})(\d{2})-\d{6}\.db$/.exec(file);
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/* ═══ AVTOMATIK NUSXA ══════════════════════════════════════════════════════
+
+   NIMA UCHUN CRON EMAS. Bu qaror loyihada allaqachon qabul qilingan va
+   `server.ts` da yozilgan: "Offline dasturda jadval (cron) ishonchsiz —
+   kompyuter kechqurun o'chadi". Koyka haqi va kirish jurnalini tozalash shu
+   sababli ishga tushishda o'tkazib yuborilgan kunlarni quvib yetadi.
+   Zaxira nusxa ham xuddi shu qoida bo'yicha ishlaydi:
+
+     - Toshkent kuniga BITTA avtomatik nusxa;
+     - belgilangan soat kelsa olinadi;
+     - kompyuter o'sha paytda o'chiq bo'lsa — keyingi ishga tushishda DARHOL
+       olinadi, ya'ni o'tkazib yuborilgan kun quvib yetiladi.
+
+   Shuning uchun soat 23:30 turgan bo'lsa ham, kechqurun o'chadigan
+   kompyuterda nusxa ertalab olinadi va kechagi ish kuni to'liq nusxaga
+   tushadi: baza joyida turgan, faqat nusxa kechikkan.
+
+   Chiqishda (`before-quit`) nusxa olish ATAYLAB qo'shilmadi. U dasturning
+   yopilishini sekinlashtiradi, quvib yetish esa o'sha ma'lumotning aynan
+   o'zini keyingi ishga tushishda oladi — ya'ni foyda yo'q, narx bor.       */
+
+const BACKUP_CONFIG_NAME = 'backup-config.json';
+
+export type BackupConfig = {
+    /** Avtomatik nusxa yoqilganmi */
+    enabled: boolean;
+    /** Toshkent bo'yicha soat (0-23) va daqiqa (0-59) */
+    hour: number;
+    minute: number;
+    /** Oxirgi N kunning nusxalari — hammasi saqlanadi */
+    keepDaily: number;
+    /** Undan oldingi N oy — har oydan eng yangisi saqlanadi */
+    keepMonthly: number;
+    /** Ikkinchi manzil: flesh yoki tarmoq diski. Bo'lmasa `null`. */
+    extraDir: string | null;
+};
+
+const DEFAULT_BACKUP_CONFIG: BackupConfig = {
+    enabled: true, hour: 23, minute: 30, keepDaily: 14, keepMonthly: 12, extraDir: null,
+};
+
+const clampInt = (v: any, min: number, max: number, fallback: number): number => {
+    const n = Math.trunc(Number(v));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
+export function readBackupConfig(userDataPath: string): BackupConfig {
+    try {
+        const raw = fs.readFileSync(path.join(userDataPath, BACKUP_CONFIG_NAME), 'utf8');
+        const j = JSON.parse(raw) || {};
+        return {
+            enabled: j.enabled !== false,
+            hour: clampInt(j.hour, 0, 23, DEFAULT_BACKUP_CONFIG.hour),
+            minute: clampInt(j.minute, 0, 59, DEFAULT_BACKUP_CONFIG.minute),
+            // Kamida 2 kun: bitta nusxa qolishi xavfli, buzuq nusxa qaytish yo'lini yopadi
+            keepDaily: clampInt(j.keepDaily, 2, 365, DEFAULT_BACKUP_CONFIG.keepDaily),
+            keepMonthly: clampInt(j.keepMonthly, 0, 120, DEFAULT_BACKUP_CONFIG.keepMonthly),
+            extraDir: typeof j.extraDir === 'string' && j.extraDir.trim() ? j.extraDir.trim() : null,
+        };
+    } catch {
+        // Fayl yo'q yoki buzuq — sukut bo'yicha sozlama. Nusxa olish to'xtamasligi kerak.
+        return { ...DEFAULT_BACKUP_CONFIG };
+    }
+}
+
+export function writeBackupConfig(userDataPath: string, cfg: BackupConfig): void {
+    fs.writeFileSync(path.join(userDataPath, BACKUP_CONFIG_NAME), JSON.stringify(cfg, null, 2), 'utf8');
+}
+
+/** Jadval holati — `/api/admin/backup/status` shu yerdan o'qiydi. */
+const schedulerState: {
+    started: boolean;
+    lastRunAt: string | null;
+    lastFile: string | null;
+    lastError: string | null;
+    lastDeleted: number;
+} = { started: false, lastRunAt: null, lastFile: null, lastError: null, lastDeleted: 0 };
+
+/**
+ * Nusxa olish — endpoint ham, jadval ham shu funksiyani chaqiradi.
+ *
+ * `backupInProgress` bayrog'ini CHAQIRUVCHI qo'yadi: endpoint band bo'lsa 409
+ * qaytarishi kerak, jadval esa shunchaki o'tkazib yuboradi.
+ */
+export async function performBackup(input: {
+    prisma: any;
+    backupDir: string;
+    uploadsDir: string;
+    note?: string;
+    extraDir?: string | null;
+}): Promise<{
+    file: string; sizeBytes: number; createdAt: string; uploadsCount: number;
+    durationMs: number; extraCopied: boolean; extraError: string | null;
+}> {
+    const { prisma, backupDir, uploadsDir } = input;
+    const started = Date.now();
+
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+    const stamp = backupStamp();
+    const dbTarget = path.join(backupDir, `${stamp}.db`);
+
+    // Prisma raw SQL: yo'lda faqat forward slash, apostrof bo'lmasligi kerak
+    const sqlPath = dbTarget.split(path.sep).join('/');
+    if (sqlPath.includes("'")) {
+        throw new Error("nusxa yo'lida apostrof bor");
+    }
+    await prisma.$executeRawUnsafe(`VACUUM INTO '${sqlPath}'`);
+
+    // uploads/ — arxivga. Bo'sh bo'lsa arxiv yaratilmaydi.
+    let uploadsCount = 0;
+    try {
+        if (fs.existsSync(uploadsDir) && fs.readdirSync(uploadsDir).length > 0) {
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip();
+            zip.addLocalFolder(uploadsDir);
+            zip.writeZip(path.join(backupDir, `${stamp}-uploads.zip`));
+            uploadsCount = fs.readdirSync(uploadsDir).length;
+        }
+    } catch (e: any) {
+        // Baza nusxasi olingan — bu asosiysi. Fayllar arxivi yiqilsa
+        // ogohlantiramiz, lekin butun amalni bekor qilmaymiz.
+        console.error('Zaxira: uploads arxivlanmadi:', e?.message || e);
+    }
+
+    const note = typeof input.note === 'string' ? input.note.slice(0, 500).trim() : '';
+    if (note) {
+        try { fs.writeFileSync(path.join(backupDir, `${stamp}.txt`), note, 'utf8'); } catch { /* ixtiyoriy */ }
+    }
+
+    /* Ikkinchi manzil. Xatosi butun amalni yiqitmaydi: asosiy nusxa
+       allaqachon olingan, flesh esa sug'urta. Ulanmagan disk uchun butun
+       zaxirani muvaffaqiyatsiz deb belgilash — yolg'on ogohlantirish. */
+    let extraCopied = false;
+    let extraError: string | null = null;
+    const extraDir = input.extraDir;
+    if (extraDir) {
+        try {
+            if (!fs.existsSync(extraDir)) fs.mkdirSync(extraDir, { recursive: true });
+            fs.copyFileSync(dbTarget, path.join(extraDir, `${stamp}.db`));
+            const zipName = `${stamp}-uploads.zip`;
+            const zipSrc = path.join(backupDir, zipName);
+            if (fs.existsSync(zipSrc)) fs.copyFileSync(zipSrc, path.join(extraDir, zipName));
+            extraCopied = true;
+        } catch (e: any) {
+            extraError = e?.message || String(e);
+            console.error('Zaxira: ikkinchi manzilga ko\'chirilmadi:', extraError);
+        }
+    }
+
+    const size = fs.statSync(dbTarget).size;
+    const durationMs = Date.now() - started;
+    console.log(`💾 Zaxira nusxa: ${stamp}.db (${Math.round(size / 1024)} KB, ${uploadsCount} fayl, ${durationMs} ms)`);
+
+    return {
+        file: `${stamp}.db`,
+        sizeBytes: size,
+        createdAt: new Date().toISOString(),
+        uploadsCount,
+        durationMs,
+        extraCopied,
+        extraError,
+    };
+}
+
+/**
+ * Eskirgan nusxalarni o'chiradi.
+ *
+ * Qoidalar:
+ *   - oxirgi `keepDaily` kunning nusxalari — hammasi qoladi;
+ *   - undan oldingi `keepMonthly` oyning HAR BIRIDAN eng yangisi qoladi;
+ *   - IZOHLI nusxa hech qachon o'chirilmaydi — izoh qo'lda, ataylab yozilgan
+ *     ("migratsiyadan oldin"), ya'ni u aynan saqlash uchun olingan;
+ *   - eng yangi nusxa har qanday holatda qoladi.
+ *
+ * `pre-restore-*.db` fayllari alohida: ular tiklashdan oldingi holat va
+ * `listBackups()` ga tushmaydi, lekin har biri to'liq baza nusxasi bo'lgani
+ * uchun cheksiz yig'ilib qolmasligi kerak. Eng yangi 3 tasi qoladi.
+ */
+export function applyRetention(
+    backupDir: string, keepDaily: number, keepMonthly: number,
+): { deleted: string[] } {
+    const deleted: string[] = [];
+    if (!fs.existsSync(backupDir)) return { deleted };
+
+    const all = fs.readdirSync(backupDir)
+        .filter((f) => /^xclinic-\d{8}-\d{6}\.db$/.test(f))
+        .sort()          // nom bo'yicha tartib = vaqt bo'yicha tartib
+        .reverse();      // yangilari birinchi
+
+    if (all.length <= 1) return { deleted };
+
+    const hasNote = (f: string) => fs.existsSync(path.join(backupDir, f.replace(/\.db$/, '.txt')));
+
+    /* `keepDaily = 14` AYNAN 14 kunni bildiradi: bugun va undan oldingi 13 kun.
+       `-keepDaily` yozilsa 15 kun qolardi — bir kunlik farq bilinmaydi, lekin
+       sozlamada yozilgan raqam haqiqatga mos kelmasligi keyin chalkashtiradi. */
+    const cutoffDaily = tashkentDateStr(-(keepDaily - 1));
+    const keptMonths = new Set<string>();
+
+    const toDelete: string[] = [];
+    for (let i = 0; i < all.length; i++) {
+        const f = all[i];
+        if (i === 0) continue;                               // eng yangisi — doim qoladi
+        if (hasNote(f)) continue;                            // izohli — qo'lda olingan, tegilmaydi
+
+        const dateStr = backupDateStr(f);
+        if (!dateStr) continue;                              // nomi tushunarsiz — tegilmaydi
+        if (dateStr >= cutoffDaily) continue;                // kunlik oyna ichida
+
+        /* Oylik vakil. Ro'yxat yangidan eskiga qarab yurgani uchun har oyda
+           birinchi uchragan fayl — o'sha oyning eng yangisi.
+
+           Vakil oy davomida SURILADI: bugun kunlik oynadan endigina chiqqan
+           fayl vakil bo'ladi, ertaga uning o'rniga keyingisi keladi. Oy to'liq
+           oynadan chiqqach esa vakil bo'lib o'sha oyning oxirgi kuni qoladi —
+           ya'ni yakuniy holat aynan kerakli holat. */
+        const month = dateStr.slice(0, 7);                   // 'YYYY-MM'
+        if (!keptMonths.has(month) && keptMonths.size < keepMonthly) {
+            keptMonths.add(month);
+            continue;
+        }
+        toDelete.push(f);
+    }
+
+    for (const f of toDelete) {
+        for (const p of [f, f.replace(/\.db$/, '-uploads.zip'), f.replace(/\.db$/, '.txt')]) {
+            try {
+                const full = path.join(backupDir, p);
+                if (fs.existsSync(full)) fs.unlinkSync(full);
+            } catch (e: any) {
+                console.error(`Zaxira: ${p} o'chirilmadi:`, e?.message || e);
+            }
+        }
+        deleted.push(f);
+    }
+
+    // Tiklashdan oldingi nusxalar — eng yangi 3 tasi qoladi
+    try {
+        const pre = fs.readdirSync(backupDir)
+            .filter((f) => /^pre-restore-.+\.db$/.test(f))
+            .sort().reverse();
+        for (const f of pre.slice(3)) {
+            try { fs.unlinkSync(path.join(backupDir, f)); deleted.push(f); } catch { /* ignore */ }
+        }
+    } catch { /* ixtiyoriy */ }
+
+    if (deleted.length) console.log(`🧹 Eskirgan nusxalar o'chirildi: ${deleted.length} ta`);
+    return { deleted };
+}
+
+/**
+ * Avtomatik nusxa hozir olinishi kerakmi.
+ *
+ * @param newestDateStr eng yangi nusxaning sanasi `YYYY-MM-DD` yoki `null`
+ */
+export function autoBackupDue(cfg: BackupConfig, newestDateStr: string | null, nowMs = tashkentNowMs()): boolean {
+    if (!cfg.enabled) return false;
+
+    const today = tashkentDateStr();
+    if (newestDateStr === today) return false;      // bugun allaqachon olingan
+
+    if (newestDateStr === null) return true;        // umuman nusxa yo'q — darhol
+    if (newestDateStr < tashkentDateStr(-1)) return true; // kun(lar) o'tkazib yuborilgan — darhol
+
+    // Oxirgi nusxa KECHA olingan: belgilangan soatni kutamiz
+    const d = new Date(nowMs);
+    const nowMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();  // nowMs Toshkentga siljitilgan
+    return nowMinutes >= cfg.hour * 60 + cfg.minute;
+}
+
+/**
+ * Avtomatik nusxa jadvalini ishga tushiradi.
+ *
+ * Ishga tushishda darhol bir marta tekshiradi (quvib yetish), so'ng har 30
+ * daqiqada. Interval kichik emas: `autoBackupDue` kuniga bitta nusxaga
+ * kafolat beradi, tekshiruv esa faqat papkani o'qiydi — arzon.
+ */
+export function startBackupScheduler(deps: {
+    prisma: any; userDataPath: string; uploadsDir: string;
+}): void {
+    if (schedulerState.started) return;
+    schedulerState.started = true;
+
+    const backupDir = path.join(deps.userDataPath, BACKUP_DIR_NAME);
+
+    const newestBackupDate = (): string | null => {
+        try {
+            if (!fs.existsSync(backupDir)) return null;
+            const files = fs.readdirSync(backupDir)
+                .filter((f) => /^xclinic-\d{8}-\d{6}\.db$/.test(f))
+                .sort();
+            const newest = files[files.length - 1];
+            return newest ? backupDateStr(newest) : null;
+        } catch {
+            return null;
+        }
+    };
+
+    const tick = async (reason: string) => {
+        if (backupInProgress) return;                 // qo'lda olinayotgan bo'lsa aralashmaymiz
+        const cfg = readBackupConfig(deps.userDataPath);
+        if (!autoBackupDue(cfg, newestBackupDate())) return;
+
+        backupInProgress = true;
+        try {
+            const r = await performBackup({
+                prisma: deps.prisma,
+                backupDir,
+                uploadsDir: deps.uploadsDir,
+                extraDir: cfg.extraDir,
+            });
+            const { deleted } = applyRetention(backupDir, cfg.keepDaily, cfg.keepMonthly);
+            schedulerState.lastRunAt = r.createdAt;
+            schedulerState.lastFile = r.file;
+            schedulerState.lastError = r.extraError ? `ikkinchi manzil: ${r.extraError}` : null;
+            schedulerState.lastDeleted = deleted.length;
+            console.log(`💾 Avtomatik zaxira (${reason}): ${r.file}`);
+        } catch (e: any) {
+            schedulerState.lastError = describeDbError(e);
+            console.error('❌ Avtomatik zaxira olinmadi:', schedulerState.lastError);
+        } finally {
+            backupInProgress = false;
+        }
+    };
+
+    /* Ishga tushishdagi quvib yetish 20 soniya kechiktiriladi: server endigina
+       ko'tarildi, birinchi so'rovlar kelayotgan bo'lishi mumkin, `VACUUM INTO`
+       esa bazani qisqa vaqtga band qiladi. */
+    setTimeout(() => { void tick('ishga tushish'); }, 20_000).unref?.();
+    setInterval(() => { void tick('jadval'); }, 30 * 60 * 1000).unref?.();
+
+    console.log('✅ Avtomatik zaxira jadvali yoqildi');
+}
+
 export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, requireRole, migrationsDir,
             userDataPath, dbPath, uploadsDir } = deps;
@@ -278,49 +644,24 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
      * Bazani `VACUUM INTO` bilan, `uploads/` ni zip bilan. Izoh berilsa,
      * yonma-yon `.txt` faylga yoziladi (bazaga ustun qo'shmaslik uchun).
      */
-    app.post('/api/admin/backup', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (req: any, res: any) => {
+    app.post('/api/admin/backup', auth, requireRole('CLINIC_ADMIN'), async (req: any, res: any) => {
         if (backupInProgress) {
             return res.status(409).json({ error: 'Nusxa olish allaqachon ketmoqda' });
         }
         backupInProgress = true;
-        const started = Date.now();
         try {
             ensureBackupDir();
-            const stamp = backupStamp();
-            const dbTarget = path.join(backupDir, `${stamp}.db`);
-
-            // Prisma raw SQL: yo'lda faqat forward slash, apostrof bo'lmasligi kerak
-            const sqlPath = dbTarget.split(path.sep).join('/');
-            if (sqlPath.includes("'")) {
-                return res.status(500).json({ error: 'Nusxa yo\'lida apostrof bor — nusxa olinmadi' });
-            }
-            await prisma.$executeRawUnsafe(`VACUUM INTO '${sqlPath}'`);
-
-            // uploads/ — arxivga. Bo'sh bo'lsa arxiv yaratilmaydi.
-            let uploadsCount = 0;
-            try {
-                if (fs.existsSync(uploadsDir) && fs.readdirSync(uploadsDir).length > 0) {
-                    const AdmZip = require('adm-zip');
-                    const zip = new AdmZip();
-                    zip.addLocalFolder(uploadsDir);
-                    zip.writeZip(path.join(backupDir, `${stamp}-uploads.zip`));
-                    uploadsCount = fs.readdirSync(uploadsDir).length;
-                }
-            } catch (e: any) {
-                // Baza nusxasi olingan — bu asosiysi. Fayllar arxivi yiqilsa
-                // ogohlantiramiz, lekin butun amalni bekor qilmaymiz.
-                console.error('Zaxira: uploads arxivlanmadi:', e?.message || e);
-            }
-
-            const note = typeof req.body?.note === 'string' ? req.body.note.slice(0, 500).trim() : '';
-            if (note) {
-                try { fs.writeFileSync(path.join(backupDir, `${stamp}.txt`), note, 'utf8'); } catch { /* ixtiyoriy */ }
-            }
-
-            const size = fs.statSync(dbTarget).size;
-            const durationMs = Date.now() - started;
-            console.log(`💾 Zaxira nusxa: ${stamp}.db (${Math.round(size / 1024)} KB, ${uploadsCount} fayl, ${durationMs} ms)`);
-            res.json({ file: `${stamp}.db`, sizeBytes: size, createdAt: new Date().toISOString(), uploadsCount, durationMs });
+            const cfg = readBackupConfig(userDataPath);
+            const r = await performBackup({
+                prisma, backupDir, uploadsDir,
+                note: req.body?.note,
+                extraDir: cfg.extraDir,
+            });
+            /* Saqlash muddati qo'lda olingan nusxadan keyin ham qo'llanadi:
+               aks holda avtomatik nusxa o'chirilgan klinikada papka cheksiz
+               o'sib ketadi. Izohli nusxalar `applyRetention` da himoyalangan. */
+            const { deleted } = applyRetention(backupDir, cfg.keepDaily, cfg.keepMonthly);
+            res.json({ ...r, deletedCount: deleted.length });
         } catch (e: any) {
             const msg = describeDbError(e);
             console.error('Zaxira nusxa xatosi:', msg);
@@ -330,8 +671,94 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
         }
     });
 
+    /**
+     * GET /api/admin/backup/status — jadval holati.
+     *
+     * Sozlamalar shu yerdan "oxirgi nusxa qachon olingan" va "kechikkanmi"
+     * degan javobni oladi. Kechikish belgisi MUHIM: tugma bosilmay qolgan
+     * klinika buni boshqa hech qayerdan bilmaydi.
+     */
+    app.get('/api/admin/backup/status', auth, requireRole('CLINIC_ADMIN'), async (_req: any, res: any) => {
+        try {
+            const cfg = readBackupConfig(userDataPath);
+            const list = listBackups();
+            const newest = list[0] || null;
+            const newestDate = newest ? backupDateStr(newest.file) : null;
+
+            let ageDays: number | null = null;
+            if (newestDate) {
+                const today = tashkentDateStr();
+                ageDays = Math.round(
+                    (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${newestDate}T00:00:00Z`)) / 86400000,
+                );
+            }
+
+            const totalBytes = list.reduce((s, b) => s + (b.sizeBytes || 0), 0);
+
+            res.json({
+                config: cfg,
+                lastBackup: newest ? { file: newest.file, createdAt: newest.createdAt, sizeBytes: newest.sizeBytes } : null,
+                ageDays,
+                // 3 kundan oshsa interfeys qizil ogohlantirish ko'rsatadi
+                stale: ageDays === null || ageDays >= 3,
+                count: list.length,
+                totalBytes,
+                scheduler: {
+                    running: schedulerState.started,
+                    lastRunAt: schedulerState.lastRunAt,
+                    lastFile: schedulerState.lastFile,
+                    lastError: schedulerState.lastError,
+                    lastDeleted: schedulerState.lastDeleted,
+                },
+            });
+        } catch (e: any) {
+            console.error('[GET /api/admin/backup/status]', e?.message || e);
+            res.status(500).json({ error: 'Zaxira holatini o\'qib bo\'lmadi' });
+        }
+    });
+
+    /** PUT /api/admin/backup/config — jadval sozlamasi */
+    app.put('/api/admin/backup/config', auth, requireRole('CLINIC_ADMIN'), async (req: any, res: any) => {
+        try {
+            const cur = readBackupConfig(userDataPath);
+            const b = req.body || {};
+            const next: BackupConfig = {
+                enabled: b.enabled === undefined ? cur.enabled : !!b.enabled,
+                hour: b.hour === undefined ? cur.hour : clampInt(b.hour, 0, 23, cur.hour),
+                minute: b.minute === undefined ? cur.minute : clampInt(b.minute, 0, 59, cur.minute),
+                keepDaily: b.keepDaily === undefined ? cur.keepDaily : clampInt(b.keepDaily, 2, 365, cur.keepDaily),
+                keepMonthly: b.keepMonthly === undefined ? cur.keepMonthly : clampInt(b.keepMonthly, 0, 120, cur.keepMonthly),
+                extraDir: b.extraDir === undefined
+                    ? cur.extraDir
+                    : (typeof b.extraDir === 'string' && b.extraDir.trim() ? b.extraDir.trim() : null),
+            };
+
+            /* Ikkinchi manzil tekshiriladi: yozib bo'lmaydigan yo'lni saqlab
+               qo'yish — har kuni jimgina xato beradigan sozlama. */
+            if (next.extraDir) {
+                try {
+                    if (!fs.existsSync(next.extraDir)) fs.mkdirSync(next.extraDir, { recursive: true });
+                    const probe = path.join(next.extraDir, '.xclinic-write-test');
+                    fs.writeFileSync(probe, 'ok', 'utf8');
+                    fs.unlinkSync(probe);
+                } catch (e: any) {
+                    return res.status(400).json({
+                        error: `Ikkinchi manzilga yozib bo'lmadi: ${e?.message || e}`,
+                    });
+                }
+            }
+
+            writeBackupConfig(userDataPath, next);
+            console.log(`⚙️ Zaxira sozlamasi yangilandi: ${next.enabled ? `${pad(next.hour)}:${pad(next.minute)}` : "o'chirilgan"}`);
+            res.json(next);
+        } catch (e: any) {
+            console.error('[PUT /api/admin/backup/config]', e?.message || e);
+            res.status(500).json({ error: 'Sozlamani saqlab bo\'lmadi' });
+        }
+    });
+
     /** GET /api/admin/backups — mavjud nusxalar */
-    app.get('/api/admin/backups', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (_req: any, res: any) => {
+    app.get('/api/admin/backups', auth, requireRole('CLINIC_ADMIN'), async (_req: any, res: any) => {
         try {
             res.json(listBackups());
         } catch (e: any) {
@@ -348,7 +775,7 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
      * fayliga yoziladi, almashtirishni esa Electron backend ishga tushishidan
      * OLDIN qiladi. Javob shu sababli `staged`, `restored` emas.
      */
-    app.post('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (req: any, res: any) => {
+    app.post('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN'), async (req: any, res: any) => {
         try {
             if (req.body?.confirm !== true) {
                 return res.status(400).json({ error: 'Tasdiqlanmagan: confirm=true kerak' });
@@ -378,7 +805,7 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
 
     /** DELETE /api/admin/backup/restore — belgilangan tiklashni bekor qilish.
      *  Kerak, chunki tiklash kechiktirilgan: "bosdim va o'yladim" holatidan chiqish yo'li. */
-    app.delete('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (_req: any, res: any) => {
+    app.delete('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN'), async (_req: any, res: any) => {
         try {
             if (!fs.existsSync(markerPath)) {
                 return res.status(404).json({ error: 'Tiklash belgilanmagan' });
@@ -394,7 +821,7 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
 
     /** GET /api/admin/backup/restore — belgilangan tiklash bormi (interfeys shu bilan
      *  sahifada ogohlantirish chizig'ini ko'rsatadi) */
-    app.get('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (_req: any, res: any) => {
+    app.get('/api/admin/backup/restore', auth, requireRole('CLINIC_ADMIN'), async (_req: any, res: any) => {
         try {
             if (!fs.existsSync(markerPath)) return res.json({ staged: false });
             const raw = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
@@ -404,13 +831,344 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
         }
     });
 
+    /* ═══ YAXLITLIK TEKSHIRUVI ═══════════════════════════════════════════
+
+       Tranzaksiyalar (7.3, 7.4) bundan KEYINGI buzilishlarni to'xtatadi,
+       lekin ALLAQACHON buzilgan yozuvlarni topmaydi. Bu endpoint shuni
+       qiladi.
+
+       IKKI QAROR, ular tekshiruvlarning shaklini belgilaydi:
+
+       1. RAW SQL EMAS, Prisma agregatsiyalari. Sababi aniq: SQLite da
+          `COALESCE(x, 0)` ning literal `0` i INTEGER bo'lib qoladi va Prisma
+          uni BigInt qilib qaytaradi — `res.json()` esa BigInt ni
+          seriyalashtira olmaydi va endpoint aynan BUZILISH TOPILGAN paytda
+          500 beradi. Agregatsiyalar oddiy `number` qaytaradi.
+
+       2. FAQAT SHUBHASIZ buzilishlar "xato" deb belgilanadi. Soxta
+          ogohlantirish beradigan tekshiruv — foydasiz tekshiruv: bir-ikki
+          marta bekorga qo'ng'iroq qilgandan keyin unga hech kim qaramaydi.
+          Shubhali holatlar `warn`, tushuntirish bilan.                     */
+    app.get('/api/admin/integrity', auth, requireRole('CLINIC_ADMIN'), async (req: any, res: any) => {
+        try {
+            const user = req.user || {};
+            // Klinika TOKENDAN. Ilgari butun klinikalar ustidagi rol uchun
+            // `?clinicId=` dan o'qish yo'li bor edi — u rol bilan birga ketdi.
+            const clinicId = user.clinicId;
+            if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
+
+            const LIMIT = 100;               // javobda ko'rsatiladigan misollar soni
+            const checks: any[] = [];
+            const near = (a: number, b: number) => Math.abs(a - b) < 0.001;
+
+            /* ── (a) To'lovlar: SUM(ChargePayment) == paidAmount ──────────
+               ChargePayment qaytarishni MANFIY summa bilan yozadi, qaytarish
+               esa `paidAmount` ni kamaytiradi — ya'ni yig'indi baribir mos
+               kelishi kerak. */
+            const [charges, payGroups] = await Promise.all([
+                prisma.visitCharge.findMany({
+                    where: { clinicId },
+                    select: {
+                        id: true, name: true, patientName: true,
+                        paidAmount: true, total: true, status: true,
+                    },
+                }),
+                prisma.chargePayment.groupBy({
+                    by: ['chargeId'],
+                    where: { clinicId },
+                    _sum: { amount: true },
+                    _count: { _all: true },
+                }),
+            ]);
+            const paidByCharge = new Map<string, { sum: number; count: number }>(
+                payGroups.map((g: any) => [g.chargeId, { sum: g._sum.amount || 0, count: g._count._all }]),
+            );
+
+            const mismatchA: any[] = [];
+            const legacyA: any[] = [];
+            for (const c of charges) {
+                const rec = paidByCharge.get(c.id);
+                const sum = rec?.sum || 0;
+                const paid = c.paidAmount || 0;
+                if (near(sum, paid)) continue;
+
+                const row = {
+                    id: c.id, patientName: c.patientName, name: c.name,
+                    paidAmount: Math.round(paid), paymentsSum: Math.round(sum),
+                    diff: Math.round(paid - sum),
+                };
+                /* Bitta ham ChargePayment qatori yo'q, lekin pul yozilgan —
+                   bu 0006-migratsiyagacha bo'lgan ESKI yozuv. Buzilish emas,
+                   meros: o'sha paytda ChargePayment jadvali yo'q edi. */
+                if (!rec) legacyA.push(row); else mismatchA.push(row);
+            }
+            checks.push({
+                key: 'charge_payments',
+                title: "To'lovlar: chek qatorlari yig'indisi to'langan summaga teng",
+                severity: mismatchA.length ? 'error' : 'ok',
+                count: mismatchA.length,
+                scanned: charges.length,
+                sample: mismatchA.slice(0, LIMIT),
+            });
+            if (legacyA.length) {
+                checks.push({
+                    key: 'charge_payments_legacy',
+                    title: "Eski yozuvlar: to'lov bor, chek qatori yo'q (0006-migratsiyagacha)",
+                    severity: 'info',
+                    count: legacyA.length,
+                    scanned: charges.length,
+                    sample: legacyA.slice(0, LIMIT),
+                    note: "Buzilish emas — o'sha paytda ChargePayment jadvali mavjud emas edi.",
+                });
+            }
+
+            /* ── (b) Holat: to'liq to'langan qator 'Paid' bo'lishi kerak ── */
+            const statusBad = charges.filter(
+                (c: any) => c.status === 'Unpaid' && (c.paidAmount || 0) >= c.total - 0.001 && c.total > 0,
+            );
+            checks.push({
+                key: 'charge_status',
+                title: "Holat: to'liq to'langan qator 'Paid' bo'lishi kerak",
+                severity: statusBad.length ? 'error' : 'ok',
+                count: statusBad.length,
+                scanned: charges.length,
+                sample: statusBad.slice(0, LIMIT).map((c: any) => ({
+                    id: c.id, patientName: c.patientName, name: c.name,
+                    paidAmount: Math.round(c.paidAmount || 0), total: Math.round(c.total), status: c.status,
+                })),
+            });
+
+            /* ── (b2) Bekor qilingan, lekin puli olingan ──────────────────
+               `warn`, `error` EMAS. Sababi: `cancelChargesBySource`
+               (billing.ts) qisman to'langan qatorni ham bekor qiladi —
+               shifokor muolajani o'chirsa shunday bo'ladi va bu KO'ZDA
+               TUTILGAN amal. Pul esa qaytarilishi kerak, shuning uchun
+               ko'rsatamiz, lekin "buzilish" demaymiz. */
+            const cancelledPaid = charges.filter(
+                (c: any) => c.status === 'Cancelled' && (c.paidAmount || 0) > 0.001,
+            );
+            checks.push({
+                key: 'cancelled_paid',
+                title: "Bekor qilingan qator, lekin puli olingan — qaytarish kerakmi?",
+                severity: cancelledPaid.length ? 'warn' : 'ok',
+                count: cancelledPaid.length,
+                scanned: charges.length,
+                sample: cancelledPaid.slice(0, LIMIT).map((c: any) => ({
+                    id: c.id, patientName: c.patientName, name: c.name,
+                    paidAmount: Math.round(c.paidAmount || 0),
+                })),
+                note: "Muolaja o'chirilganda qator bekor bo'ladi — bu normal. Pul qaytarilganini tekshiring.",
+            });
+
+            /* ── (c) Ombor: PARTIYA bo'yicha ──────────────────────────────
+               NIMA UCHUN partiya bo'yicha, mahsulot qoldig'i bo'yicha EMAS.
+
+               Omborda ikki avlod hisobi yonma-yon yashaydi: yangi yo'l
+               `StockMovement` yozadi, eski yo'l (`PUT /api/inventory/:id/stock`,
+               bemor kartasidan material) esa `InventoryLog` ga yozadi va
+               qoldiqni ABSOLYUT qiymat bilan almashtiradi. Shuning uchun
+               "qoldiq = harakatlar yig'indisi" tekshiruvi eski yo'l
+               ishlatilgan har mahsulotda SOXTA xato berardi.
+
+               Partiya esa faqat yangi yo'lda o'zgaradi: kirim partiyani
+               yaratadi va +qty harakat yozadi, FEFO chiqimi partiyani
+               kamaytirib −take yozadi. Ya'ni har partiya uchun
+               `SUM(harakatlar) == partiya qoldig'i` — bu ANIQ invariant. */
+            const items = await prisma.inventoryItem.findMany({
+                where: { clinicId },
+                select: { id: true, name: true, quantity: true, unit: true },
+            });
+            const itemIds = items.map((i: any) => i.id);
+            const itemName = new Map(items.map((i: any) => [i.id, i.name]));
+
+            const [batches, batchGroups] = await Promise.all([
+                prisma.inventoryBatch.findMany({
+                    where: { itemId: { in: itemIds } },
+                    select: { id: true, itemId: true, batchNumber: true, quantity: true },
+                }),
+                prisma.stockMovement.groupBy({
+                    by: ['batchId'],
+                    where: { clinicId, batchId: { not: null } },
+                    _sum: { quantity: true },
+                }),
+            ]);
+            const moveByBatch = new Map<string, number>(
+                batchGroups.map((g: any) => [g.batchId, g._sum.quantity || 0]),
+            );
+
+            const batchBad = batches
+                .map((b: any) => ({ b, sum: moveByBatch.get(b.id) ?? 0 }))
+                .filter(({ b, sum }: any) => !near(sum, b.quantity))
+                .map(({ b, sum }: any) => ({
+                    batchId: b.id, itemName: itemName.get(b.itemId) || '?',
+                    batchNumber: b.batchNumber, quantity: b.quantity,
+                    movementsSum: sum, diff: Math.round((b.quantity - sum) * 1000) / 1000,
+                }));
+
+            checks.push({
+                key: 'batch_movements',
+                title: "Ombor: har partiya qoldig'i o'z harakatlari yig'indisiga teng",
+                severity: batchBad.length ? 'error' : 'ok',
+                count: batchBad.length,
+                scanned: batches.length,
+                sample: batchBad.slice(0, LIMIT),
+            });
+
+            /* ── (c2) MAHSULOT qoldig'i = harakatlar yig'indisi ───────────
+
+               0028 gacha bu tekshiruv MUMKIN EMAS edi: eski yo'l
+               (`InventoryLog`) qoldiqni harakat yozmasdan o'zgartirardi va
+               har mahsulotda soxta xato chiqardi. Shuning uchun o'rnida
+               "ikki jurnal ishlatilgan" degan MA'LUMOT bandi turardi.
+
+               0028 uchta narsani qildi: eski qatorlar harakatga ko'chirildi,
+               boshlang'ich qoldiqlar ochilish harakati bilan yopildi, eski
+               yo'l esa 410 qaytaradi. Endi invariant haqiqiy.
+
+               'Transfer' CHIQARILADI: u bo'lim ichidagi ko'chirish, musbat
+               yoziladi, lekin umumiy qoldiqqa tegmaydi. */
+            const itemGroups = await prisma.stockMovement.groupBy({
+                by: ['itemId'],
+                where: { clinicId, type: { not: 'Transfer' } },
+                _sum: { quantity: true },
+            });
+            const moveByItem = new Map<string, number>(
+                itemGroups.map((g: any) => [g.itemId, g._sum.quantity || 0]),
+            );
+            const itemBad = items
+                .map((i: any) => ({ i, sum: moveByItem.get(i.id) ?? 0 }))
+                .filter(({ i, sum }: any) => !near(sum, i.quantity))
+                .map(({ i, sum }: any) => ({
+                    itemId: i.id, itemName: i.name, unit: i.unit,
+                    quantity: i.quantity, movementsSum: sum,
+                    diff: Math.round((i.quantity - sum) * 1000) / 1000,
+                }));
+
+            checks.push({
+                key: 'item_movements',
+                title: "Ombor: har mahsulot qoldig'i o'z harakatlari yig'indisiga teng",
+                severity: itemBad.length ? 'error' : 'ok',
+                count: itemBad.length,
+                scanned: items.length,
+                sample: itemBad.slice(0, LIMIT),
+                note: "Farq chiqsa — qoldiq harakat yozmasdan o'zgargan. "
+                    + "Sababi odatda to'g'ridan-to'g'ri bazaga yozish yoki eski yo'l.",
+            });
+
+            /* ── (c3) Eski jurnalga YANGI yozuv tushmayaptimi ──────────────
+               0028 dan keyin `InventoryLog` ga hech kim yozmasligi kerak.
+               Yozilgan bo'lsa — kimdir yopilgan yo'lni tiriltirgan. */
+            const lastLegacy = await prisma.inventoryLog.findFirst({
+                where: { itemId: { in: itemIds } },
+                orderBy: { date: 'desc' },
+                select: { id: true, date: true, itemId: true },
+            });
+            const cutoff = new Date('2026-08-28T00:00:00.000Z');
+            const legacyFresh = lastLegacy && new Date(lastLegacy.date) > cutoff;
+            checks.push({
+                key: 'inventory_legacy_writes',
+                title: 'Eski ombor jurnaliga yangi yozuv tushmagan',
+                severity: legacyFresh ? 'error' : 'ok',
+                count: legacyFresh ? 1 : 0,
+                scanned: 1,
+                sample: legacyFresh
+                    ? [{ itemName: itemName.get(lastLegacy!.itemId) || '?', date: lastLegacy!.date }]
+                    : [],
+                note: "Eski jadval tarix uchun turibdi. Unga yozilsa — yopilgan "
+                    + "yo'l qaytadan ochilgan, ombor hisobi yana ikkiga bo'linadi.",
+            });
+
+            /* ── (c3) KASRLI PUL — 11.1-B o'rniga arzon qo'riqchi ─────────
+
+               O'zbek so'mi butun son. Yozish nuqtalari `money.ts` orqali
+               yaxlitlaydi (11.1-A), ya'ni kasr paydo bo'lmasligi kerak.
+
+               Ustun turini `Float` dan `Int` ga ko'chirish (11.1-B) buni
+               BAZA darajasida majburlardi, lekin SQLite da bu ~20 jadvalni
+               qayta qurishni talab qiladi va migratsiya mexanizmi buni
+               bajara olmaydi (PRAGMA tranzaksiya ichida ishlamaydi).
+
+               O'lchov ko'rsatdiki, yozish nuqtalari kafolatni allaqachon
+               beradi. Shuning uchun qimmat ko'chirish o'rniga — TEKSHIRUV:
+               kasr paydo bo'lsa darhol ko'rinadi va sababi topiladi. */
+            const moneyCols: [string, string][] = [
+                ['Transaction', 'amount'], ['VisitCharge', 'total'], ['VisitCharge', 'paidAmount'],
+                ['VisitCharge', 'unitPrice'], ['VisitCharge', 'discount'],
+                ['ChargePayment', 'amount'], ['Patient', 'balance'], ['CashMovement', 'amount'],
+                ['Expense', 'amount'],
+            ];
+            const fracRows: any[] = [];
+            let moneyScanned = 0;
+            for (const [table, col] of moneyCols) {
+                try {
+                    /* `CAST(... AS REAL)` — 7.5 dagi BigInt tuzog'idan qochish
+                       uchun: `COUNT(*)` INTEGER qaytaradi va JSON ga
+                       seriyalashtirilmaydi. */
+                    const rows: any = await prisma.$queryRawUnsafe(
+                        `SELECT CAST(COUNT(*) AS REAL) AS n FROM "${table}" ` +
+                        `WHERE "${col}" IS NOT NULL AND "${col}" != CAST("${col}" AS INTEGER) ` +
+                        `AND "${table}".clinicId = ?`,
+                        clinicId,
+                    );
+                    const n = Number(rows?.[0]?.n || 0);
+                    moneyScanned++;
+                    if (n > 0) fracRows.push({ table, column: col, count: n });
+                } catch {
+                    /* Ustunda `clinicId` bo'lmasa (masalan `ChargePayment` da bor,
+                       lekin kelajakda o'zgarishi mumkin) — o'tkazib yuboramiz. */
+                }
+            }
+            checks.push({
+                key: 'money_precision',
+                title: "Pul qiymatlari butun so'mda",
+                severity: fracRows.length ? 'warn' : 'ok',
+                count: fracRows.reduce((s, r) => s + r.count, 0),
+                scanned: moneyScanned,
+                sample: fracRows,
+                note: fracRows.length
+                    ? "Kasrli summa topildi — yozish nuqtasi `money.ts` dan o'tmayapti."
+                    : undefined,
+            });
+
+            /* ── (d) Avans balansi ────────────────────────────────────────
+               Formula `billing.ts` dagi `findBalanceMismatches` da — balansni
+               qayta hisoblash endpointi ham AYNAN o'shani ishlatadi. */
+            const bal = await findBalanceMismatches(prisma, { clinicId });
+            checks.push({
+                key: 'patient_balance',
+                title: 'Avans: bemor balansi cheklar va qaytarishlarga mos',
+                severity: bal.diffs.length ? 'warn' : 'ok',
+                count: bal.diffs.length,
+                scanned: bal.checked,
+                sample: bal.diffs.slice(0, LIMIT),
+                note: bal.diffs.length
+                    ? "Sozlamalar → «Balanslarni qayta hisoblash» bilan tuzatiladi. "
+                      + "Chek yoki kassa harakati o'chirilgan bo'lsa farq shundan bo'lishi mumkin."
+                    : undefined,
+            });
+
+            const errors = checks.filter((c) => c.severity === 'error');
+            const warns = checks.filter((c) => c.severity === 'warn');
+            res.json({
+                checkedAt: new Date().toISOString(),
+                ok: errors.length === 0,
+                errorCount: errors.reduce((s, c) => s + c.count, 0),
+                warnCount: warns.reduce((s, c) => s + c.count, 0),
+                checks,
+            });
+        } catch (e: any) {
+            console.error('[GET /api/admin/integrity]', e?.message || e);
+            res.status(500).json({ error: `Yaxlitlikni tekshirib bo'lmadi: ${describeDbError(e)}` });
+        }
+    });
+
     /**
      * Sxema holati. Ko'rish uchun: qo'llab-quvvatlashda birinchi savol —
      * "klinikada qaysi versiya".
      *
      * `clinicId` ATAYLAB ishlatilmaydi: sxema o'rnatmaga bitta, klinikaga emas.
      */
-    app.get('/api/admin/schema-status', auth, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (_req: any, res: any) => {
+    app.get('/api/admin/schema-status', auth, requireRole('CLINIC_ADMIN'), async (_req: any, res: any) => {
         try {
             const rows: any = await prisma.$queryRawUnsafe(
                 `SELECT version, appliedAt, durationMs, note FROM "SchemaMigration" ORDER BY version ASC`,

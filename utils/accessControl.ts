@@ -25,6 +25,9 @@ export function isModuleHidden(ac: AccessControl, role: UserRole, moduleId: stri
 }
 
 export function canSeeFinance(ac: AccessControl, role: UserRole): boolean {
+    // Hamshira moliyani ko'rmaydi. Sozlamalarda bunday bayroq yo'q, ya'ni
+    // sukut bo'yicha "ochiq" bo'lib qolardi — shuning uchun aniq yozilgan.
+    if (role === UserRole.NURSE) return false;
     return getRoleAccess(ac, role)?.showFinance !== false;
 }
 

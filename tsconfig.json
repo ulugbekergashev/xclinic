@@ -37,6 +37,7 @@
     "pages/**/*",
     "services/**/*",
     "utils/**/*",
+    "shared/**/*",
     "hooks/**/*",
     "context/**/*",
     "i18n/**/*"

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatMoney, formatFullName } from '../utils/format';
 import { todayISO } from '../utils/dateUtils';
 import { Modal, Button } from './Common';
 import { Patient, Doctor, Transaction, PaymentMethod } from '../types';
@@ -55,7 +56,7 @@ export const QuickPaymentModal: React.FC<QuickPaymentModalProps> = ({
             const doctor = doctors.find(d => d.id === form.doctorId);
             const today = todayISO();
             await onAddTransaction({
-                patientName: patient ? `${patient.lastName} ${patient.firstName}` : '',
+                patientName: patient ? `${formatFullName(patient)}` : '',
                 date: presetDate || today,
                 amount: parseFloat(form.amount),
                 type: form.type,
@@ -64,7 +65,7 @@ export const QuickPaymentModal: React.FC<QuickPaymentModalProps> = ({
                 clinicId,
                 patientId: form.patientId || undefined,
                 doctorId: form.doctorId || undefined,
-                doctorName: doctor ? `${doctor.lastName} ${doctor.firstName}` : undefined,
+                doctorName: doctor ? `${formatFullName(doctor)}` : undefined,
             });
             onClose();
         } finally {
@@ -79,7 +80,7 @@ export const QuickPaymentModal: React.FC<QuickPaymentModalProps> = ({
                     <label className={labelCls}>Bemor *</label>
                     <select value={form.patientId} onChange={e => setForm(f => ({ ...f, patientId: e.target.value }))} className={inputCls}>
                         <option value="">Bemorni tanlang...</option>
-                        {patients.map(p => <option key={p.id} value={p.id}>{p.lastName} {p.firstName} — {p.phone}</option>)}
+                        {patients.map(p => <option key={p.id} value={p.id}>{formatFullName(p)} — {p.phone}</option>)}
                     </select>
                 </div>
 
@@ -87,7 +88,7 @@ export const QuickPaymentModal: React.FC<QuickPaymentModalProps> = ({
                     <label className={labelCls}>Shifokor</label>
                     <select value={form.doctorId} onChange={e => setForm(f => ({ ...f, doctorId: e.target.value }))} className={inputCls}>
                         <option value="">Tanlanmagan (ixtiyoriy)</option>
-                        {doctors.map(d => <option key={d.id} value={d.id}>{d.lastName} {d.firstName} — {d.specialty}</option>)}
+                        {doctors.map(d => <option key={d.id} value={d.id}>{formatFullName(d)} — {d.specialty}</option>)}
                     </select>
                 </div>
 
@@ -102,7 +103,7 @@ export const QuickPaymentModal: React.FC<QuickPaymentModalProps> = ({
                         className={inputCls}
                     >
                         <option value="">Xizmatni tanlang...</option>
-                        {services.map((s, i) => <option key={i} value={s.name}>{s.name} — {s.price.toLocaleString()} UZS</option>)}
+                        {services.map((s, i) => <option key={i} value={s.name}>{s.name} — {formatMoney(s.price)} UZS</option>)}
                     </select>
                 </div>
 

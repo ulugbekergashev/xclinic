@@ -119,6 +119,23 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input: React.FC<InputProps> = ({ label, error, helperText, className = '', containerClassName = 'w-full', ...props }) => {
+  /* YORLIQ MAYDONGA BOG'LANADI (S4.6).
+
+     Bu yerda ilgari `<label>` da `htmlFor`, `<input>` da esa `id` YO'Q edi.
+     Ko'z bilan qaraganda hammasi joyida ko'rinadi, lekin:
+       • ekran o'quvchi maydonni «edit text» deb o'qiydi, nomsiz;
+       • yorliqni bosganda fokus maydonga o'tmaydi;
+       • avtomatik sinov maydonni yorliq bo'yicha topa olmaydi — brauzer
+         E2E sinovi aynan shu yerda to'xtab qolgan edi.
+
+     `useId` — React ning o'zi beradigan noyob id; qo'lda hisoblash yoki
+     tasodifiy son kerak emas va SSR bilan ham mos. Tashqaridan `id`
+     berilgan bo'lsa, u ustun turadi. */
+  const autoId = React.useId();
+  const inputId = props.id || autoId;
+  const errorId = error ? `${inputId}-error` : undefined;
+  const helpId = !error && helperText ? `${inputId}-help` : undefined;
+
   const handleClick = (e: React.MouseEvent<HTMLInputElement>) => {
     props.onClick?.(e);
   };
@@ -134,15 +151,24 @@ export const Input: React.FC<InputProps> = ({ label, error, helperText, classNam
 
   return (
     <div className={`${containerClassName} relative z-10`}>
-      {label && <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
+      {label && (
+        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {label}
+        </label>
+      )}
       <input
         className={`flex h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-white ${props.type === 'date' ? 'cursor-pointer' : ''} ${className} ${error ? 'border-red-500 focus:ring-red-500' : ''}`}
         {...props}
+        id={inputId}
+        /* Xato matni maydonga bog'lanadi — ekran o'quvchi uni maydon
+           nomidan keyin darhol o'qiydi, sahifaning boshqa joyida emas. */
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId || helpId}
         onClick={handleClick}
         onWheel={handleWheel}
       />
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-      {!error && helperText && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helperText}</p>}
+      {error && <p id={errorId} className="mt-1 text-xs text-red-500">{error}</p>}
+      {!error && helperText && <p id={helpId} className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helperText}</p>}
     </div>
   );
 };
@@ -153,13 +179,22 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   options?: { value: string; label: string }[];
 }
 
-export const Select: React.FC<SelectProps> = ({ label, options, children, className = '', ...props }) => (
+export const Select: React.FC<SelectProps> = ({ label, options, children, className = '', ...props }) => {
+  // Yorliq maydonga bog'lanadi — `Input` dagi bilan bir xil sabab (S4.6)
+  const autoId = React.useId();
+  const selectId = props.id || autoId;
+  return (
   <div className="w-full">
-    {label && <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
+    {label && (
+      <label htmlFor={selectId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        {label}
+      </label>
+    )}
     <div className="relative">
       <select
         className={`flex h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-white dark:bg-gray-800 appearance-none ${className}`}
         {...props}
+        id={selectId}
       >
         {options ? options.map(opt => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -170,7 +205,8 @@ export const Select: React.FC<SelectProps> = ({ label, options, children, classN
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // --- SearchableSelect ---
 interface SearchableSelectProps {
@@ -270,7 +306,7 @@ export const Modal: React.FC<{
       <div className={`relative w-full ${className} transform rounded-2xl bg-white dark:bg-gray-900 shadow-2xl transition-all overflow-hidden max-h-[90vh] flex flex-col`}>
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 p-4 sm:px-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-500 focus:outline-none">
+          <button aria-label="Yopish" onClick={onClose} className="text-gray-400 hover:text-gray-500 focus:outline-none">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -287,15 +323,21 @@ export interface ToastMessage {
   id: string;
   type: 'success' | 'error' | 'info';
   message: string;
+  /** «Bekor qilish» kabi amal (S3.6). Bosilganda toast yopiladi. */
+  action?: { label: string; run: () => void };
+  /** Ko'rinib turish vaqti. Berilmasa: amalli toast 8 s, oddiysi 4 s. */
+  durationMs?: number;
 }
 
-export const Toast: React.FC<ToastMessage & { onClose: (id: string) => void }> = ({ id, type, message, onClose }) => {
+export const Toast: React.FC<ToastMessage & { onClose: (id: string) => void }> = ({ id, type, message, action, durationMs, onClose }) => {
+  /* «Bekor qilish» li toast UZOQROQ turadi (S3.6): o'chirishni qaytarish
+     uchun 4 soniya kam — foydalanuvchi xabarni o'qib, qaror qilishi kerak. */
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose(id);
-    }, 4000);
+    }, durationMs ?? (action ? 8000 : 4000));
     return () => clearTimeout(timer);
-  }, [id, onClose]);
+  }, [id, onClose, action, durationMs]);
 
   const icons = {
     success: <CheckCircle className="w-5 h-5 text-green-500" />,
@@ -313,7 +355,15 @@ export const Toast: React.FC<ToastMessage & { onClose: (id: string) => void }> =
     <div className={`flex items-center gap-3 p-4 rounded-lg border shadow-lg transform transition-all animate-fade-in mb-3 w-80 ${styles[type]}`}>
       {icons[type]}
       <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex-1">{message}</p>
-      <button onClick={() => onClose(id)} className="text-gray-400 hover:text-gray-600">
+      {action && (
+        <button
+          onClick={() => { action.run(); onClose(id); }}
+          className="text-sm font-semibold text-primary-700 dark:text-primary-300 hover:underline shrink-0"
+        >
+          {action.label}
+        </button>
+      )}
+      <button onClick={() => onClose(id)} className="text-gray-400 hover:text-gray-600" aria-label="Yopish">
         <X className="w-4 h-4" />
       </button>
     </div>
@@ -329,3 +379,63 @@ export const ToastContainer: React.FC<{ toasts: ToastMessage[], removeToast: (id
     </div>
   );
 };
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Yuklanish va bo'sh holat.
+
+   MUAMMO. Ekranlar ma'lumot kelguncha bo'sh turardi yoki "Yuklanmoqda..."
+   degan bitta satr ko'rsatardi. Ikkalasi ham yomon: birinchisida foydalanuvchi
+   dastur qotib qoldi deb o'ylaydi, ikkinchisida ma'lumot kelganda sahifa
+   SAKRAYDI — matn yo'qolib, o'rniga ro'yxat chiqadi.
+
+   Skelet ikkalasini ham hal qiladi: joy oldindan band qilinadi, harakat esa
+   "ishlayapti" degan signal beradi.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/** Bitta kulrang chiziq. `h` — balandlik sinfi (Tailwind). */
+export const Skeleton: React.FC<{ className?: string }> = ({ className = 'h-4 w-full' }) => (
+  <div className={`bg-gray-200 dark:bg-gray-700 rounded animate-pulse ${className}`} />
+);
+
+/**
+ * Ro'yxat skeleti — kelayotgan qatorlarning o'rnini egallaydi.
+ * `rows` haqiqiy ro'yxatga yaqin bo'lsin, aks holda baribir sakraydi.
+ */
+export const SkeletonList: React.FC<{ rows?: number; className?: string }> = ({ rows = 5, className = '' }) => (
+  <div className={`space-y-2 ${className}`} aria-busy="true" aria-live="polite">
+    {Array.from({ length: rows }, (_, i) => (
+      <div key={i} className="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+          <div className="flex-1 space-y-2">
+            {/* Turli uzunlik — bir xil chiziqlar jadval kabi ko'rinadi */}
+            <Skeleton className="h-3.5 w-1/3" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+          <Skeleton className="h-8 w-20 shrink-0" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+/**
+ * Bo'sh holat — ikona, sarlavha va (ixtiyoriy) amal.
+ *
+ * `hint` MUHIM: "hech narsa yo'q" degan xabar foydalanuvchini nima qilishni
+ * bilmagan holda qoldiradi. Nima qilish kerakligini aytish kerak.
+ */
+export const EmptyState: React.FC<{
+  icon?: React.ReactNode;
+  title: string;
+  hint?: string;
+  action?: React.ReactNode;
+  className?: string;
+}> = ({ icon, title, hint, action, className = '' }) => (
+  <div className={`text-center py-14 px-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 ${className}`}>
+    {icon && <div className="flex justify-center mb-3 text-gray-300 dark:text-gray-600">{icon}</div>}
+    <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{title}</p>
+    {hint && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 max-w-sm mx-auto">{hint}</p>}
+    {action && <div className="mt-4">{action}</div>}
+  </div>
+);

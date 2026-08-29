@@ -65,6 +65,71 @@ export function logAccess(prisma: any, req: any, data: {
     });
 }
 
+/* ═══ O'CHIRISHLARNI JURNALGA OLISH ═══════════════════════════════════════════
+
+   MUAMMO. Jurnal ishlayapti — bemor kartasini ochish, tashrifni ko'rish va
+   hujjat yaratish yoziladi. Lekin O'CHIRISH umuman yozilmasdi: bazada 35 ta
+   o'chirish marshruti bor va `AccessLog` da `action = 'Delete'` yozuvlari
+   soni — 0. Ya'ni jurnal eng muhim voqeani o'tkazib yuborardi.
+
+   NIMA UCHUN MARKAZLASHGAN, HAR MARSHRUTDA EMAS. 35 ta chaqiruv qo'shish —
+   35 ta unutish imkoniyati, va yangi o'chirish marshruti qo'shilganda jurnal
+   jimgina to'liqsiz bo'lib qoladi. Bu yerda esa qoida bitta: har qanday
+   muvaffaqiyatli DELETE yoziladi.
+
+   NIMA UCHUN `res.on('finish')`. Amal BAJARILGANIDAN keyin yozish kerak:
+   400 yoki 403 bilan tugagan urinish o'chirish emas. Handler javobni
+   yuborganda status ma'lum bo'ladi.
+
+   NIMA UCHUN FAQAT DELETE. Har bir yozuv amalini jurnalga olish jurnalni
+   kunlik ish oqimi bilan to'ldirib, o'chirishni ko'rinmas qilib qo'yardi.
+   Yaratish va o'zgartirish tibbiy ahamiyatga ega joylarda (bemor kartasi,
+   hujjatlar) allaqachon nuqtaviy yoziladi. */
+
+/** `/api/patients/abc-123` → `Patient`; `/api/cash-movements/9` → `CashMovement` */
+function entityFromPath(path: string): { entityType: string; entityId: string | null } {
+    const parts = path.replace(/^\/api\//, '').split('/').filter(Boolean);
+    if (!parts.length) return { entityType: 'Unknown', entityId: null };
+
+    /* Oxirgi bo'lak identifikatormi yoki amal nomimi. `restore` va `api-key`
+       kabi nomlar ID emas — ular yo'lning bir qismi. */
+    const last = parts[parts.length - 1];
+    const looksLikeId = /^[0-9a-f-]{8,}$/i.test(last) || /^\d+$/.test(last) || /^\d{4}-\d{2}-\d{2}$/.test(last);
+
+    const resource = looksLikeId ? parts[parts.length - 2] ?? parts[0] : last;
+    const entityId = looksLikeId ? last : null;
+
+    // `cash-movements` → `CashMovement`, `patients` → `Patient`
+    const singular = resource.replace(/ies$/, 'y').replace(/s$/, '');
+    const entityType = singular
+        .split('-')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join('');
+
+    return { entityType: entityType || 'Unknown', entityId };
+}
+
+/**
+ * Muvaffaqiyatli o'chirishni jurnalga yozadi. `authenticateToken` ichidan,
+ * ruxsat tekshiruvidan KEYIN chaqiriladi — rad etilgan urinish o'chirish emas.
+ */
+export function auditDeletion(prisma: any, req: any, res: any) {
+    if (req.method !== 'DELETE') return;
+
+    res.on('finish', () => {
+        if (res.statusCode >= 400) return;
+
+        const { entityType, entityId } = entityFromPath(req.path);
+        /* Bemor ID'si qayerdan kelishi marshrutga bog'liq: ba'zilarida
+           yo'lda (`/api/patients/:id`), ba'zilarida tanada. Topilmasa
+           `null` — yozuv baribir qimmatli. */
+        const patientId = req.params?.patientId || req.body?.patientId
+            || (entityType === 'Patient' ? entityId : null) || null;
+
+        logAccess(prisma, req, { action: 'Delete', entityType, entityId, patientId });
+    });
+}
+
 /**
  * 24 oydan oshgan yozuvlarni tozalash (qaror В14).
  *
@@ -184,7 +249,7 @@ export function registerComplianceRoutes(app: express.Express, deps: Deps) {
 
     route('post', '/api/patient-documents', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!hasRole(req, 'RECEPTIONIST', 'DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'RECEPTIONIST', 'DOCTOR', 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const { patientId, visitId, kind, textSnapshot } = req.body || {};
@@ -303,7 +368,7 @@ export function registerComplianceRoutes(app: express.Express, deps: Deps) {
      */
     route('post', '/api/patient-documents/:id/sign', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!hasRole(req, 'CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const doc = await prisma.patientDocument.findUnique({ where: { id: req.params.id } });
@@ -335,7 +400,7 @@ export function registerComplianceRoutes(app: express.Express, deps: Deps) {
        kartani ko'rdi" yozuvining o'zi ham nozik ma'lumot, va shifokor kim
        uning murojaatlarini tekshirganini ko'rmasligi kerak. */
     route('get', '/api/access-log', async (req, res, clinicId) => {
-        if (!hasRole(req, 'CLINIC_ADMIN', 'SUPER_ADMIN')) {
+        if (!hasRole(req, 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q — jurnal faqat klinika egasiga" });
         }
         const { patientId, from, to, action, entityType } = req.query;

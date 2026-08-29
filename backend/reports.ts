@@ -13,7 +13,9 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { som } from './money';
 import { tashkentDateStr, tashkentMonthStart, tashkentRangeBounds, TASHKENT_OFFSET_MS } from './tashkentTime';
+import { financialSnapshot } from './snapshot';
 
 type Deps = {
     prisma: any;
@@ -21,7 +23,9 @@ type Deps = {
     getScopedClinicId: (req: any) => string | null;
 };
 
-const round = (n: number) => Math.round(n * 100) / 100;
+/* Pul — BUTUN so'm, `money.ts` dagi yagona qoida. Ilgari bu yerda
+   o'zining nusxasi turardi va modullar orasida aniqlik farq qilardi. */
+const round = som;
 const today = () => tashkentDateStr();
 
 const monthStart = () => tashkentMonthStart();
@@ -184,8 +188,17 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             marginPercent: d.revenue > 0 ? Math.round(((d.revenue - d.cost) / d.revenue) * 100) : 0,
         })).sort((a, b) => b.revenue - a.revenue);
 
+        /* `due` — DAVR ichida qolgan qarz, `openDebt` — ayni damdagi umumiy
+           qarz. Audit ikkalasini bitta «QARZ» yorlig'i ostida ko'rib,
+           «raqamlar mos kelmaydi» degan edi. Ular haqiqatan turli narsa;
+           endi ikkalasi ham qaytadi va interfeys ularni ajratib yozadi.
+           `openDebt` bosh sahifadagi raqam bilan AYNAN bir xil bo'ladi —
+           ikkalasi ham `snapshot.ts` dan. */
+        const snap = await financialSnapshot(prisma, clinicId, from, to);
+
         res.json({
             period: { from, to },
+            openDebt: snap.debt,
             totals: {
                 revenue: round(revenue),
                 collected: round(collected),
@@ -249,7 +262,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
     /** Faqat klinika egasi ko'radigan hisobotlar */
     const ownerOnly = (req: any, res: any) => {
         const role = (req as any).user?.role;
-        if (role !== 'CLINIC_ADMIN' && role !== 'SUPER_ADMIN') {
+        if (role !== 'CLINIC_ADMIN') {
             res.status(403).json({ error: "Ruxsat yo'q" });
             return false;
         }
@@ -786,6 +799,239 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             },
             /* Ekranda aytiladi: brak hisobga olinmaydi, chunki sxemada yo'q */
             notTracked: ['brak', 'qayta bajarish'],
+        });
+    });
+
+
+    /* ─── BOSH SAHIFA RAQAMLARI (FIX-PLAN 10.4) ───────────────────────────
+       Ilgari bu raqamlarni brauzer sanardi — buning uchun unga BUTUN
+       tranzaksiyalar va bemorlar ro'yxati kerak edi (o'lchov: 41 MB).
+
+       Endi server sanaydi va bir necha yuz bayt qaytaradi. Bu 10.3 bilan
+       BIRGA ketishi shart edi: ekranlarga to'liq ro'yxat berilmay qo'yilsa,
+       brauzerdagi hisob avtomatik yolg'on bo'lardi. */
+    /* YAGONA MANBA (S2.1).
+
+       Bosh sahifa, Bemorlar KPI kartalari, Kassa va Hisobot — to'rttasi ham
+       shu endpointdan o'qiydi. Ilgari har biri o'zi sanardi va natijada
+       bitta qarz to'rt xil raqam bo'lib chiqardi (0 / 0 / 0 / 11 501 043).
+
+       Yangi ko'rsatkich qo'shilsa u ham `snapshot.ts` ga qo'shiladi —
+       ekranda sanalgan har qanday son jimgina yolg'on. */
+    route('get', '/api/reports/snapshot', async (req, res, clinicId) => {
+        const from = req.query.from ? String(req.query.from) : undefined;
+        const to = req.query.to ? String(req.query.to) : undefined;
+        res.json(await financialSnapshot(prisma, clinicId, from, to));
+    });
+
+    /* Eski manzil. Bosh sahifaning avvalgi javob SHAKLI saqlanadi, lekin
+       raqamlar endi `snapshot.ts` dan keladi — ya'ni ikki ekran o'rtasidagi
+       farq mumkin emas. */
+    route('get', '/api/reports/dashboard', async (req, res, clinicId) => {
+        const today = tashkentDateStr();
+        const monthStart = today.slice(0, 8) + '01';
+
+        /* Bemor sanog'i va qarz `snapshot.ts` dan keladi — bu yerda qayta
+           sanalmaydi. Faqat BUGUNGI kassa harakati shu yerda qoladi: u
+           `Transaction` dan o'qiladi (haqiqiy pul kirimi), snapshot esa
+           `VisitCharge` dan (buyurilgan xizmat). Ikkisi turli savolga
+           javob beradi va ataylab ajratilgan. */
+        const [todayAppointments, todayVisits, todayPaid, monthPaid, snap] = await Promise.all([
+            prisma.appointment.count({ where: { clinicId, date: today } }),
+            prisma.visit.count({ where: { clinicId, date: today } }),
+            prisma.transaction.aggregate({
+                where: { clinicId, status: 'Paid', date: today, type: { not: 'Refund' } },
+                _sum: { amount: true }, _count: { _all: true },
+            }),
+            prisma.transaction.aggregate({
+                where: { clinicId, status: 'Paid', date: { gte: monthStart }, type: { not: 'Refund' } },
+                _sum: { amount: true },
+            }),
+            financialSnapshot(prisma, clinicId, monthStart, today),
+        ]);
+
+        res.json({
+            date: today,
+            patients: {
+                total: snap.patients.total,
+                active: snap.patients.active,
+                newLast7Days: snap.patients.newLast7Days,
+            },
+            today: {
+                appointments: todayAppointments,
+                visits: todayVisits,
+                revenue: round(todayPaid._sum.amount || 0),
+                payments: todayPaid._count._all,
+            },
+            month: { revenue: round(monthPaid._sum.amount || 0) },
+            debt: snap.debt,
+            period: snap.period,
+        });
+    });
+
+    /* ─────────────────────────────────────────────────────────────────
+       DAVOMAT VA KUNLAR HISOBOTI.
+
+       Bu savolga javob beradi: «qaysi kunlarda mijoz yaxshi kelyapti?»
+       Klinika uchun bu jadval tuzishning asosi — kam keladigan kunga
+       ko'p shifokor qo'yish ham, gavjum kunga kam qo'yish ham zarar.
+
+       Ilgari kalendar bo'yicha hech qanday statistika yig'ilmasdi:
+       `/api/reports/dashboard` faqat BUGUNGI yozuvlar sonini berardi,
+       tarix bo'yicha kesim umuman yo'q edi.
+
+       Uch kesim beriladi:
+         · hafta kuni — dushanbadan yakshanbagacha, kuniga o'rtacha
+         · kun        — kunma-kun qator (grafik uchun)
+         · soat       — kunning qaysi soatida gavjum
+
+       KELDI / KELMADI — `Appointment.status` bo'yicha:
+         Completed, Checked-In → keldi
+         No-Show               → kelmadi
+         Cancelled             → bekor qilingan; kelmaganga QO'SHILMAYDI,
+                                 chunki oldindan ogohlantirgan bemor bilan
+                                 shunchaki kelmagani bir xil emas
+       Qolganlari (Pending, Confirmed) — hali hal bo'lmagan.
+
+       TUSHUM tashrifning SANASIGA bog'lanadi (`visit.date`), yozuv
+       yaratilgan vaqtga emas: kechqurun kiritilgan qator aks holda
+       keyingi kunga tushib ketardi va kunlar kesimi buzilardi. */
+    route('get', '/api/reports/attendance', async (req, res, clinicId) => {
+        const from = String(req.query.from || monthStart());
+        const to = String(req.query.to || today());
+
+        const [appts, charges, visits] = await Promise.all([
+            prisma.appointment.findMany({
+                where: { clinicId, date: { gte: from, lte: to } },
+                select: { date: true, time: true, status: true, doctorId: true, doctorName: true },
+            }),
+            prisma.visitCharge.findMany({
+                where: { clinicId, status: { not: 'Cancelled' } },
+                select: { total: true, visit: { select: { date: true } } },
+            }),
+            prisma.visit.findMany({
+                where: { clinicId, date: { gte: from, lte: to } },
+                select: { date: true },
+            }),
+        ]);
+
+        const ARRIVED = new Set(['Completed', 'Checked-In']);
+
+        type Cell = { booked: number; arrived: number; noShow: number; cancelled: number; revenue: number; visits: number };
+        const cell = (): Cell => ({ booked: 0, arrived: 0, noShow: 0, cancelled: 0, revenue: 0, visits: 0 });
+
+        const byDay: Record<string, Cell> = {};
+        const dayOf = (d: string): Cell => {
+            if (!byDay[d]) byDay[d] = cell();
+            return byDay[d];
+        };
+
+        for (const a of appts) {
+            const c = dayOf(a.date);
+            c.booked++;
+            if (ARRIVED.has(a.status)) c.arrived++;
+            else if (a.status === 'No-Show') c.noShow++;
+            else if (a.status === 'Cancelled') c.cancelled++;
+        }
+        for (const v of visits) dayOf(v.date).visits++;
+        for (const ch of charges) {
+            const d = ch.visit ? ch.visit.date : null;
+            if (!d || d < from || d > to) continue;
+            dayOf(d).revenue += ch.total || 0;
+        }
+
+        /* Hafta kuni. `new Date('2026-08-29T00:00:00Z')` — ATAYLAB UTC:
+           sof `new Date('2026-08-29')` lokal zonada o'qilsa kun bir
+           kunga surilib ketishi mumkin va butun kesim siljiydi. */
+        const WD = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'];
+        type WCell = Cell & { days: Set<string> };
+        const wd: Record<number, WCell> = {};
+        for (const date of Object.keys(byDay)) {
+            const c = byDay[date];
+            const k = new Date(date + 'T00:00:00Z').getUTCDay();
+            if (!wd[k]) wd[k] = Object.assign(cell(), { days: new Set<string>() });
+            const w = wd[k];
+            w.booked += c.booked; w.arrived += c.arrived; w.noShow += c.noShow;
+            w.cancelled += c.cancelled; w.revenue += c.revenue; w.visits += c.visits;
+            w.days.add(date);
+        }
+        /* Dushanbadan boshlanadi — O'zbekistonda ish haftasi shunday. */
+        const order = [1, 2, 3, 4, 5, 6, 0];
+        const byWeekday = order.map(k => {
+            const w = wd[k];
+            const days = w ? w.days.size : 0;
+            return {
+                weekday: k,
+                name: WD[k],
+                days,
+                booked: w ? w.booked : 0,
+                arrived: w ? w.arrived : 0,
+                noShow: w ? w.noShow : 0,
+                cancelled: w ? w.cancelled : 0,
+                visits: w ? w.visits : 0,
+                revenue: round(w ? w.revenue : 0),
+                avgVisits: days ? Math.round((w.visits / days) * 10) / 10 : 0,
+                avgRevenue: days ? round(w.revenue / days) : 0,
+            };
+        });
+
+        const hours: Record<number, { booked: number; arrived: number }> = {};
+        for (const a of appts) {
+            const h = Number(String(a.time).split(':')[0]);
+            if (isNaN(h)) continue;
+            if (!hours[h]) hours[h] = { booked: 0, arrived: 0 };
+            hours[h].booked++;
+            if (ARRIVED.has(a.status)) hours[h].arrived++;
+        }
+        const byHour: { hour: number; booked: number; arrived: number }[] = [];
+        for (let h = 7; h <= 20; h++) {
+            byHour.push({ hour: h, booked: hours[h] ? hours[h].booked : 0, arrived: hours[h] ? hours[h].arrived : 0 });
+        }
+
+        const docs: Record<string, { doctorId: string; doctorName: string; booked: number; arrived: number; noShow: number }> = {};
+        for (const a of appts) {
+            if (!docs[a.doctorId]) docs[a.doctorId] = { doctorId: a.doctorId, doctorName: a.doctorName, booked: 0, arrived: 0, noShow: 0 };
+            const d = docs[a.doctorId];
+            d.booked++;
+            if (ARRIVED.has(a.status)) d.arrived++;
+            else if (a.status === 'No-Show') d.noShow++;
+        }
+        const byDoctor = Object.keys(docs).map(k => docs[k])
+            .map(d => ({ ...d, noShowRate: d.booked ? Math.round((d.noShow / d.booked) * 1000) / 10 : 0 }))
+            .sort((a, b) => b.booked - a.booked);
+
+        const tot = { booked: 0, arrived: 0, noShow: 0, cancelled: 0, revenue: 0, visits: 0 };
+        for (const k of Object.keys(byDay)) {
+            const c = byDay[k];
+            tot.booked += c.booked; tot.arrived += c.arrived; tot.noShow += c.noShow;
+            tot.cancelled += c.cancelled; tot.revenue += c.revenue; tot.visits += c.visits;
+        }
+
+        /* Eng gavjum va eng bo'sh kun hisobotning birinchi qatorida
+           turadi — qaror aynan shu ikkitasidan boshlanadi. */
+        const ranked = byWeekday.filter(w => w.days > 0).sort((a, b) => b.avgVisits - a.avgVisits);
+
+        res.json({
+            range: { from, to, days: Object.keys(byDay).length },
+            totals: {
+                booked: tot.booked,
+                arrived: tot.arrived,
+                noShow: tot.noShow,
+                cancelled: tot.cancelled,
+                visits: tot.visits,
+                revenue: round(tot.revenue),
+                arrivalRate: tot.booked ? Math.round((tot.arrived / tot.booked) * 1000) / 10 : 0,
+                noShowRate: tot.booked ? Math.round((tot.noShow / tot.booked) * 1000) / 10 : 0,
+            },
+            best: ranked.length ? ranked[0] : null,
+            worst: ranked.length > 1 ? ranked[ranked.length - 1] : null,
+            byWeekday,
+            byDay: Object.keys(byDay).map(date => {
+                const c = byDay[date];
+                return { date, ...c, revenue: round(c.revenue) };
+            }).sort((a, b) => a.date.localeCompare(b.date)),
+            byHour,
+            byDoctor,
         });
     });
 

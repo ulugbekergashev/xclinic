@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatDate } from '../utils/format';
 import {
     FileSignature, Printer, Check, AlertTriangle, Loader2, Plus, Clock,
 } from 'lucide-react';
@@ -42,7 +43,7 @@ const KIND_LABEL: Record<string, string> = {
     Other: 'Hujjat',
 };
 
-const fmtDate = (v?: string | null) => v ? new Date(v).toLocaleDateString('uz-UZ') : '—';
+const fmtDate = (v?: string | null) => v ? formatDate(v) : '—';
 
 export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreate, addToast }) => {
     const [docs, setDocs] = useState<any[]>([]);

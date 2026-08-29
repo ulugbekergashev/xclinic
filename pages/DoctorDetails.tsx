@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { formatMoney, formatNumber, formatDate, formatFullName } from '../utils/format';
 import { useParams } from 'react-router-dom';
 import { Doctor, Appointment, Transaction, Patient, Service } from '../types';
 import { Card, Button, Badge } from '../components/Common';
@@ -7,6 +8,7 @@ import { calculateDoctorShare, transactionBelongsToDoctor } from '../utils/finan
 import { getPaymentMethodLabel, getPaymentMethodColor } from '../utils/paymentMethods';
 import { getCurrentMonthRange } from '../utils/dateUtils';
 import { useLanguage } from '../context/LanguageContext';
+import { api, getStoredClinicId } from '../services/api';
 
 interface DoctorDetailsProps {
     doctors: Doctor[];
@@ -35,8 +37,41 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
     // Time filters for stats
     const { startDate, endDate } = getCurrentMonthRange();
 
+    /* ─── TO'LIQ TARIX (FIX-PLAN 10.3 qoldig'i) ──────────────────────────────
+       `App.tsx` kirishda oxirgi 45 kunni va 500 ta bemorni yuklaydi — bu
+       to'g'ri, aks holda kirish 41 MB tortardi. Lekin shifokor kartasi aynan
+       ESKI tarix uchun ochiladi: propdan o'qiganda 45 kundan narigi qabullar,
+       to'lovlar va bemorlar ro'yxatda umuman ko'rinmasdi.
+
+       Yechim — butun jadvalni tortish EMAS, kesimni serverda qisqartirish:
+       `?doctorId=` bilan faqat shu shifokorning qatorlari keladi, sana
+       chegarasisiz. Hajmi tabiiy ravishda kichik.
+
+       Server javob bermasa propdagi ro'yxat ishlatiladi: karta ochilmay
+       qolgandan ko'ra qisqa tarix yaxshi. */
+    const clinicId = getStoredClinicId();
+    const [full, setFull] = useState<{
+        appts: Appointment[]; tx: Transaction[]; pats: Patient[];
+    } | null>(null);
+
+    useEffect(() => {
+        if (!clinicId || !doctorId) { setFull(null); return; }
+        let alive = true;
+        Promise.all([
+            api.appointments.getAll(clinicId, { doctorId }),
+            api.transactions.getAll(clinicId, { doctorId }),
+            api.patients.getByDoctor(clinicId, doctorId),
+        ]).then(([appts, tx, pats]) => { if (alive) setFull({ appts, tx, pats }); })
+          .catch(() => { if (alive) setFull(null); });
+        return () => { alive = false; };
+    }, [clinicId, doctorId]);
+
+    const effAppointments = full?.appts ?? appointments;
+    const effTransactions = full?.tx ?? transactions;
+    const effPatients = full?.pats ?? patients;
+
     // Filter doctor's specific data
-    const doctorAppts = useMemo(() => appointments.filter(a => a.doctorId === doctorId), [appointments, doctorId]);
+    const doctorAppts = useMemo(() => effAppointments.filter(a => a.doctorId === doctorId), [effAppointments, doctorId]);
 
     const upcomingAppts = useMemo(() => {
         const now = new Date();
@@ -56,13 +91,13 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
         });
     }, [doctorAppts]);
 
-    const doctorPatients = useMemo(() => patients.filter(p => p.doctorId === doctorId), [patients, doctorId]);
+    const doctorPatients = useMemo(() => effPatients.filter(p => p.doctorId === doctorId), [effPatients, doctorId]);
 
     // Qat'iy atributsiya: doctorId yoki aniq ism tengligi (taxminiy moslashtirish yo'q)
     const doctorTransactions = useMemo(() => {
         if (!doctor) return [];
-        return transactions.filter(tx => transactionBelongsToDoctor(tx, doctor));
-    }, [transactions, doctor]);
+        return effTransactions.filter(tx => transactionBelongsToDoctor(tx, doctor));
+    }, [effTransactions, doctor]);
 
 
     // Current Month Stats (for the header cards)
@@ -108,7 +143,7 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
         <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
             {/* Header and Back Button */}
             <div className="flex items-center gap-4">
-                <button
+                <button aria-label="Orqaga"
                     onClick={onBack}
                     className="p-2 -ml-2 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 >
@@ -116,7 +151,7 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
                 </button>
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                        Dr. {doctor.lastName} {doctor.firstName}
+                        Dr. {formatFullName(doctor)}
                         <span className={`text-xs px-2.5 py-1 rounded-full border ${doctor.status === 'Active'
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
                             : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800'
@@ -132,7 +167,7 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Contact info card */}
                 <Card className="p-6">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wider">{t('doctors.details.contactInfo')}</h3>
+                    <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wider">{t('doctors.details.contactInfo')}</h2>
                     <div className="space-y-4">
                         <div className="flex items-center gap-3 text-sm">
                             <div className="w-8 h-8 rounded-full bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center text-primary-600 dark:text-primary-400">
@@ -200,7 +235,7 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
                             <DollarSign className="w-4 h-4 text-green-500" />
                             <span className="text-xs font-medium uppercase tracking-wider">{t('doctors.details.monthGross')}</span>
                         </div>
-                        <p className="text-xl font-bold text-gray-900 dark:text-white">{currentMonthStats.gross.toLocaleString()} UZS</p>
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">{formatNumber(currentMonthStats.gross)} UZS</p>
                     </Card>
 
                     <Card className="p-4 flex flex-col justify-center bg-primary-50 dark:bg-primary-900/10 border-primary-100 dark:border-primary-900/30">
@@ -208,7 +243,7 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
                             <DollarSign className="w-4 h-4" />
                             <span className="text-xs font-medium uppercase tracking-wider">{t('doctors.details.monthSalary')}</span>
                         </div>
-                        <p className="text-xl font-bold text-primary-700 dark:text-primary-300">{currentMonthStats.salary.toLocaleString()} UZS</p>
+                        <p className="text-xl font-bold text-primary-700 dark:text-primary-300">{formatNumber(currentMonthStats.salary)} UZS</p>
                     </Card>
                 </div>
             </div>
@@ -314,7 +349,7 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
                                                 onClick={() => onPatientClick(p.id)}
                                                 className="text-sm font-medium text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
                                             >
-                                                {p.lastName} {p.firstName}
+                                                {formatFullName(p)}
                                             </button>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
@@ -335,14 +370,14 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
                                 doctorTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tx => (
                                     <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                            {new Date(tx.date).toLocaleDateString('uz-UZ', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                            {formatDate(new Date(tx.date))}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                             {tx.patientName}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{tx.service}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white text-right">
-                                            {tx.amount.toLocaleString()} UZS
+                                            {formatMoney(tx.amount)} UZS
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span

@@ -12,6 +12,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import React, { useMemo } from 'react';
+import { formatDateShort } from '../utils/format';
 import { Activity } from 'lucide-react';
 
 interface Props {
@@ -129,7 +130,7 @@ export const VitalsChart: React.FC<Props> = ({ vitals }) => {
                             <span key={i} className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs tabular-nums text-gray-700 dark:text-gray-200">
                                 {b.sys}{b.dia != null ? `/${b.dia}` : ''}
                                 <span className="text-gray-400 ml-1">
-                                    {new Date(b.at).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit' })}
+                                    {formatDateShort(b.at)}
                                 </span>
                             </span>
                         ))}

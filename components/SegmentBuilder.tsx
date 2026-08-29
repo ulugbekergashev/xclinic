@@ -208,7 +208,7 @@ const GroupEditor: React.FC<{
             {conditions.map((cond, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
                     {i > 0 ? (
-                        <button
+                        <button aria-label="VA / YOKI almashtirish"
                             type="button"
                             onClick={toggleMatch}
                             title="VA / YOKI almashtirish"

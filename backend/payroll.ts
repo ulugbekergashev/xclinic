@@ -23,6 +23,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { som } from './money';
 import { tashkentDateStr, tashkentMonthStart, tashkentRangeBounds } from './tashkentTime';
 
 type Deps = {
@@ -31,7 +32,9 @@ type Deps = {
     getScopedClinicId: (req: any) => string | null;
 };
 
-const round = (n: number) => Math.round(n * 100) / 100;
+/* Pul — BUTUN so'm, `money.ts` dagi yagona qoida. Ilgari bu yerda
+   o'zining nusxasi turardi va modullar orasida aniqlik farq qilardi. */
+const round = som;
 
 export function registerPayrollRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId } = deps;
@@ -49,7 +52,7 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
                    ulushini ko'rishi alohida masala va bu relizda yo'q:
                    avval raqamga ishonch kerak. */
                 const role = (req as any).user?.role;
-                if (role !== 'CLINIC_ADMIN' && role !== 'SUPER_ADMIN') {
+                if (role !== 'CLINIC_ADMIN') {
                     return res.status(403).json({ error: "Ruxsat yo'q" });
                 }
                 await handler(req, res, clinicId);

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { formatFullName } from '../utils/format';
 import { todayISO } from '../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -7,6 +8,13 @@ import {
 } from 'lucide-react';
 import { Patient, Doctor, Department, Service, Visit, Clinic } from '../types';
 import { api } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
+import { usePatientSearch } from '../hooks/usePatientSearch';
+import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
+import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
+
+/* Modul darajasida — har renderda qayta obuna bo'lmasin */
+const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status'];
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Registratura — bemorning klinikaga kirish nuqtasi.
@@ -38,6 +46,7 @@ export const Reception: React.FC<Props> = ({
     clinicId, patients, doctors, departments, services, currentClinic, onPatientAdded, addToast,
 }) => {
     const navigate = useNavigate();
+    const { t } = useLanguage();
 
     const [search, setSearch] = useState('');
     const [patient, setPatient] = useState<Patient | null>(null);
@@ -60,10 +69,33 @@ export const Reception: React.FC<Props> = ({
     }, []);
     useEffect(() => { loadToday(); }, [loadToday]);
 
-    // Klinik bo'limlar — laboratoriya/dorixonaga bemor to'g'ridan yozilmaydi
+    /* Ikkinchi registrator qabul ochsa — bugungi navbat DARHOL yangilanadi.
+       Ilgari ekran umuman yangilanmasdi va ikki registrator bir-birining
+       ishini ko'rmasdi. */
+    useLiveUpdates(LIVE_EVENTS, loadToday);
+
+    /* Registratura orqali yozish MUMKIN bo'lgan bo'limlar (S5.2, audit B-20).
+
+       Bu yerda ilgari faqat `CLINICAL` turdagi bo'limlar qolardi, izohi
+       esa «laboratoriya/dorixonaga bemor to'g'ridan yozilmaydi» edi.
+
+       LAB va PHARMACY uchun bu to'g'ri: tahlil va dori SHIFOKOR
+       buyurtmasi bilan beriladi, registratura ularni o'zi ocholmaydi.
+
+       DIAGNOSTIKA esa boshqacha — UZI, rentgen va EKG ga bemor
+       to'g'ridan-to'g'ri keladi. Audit shuni topgan: «UZI ni faqat
+       kalendar orqali yozish mumkin — ikki yo'l ikki xil xizmat
+       ro'yxatini ko'rsatadi». */
+    const BOOKABLE_TYPES = ['CLINICAL', 'DIAGNOSTIC'];
     const clinicalDepts = useMemo(
-        () => departments.filter(d => d.isActive && d.type === 'CLINICAL'),
+        () => departments.filter(d => d.isActive && BOOKABLE_TYPES.includes(d.type)),
         [departments],
+    );
+
+    /* Tanlangan bo'lim diagnostikami — shifokor talabini shu hal qiladi. */
+    const isDiagnosticDept = useMemo(
+        () => departments.find(d => d.id === departmentId)?.type === 'DIAGNOSTIC',
+        [departments, departmentId],
     );
 
     const deptDoctors = useMemo(
@@ -83,14 +115,41 @@ export const Reception: React.FC<Props> = ({
         [services, serviceId],
     );
 
-    const found = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (q.length < 2) return [];
-        return patients.filter(p =>
-            `${p.firstName} ${p.lastName}`.toLowerCase().includes(q) ||
-            (p.phone || '').replace(/\s/g, '').includes(q.replace(/\s/g, ''))
-        ).slice(0, 8);
-    }, [patients, search]);
+    /* Qidiruv SERVERDA. Ilgari bu yerda brauzerdagi massiv filtrlanardi va
+       faqat ism + telefon bo'yicha — ya'ni KARTA RAQAMI bo'yicha bemorni
+       topib bo'lmasdi, garchi server buni qila olsa ham. Endi server
+       qidiruvi ishlatiladi: ism, familiya, telefon, karta raqami, JSHSHIR. */
+    const { results: found, loading: searching, error: searchError } = usePatientSearch(search);
+
+    /* ─── Klaviatura oqimi (FIX-PLAN 8.2) ────────────────────────────────
+       Maqsad: yangi bemorni qabulga yozish sichqonga TEGMASDAN bajarilsin. */
+    const searchRef = React.useRef<HTMLInputElement>(null);
+    const deptRef = React.useRef<HTMLSelectElement>(null);
+
+    useHotkeys(React.useMemo(() => ({
+        // Qidiruvga qaytish — bemor tanlangan bo'lsa ham
+        F3: () => { setPatient(null); setSearch(''); setTimeout(() => searchRef.current?.focus(), 0); },
+        Escape: () => {
+            // Avval qidiruvni tozalaydi, bo'sh bo'lsa tanlovni bekor qiladi
+            if (search) setSearch('');
+            else if (patient) setPatient(null);
+        },
+    }), [search, patient]));
+
+    /* Skaner klaviatura sifatida ishlaydi: kodni tez "yozadi" va Enter bosadi.
+       Uni qidiruvga yuboramiz — karta raqami server qidiruviga tushadi. */
+    useScannerInput(React.useCallback((code: string) => {
+        setPatient(null);
+        setSearch(code);
+    }, []), !patient);
+
+    /* Bemor tanlangach fokus O'ZI bo'limga o'tadi — registrator sichqonga
+       qo'l uzatmaydi. Xuddi shu sabab bilan bo'lim tanlangach shifokorga
+       o'tish ham kerak edi, lekin u `select` avtomatik birinchi qiymatni
+       oladi va qo'shimcha sakrash chalkashtiradi. */
+    React.useEffect(() => {
+        if (patient) setTimeout(() => deptRef.current?.focus(), 0);
+    }, [patient]);
 
     // Bo'lim almashsa, unga tegishsiz tanlovlarni tozalaymiz
     useEffect(() => {
@@ -127,6 +186,20 @@ export const Reception: React.FC<Props> = ({
     const openVisit = async () => {
         if (!patient) { setError('Bemorni tanlang'); return; }
         if (!departmentId) { setError("Bo'limni tanlang"); return; }
+
+        /* SHIFOKORSIZ QABUL (audit B-21).
+
+           Audit: «Shifokor "Belgilanmagan" bo'lsa ham qabul yaratiladi va
+           "Bemor shifokor navbatiga qo'shildi" deb yoziladi. Bunday yozuv
+           hech kimning "Mening navbatim" ida ko'rinmaydi» — ya'ni bemor
+           navbatga tushdi deb o'ylaydi, lekin uni hech kim ko'rmaydi.
+
+           DIAGNOSTIKADA shifokor shart emas: tekshiruvni laborant yoki
+           texnik bajaradi va u navbat ro'yxatiga bog'lanmaydi. */
+        if (!isDiagnosticDept && !doctorId) {
+            setError("Shifokorni tanlang — aks holda qabul hech kimning navbatida ko'rinmaydi");
+            return;
+        }
         setSaving(true); setError('');
         try {
             const doc = doctors.find(d => d.id === doctorId);
@@ -134,7 +207,7 @@ export const Reception: React.FC<Props> = ({
                 patientId: patient.id,
                 departmentId,
                 doctorId: doctorId || undefined,
-                doctorName: doc ? `${doc.firstName} ${doc.lastName}` : undefined,
+                doctorName: doc ? `${formatFullName(doc)}` : undefined,
                 complaints: complaints || undefined,
                 date: today(),
                 status: 'Waiting',
@@ -189,7 +262,7 @@ export const Reception: React.FC<Props> = ({
                 patientId: patient!.id,
                 departmentId,
                 doctorId: doctorId || undefined,
-                doctorName: doc ? `${doc.firstName} ${doc.lastName}` : undefined,
+                doctorName: doc ? `${formatFullName(doc)}` : undefined,
                 complaints: complaints || undefined,
                 date: today(),
                 status: 'Waiting',
@@ -214,7 +287,7 @@ export const Reception: React.FC<Props> = ({
         const room = doctors.find(d => d.id === v.doctorId)?.room || '';
         const w = window.open('', '_blank', 'width=380,height=520');
         if (!w) return;
-        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Talon</title>
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>{t('reception.ticket')}</title>
 <style>@page{size:80mm auto;margin:4mm}body{font-family:'Segoe UI',Arial,sans-serif;text-align:center;margin:0;padding:8px}
 .n{font-size:64px;font-weight:800;line-height:1;margin:10px 0}
 .c{font-size:15px;font-weight:700}.d{font-size:13px;margin:3px 0}.s{border-top:1px dashed #000;margin:10px 0}
@@ -246,7 +319,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
             <div className="xl:col-span-2 space-y-4">
                 <div className="flex items-center gap-2">
                     <UserPlus className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">Registratura</h2>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('reception.title')}</h2>
                 </div>
 
                 {/* Qadamlar */}
@@ -284,7 +357,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                 {patient.firstName[0]}{patient.lastName[0]}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="font-medium text-gray-900 dark:text-white truncate">{patient.lastName} {patient.firstName}</p>
+                                <p className="font-medium text-gray-900 dark:text-white truncate">{formatFullName(patient)}</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                                     <Phone className="w-3 h-3" /> {patient.phone}
                                 </p>
@@ -298,8 +371,17 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         <>
                             <div className="relative">
                                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-                                    placeholder="Ism yoki telefon raqami..." className={`${inputCls} pl-9`} />
+                                <input ref={searchRef} autoFocus value={search}
+                                    onChange={e => setSearch(e.target.value)}
+                                    onKeyDown={e => {
+                                        /* Enter: yagona natija bo'lsa uni tanlaydi. Ro'yxatdan
+                                           sichqon bilan tanlash o'rniga — bir tugma. */
+                                        if (e.key === 'Enter' && found.length === 1) {
+                                            e.preventDefault();
+                                            setPatient(found[0]);
+                                        }
+                                    }}
+                                    placeholder={t('reception.searchPh')} className={`${inputCls} pl-9`} />
                             </div>
 
                             {found.length > 0 && (
@@ -308,7 +390,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                         <button key={p.id} onClick={() => setPatient(p)}
                                             className="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3">
                                             <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.lastName} {p.firstName}</p>
+                                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{formatFullName(p)}</p>
                                                 <p className="text-xs text-gray-500 dark:text-gray-400">{p.phone}</p>
                                             </div>
                                             <ArrowRight className="w-4 h-4 text-gray-300" />
@@ -317,8 +399,14 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                 </div>
                             )}
 
-                            {search.trim().length >= 2 && found.length === 0 && (
-                                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Topilmadi.</p>
+                            {search.trim().length >= 2 && searching && (
+                                <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">{t('reception.searching')}</p>
+                            )}
+                            {searchError && (
+                                <p className="mt-2 text-sm text-red-600 dark:text-red-400">{searchError}</p>
+                            )}
+                            {search.trim().length >= 2 && !searching && !searchError && found.length === 0 && (
+                                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{t('reception.notFound')}</p>
                             )}
 
                             <button onClick={() => setShowNewPatient(true)}
@@ -334,19 +422,22 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">2. Bo'lim va shifokor</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Bo'lim</label>
-                            <select value={departmentId} onChange={e => setDepartmentId(e.target.value)} className={inputCls}>
-                                <option value="">Tanlang...</option>
+                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.department')}</label>
+                            <select ref={deptRef} value={departmentId} onChange={e => setDepartmentId(e.target.value)} className={inputCls}>
+                                <option value="">{t('reception.choose')}</option>
                                 {clinicalDepts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-                                Shifokor {deptDoctors.length === 0 && departmentId ? '(bo\'limda shifokor yo\'q)' : ''}
+                                Shifokor{isDiagnosticDept ? '' : ' *'}
+                                {deptDoctors.length === 0 && departmentId ? " (bo'limda shifokor yo'q)" : ''}
                             </label>
                             <select value={doctorId} onChange={e => setDoctorId(e.target.value)} className={inputCls}>
-                                <option value="">Belgilanmagan</option>
-                                {deptDoctors.map(d => <option key={d.id} value={d.id}>{d.firstName} {d.lastName}</option>)}
+                                <option value="">
+                                    {isDiagnosticDept ? t('reception.unassigned') : 'Shifokorni tanlang'}
+                                </option>
+                                {deptDoctors.map(d => <option key={d.id} value={d.id}>{formatFullName(d)}</option>)}
                             </select>
                         </div>
                         <div>
@@ -359,7 +450,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         </div>
                         <div>
                             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Shikoyat (ixtiyoriy)</label>
-                            <input value={complaints} onChange={e => setComplaints(e.target.value)} className={inputCls} placeholder="Bosh og'rig'i..." />
+                            <input value={complaints} onChange={e => setComplaints(e.target.value)} className={inputCls} placeholder={t('reception.complaintsPh')} />
                         </div>
                     </div>
                 </div>
@@ -367,12 +458,12 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 {/* 3. Qabulni ochish */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-wrap items-center gap-4">
                     <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">To'lanadigan summa</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('reception.toPay')}</p>
                         <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
                             {fmt(selectedService?.price || 0)} <span className="text-base font-normal">so'm</span>
                         </p>
                     </div>
-                    <button onClick={openVisit} disabled={!patient || !departmentId || saving}
+                    <button aria-label="Oldinga" onClick={openVisit} disabled={!patient || !departmentId || saving}
                         className="ml-auto flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed">
                         {saving ? 'Ochilmoqda...' : 'Qabulni ochish'} <ArrowRight className="w-4 h-4" />
                     </button>
@@ -386,7 +477,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             <p className="font-medium text-gray-900 dark:text-white">
                                 Navbat №{lastTicket.queueNumber} — {lastTicket.patient?.lastName} {lastTicket.patient?.firstName}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Bemor shifokor navbatiga qo'shildi</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{t('reception.queued')}</p>
                         </div>
                         <button onClick={() => printTicket(lastTicket)}
                             className="ml-auto flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700">
@@ -400,16 +491,16 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
             <div className="space-y-3">
                 <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-gray-400" />
-                    <h3 className="font-semibold text-gray-900 dark:text-white">Bugungi navbat</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">{t('reception.todayQueue')}</h3>
                     <span className="text-sm text-gray-500 dark:text-gray-400">{todayVisits.length} ta</span>
-                    <button onClick={loadToday} className="ml-auto p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Yangilash">
+                    <button aria-label={t('reception.refresh')} onClick={loadToday} className="ml-auto p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={t('reception.refresh')}>
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>
 
                 {todayVisits.length === 0 ? (
                     <div className="text-center py-10 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Bugun qabul yo'q</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('reception.noVisits')}</p>
                     </div>
                 ) : (
                     <div className="space-y-2 max-h-[70vh] overflow-y-auto">
@@ -446,12 +537,12 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowNewPatient(false)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">Yangi bemor</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('reception.newPatient')}</h3>
                             <button onClick={() => setShowNewPatient(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-5 grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Familiya</label>
+                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.lastName')}</label>
                                 <input value={np.lastName} onChange={e => setNp(f => ({ ...f, lastName: e.target.value }))} className={inputCls} />
                             </div>
                             <div>
@@ -459,18 +550,18 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                 <input value={np.firstName} onChange={e => setNp(f => ({ ...f, firstName: e.target.value }))} className={inputCls} />
                             </div>
                             <div className="col-span-2">
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Telefon</label>
+                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.phone')}</label>
                                 <input value={np.phone} onChange={e => setNp(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+998 90 123 45 67" />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Tug'ilgan sana</label>
+                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.dob')}</label>
                                 <input type="date" value={np.dob} onChange={e => setNp(f => ({ ...f, dob: e.target.value }))} className={inputCls} />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Jinsi</label>
+                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.gender')}</label>
                                 <select value={np.gender} onChange={e => setNp(f => ({ ...f, gender: e.target.value }))} className={inputCls}>
-                                    <option value="Male">Erkak</option>
-                                    <option value="Female">Ayol</option>
+                                    <option value="Male">{t('reception.male')}</option>
+                                    <option value="Female">{t('reception.female')}</option>
                                 </select>
                             </div>
                             <p className="col-span-2 text-xs text-gray-400 dark:text-gray-500">
@@ -478,7 +569,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             </p>
                         </div>
                         <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setShowNewPatient(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Bekor qilish</button>
+                            <button onClick={() => setShowNewPatient(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('reception.cancel')}</button>
                             <button onClick={createPatient} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {saving ? '...' : 'Qo\'shish'}
                             </button>

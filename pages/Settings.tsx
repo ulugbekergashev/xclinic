@@ -1,9 +1,12 @@
 import React, { useState, useMemo } from 'react';
+import { formatMoney, formatFullName } from '../utils/format';
+import { confirmAction } from '../services/confirm';
+import { toast } from '../services/toast';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
-import { UserRole, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
+import { UserRole, Doctor, Receptionist, Clinic, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
 import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History } from 'lucide-react';
-import { api, API_URL } from '../services/api';
+import { api, API_URL, getAuthToken } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
 import { ACCESS_MODULES, SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
@@ -36,7 +39,7 @@ const DOCTOR_COLORS = [
 
 const ROLE_LABEL: Record<string, string> = {
    CLINIC_ADMIN: 'Klinika egasi', DOCTOR: 'Shifokor', RECEPTIONIST: 'Registrator',
-   NURSE: 'Hamshira', LAB_TECHNICIAN: 'Laborant', SUPER_ADMIN: 'Super admin',
+   NURSE: 'Hamshira', LAB_TECHNICIAN: 'Laborant',
 };
 const ACTION_LABEL: Record<string, string> = {
    View: "Ko'rdi", Create: "Yaratdi", Update: "O'zgartirdi",
@@ -69,12 +72,11 @@ interface SettingsProps {
    onUpdateLabTechnician?: (id: string, tech: Partial<LabTechnician>) => void;
    onDeleteLabTechnician?: (id: string) => void;
    currentClinic?: Clinic;
-   plans?: SubscriptionPlan[];
    reviews: Review[];
 }
 
 export const Settings: React.FC<SettingsProps> = ({
-   userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, plans, reviews
+   userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, reviews
 }) => {
    const { t } = useLanguage();
    const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'accessLog' | 'leadApi' | 'maintenance' | 'departments'>('services');
@@ -103,19 +105,19 @@ export const Settings: React.FC<SettingsProps> = ({
          setLeadCopied(marker);
          setTimeout(() => setLeadCopied(null), 1800);
       } catch {
-         alert('Nusxalab bo\'lmadi. Qo\'lda belgilab oling.');
+         toast.error('Nusxalab bo\'lmadi. Qo\'lda belgilab oling.');
       }
    };
 
    const handleGenerateLeadKey = async () => {
       if (!currentClinic?.id) return;
-      if (leadApiInfo?.apiKey && !window.confirm('Yangi kalit yaratilsa, eski kalit darhol ishlamay qoladi. Davom etasizmi?')) return;
+      if (leadApiInfo?.apiKey && !await confirmAction({ title: 'Yangi kalit yaratilsa, eski kalit darhol ishlamay qoladi. Davom etasizmi?', danger: true, confirmLabel: "O'chirish" })) return;
       setLeadApiLoading(true);
       try {
          setLeadApiInfo(await api.leads.generateApiKey(currentClinic.id));
          setLeadKeyVisible(true);
       } catch (err: any) {
-         alert(err?.message || 'Kalit yaratishda xatolik');
+         toast.error(err?.message || 'Kalit yaratishda xatolik');
       } finally {
          setLeadApiLoading(false);
       }
@@ -123,13 +125,13 @@ export const Settings: React.FC<SettingsProps> = ({
 
    const handleRevokeLeadKey = async () => {
       if (!currentClinic?.id) return;
-      if (!window.confirm('Kalit o\'chirilsa, tashqi manbadan lid tushishi to\'xtaydi. Davom etasizmi?')) return;
+      if (!await confirmAction({ title: 'Kalit o\'chirilsa, tashqi manbadan lid tushishi to\'xtaydi. Davom etasizmi?' })) return;
       setLeadApiLoading(true);
       try {
          await api.leads.revokeApiKey(currentClinic.id);
          setLeadApiInfo(prev => prev ? { ...prev, apiKey: null, createdAt: null } : prev);
       } catch (err: any) {
-         alert(err?.message || 'Kalitni o\'chirishda xatolik');
+         toast.error(err?.message || 'Kalitni o\'chirishda xatolik');
       } finally {
          setLeadApiLoading(false);
       }
@@ -183,7 +185,7 @@ export const Settings: React.FC<SettingsProps> = ({
       } catch (error: any) {
          console.error('Cash settings save failed:', error);
          setCashShifts(currentClinic?.cashShiftsPerDay || 1);
-         alert(error?.message || 'Kassa sozlamasini saqlashda xatolik');
+         toast.error(error?.message || 'Kassa sozlamasini saqlashda xatolik');
       } finally {
          setCashShiftsSaving(false);
       }
@@ -201,7 +203,7 @@ export const Settings: React.FC<SettingsProps> = ({
          }, 1000);
       } catch (error: any) {
          console.error('Failed to save access control:', error);
-         alert(error?.message || 'Ruxsatlarni saqlashda xatolik. Backend yangilanganiga ishonch hosil qiling.');
+         toast.error(error?.message || 'Ruxsatlarni saqlashda xatolik. Backend yangilanganiga ishonch hosil qiling.');
       } finally {
          setAccessSaving(false);
       }
@@ -231,7 +233,6 @@ export const Settings: React.FC<SettingsProps> = ({
    const [labTechForm, setLabTechForm] = useState({ firstName: '', lastName: '', specialty: '', phone: '', username: '', password: '' });
 
    // Upgrade Plan Modal State
-   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
    // Delete Confirmation Modals
    const [deleteConfirmDoctor, setDeleteConfirmDoctor] = useState<Doctor | null>(null);
@@ -386,13 +387,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
          if (currentClinic?.id && currentClinic?.botToken) {
             try {
-               const authData = localStorage.getItem('xclinic_auth');
-               if (!authData) {
-                  console.error('No auth data found');
-                  return;
-               }
-
-               const token = JSON.parse(authData).token;
+               // Token xotiradan olinadi (S1.3) — diskda saqlanmaydi.
+               const token = getAuthToken();
                if (!token) {
                   console.error('No token found in auth data');
                   return;
@@ -446,7 +442,7 @@ export const Settings: React.FC<SettingsProps> = ({
            setIsFBPageModalOpen(true);
        } catch (error) {
            console.error('Failed to fetch FB pages:', error);
-           alert('Facebook sahifalarini yuklashda xatolik yuz berdi');
+           toast.error('Facebook sahifalarini yuklashda xatolik yuz berdi');
        } finally {
            setIsFBLoading(false);
        }
@@ -467,7 +463,7 @@ export const Settings: React.FC<SettingsProps> = ({
            );
        } catch (error) {
            console.error('Failed to get FB auth URL:', error);
-           alert('Facebook-ga bog\'lanishda xatolik yuz berdi');
+           toast.error('Facebook-ga bog\'lanishda xatolik yuz berdi');
        }
    };
 
@@ -481,19 +477,19 @@ export const Settings: React.FC<SettingsProps> = ({
                pageName: page.name
            });
            setIsFBPageModalOpen(false);
-           alert('Sahifa muvaffaqiyatli bog\'landi!');
+           toast.success('Sahifa muvaffaqiyatli bog\'landi!');
            window.location.reload(); // Refresh to get updated clinic data
        } catch (error) {
            console.error('Failed to select FB page:', error);
-           alert('Sahifani saqlashda xatolik yuz berdi');
+           toast.error('Sahifani saqlashda xatolik yuz berdi');
        }
    };
 
    const handleDisconnectFB = async () => {
-       if (!currentClinic?.id || !window.confirm('Facebook-ni uzmoqchimisiz?')) return;
+       if (!currentClinic?.id || !await confirmAction({ title: 'Facebook-ni uzmoqchimisiz?', danger: true, confirmLabel: "O'chirish" })) return;
        try {
            await api.facebook.disconnect(currentClinic.id);
-           alert('Facebook muvaffaqiyatli uzildi');
+           toast.success('Facebook muvaffaqiyatli uzildi');
            window.location.reload();
        } catch (error) {
            console.error('Failed to disconnect FB:', error);
@@ -547,23 +543,16 @@ export const Settings: React.FC<SettingsProps> = ({
    };
 
    const handleDeleteCategory = async (id: string) => {
-      if (!window.confirm('Kategoriyani o\'chirmoqchimisiz?')) return;
+      if (!await confirmAction({ title: 'Kategoriyani o\'chirmoqchimisiz?' })) return;
       onDeleteCategory(id);
       if (selectedCategory === id) setSelectedCategory(null);
    };
 
    const handleOpenDoctorModal = (doctor?: Doctor) => {
-      if (!doctor) {
-         // Adding new doctor - check limit
-         const currentPlanId = currentClinic?.planId;
-         const currentPlan = plans?.find(p => p.id === currentPlanId);
-         const maxDoctors = currentPlan?.maxDoctors || 10;
-
-         if (doctors.length >= maxDoctors) {
-            setIsUpgradeModalOpen(true);
-            return;
-         }
-      }
+      /* TARIF BO'YICHA SHIFOKOR CHEGARASI OLIB TASHLANDI.
+         XClinic bitta klinikaga o'rnatiladi va obuna sifatida sotilmaydi —
+         klinika nechta shifokor ochishini o'zi hal qiladi. Server tomondagi
+         tekshiruv ham shu bilan birga olib tashlandi. */
 
       if (doctor) {
          setEditingDoctorId(doctor.id);
@@ -716,7 +705,7 @@ export const Settings: React.FC<SettingsProps> = ({
          }
       } catch (error: any) {
          console.error('Failed to save SMS settings:', error);
-         alert(error.message || t('common.error'));
+         toast.error(error.message || t('common.error'));
       }
    };
 
@@ -726,10 +715,10 @@ export const Settings: React.FC<SettingsProps> = ({
       try {
          const res = await api.sms.testSend(currentClinic.id, smsTestPhone);
          if (res.success) {
-            alert('Test SMS muvaffaqiyatli yuborildi!');
+            toast.success('Test SMS muvaffaqiyatli yuborildi!');
          }
       } catch (error: any) {
-         alert(error.message || 'SMS yuborishda xatolik yuz berdi. Sozlamalarni tekshiring.');
+         toast.error(error.message || 'SMS yuborishda xatolik yuz berdi. Sozlamalarni tekshiring.');
       } finally {
          setIsCheckingSms(false);
       }
@@ -750,7 +739,7 @@ export const Settings: React.FC<SettingsProps> = ({
          window.location.reload(); 
       } catch (error) {
          console.error('Failed to save DMED settings:', error);
-         alert('DMED sozlamalarini saqlashda xatolik yuz berdi');
+         toast.error('DMED sozlamalarini saqlashda xatolik yuz berdi');
       }
    };
 
@@ -763,12 +752,12 @@ export const Settings: React.FC<SettingsProps> = ({
             dmedApiSecret
          });
          if (res.valid) {
-            alert('DMED ulanishi muvaffaqiyatli!');
+            toast.success('DMED ulanishi muvaffaqiyatli!');
          } else {
-            alert('Ulanishda xatolik: ' + ((res as any).error || 'Noma\'lum xatolik'));
+            toast.error('Ulanishda xatolik: ' + ((res as any).error || 'Noma\'lum xatolik'));
          }
       } catch (error: any) {
-         alert('DMED test xatosi: ' + error.message);
+         toast.error('DMED test xatosi: ' + error.message);
       } finally {
          setIsCheckingDmed(false);
       }
@@ -799,7 +788,7 @@ export const Settings: React.FC<SettingsProps> = ({
          }
       } catch (error) {
          console.error('Failed to save general settings:', error);
-         alert(t('common.error'));
+         toast.error(t('common.error'));
       }
    };
 
@@ -816,7 +805,7 @@ export const Settings: React.FC<SettingsProps> = ({
          }, 1000);
       } catch (error) {
          console.error('Failed to save bot settings:', error);
-         alert(t('common.error'));
+         toast.error(t('common.error'));
       }
    };
 
@@ -833,7 +822,7 @@ export const Settings: React.FC<SettingsProps> = ({
          setTimeout(() => setPrepaymentSaved(false), 2000);
       } catch (error) {
          console.error('Failed to save prepayment settings:', error);
-         alert(t('common.error'));
+         toast.error(t('common.error'));
       }
    };
 
@@ -858,7 +847,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   <Input label={t('settings.general.email')} type="email" defaultValue="dr.sobirov@clinic.com" />
                   <Input label={t('settings.staff.specialty')} disabled defaultValue="Terapevt" />
                   <div className="pt-4">
-                     <Button onClick={(e) => { e.preventDefault(); alert(t('settings.general.saved')); }}>{t('common.save')}</Button>
+                     <Button onClick={(e) => { e.preventDefault(); toast.error(t('settings.general.saved')); }}>{t('common.save')}</Button>
                   </div>
                </form>
             </Card>
@@ -878,25 +867,98 @@ export const Settings: React.FC<SettingsProps> = ({
    const [backupNote, setBackupNote] = useState('');
    const [restoreTarget, setRestoreTarget] = useState<any>(null);
    const [restoreConfirmText, setRestoreConfirmText] = useState('');
+   /* Avtomatik nusxa: holat serverdan, `cfgDraft` esa tahrirlanayotgan nusxa.
+      Ikkisi alohida — saqlanmagan o'zgarish holat yangilanganda yo'qolmasin. */
+   const [backupStatus, setBackupStatus] = useState<any>(null);
+   const [cfgDraft, setCfgDraft] = useState<any>(null);
+   const [cfgBusy, setCfgBusy] = useState(false);
 
    const loadMaintenance = React.useCallback(async () => {
       setMaintLoading(true);
       setMaintError('');
       try {
-         const [sch, list, rst] = await Promise.all([
+         const [sch, list, rst, st] = await Promise.all([
             api.maintenance.schemaStatus(),
             api.maintenance.backups(),
             api.maintenance.restoreState(),
+            api.maintenance.backupStatus(),
          ]);
          setSchemaInfo(sch);
          setBackupList(list);
          setRestoreState(rst);
+         setBackupStatus(st);
+         setCfgDraft((cur: any) => cur || st.config);
       } catch (e: any) {
          setMaintError(e?.message || 'Ma\'lumotni yuklab bo\'lmadi');
       } finally {
          setMaintLoading(false);
       }
    }, []);
+
+   const handleSaveBackupConfig = async () => {
+      if (!cfgDraft) return;
+      setCfgBusy(true);
+      setMaintError('');
+      try {
+         const saved = await api.maintenance.saveBackupConfig(cfgDraft);
+         setCfgDraft(saved);
+         await loadMaintenance();
+      } catch (e: any) {
+         setMaintError(e?.message || 'Sozlamani saqlab bo\'lmadi');
+      } finally {
+         setCfgBusy(false);
+      }
+   };
+
+   /* Yaxlitlik tekshiruvi — ATAYLAB avtomatik yuklanmaydi. U butun bazani
+      skanerlaydi va tabga har kirganda yuritish ortiqcha yuk. */
+   const [integrity, setIntegrity] = useState<any>(null);
+   const [integrityBusy, setIntegrityBusy] = useState(false);
+   const [balanceFix, setBalanceFix] = useState<any>(null);
+
+   const handleCheckIntegrity = async () => {
+      setIntegrityBusy(true);
+      setMaintError('');
+      try {
+         setIntegrity(await api.maintenance.integrity());
+      } catch (e: any) {
+         setMaintError(e?.message || 'Tekshirib bo\'lmadi');
+      } finally {
+         setIntegrityBusy(false);
+      }
+   };
+
+   const handleRecalcBalances = async (confirm: boolean) => {
+      setIntegrityBusy(true);
+      setMaintError('');
+      try {
+         const r = await api.maintenance.recalculateBalances(confirm);
+         setBalanceFix(r);
+         if (confirm) {
+            setIntegrity(await api.maintenance.integrity());
+         }
+      } catch (e: any) {
+         setMaintError(e?.message || 'Qayta hisoblab bo\'lmadi');
+      } finally {
+         setIntegrityBusy(false);
+      }
+   };
+
+   const handlePickExtraDir = async () => {
+      // Electron ichida papka tanlash oynasi; brauzerda bu imkoniyat yo'q
+      // preload.ts `electron` nomi bilan ochadi (`electronAPI` emas)
+      const picker = (window as any).electron?.selectBackupFolder;
+      if (!picker) {
+         setMaintError('Papka tanlash faqat dastur oynasida ishlaydi. Yo\'lni qo\'lda kiriting.');
+         return;
+      }
+      try {
+         const dir = await picker();
+         if (dir) setCfgDraft((c: any) => ({ ...c, extraDir: dir }));
+      } catch (e: any) {
+         setMaintError(e?.message || 'Papka tanlanmadi');
+      }
+   };
 
    React.useEffect(() => {
       if (activeTab === 'maintenance' && userRole === UserRole.CLINIC_ADMIN) loadMaintenance();
@@ -1207,9 +1269,9 @@ export const Settings: React.FC<SettingsProps> = ({
                         <div className="flex items-center justify-between">
                            <div>
                               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('settings.general.rating')}</p>
-                              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
                                  {clinicAvgRating > 0 ? clinicAvgRating.toFixed(1) : '0.0'}
-                              </h3>
+                              </h2>
                            </div>
                            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-full">
                               <Star className="w-6 h-6 text-yellow-500 fill-current" />
@@ -1226,7 +1288,7 @@ export const Settings: React.FC<SettingsProps> = ({
                      </Card>
 
                      <Card className="p-6">
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-6">{t('settings.general.info')}</h3>
+                        <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-6">{t('settings.general.info')}</h2>
                         <form onSubmit={handleGeneralSave} className="space-y-4">
                            <Input label={t('settings.general.clinicName')} value={generalForm.clinicName} onChange={e => setGeneralForm({ ...generalForm, clinicName: e.target.value })} />
                            <Input label={t('settings.general.address')} value={generalForm.address} onChange={e => setGeneralForm({ ...generalForm, address: e.target.value })} />
@@ -1290,7 +1352,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               <DollarSign className="w-8 h-8" />
                            </div>
                            <div>
-                              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Oldindan To'lov (Bron uchun)</h3>
+                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Oldindan To'lov (Bron uchun)</h2>
                               <p className="text-sm text-gray-500">Bemor bot orqali qabulga yozilganda oldindan to'lov talab qilish.</p>
                            </div>
                         </div>
@@ -1359,7 +1421,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               <Activity className="w-8 h-8" />
                            </div>
                            <div>
-                              <h3 className="text-xl font-bold text-gray-900 dark:text-white">DMED (IT-MED) Integratsiyasi</h3>
+                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">DMED (IT-MED) Integratsiyasi</h2>
                               <p className="text-sm text-gray-500">O'zbekiston milliy tibbiy axborot tizimi bilan bog'lanish va ma'lumotlarni sinxronizatsiya qilish.</p>
                            </div>
                         </div>
@@ -1373,7 +1435,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         <form onSubmit={handleDmedSave} className="space-y-6">
                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                               <div>
-                                 <h4 className="font-medium text-gray-900 dark:text-white">DMED Integratsiyasini yoqish</h4>
+                                 <h3 className="font-medium text-gray-900 dark:text-white">DMED Integratsiyasini yoqish</h3>
                                  <p className="text-sm text-gray-500">Agar yoqilsa, bemorlar profilida DMED ma'lumotlari paydo bo'ladi.</p>
                               </div>
                               <label className="relative inline-flex items-center cursor-pointer">
@@ -1442,7 +1504,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <Link2 className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h3 className="text-xl font-bold text-gray-900 dark:text-white">Lid integratsiyasi</h3>
+                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Lid integratsiyasi</h2>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
                            yuboraman.uz va shunga o'xshash manbalar lidlarni to'g'ridan-to'g'ri CRM'ga yuborishi uchun
@@ -1524,7 +1586,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            className="w-full flex items-center justify-between gap-3 text-left"
                         >
                            <div>
-                              <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Texnik ma'lumot</h4>
+                              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Texnik ma'lumot</h3>
                               <p className="text-sm text-gray-500 dark:text-gray-400">
                                  Odatda kerak emas — kalitni kiritish yetarli. Boshqa xizmat ulanmoqchi bo'lsa kerak bo'ladi.
                               </p>
@@ -1577,7 +1639,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                               <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                                  <Building2 className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                               </div>
-                              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Bo'limlar</h3>
+                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Bo'limlar</h2>
                            </div>
                            <Button onClick={openDeptCreate} disabled={deptBusy}>
                               <Plus className="w-4 h-4 mr-1.5" /> Bo'lim qo'shish
@@ -1693,7 +1755,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <Database className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h3 className="text-xl font-bold text-gray-900 dark:text-white">Baza holati</h3>
+                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Baza holati</h2>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
                            Qo'llab-quvvatlashga murojaat qilganda birinchi so'raladigan ma'lumot.
@@ -1738,18 +1800,244 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                         )}
                      </Card>
 
+                     {/* ─── Yaxlitlik tekshiruvi ──────────────────────────── */}
+                     <Card className="p-6">
+                        <div className="flex items-center gap-3 mb-2">
+                           <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
+                              <Shield className="w-5 h-5 text-primary-600 dark:text-primary-300" />
+                           </div>
+                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Yaxlitlik tekshiruvi</h2>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                           Pul va ombor yozuvlari bir-biriga mos kelishini tekshiradi. Faqat
+                           o'qiydi — hech narsani o'zgartirmaydi.
+                        </p>
+
+                        <Button onClick={handleCheckIntegrity} disabled={integrityBusy} className="mb-5">
+                           {integrityBusy ? 'Tekshirilmoqda…' : 'Tekshirishni boshlash'}
+                        </Button>
+
+                        {integrity && (
+                           <div className="space-y-3">
+                              <div className={`p-3 rounded-lg text-sm font-semibold ${integrity.ok
+                                 ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200'
+                                 : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200'}`}>
+                                 {integrity.ok
+                                    ? 'Buzilish topilmadi'
+                                    : `${integrity.errorCount} ta buzilish topildi`}
+                                 {integrity.warnCount > 0 && ` · ${integrity.warnCount} ta e'tibor talab qiladi`}
+                              </div>
+
+                              {integrity.checks.map((c: any) => {
+                                 const tone = c.severity === 'error'
+                                    ? 'border-red-200 dark:border-red-800'
+                                    : c.severity === 'warn'
+                                       ? 'border-amber-200 dark:border-amber-800'
+                                       : 'border-gray-200 dark:border-gray-700';
+                                 const badge = c.severity === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                                    : c.severity === 'warn' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                       : c.severity === 'info' ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                                          : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
+                                 return (
+                                    <div key={c.key} className={`p-3 border rounded-lg ${tone}`}>
+                                       <div className="flex items-start justify-between gap-3">
+                                          <p className="text-sm font-medium text-gray-900 dark:text-white">{c.title}</p>
+                                          <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${badge}`}>
+                                             {c.severity === 'ok' ? 'toza' : c.count}
+                                          </span>
+                                       </div>
+                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                          {c.scanned} ta yozuv tekshirildi
+                                       </p>
+                                       {c.note && (
+                                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1.5 italic">{c.note}</p>
+                                       )}
+                                       {c.sample?.length > 0 && c.severity !== 'ok' && (
+                                          <div className="mt-2 max-h-40 overflow-y-auto overflow-x-auto">
+                                             <table className="text-xs w-full">
+                                                <tbody>
+                                                   {c.sample.slice(0, 20).map((row: any, i: number) => (
+                                                      <tr key={i} className="border-t border-gray-100 dark:border-gray-700">
+                                                         {Object.entries(row)
+                                                            .filter(([k]) => !k.toLowerCase().endsWith('id'))
+                                                            .map(([k, v]) => (
+                                                               <td key={k} className="py-1 pr-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                                                                  <span className="text-gray-400">{k}:</span> {String(v)}
+                                                               </td>
+                                                            ))}
+                                                      </tr>
+                                                   ))}
+                                                </tbody>
+                                             </table>
+                                             {c.count > 20 && (
+                                                <p className="text-xs text-gray-400 mt-1">…yana {c.count - 20} ta</p>
+                                             )}
+                                          </div>
+                                       )}
+
+                                       {/* Balans farqini tuzatish yo'li shu yerda — boshqa joyda emas */}
+                                       {c.key === 'patient_balance' && c.count > 0 && (
+                                          <div className="mt-3 flex flex-wrap gap-2 items-center">
+                                             <Button variant="secondary" size="sm"
+                                                onClick={() => handleRecalcBalances(false)} disabled={integrityBusy}>
+                                                Farqni ko'rish
+                                             </Button>
+                                             <Button variant="secondary" size="sm"
+                                                onClick={() => handleRecalcBalances(true)} disabled={integrityBusy}>
+                                                Qayta hisoblab yozish
+                                             </Button>
+                                             {balanceFix && (
+                                                <span className="text-xs text-gray-600 dark:text-gray-300">
+                                                   {balanceFix.dryRun
+                                                      ? balanceFix.message
+                                                      : `${balanceFix.patientsFixed} ta bemor tuzatildi`}
+                                                </span>
+                                             )}
+                                          </div>
+                                       )}
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        )}
+                     </Card>
+
                      {/* ─── Zaxira nusxa ──────────────────────────────────── */}
                      <Card className="p-6">
                         <div className="flex items-center gap-3 mb-2">
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <HardDrive className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h3 className="text-xl font-bold text-gray-900 dark:text-white">Zaxira nusxa</h3>
+                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Zaxira nusxa</h2>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
                            Baza bilan birga bemor fotolari va tekshiruv fayllari ham saqlanadi.
                            Nusxalar <code className="text-xs">%APPDATA%\xclinic\backups</code> papkasida.
                         </p>
+
+                        {/* ─── Holat: oxirgi nusxa qachon olingan ───────────
+                            Eng muhim satr. Klinika nusxa olinmay qolganini
+                            boshqa hech qayerdan bilmaydi. */}
+                        {backupStatus && (
+                           <div className={`mb-5 p-4 rounded-lg border ${backupStatus.stale
+                              ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                              : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'}`}>
+                              <div className="flex items-start gap-3">
+                                 {backupStatus.stale
+                                    ? <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                                    : <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />}
+                                 <div className="min-w-0">
+                                    <p className={`text-sm font-semibold ${backupStatus.stale
+                                       ? 'text-red-800 dark:text-red-200' : 'text-green-800 dark:text-green-200'}`}>
+                                       {!backupStatus.lastBackup
+                                          ? 'Zaxira nusxa hali olinmagan'
+                                          : backupStatus.ageDays === 0
+                                             ? 'Oxirgi nusxa: bugun'
+                                             : backupStatus.ageDays === 1
+                                                ? 'Oxirgi nusxa: kecha'
+                                                : `Oxirgi nusxa: ${backupStatus.ageDays} kun oldin`}
+                                    </p>
+                                    <p className="text-xs mt-1 text-gray-600 dark:text-gray-300">
+                                       {backupStatus.lastBackup && (
+                                          <>{fmtWhen(backupStatus.lastBackup.createdAt)} · {fmtBytes(backupStatus.lastBackup.sizeBytes)} · </>
+                                       )}
+                                       Jami {backupStatus.count} ta nusxa, {fmtBytes(backupStatus.totalBytes)}
+                                    </p>
+                                    {backupStatus.scheduler?.lastError && (
+                                       <p className="text-xs mt-1 text-red-700 dark:text-red-300">
+                                          Oxirgi avtomatik nusxada xato: {backupStatus.scheduler.lastError}
+                                       </p>
+                                    )}
+                                 </div>
+                              </div>
+                           </div>
+                        )}
+
+                        {/* ─── Avtomatik nusxa jadvali ─────────────────────── */}
+                        {cfgDraft && (
+                           <div className="mb-6 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                 <input
+                                    type="checkbox"
+                                    checked={cfgDraft.enabled}
+                                    onChange={(e) => setCfgDraft((c: any) => ({ ...c, enabled: e.target.checked }))}
+                                    className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500"
+                                 />
+                                 <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                    Har kuni avtomatik nusxa olish
+                                 </span>
+                              </label>
+
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 ml-7">
+                                 Belgilangan vaqtda kompyuter o'chiq bo'lsa, nusxa keyingi ishga
+                                 tushishda olinadi — o'tkazib yuborilgan kun yo'qolmaydi. Kompyuter
+                                 kechqurun o'chadigan bo'lsa, ish tugash vaqtini qo'ying.
+                              </p>
+
+                              {cfgDraft.enabled && (
+                                 <div className="mt-4 ml-7 space-y-4">
+                                    <div className="flex flex-wrap items-end gap-3">
+                                       <div>
+                                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Vaqt</label>
+                                          <div className="flex items-center gap-1">
+                                             <input type="number" min={0} max={23} value={cfgDraft.hour}
+                                                onChange={(e) => setCfgDraft((c: any) => ({ ...c, hour: Number(e.target.value) }))}
+                                                className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                                             <span className="text-gray-400">:</span>
+                                             <input type="number" min={0} max={59} step={5} value={cfgDraft.minute}
+                                                onChange={(e) => setCfgDraft((c: any) => ({ ...c, minute: Number(e.target.value) }))}
+                                                className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                                          </div>
+                                       </div>
+                                       <div>
+                                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Kunlik saqlash</label>
+                                          <input type="number" min={2} max={365} value={cfgDraft.keepDaily}
+                                             onChange={(e) => setCfgDraft((c: any) => ({ ...c, keepDaily: Number(e.target.value) }))}
+                                             className="w-20 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                                       </div>
+                                       <div>
+                                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Oylik saqlash</label>
+                                          <input type="number" min={0} max={120} value={cfgDraft.keepMonthly}
+                                             onChange={(e) => setCfgDraft((c: any) => ({ ...c, keepMonthly: Number(e.target.value) }))}
+                                             className="w-20 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                                       </div>
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                       Oxirgi {cfgDraft.keepDaily} kunning hamma nusxasi va undan
+                                       oldingi {cfgDraft.keepMonthly} oyning har biridan bittasi saqlanadi.
+                                       Izohli nusxalar hech qachon o'chirilmaydi.
+                                    </p>
+
+                                    <div>
+                                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                                          Ikkinchi manzil (ixtiyoriy) — flesh yoki tarmoq diski
+                                       </label>
+                                       <div className="flex flex-col sm:flex-row gap-2">
+                                          <Input
+                                             value={cfgDraft.extraDir || ''}
+                                             onChange={(e: any) => setCfgDraft((c: any) => ({ ...c, extraDir: e.target.value }))}
+                                             placeholder="masalan: D:\xclinic-zaxira"
+                                             className="flex-1"
+                                          />
+                                          <Button variant="secondary" size="sm" onClick={handlePickExtraDir}>
+                                             Papka tanlash
+                                          </Button>
+                                       </div>
+                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                          Disk ulanmagan bo'lsa asosiy nusxa baribir olinadi — faqat
+                                          ko'chirish o'tkazib yuboriladi.
+                                       </p>
+                                    </div>
+                                 </div>
+                              )}
+
+                              <div className="mt-4 ml-7">
+                                 <Button size="sm" onClick={handleSaveBackupConfig} disabled={cfgBusy}>
+                                    {cfgBusy ? 'Saqlanmoqda…' : 'Jadvalni saqlash'}
+                                 </Button>
+                              </div>
+                           </div>
+                        )}
 
                         <div className="flex flex-col sm:flex-row gap-2 mb-6">
                            <Input
@@ -1812,7 +2100,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                               <Shield className="w-5 h-5 text-primary-600 dark:text-primary-400" />
                            </div>
                            <div>
-                              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Ruxsatlarni boshqarish</h3>
+                              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Ruxsatlarni boshqarish</h2>
                               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                  Shifokor va resepshn qaysi bo'limlar va ma'lumotlarni ko'rishini belgilang.
                                  Belgisi olib tashlangan modul menyuda ko'rinmaydi. Bosh sahifa (Dashboard) har doim ochiq qoladi.
@@ -1832,7 +2120,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                            <Card key={roleKey} className="p-6">
                               <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                                  <div>
-                                    <h4 className="text-base font-bold text-gray-900 dark:text-white">{title}</h4>
+                                    <h3 className="text-base font-bold text-gray-900 dark:text-white">{title}</h3>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">{desc}</p>
                                  </div>
                                  <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
@@ -1916,7 +2204,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
 
                      <Card className="p-6">
                         <div className="mb-4">
-                           <h4 className="text-base font-bold text-gray-900 dark:text-white">Kassa smenalari</h4>
+                           <h3 className="text-base font-bold text-gray-900 dark:text-white">Kassa smenalari</h3>
                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                               Smena kassir "Kunni yopish" bosgan daqiqada tugaydi — soat bo'yicha emas.
                               Undan keyingi to'lovlar keyingi smenaga o'tadi.
@@ -1960,7 +2248,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                      {/* Categories Sidebar */}
                      <Card className="col-span-1 h-fit p-4">
                         <div className="flex justify-between items-center mb-4">
-                           <h3 className="font-medium text-gray-900 dark:text-white">{t('settings.services.categories')}</h3>
+                           <h2 className="font-medium text-gray-900 dark:text-white">{t('settings.services.categories')}</h2>
                            <Button size="sm" variant="secondary" onClick={() => setIsCategoryModalOpen(true)}>+</Button>
                         </div>
                         <div className="space-y-1">
@@ -1991,7 +2279,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                         <Card className="p-6">
                            <div className="flex justify-between items-center mb-6">
                               <div>
-                                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">{t('settings.services.title')}</h3>
+                                 <h2 className="text-lg font-medium text-gray-900 dark:text-white">{t('settings.services.title')}</h2>
                                  <p className="text-sm text-gray-500">{t('settings.services.subtitle')}</p>
                               </div>
                               <Button size="sm" onClick={() => handleOpenServiceModal()}>Xizmat Qo'shish</Button>
@@ -2012,7 +2300,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                                        .map((s) => (
                                           <tr key={s.id ?? s.name} className="bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800">
                                              <td className="px-4 py-3 text-gray-900 dark:text-gray-200 font-medium">{s.name}</td>
-                                             <td className="px-4 py-3 text-gray-500">{s.price.toLocaleString()} UZS</td>
+                                             <td className="px-4 py-3 text-gray-500">{formatMoney(s.price)} UZS</td>
                                              <td className="px-4 py-3 text-right">
                                                 <div className="flex items-center justify-end gap-1">
                                                    <button
@@ -2024,7 +2312,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                                                    {onDeleteService && s.id && (
                                                       <button
                                                          onClick={async () => {
-                                                            if (!window.confirm(`"${s.name}" xizmatini o'chirishni tasdiqlaysizmi?`)) return;
+                                                            if (!await confirmAction({ title: `"${s.name}" xizmatini o'chirishni tasdiqlaysizmi?`, danger: true, confirmLabel: "O'chirish" })) return;
                                                             await onDeleteService(s.id as number);
                                                          }}
                                                          className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition-colors"
@@ -2048,22 +2336,6 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                            </div>
                         </Card>
 
-                        <Card className="p-6">
-                           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">{t('settings.services.currentPlan')}</h3>
-                           <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-100 dark:border-indigo-800">
-                              <div>
-                                 <p className="font-bold text-indigo-900 dark:text-indigo-200">{plans?.find(p => p.id === currentClinic?.planId)?.name || 'Standart Tarif'}</p>
-                                 <p className="text-sm text-indigo-700 dark:text-indigo-300 mt-1">{plans?.find(p => p.id === currentClinic?.planId)?.maxDoctors || 10} tagacha shifokor • Ustuvor Yordam</p>
-                              </div>
-                              <Button
-                                 size="sm"
-                                 className="bg-indigo-600 hover:bg-indigo-700 text-white border-none"
-                                 onClick={() => setIsUpgradeModalOpen(true)}
-                              >
-                                 {t('settings.services.upgrade')}
-                              </Button>
-                           </div>
-                        </Card>
                      </div>
                   </div>
                )}
@@ -2073,7 +2345,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   <Card className="p-6">
                      <div className="flex justify-between items-center mb-6">
                         <div>
-                           <h3 className="text-lg font-medium text-gray-900 dark:text-white">{t('settings.staff.doctorsTitle')}</h3>
+                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">{t('settings.staff.doctorsTitle')}</h2>
                            <p className="text-sm text-gray-500">{t('settings.staff.doctorsSubtitle')}</p>
                         </div>
                         <Button size="sm" onClick={() => handleOpenDoctorModal()}>{t('settings.staff.addDoctor')}</Button>
@@ -2086,7 +2358,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                                     {doc.firstName[0]}{doc.lastName[0]}
                                  </div>
                                  <div>
-                                    <p className="font-medium text-gray-900 dark:text-white">Dr. {doc.firstName} {doc.lastName}</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">Dr. {formatFullName(doc)}</p>
                                     <p className="text-xs text-gray-500">{doc.specialty}</p>
                                  </div>
                               </div>
@@ -2116,7 +2388,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   <Card className="p-6">
                      <div className="flex justify-between items-center mb-6">
                         <div>
-                           <h3 className="text-lg font-medium text-gray-900 dark:text-white">Resepshnlar Boshqaruvi</h3>
+                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Resepshnlar Boshqaruvi</h2>
                            <p className="text-sm text-gray-500">Qabul xodimlarini boshqarish.</p>
                         </div>
                         <Button size="sm" onClick={() => handleOpenReceptionistModal()}>Resepshn Qo'shish</Button>
@@ -2129,7 +2401,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                                     {rec.firstName[0]}{rec.lastName[0]}
                                  </div>
                                  <div>
-                                    <p className="font-medium text-gray-900 dark:text-white">{rec.firstName} {rec.lastName}</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">{formatFullName(rec)}</p>
                                     <p className="text-xs text-gray-500">{rec.phone}</p>
                                  </div>
                               </div>
@@ -2164,7 +2436,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   <Card className="p-6">
                      <div className="flex justify-between items-center mb-6">
                         <div>
-                           <h3 className="text-lg font-medium text-gray-900 dark:text-white">Lab Texniklar Boshqaruvi</h3>
+                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Lab Texniklar Boshqaruvi</h2>
                            <p className="text-sm text-gray-500">Stomatologik laboratoriya texniklarini boshqarish.</p>
                         </div>
                         <Button size="sm" onClick={() => handleOpenLabTechModal()}>Texnik Qo'shish</Button>
@@ -2177,7 +2449,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                                     {tech.firstName[0]}{tech.lastName[0]}
                                  </div>
                                  <div>
-                                    <p className="font-medium text-gray-900 dark:text-white">{tech.firstName} {tech.lastName}</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">{formatFullName(tech)}</p>
                                     <p className="text-xs text-gray-500">{tech.specialty} · {tech.phone}</p>
                                  </div>
                               </div>
@@ -2217,7 +2489,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   <Card className="p-6">
                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
                         <div>
-                           <h3 className="text-lg font-medium text-gray-900 dark:text-white">Hamshiralar</h3>
+                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Hamshiralar</h2>
                            <p className="text-sm text-gray-500">
                               Statsionarda dori berish belgisini hamshira o'z nomidan qo'yadi.
                            </p>
@@ -2261,7 +2533,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                                     </div>
                                     <div className="min-w-0">
                                        <p className="font-medium text-gray-900 dark:text-white truncate">
-                                          {nr.firstName} {nr.lastName}
+                                          {formatFullName(nr)}
                                        </p>
                                        <p className="text-xs text-gray-500 truncate">
                                           {deptList.find(d => d.id === nr.departmentId)?.name || "Bo'lim belgilanmagan"}
@@ -2303,7 +2575,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   <Card className="p-6">
                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-5">
                         <div>
-                           <h3 className="text-lg font-medium text-gray-900 dark:text-white">Kirish jurnali</h3>
+                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Kirish jurnali</h2>
                            <p className="text-sm text-gray-500">
                               Bemor kartasini kim ochgani va o'zgartirgani.
                               {logData?.retentionMonths ? ` ${logData.retentionMonths} oy saqlanadi.` : ''}
@@ -2408,14 +2680,14 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                            <Bot className="w-8 h-8" />
                         </div>
                         <div>
-                           <h3 className="text-xl font-bold text-gray-900 dark:text-white">{t('settings.bot.title')}</h3>
+                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('settings.bot.title')}</h2>
                            <p className="text-sm text-gray-500">{t('settings.bot.subtitle')}</p>
                         </div>
                      </div>
 
                      <div className="space-y-6">
                         <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-2xl border border-gray-100 dark:border-gray-700">
-                           <h4 className="font-bold text-gray-900 dark:text-white mb-2">Shaxsiy Telegram Botni Ulash</h4>
+                           <h3 className="font-bold text-gray-900 dark:text-white mb-2">Shaxsiy Telegram Botni Ulash</h3>
                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
                               Telegram-da @BotFather orqali o'zingizning shaxsiy botingizni yarating va bot tokenini quyidagi maydonga kiritib, uni tizimga ulang.
                            </p>
@@ -2459,13 +2731,13 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                               <MessageSquare className="w-8 h-8" />
                            </div>
                            <div>
-                              <h3 className="text-xl font-bold text-gray-900 dark:text-white">SMS va Xabar Yuborish Rejimi</h3>
+                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">SMS va Xabar Yuborish Rejimi</h2>
                               <p className="text-sm text-gray-500">Mijozlarga xabarnomalar qanday yuborilishini sozlang va Eskiz.uz profilingizni ulang.</p>
                            </div>
                         </div>
                         <form onSubmit={handleSmsSave} className="space-y-8">
                            <div>
-                              <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-4">1. Standart kanalni tanlang</h4>
+                              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">1. Standart kanalni tanlang</h3>
                               <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 mb-4">Bu rejim Xabarlar bo'limidagi "avtomatik" (auto) yuborishlar uchun standart kanal sifatida ishlatiladi.</p>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                  <label className={`relative flex cursor-pointer rounded-lg border bg-white dark:bg-gray-800 p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'telegram_only' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-300 dark:border-gray-700'}`}>
@@ -2525,7 +2797,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                            {(smsForm.notificationMode === 'sms_only' || smsForm.notificationMode === 'both') && (
                               <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-2xl border border-gray-100 dark:border-gray-700">
                                  <div className="flex items-center justify-between mb-6">
-                                    <h4 className="text-lg font-medium text-gray-900 dark:text-white">2. Eskiz.uz Integratsiyasi</h4>
+                                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">2. Eskiz.uz Integratsiyasi</h3>
                                     {smsConnected ? (
                                        <span className="flex items-center text-green-600 text-sm font-medium bg-green-50 dark:bg-green-900/30 px-3 py-1.5 rounded-full">
                                           <CheckCircle className="w-4 h-4 mr-1.5" /> Ulangan
@@ -2593,7 +2865,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                                  <p className="text-sm font-medium text-gray-500 mb-1">Joriy SMS balans (Eskiz.uz)</p>
                                  <div className="flex items-end gap-2">
                                     <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                                       {smsBalance !== null ? smsBalance.toLocaleString() : 'Tekshirilmoqda...'}
+                                       {smsBalance !== null ? formatMoney(smsBalance) : 'Tekshirilmoqda...'}
                                     </p>
                                     <span className="text-gray-500 mb-1 font-medium">ta SMS qoldi</span>
                                  </div>
@@ -2682,7 +2954,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                </div>
 
                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                  <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">{t('settings.staff.authTitle')}</h4>
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">{t('settings.staff.authTitle')}</h3>
                   <div className="grid grid-cols-2 gap-4">
                      <Input
                         label="Login (Username)"
@@ -2772,7 +3044,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                </div>
 
                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                  <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-1">Ishlash vaqti (Ixtiyoriy)</h4>
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">Ishlash vaqti (Ixtiyoriy)</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Bo'sh qoldirsa, klinika umumiy vaqti ishlatiladi</p>
                   <div className="grid grid-cols-2 gap-4">
                      <div>
@@ -2811,35 +3083,6 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
             </form>
          </Modal>
 
-         {/* Upgrade Plan Modal */}
-         <Modal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} title="{t('settings.services.upgrade')}">
-            <div className="text-center py-4 space-y-4">
-               <div className="mx-auto w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
-                  <Users className="w-6 h-6 text-indigo-600" />
-               </div>
-               <h3 className="text-lg font-medium text-gray-900 dark:text-white">Cheklovlarni olib tashlang!</h3>
-               <p className="text-gray-500 dark:text-gray-400 px-4">
-                  Sizning tarifingiz bo'yicha yangi shifokor qo'sha olmaysiz. Iltimos, tarifingizni o'zgartirish uchun menejer bilan bog'laning!
-               </p>
-               <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg space-y-2">
-                  <p className="font-bold text-gray-900 dark:text-white text-lg">+998 90 824 29 92</p>
-                  <a
-                     href="https://t.me/ergashevulugbekk"
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     className="flex items-center justify-center gap-2 text-primary-500 hover:text-primary-600 font-medium"
-                  >
-                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.11.02-1.93 1.23-5.46 3.62-.51.35-.98.52-1.4.51-.46-.01-1.35-.26-2.01-.48-.81-.27-1.44-.42-1.38-.88.03-.24.38-.49 1.03-.75 4.06-1.77 6.77-2.94 8.13-3.51 3.87-1.6 4.67-1.88 5.2-1.88.11 0 .37.03.54.17.14.12.18.28.2.45-.02.07-.02.13-.03.23z" />
-                     </svg>
-                     t.me/ergashevulugbekk
-                  </a>
-               </div>
-               <div className="pt-2">
-                  <Button onClick={() => setIsUpgradeModalOpen(false)}>Tushunarli</Button>
-               </div>
-            </div>
-         </Modal>
 
          {/* Delete Doctor Confirmation Modal */}
          <Modal isOpen={!!deleteConfirmDoctor} onClose={() => setDeleteConfirmDoctor(null)} title={t('settings.staff.deleteDoctorConfirm')}>
@@ -2847,7 +3090,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                   <Trash2 className="w-6 h-6 text-red-600" />
                </div>
-               <h3 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h3>
+               <h2 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h2>
                <p className="text-gray-600 dark:text-gray-300">
                   {t('settings.staff.deleteDoctorConfirm')} <br />
                    <strong>Dr. {deleteConfirmDoctor?.firstName} {deleteConfirmDoctor?.lastName}</strong>. {t('common.confirmDeleteDesc')}
@@ -2879,7 +3122,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                <Input label={t('settings.staff.phone')} value={receptionistForm.phone} onChange={e => setReceptionistForm({ ...receptionistForm, phone: e.target.value })} required />
 
                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                  <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">{t('settings.staff.authTitle')}</h4>
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">{t('settings.staff.authTitle')}</h3>
                   <div className="grid grid-cols-2 gap-4">
                      <Input
                         label="Login (Username)"
@@ -2945,7 +3188,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                   <Trash2 className="w-6 h-6 text-red-600" />
                </div>
-               <h3 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h3>
+               <h2 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h2>
                <p className="text-gray-600 dark:text-gray-300">
                   <strong>{deleteConfirmLabTech?.firstName} {deleteConfirmLabTech?.lastName}</strong> texnikni o'chirasizmi? {t('common.confirmDeleteDesc')}
                </p>
@@ -2972,7 +3215,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                   <Trash2 className="w-6 h-6 text-red-600" />
                </div>
-               <h3 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h3>
+               <h2 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h2>
                <p className="text-gray-600 dark:text-gray-300">
                   {t('settings.staff.deleteReceptionistConfirm')} <br />
                    <strong>{deleteConfirmReceptionist?.firstName} {deleteConfirmReceptionist?.lastName}</strong>. {t('common.confirmDeleteDesc')}
@@ -3232,7 +3475,7 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
             {deleteNurse && (
                <div className="space-y-4">
                   <p className="text-sm text-gray-700 dark:text-gray-300">
-                     <b>{deleteNurse.firstName} {deleteNurse.lastName}</b> ro'yxatdan chiqariladi va
+                     <b>{formatFullName(deleteNurse)}</b> ro'yxatdan chiqariladi va
                      tizimga kira olmaydi.
                   </p>
                   <p className="text-xs text-gray-500">

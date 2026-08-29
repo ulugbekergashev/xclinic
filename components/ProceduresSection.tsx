@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { formatMoney } from '../utils/format';
+import { toast } from '../services/toast';
 import { Activity, Trash2 } from 'lucide-react';
 import { Button, Card, Badge } from '../components/Common';
 import { Transaction, Service, ServiceCategory } from '../types';
@@ -73,7 +75,7 @@ export const VisitWorkflow: React.FC<VisitWorkflowProps> = ({
 
     const handleCompleteVisit = async () => {
         if (procedures.length === 0) {
-            alert(t('patients.details.procedures.addProcedureReq'));
+            toast.error(t('patients.details.procedures.addProcedureReq'));
             return;
         }
 
@@ -127,7 +129,7 @@ export const VisitWorkflow: React.FC<VisitWorkflowProps> = ({
                             </div>
                             <div className="flex items-center gap-3">
                                 <span className="font-bold text-gray-900 dark:text-white">
-                                    {proc.price.toLocaleString()} UZS
+                                    {formatMoney(proc.price)} UZS
                                 </span>
                                 <button
                                     onClick={() => handleRemoveProcedure(proc.id)}
@@ -149,7 +151,7 @@ export const VisitWorkflow: React.FC<VisitWorkflowProps> = ({
                                 {t('patients.details.procedures.total')}
                             </span>
                             <span className="text-2xl font-bold text-primary-600 dark:text-primary-400">
-                                {total.toLocaleString()} UZS
+                                {formatMoney(total)} UZS
                             </span>
                         </div>
                         <Button
@@ -219,7 +221,7 @@ export const ProceduresSection: React.FC<ProceduresSectionProps> = ({
                             </div>
                             <div className="text-right">
                                 <p className="font-bold text-sm text-gray-900 dark:text-white">
-                                    {tx.amount.toLocaleString()} UZS
+                                    {formatMoney(tx.amount)} UZS
                                 </p>
                                 <Badge status={tx.status} />
                             </div>

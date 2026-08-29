@@ -1,5 +1,21 @@
-import { Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch } from '../types';
+import { Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
 import { todayISO } from '../utils/dateUtils';
+import * as auth from './authStore';
+
+/** Yagona hisoblash qatlamining javobi — `backend/snapshot.ts` bilan
+ *  bir xil shakl. Bu tur o'zgarsa, ikkala tomon ham o'zgarishi shart. */
+export interface Snapshot {
+    range: { from: string; to: string };
+    /** Ayni damdagi qarz — davrga bog'liq emas */
+    debt: { amount: number; charges: number; patients: number };
+    period: {
+        charged: number; collected: number; due: number;
+        visits: number; appointments: number; avgCheck: number;
+    };
+    patients: { total: number; active: number; newLast7Days: number };
+}
+
+export { auth };
 
 // Demo rejimida kassa yopilishlari faqat sessiya davomida saqlanadi
 const DEMO_CASH_REGISTER: CashRegisterDay[] = [];
@@ -31,28 +47,50 @@ const getBaseUrl = () => {
         const port = new URLSearchParams(window.location.search).get('port') || '3001';
         return `http://localhost:${port}/api`;
     }
-    // 2) Tarmoq orqali (shifokor/registrator brauzerdan http://192.168.x.x:3001)
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+    /* 2) HTTP orqali ochilgan — HAR DOIM shu manba.
+          Uch holat ham shu yerga tushadi:
+            • tarmoqdan brauzer (http://192.168.x.x:3001);
+            • Electron (S1.3 dan keyin u `http://localhost:PORT` dan
+              yuklanadi — cookie `file://` da ishlamagani uchun);
+            • dev server (vite `/api` ni backendga proksilaydi).
+
+          ILGARI bu yerda `hostname !== 'localhost'` sharti turardi va
+          `localhost` esa quyidagi 3-holatga tushib, QAT'IY 3001-portga
+          urilardi. Electron `pickBackendPort()` bilan BO'SH portni
+          tanlaydi — 3001 band bo'lsa boshqasini. Ya'ni ilova o'zi
+          ko'targan serverga emas, 3001-portdagi begona narsaga (yoki
+          hech narsaga) so'rov yuborardi.
+
+          Buni brauzer E2E sinovi topdi: server 3077-portda edi, front
+          esa 3001 ga urilib «Tizimga kirishda xatolik» berardi. */
+    if (typeof window !== 'undefined' && /^https?:$/.test(window.location.protocol)) {
         return `${window.location.protocol}//${window.location.host}/api`;
     }
-    // 3) Dev: vite proxy 3001-portga yo'naltiradi
+
+    // 3) Boshqa holatlar (SSR, sinov muhiti) — sozlamadan yoki standart port
     const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
     return envUrl.endsWith('/api') ? envUrl : `${envUrl}/api`;
 };
 export const API_URL = getBaseUrl();
+
+/** Saqlangan klinika id. Propdan olmaydigan ekranlar uchun. */
+export function getStoredClinicId(): string {
+    return auth.getSession()?.clinicId || '';
+}
+
+/** Kirish tokeni. Hodisalar oqimi (SSE) uchun kerak — u `fetchJson` dan
+ *  o'tmaydi, lekin xuddi shu tokenni ishlatishi shart.
+ *  Token XOTIRADA yashaydi, diskda emas (`services/authStore.ts`). */
+export function getAuthToken(): string | null {
+    return auth.getToken() ?? (auth.getSession()?.isDemo ? auth.getSession()!.token ?? null : null);
+}
 export const API_BASE_URL = API_URL.replace(/\/api$/, '');
 
 /** Saqlangan token — fayl manzilida ishlatiladi.
  *  `<img src>` tegi `Authorization` sarlavhasini yubora olmaydi, shuning uchun
  *  himoyalangan fayl manziliga token query orqali qo'shiladi. Serverda u
  *  sarlavhaga ko'chiriladi va oddiy tekshiruvdan o'tadi (backend/files.ts). */
-const readStoredToken = (): string => {
-    try {
-        const raw = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-        if (!raw) return '';
-        return JSON.parse(raw).token || '';
-    } catch { return ''; }
-};
+const readStoredToken = (): string => getAuthToken() || '';
 
 export type FileKind = 'patient-photo' | 'study-file' | 'patient-avatar' | 'patient-portrait';
 
@@ -74,18 +112,7 @@ export const getFileUrl = (kind: FileKind, id: string | null | undefined) => {
 
 console.log('🔌 XClinic API:', { hostname: window.location.hostname, API_URL });
 
-export const isDemoMode = () => {
-    try {
-        const stored = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            return parsed.isDemo === true;
-        }
-    } catch (e) {
-        return false;
-    }
-    return false;
-};
+export const isDemoMode = () => auth.getSession()?.isDemo === true;
 
 /* ─── Demo rejim himoyasi ─────────────────────────────────────────────────────
    Demo hisobi (`demoklinikaadmin`) tokeni soxta — 'demo-token'. U bilan serverga
@@ -117,10 +144,25 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_R
     try {
         const response = await fetch(url, options);
 
-        // Check if we should retry based on status
-        // Retry on 5xx (Server Error), 408 (Timeout), 429 (Too Many Requests)
-        // AND ONLY if it is a GET request (safe to retry)
-        if (!response.ok && (response.status >= 500 || response.status === 408 || response.status === 429)) {
+        /* QAYTA URINISH — FAQAT O'TKINCHI XATOLARDA (S3.3).
+
+           Ilgari shart `status >= 500` edi, ya'ni HAR QANDAY server
+           xatosi uch marta qayta urinilardi. Audit shuni ko'rgan:
+           Facebook so'rovi 500 qaytarganda front uch marta urilib, ~7
+           soniya kutgan va shundan keyingina xabar chiqqan (B-06).
+
+           500 va 501 ni qayta urinishning ma'nosi yo'q:
+             500 — dasturdagi xato yoki sozlanmagan holat; ikkinchi
+                   urinish ham xuddi shu javobni beradi;
+             501 — funksiya umuman sozlanmagan (integratsiya kaliti
+                   yo'q) — bu doimiy holat.
+           Bazadagi qulf kabi haqiqiy o'tkinchi holatlar serverning
+           o'zida `withRetry` bilan qayta uriladi.
+
+           Qolgani o'tkinchi: 502/504 — proksi, 503 — vaqtincha band,
+           408 — kechikish, 429 — chastota chegarasi. */
+        const TRANSIENT = [502, 503, 504, 408, 429];
+        if (!response.ok && TRANSIENT.includes(response.status)) {
             const method = options.method || 'GET';
             if (retries > 0 && method === 'GET') {
                 console.warn(`Request to ${url} failed with status ${response.status}.Retrying in ${backoff}ms... (${retries} attempts left)`);
@@ -142,7 +184,7 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_R
     }
 }
 
-async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+async function fetchJson<T>(url: string, options: RequestInit = {}, isRetry = false): Promise<T> {
     /* DEMO REJIMI. Demo tokeni ('demo-token') server uchun yaroqsiz, ya'ni
        har qanday so'rov 401 qaytaradi, 401 esa sessiyani tozalab, kirish
        sahifasiga uloqtiradi.
@@ -163,40 +205,24 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
         ...(options.headers || {}),
     };
 
-    const storedAuth = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-    if (storedAuth) {
-        try {
-            const { token } = JSON.parse(storedAuth);
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-        } catch (e) {
-            // Ignore parse error
-        }
-    }
+    /* Token XOTIRADAN olinadi, `localStorage` dan emas (S1.3) — u endi
+       diskda saqlanmaydi. */
+    const token = auth.getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const response = await fetchWithRetry(`${API_URL}${url}`, {
         ...options,
         headers,
+        /* Yangilash cookie'si yuborilishi uchun shart. Cookie `httpOnly`,
+           ya'ni uni JavaScript qo'shib qo'ya olmaydi — brauzer o'zi
+           qo'shadi, lekin faqat shu bayroq bilan. */
+        credentials: 'include',
     });
 
-    // Backend tokenni yangilagan bo'lsa (muddati yaqinlashgan), uni jimgina saqlaymiz.
-    // Foydalanuvchi faol ekan, sessiyasi hech qachon tugamaydi.
+    // Backend tokenni yangilagan bo'lsa (muddati yaqinlashgan), uni jimgina
+    // xotiraga olamiz. Foydalanuvchi faol ekan, sessiyasi tugamaydi.
     const refreshedToken = response.headers.get('X-Refreshed-Token');
-    if (refreshedToken) {
-        try {
-            // Sessiya qaysi omborda saqlangan bo'lsa, o'shanisini yangilaymiz
-            const store = sessionStorage.getItem('xclinic_auth') ? sessionStorage : localStorage;
-            const raw = store.getItem('xclinic_auth');
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                parsed.token = refreshedToken;
-                store.setItem('xclinic_auth', JSON.stringify(parsed));
-            }
-        } catch (e) {
-            // Saqlab bo'lmasa ham muammo yo'q — eski token muddati tugaguncha ishlaydi
-        }
-    }
+    if (refreshedToken) auth.setToken(refreshedToken);
 
     // 401 — token yo'q/yaroqsiz. 403 esa ikki xil bo'lishi mumkin: rol yetarli emas
     // (sessiya joyida) yoki eski backend token uchun 403 qaytargan. Ikkinchisida ham
@@ -208,8 +234,18 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
     }
 
     if (isSessionExpired) {
-        localStorage.removeItem('xclinic_auth');
-        sessionStorage.removeItem('xclinic_auth');
+        /* Kirish tokeni 30 daqiqa yashaydi, ya'ni uning eskirishi ODATIY
+           hol — sessiya tugagani emas. Avval `httpOnly` cookie orqali
+           yangisini so'raymiz va so'rovni BIR MARTA takrorlaymiz.
+
+           `isRetry` qo'riqchi: yangilangan token bilan ham 401 kelsa,
+           sessiya haqiqatan tugagan va cheksiz aylanish bo'lmasligi kerak. */
+        if (!isRetry) {
+            const restored = await auth.refresh(API_URL);
+            if (restored) return fetchJson<T>(url, options, true);
+        }
+
+        await auth.clearSession(API_URL);
         window.dispatchEvent(new Event('auth:unauthorized'));
         // We throw an error to stop execution, but the event listener in App.tsx will handle the redirect/UI update
         throw new Error('Session expired');
@@ -232,6 +268,12 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
 
 export const api = {
     auth: {
+        /* Majburiy parol almashtirish. Standart parol bilan kirilganda server
+           CHEKLANGAN token beradi va u faqat shu endpointga yaraydi. */
+        changePassword: (currentPassword: string, newPassword: string) =>
+            fetchJson<{ success: true; token: string }>('/auth/change-password', {
+                method: 'POST', body: JSON.stringify({ currentPassword, newPassword }),
+            }),
         login: async (username: string, password: string) => {
             const response = await fetch(`${API_URL}/auth/login`, {
                 method: 'POST',
@@ -249,9 +291,16 @@ export const api = {
         /** Butun klinika bo'yicha ro'yxat. Shifokorga o'ziga biriktirilmagan
          *  bemorlar ham kerak: ko'p profilli klinikada bemor bir necha
          *  bo'limdan o'tadi. Parametrsiz `getAll` xatti-harakati o'zgarmadi. */
-        getAllForClinic: (clinicId: string) => {
+        getAllForClinic: (clinicId: string, limit?: number) => {
             if (isDemoMode()) return Promise.resolve(DEMO_PATIENTS);
-            return fetchJson<Patient[]>(`/patients?clinicId=${clinicId}&scope=clinic`);
+            const q = `/patients?clinicId=${clinicId}&scope=clinic${limit ? `&limit=${limit}` : ''}`;
+            return fetchJson<Patient[]>(q);
+        },
+        /** Bitta shifokorga biriktirilgan bemorlar — shifokor kartasi uchun.
+         *  Chegarasiz: kesim kichik va karta to'liq ro'yxat uchun ochiladi. */
+        getByDoctor: (clinicId: string, doctorId: string) => {
+            if (isDemoMode()) return Promise.resolve(DEMO_PATIENTS.filter(p => p.doctorId === doctorId));
+            return fetchJson<Patient[]>(`/patients?clinicId=${clinicId}&scope=clinic&doctorId=${doctorId}`);
         },
         /** Ism, familiya, telefon yoki JSHSHIR bo'yicha qidiruv (kamida 2 belgi) */
         search: (q: string) => {
@@ -359,9 +408,19 @@ export const api = {
         },
     },
     appointments: {
-        getAll: (clinicId: string) => {
+        /* `range` — kirishda butun tarixni tortmaslik uchun (FIX-PLAN 10).
+           `patientId`/`doctorId` — bitta karta ochilganda: o'sha kesim
+           SANA CHEGARASISIZ keladi, ya'ni karta 45 kunlik oynaga bog'liq
+           emas. Parametrsiz chaqiruv ilgarigidek ishlaydi. */
+        getAll: (clinicId: string, range?: { from?: string; to?: string; limit?: number; patientId?: string; doctorId?: string }) => {
             if (isDemoMode()) return Promise.resolve(DEMO_APPOINTMENTS);
-            return fetchJson<Appointment[]>(`/appointments?clinicId=${clinicId}`);
+            const q = new URLSearchParams({ clinicId });
+            if (range?.from) q.set('from', range.from);
+            if (range?.to) q.set('to', range.to);
+            if (range?.limit) q.set('limit', String(range.limit));
+            if (range?.patientId) q.set('patientId', range.patientId);
+            if (range?.doctorId) q.set('doctorId', range.doctorId);
+            return fetchJson<Appointment[]>(`/appointments?${q}`);
         },
         create: (data: Omit<Appointment, 'id'>) => {
             if (isDemoMode()) {
@@ -504,9 +563,17 @@ export const api = {
         }
     },
     transactions: {
-        getAll: (clinicId: string) => {
+        /* `range` — kirishda butun tarixni tortmaslik uchun (FIX-PLAN 10).
+           Berilmasa xatti-harakat ILGARIGIDEK: hammasi qaytadi. */
+        getAll: (clinicId: string, range?: { from?: string; to?: string; limit?: number; patientId?: string; doctorId?: string }) => {
             if (isDemoMode()) return Promise.resolve(DEMO_TRANSACTIONS);
-            return fetchJson<Transaction[]>(`/transactions?clinicId=${clinicId}`);
+            const q = new URLSearchParams({ clinicId });
+            if (range?.from) q.set('from', range.from);
+            if (range?.to) q.set('to', range.to);
+            if (range?.limit) q.set('limit', String(range.limit));
+            if (range?.patientId) q.set('patientId', range.patientId);
+            if (range?.doctorId) q.set('doctorId', range.doctorId);
+            return fetchJson<Transaction[]>(`/transactions?${q}`);
         },
         create: (data: Omit<Transaction, 'id'>) => {
             if (isDemoMode()) {
@@ -787,9 +854,15 @@ export const api = {
         },
     },
     services: {
-        getAll: (clinicId: string) => {
+        /* `doctorId` berilsa — shifokor bo'limining xizmatlari (S2.4).
+           Kardiologga «Ginekolog konsultatsiyasi» ni yozib qo'yish
+           mumkin edi (audit B-19). Bo'limi ko'rsatilmagan shifokorda
+           filtr qo'llanmaydi — hamma xizmat ko'rinadi. */
+        getAll: (clinicId: string, doctorId?: string) => {
             if (isDemoMode()) return Promise.resolve(DEMO_SERVICES);
-            return fetchJson<Service[]>(`/services?clinicId=${clinicId}`);
+            const q = new URLSearchParams({ clinicId });
+            if (doctorId) q.set('doctorId', doctorId);
+            return fetchJson<Service[]>(`/services?${q.toString()}`);
         },
         create: (data: Omit<Service, 'id'>) => {
             if (isDemoMode()) {
@@ -1058,17 +1131,9 @@ export const api = {
             });
         }
     },
-    plans: {
-        getAll: () => {
-            if (isDemoMode()) return Promise.resolve([DEMO_PLAN]);
-            return fetchJson<SubscriptionPlan[]>('/plans');
-        },
-        update: (id: string, data: Partial<SubscriptionPlan>) => fetchJson<SubscriptionPlan>(`/plans/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        }),
-    },
+    /* `plans` OLIB TASHLANDI — tarif/obuna tushunchasi bilan birga.
+       XClinic bitta o'rnatma = bitta klinika, sotilmaydi. Endpointlar ham
+       serverdan olib tashlandi. */
     sales: {
         getAll: () => {
             if (isDemoMode()) return Promise.resolve([]);
@@ -1195,7 +1260,7 @@ export const api = {
 
     // ─── Ombor: harakatlar, retsept, ogohlantirishlar ───────────────────────
     stock: {
-        movements: (params?: { itemId?: string; visitId?: string; from?: string; to?: string }) => {
+        movements: (params?: { itemId?: string; visitId?: string; patientId?: string; from?: string; to?: string }) => {
             if (isDemoMode()) return demoRead<StockMovement[]>([]);
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
@@ -1204,8 +1269,15 @@ export const api = {
         },
         receive: (data: { itemId: string; quantity: number; cost?: number; batchNumber?: string; expiryDate?: string; note?: string; userName?: string }) =>
             isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/in', { method: 'POST', body: JSON.stringify(data) }),
-        issue: (data: { itemId: string; quantity: number; reason?: string; note?: string; userName?: string }) =>
+        /** Chiqim. `patientId` bilan — bemor kartasidan sarflangan material (0028). */
+        /* `force: true` — muddati o'tgan partiyani ATAYLAB sarflash (S2.5).
+           Serversiz to'sib bo'lmaydi: brauzerda partiyalar ro'yxati yo'q. */
+        issue: (data: { itemId: string; quantity: number; reason?: string; note?: string; userName?: string; patientId?: string; visitId?: string; force?: boolean }) =>
             isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/out', { method: 'POST', body: JSON.stringify(data) }),
+        /** Xato yozilgan chiqimni bekor qiladi — teskari harakat yoziladi, o'chirilmaydi. */
+        reverse: (movementId: string, data?: { note?: string; userName?: string }) =>
+            isDemoMode() ? demoWrite<any>()
+                : fetchJson<any>(`/stock-movements/${movementId}/reverse`, { method: 'POST', body: JSON.stringify(data || {}) }),
         /** Bo'limlar orasida ko'chirish. Umumiy qoldiq O'ZGARMAYDI — tovar
          *  klinika ichida qoladi, faqat 'Transfer' qatori yoziladi. */
         transfer: (data: { itemId: string; quantity: number; fromDepartmentId?: string; toDepartmentId: string; note?: string; userName?: string }) =>
@@ -1345,6 +1417,50 @@ export const api = {
         }>('/admin/backup/restore'),
 
         cancelRestore: () => fetchJson<{ success: true }>('/admin/backup/restore', { method: 'DELETE' }),
+
+        /* Avtomatik nusxa holati. `stale` — 3 kundan beri nusxa yo'q degani;
+           interfeys shu bayroq bo'yicha qizil ogohlantirish ko'rsatadi. */
+        backupStatus: () => fetchJson<{
+            config: BackupConfig;
+            lastBackup: { file: string; createdAt: string; sizeBytes: number } | null;
+            ageDays: number | null;
+            stale: boolean;
+            count: number;
+            totalBytes: number;
+            scheduler: {
+                running: boolean; lastRunAt: string | null; lastFile: string | null;
+                lastError: string | null; lastDeleted: number;
+            };
+        }>('/admin/backup/status'),
+
+        saveBackupConfig: (cfg: Partial<BackupConfig>) => fetchJson<BackupConfig>(
+            '/admin/backup/config', { method: 'PUT', body: JSON.stringify(cfg) }),
+
+        /* Yaxlitlik tekshiruvi. `severity`: 'error' — shubhasiz buzilish,
+           'warn' — qarash kerak, 'info' — ma'lumot uchun (buzilish emas). */
+        integrity: () => fetchJson<{
+            checkedAt: string;
+            ok: boolean;
+            errorCount: number;
+            warnCount: number;
+            checks: {
+                key: string;
+                title: string;
+                severity: 'ok' | 'info' | 'warn' | 'error';
+                count: number;
+                scanned: number;
+                sample: any[];
+                note?: string;
+            }[];
+        }>('/admin/integrity'),
+
+        /** Balanslarni qayta hisoblash. `confirm` bermasa — faqat farqni ko'rsatadi. */
+        recalculateBalances: (confirm = false) => fetchJson<{
+            dryRun: boolean; patientsChecked: number;
+            mismatches?: number; patientsFixed?: number;
+            sample?: { patientName: string; current: number; correct: number; diff: number }[];
+            message?: string;
+        }>('/admin/recalculate-balances', { method: 'POST', body: JSON.stringify({ confirm }) }),
     },
 
     reports: {
@@ -1366,6 +1482,35 @@ export const api = {
             const qs = q.toString();
             return fetchJson<any>(`/reports/summary${qs ? `?${qs}` : ''}`);
         },
+        /* YAGONA MANBA (S2.1). Qarz, tushum, tashriflar soni va o'rtacha
+           chek — hammasi shu yerdan. Ekranda sanalgan har qanday son
+           boshqa ekrandagi son bilan farq qilib qoladi: audit shunday
+           to'rtta har xil qarz raqamini topgan edi. */
+        snapshot: (from?: string, to?: string) => {
+            if (isDemoMode()) return demoRead<Snapshot>({
+                range: { from: from || '', to: to || '' },
+                debt: { amount: 0, charges: 0, patients: 0 },
+                period: { charged: 0, collected: 0, due: 0, visits: 0, appointments: 0, avgCheck: 0 },
+                patients: { total: 0, active: 0, newLast7Days: 0 },
+            });
+            const q = new URLSearchParams();
+            if (from) q.set('from', from);
+            if (to) q.set('to', to);
+            const qs = q.toString();
+            return fetchJson<Snapshot>(`/reports/snapshot${qs ? `?${qs}` : ''}`);
+        },
+
+        /* Bosh sahifa raqamlari — serverda sanaladi. Ilgari brauzer butun
+           tranzaksiyalar ro'yxatini olib o'zi sanardi. */
+        dashboard: () => fetchJson<{
+            date: string;
+            patients: { total: number; active: number; newLast7Days: number };
+            today: { appointments: number; visits: number; revenue: number; payments: number };
+            month: { revenue: number };
+            debt: Snapshot['debt'];
+            period: Snapshot['period'];
+        }>('/reports/dashboard'),
+
         debtors: () => isDemoMode() ? demoRead<any>({ total: 0, patients: [] }) : fetchJson<any>('/reports/debtors'),
 
         /* Reliz 5: uch hisobot. Hammasi faqat klinika egasiga — server ham
@@ -1384,6 +1529,10 @@ export const api = {
 
         /** Smena svodi: laboratoriya va diagnostika bo'yicha kunlik ish */
         labShift: (date: string) => fetchJson<any>(`/reports/lab-shift?date=${date}`),
+
+        /** Davomat: qaysi kunlarda va soatlarda bemor ko'p keladi */
+        attendance: (from: string, to: string) =>
+            fetchJson<any>(`/reports/attendance?from=${from}&to=${to}`),
     },
 
     /* Huquqiy kontur (reliz 6): bemor hujjatlari va kirish jurnali.
@@ -1454,12 +1603,20 @@ export const api = {
 
     // ─── Qabul bayoni shablonlari ───────────────────────────────────────────
     encounterTemplates: {
-        getAll: (departmentId?: string) =>
-            isDemoMode() ? demoRead<EncounterTemplate[]>([])
-                : fetchJson<EncounterTemplate[]>(`/encounter-templates${departmentId ? `?departmentId=${departmentId}` : ''}`),
-        create: (data: { departmentId: string; name: string; fields: EncounterField[]; isDefault?: boolean }) =>
+        /* `patientId` berilsa server bemorga MOS KELMAYDIGAN shablonlarni
+           chiqarib tashlaydi (jins va yosh bo'yicha). Sozlamalarda esa
+           hammasi kerak — shuning uchun ixtiyoriy. */
+        getAll: (departmentId?: string, patientId?: string) => {
+            if (isDemoMode()) return demoRead<EncounterTemplate[]>([]);
+            const q = new URLSearchParams();
+            if (departmentId) q.set('departmentId', departmentId);
+            if (patientId) q.set('patientId', patientId);
+            const qs = q.toString();
+            return fetchJson<EncounterTemplate[]>(`/encounter-templates${qs ? `?${qs}` : ''}`);
+        },
+        create: (data: { departmentId: string; name: string; fields: EncounterField[]; isDefault?: boolean; gender?: string | null; minAge?: number | null; maxAge?: number | null }) =>
             isDemoMode() ? demoWrite<EncounterTemplate>() : fetchJson<EncounterTemplate>('/encounter-templates', { method: 'POST', body: JSON.stringify(data) }),
-        update: (id: string, data: { name?: string; fields?: EncounterField[]; isDefault?: boolean }) =>
+        update: (id: string, data: { name?: string; fields?: EncounterField[]; isDefault?: boolean; gender?: string | null; minAge?: number | null; maxAge?: number | null }) =>
             isDemoMode() ? demoWrite<EncounterTemplate>() : fetchJson<EncounterTemplate>(`/encounter-templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
         delete: (id: string) =>
             isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/encounter-templates/${id}`, { method: 'DELETE' }),
@@ -1896,50 +2053,10 @@ export const api = {
                 body: JSON.stringify(data),
             });
         },
-        updateStock: (id: string, data: { change: number; type: 'IN' | 'OUT'; note?: string; userName: string; patientId?: string; cost?: number }) => {
-            if (isDemoMode()) {
-                const index = DEMO_INVENTORY.findIndex(i => i.id === id);
-                if (index !== -1) {
-                    const item = DEMO_INVENTORY[index];
-                    const changeAmount = data.type === 'IN' ? data.change : -data.change;
-                    item.quantity += changeAmount;
-                    item.updatedAt = new Date().toISOString();
-
-                    // Create log
-                    const log: InventoryLog = {
-                        id: `demo-log-${Date.now()}`,
-                        itemId: id,
-                        change: data.change,
-                        type: data.type,
-                        note: data.note || '',
-                        date: new Date().toISOString(),
-                        userName: data.userName,
-                        patientId: data.patientId
-                    };
-                    DEMO_INVENTORY_LOGS.push(log);
-                    if (data.type === 'IN' && data.cost && data.cost > 0) {
-                        DEMO_EXPENSES.push({
-                            id: `demo-exp-${Date.now()}`,
-                            date: todayISO(),
-                            amount: data.cost,
-                            category: 'Inventory',
-                            title: `Ombor: ${item.name}`,
-                            note: data.note || null,
-                            clinicId: item.clinicId,
-                            inventoryItemId: item.id,
-                        });
-                    }
-                    saveDemoData();
-                    return Promise.resolve(item);
-                }
-                return Promise.reject('Item not found');
-            }
-            return fetchJson<InventoryItem>(`/inventory/${id}/stock`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            });
-        },
+        /* `updateStock` OLIB TASHLANDI (0028).
+           U `PUT /api/inventory/:id/stock` ni chaqirardi — qoldiqni qayta
+           yozib, eski jurnalga tushardi va partiyalarga tegmasdi. Kirim va
+           chiqim endi faqat `api.stock.*` orqali. */
         delete: (id: string) => {
             if (isDemoMode()) {
                 const index = DEMO_INVENTORY.findIndex(i => i.id === id);
@@ -1962,25 +2079,9 @@ export const api = {
             }
             return fetchJson<InventoryLog[]>(`/inventory/logs?clinicId=${clinicId}${patientId ? `&patientId=${patientId}` : ''}`);
         },
-        deleteLog: (logId: string) => {
-            if (isDemoMode()) {
-                const index = DEMO_INVENTORY_LOGS.findIndex(l => l.id === logId);
-                if (index !== -1) {
-                    const log = DEMO_INVENTORY_LOGS[index];
-                    // Restore inventory quantity
-                    const itemIndex = DEMO_INVENTORY.findIndex(i => i.id === log.itemId);
-                    if (itemIndex !== -1) {
-                        DEMO_INVENTORY[itemIndex].quantity += log.change; // change is negative for OUT, so adding restores
-                    }
-                    DEMO_INVENTORY_LOGS.splice(index, 1);
-                    saveDemoData();
-                }
-                return Promise.resolve({ success: true });
-            }
-            return fetchJson<{ success: true }>(`/inventory/logs/${logId}`, {
-                method: 'DELETE',
-            });
-        },
+        /* `deleteLog` OLIB TASHLANDI (0028) — jurnal qatori o'chirilmaydi.
+           Xato yozilgan chiqim `api.stock.reverse()` bilan bekor qilinadi:
+           teskari harakat yoziladi, ikkala qator ham tarixda qoladi. */
         getAnalytics: (clinicId: string, startDate?: string, endDate?: string) => {
             if (isDemoMode()) return Promise.resolve([]); // Simple empty analytics for demo
             return fetchJson<any[]>(`/inventory/analytics?clinicId=${clinicId}${startDate ? `&startDate=${startDate}` : ''}${endDate ? `&endDate=${endDate}` : ''}`);

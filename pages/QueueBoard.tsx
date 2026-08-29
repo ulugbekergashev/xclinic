@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Volume2, VolumeX, Maximize2, Clock } from 'lucide-react';
+import { Volume2, VolumeX, Maximize2, MonitorPlay, Clock } from 'lucide-react';
 import { API_URL } from '../services/api';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -22,6 +22,8 @@ import { API_URL } from '../services/api';
 
 interface BoardEntry {
     queueNumber: number | null;
+    /** «K-02» — bo'lim kodi bilan. Bo'limsiz qabulda raqamning o'zi. */
+    ticket: string | null;
     status: 'Waiting' | 'Called' | 'In Progress';
     calledAt: string | null;
     department: string | null;
@@ -30,6 +32,9 @@ interface BoardEntry {
     // server shifokor ismini yubormaydi (multiprofile.ts, queue-board)
 }
 
+/* Tablo LOGIN TALAB QILMAYDI (televizorda turadi), ya'ni hodisalar oqimiga
+   ulana olmaydi — oqim autentifikatsiya so'raydi. Shuning uchun bu yerda
+   polling qoladi va u yagona to'g'ri yechim. */
 const REFRESH_MS = 5000;
 
 export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClinicId }) => {
@@ -47,8 +52,8 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
         if (!voiceOn || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
         const dept = e.department ? `, ${e.department} bo'limiga` : '';
-        const textUz = `Navbat raqam ${e.queueNumber}${dept}, marhamat.`;
-        const textRu = `Номер очереди ${e.queueNumber}${e.department ? `, в отделение ${e.department}` : ''}, пожалуйста.`;
+        const textUz = `Navbat raqam ${e.ticket ?? e.queueNumber}${dept}, marhamat.`;
+        const textRu = `Номер очереди ${e.ticket ?? e.queueNumber}${e.department ? `, в отделение ${e.department}` : ''}, пожалуйста.`;
 
         const voices = window.speechSynthesis.getVoices();
         const uz = voices.find(v => v.lang.toLowerCase().includes('uz'));
@@ -131,11 +136,32 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                         title={voiceOn ? "Ovozni o'chirish" : 'Ovozni yoqish'}>
                         {voiceOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
                     </button>
-                    <button onClick={goFullscreen}
+                    <button aria-label="To'liq ekran" onClick={goFullscreen}
                         className="p-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300"
                         title="To'liq ekran">
                         <Maximize2 className="w-5 h-5" />
                     </button>
+                    {/* KIOSK REJIMI (S5.6, audit B-1 tablo).
+
+                        Audit: «Hozir tablo app menyusi bilan chiqadi».
+                        Menyusiz sahifa (`/board/:clinicId`) ALLAQACHON bor
+                        edi — unga o'tish yo'li yo'q edi, ya'ni uni faqat
+                        manzilni qo'lda yozib topish mumkin edi.
+
+                        Yangi oynada ochiladi: tablo alohida monitorda
+                        turadi, xodim esa o'z ishida qoladi. */}
+                    {clinicId && (
+                        <a
+                            href={`#/board/${clinicId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label="Kiosk rejimi — alohida oynada"
+                            title="Kiosk rejimi: menyusiz, alohida oynada"
+                            className="p-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 inline-flex"
+                        >
+                            <MonitorPlay className="w-5 h-5" />
+                        </a>
+                    )}
                 </div>
             </div>
 
@@ -154,7 +180,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                                     background: `linear-gradient(160deg, ${(e.color || '#2563EB')}22, transparent)`,
                                 }}>
                                 <p className="text-7xl lg:text-8xl font-black leading-none tabular-nums">
-                                    {e.queueNumber ?? '—'}
+                                    {e.ticket ?? e.queueNumber ?? '—'}
                                 </p>
                                 <p className="mt-3 text-xl font-medium text-gray-200 truncate">
                                     {e.department || '—'}
@@ -177,7 +203,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                         {waiting.map((e, i) => (
                             <div key={`${e.queueNumber}-${i}`}
                                 className="px-5 py-3 rounded-xl bg-gray-900 border border-gray-800 min-w-[92px] text-center">
-                                <p className="text-3xl font-bold tabular-nums">{e.queueNumber ?? '—'}</p>
+                                <p className="text-3xl font-bold tabular-nums">{e.ticket ?? e.queueNumber ?? '—'}</p>
                                 <p className="text-xs text-gray-500 truncate max-w-[120px]">{e.department || ''}</p>
                             </div>
                         ))}

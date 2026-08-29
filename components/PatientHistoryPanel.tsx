@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatDate } from '../utils/format';
 import {
     AlertTriangle, Activity, FlaskConical, Scan, Pill, BedDouble,
     ChevronDown, ChevronUp, Wallet, Plus, X,
@@ -30,7 +31,7 @@ interface Props {
 const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(Math.round(n || 0));
 const fmtDate = (v?: string | null) => {
     if (!v) return '—';
-    try { return new Date(v).toLocaleDateString('uz-UZ'); } catch { return String(v).slice(0, 10); }
+    try { return formatDate(v); } catch { return String(v).slice(0, 10); }
 };
 
 const SEVERITY_UI: Record<string, string> = {

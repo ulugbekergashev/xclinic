@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatDate, formatFullName } from '../utils/format';
 import {
     BedDouble, Plus, X, AlertCircle, LogOut, Stethoscope,
     Pill, CalendarDays, Search, Check, Printer, ArrowRightLeft,
@@ -6,6 +7,11 @@ import {
 } from 'lucide-react';
 import { Ward, Bed, Admission, Patient, Department, InventoryItem } from '../types';
 import { api } from '../services/api';
+import { EmptyState } from '../components/Common';
+import { useLanguage } from '../context/LanguageContext';
+import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
+
+const LIVE_EVENTS: LiveEventType[] = ['admission.changed', 'charge.paid'];
 import { Clinic } from '../types';
 import { printDischarge } from '../utils/printForms';
 import { VitalsChart } from '../components/VitalsChart';
@@ -48,7 +54,7 @@ const SOURCE_LABEL: Record<string, string> = {
     Bed: 'Koyka', Medication: 'Dorilar', Service: 'Xizmatlar',
     Lab: 'Tahlillar', Study: 'Tekshiruvlar', Other: 'Boshqa',
 };
-const fmtDate = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('uz-UZ') : '—';
+const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
 /** Yotgan kunlar soni — kunlik hisobni ko'rsatish uchun */
 const daysIn = (from: string, to?: string | null) => {
@@ -61,6 +67,7 @@ export const Inpatient: React.FC<Props> = ({
     clinicId, patients = [], departments = [], doctors = [], inventoryItems = [], currentUserName,
     currentClinic, userRole,
 }) => {
+    const { t } = useLanguage();
     const [wards, setWards] = useState<Ward[]>([]);
     const [admissions, setAdmissions] = useState<Admission[]>([]);
     const [tab, setTab] = useState<'beds' | 'active' | 'archive' | 'meds'>('beds');
@@ -85,6 +92,10 @@ export const Inpatient: React.FC<Props> = ({
     }, []);
 
     useEffect(() => { reload(); }, [reload]);
+
+    /* Statsionar ekrani ilgari UMUMAN yangilanmasdi: hamshira ko'chirishni
+       yozsa, shifokorning ekranida eski palata turaverardi. */
+    useLiveUpdates(LIVE_EVENTS, reload);
 
     const inpatientDept = useMemo(() => departments.find(d => d.type === 'INPATIENT'), [departments]);
 
@@ -115,11 +126,11 @@ export const Inpatient: React.FC<Props> = ({
         try {
             await api.admissions.create({
                 patientId: admitForm.patientId,
-                patientName: p ? `${p.firstName} ${p.lastName}` : '',
+                patientName: p ? `${formatFullName(p)}` : '',
                 bedId: admitBed.bed.id,
                 departmentId: admitBed.ward.departmentId || inpatientDept?.id || null,
                 doctorId: admitForm.doctorId || null,
-                doctorName: doc ? `${doc.firstName} ${doc.lastName}` : null,
+                doctorName: doc ? `${formatFullName(doc)}` : null,
                 dailyRate: admitBed.ward.dailyRate,
                 reason: admitForm.reason || null,
                 diagnosis: admitForm.diagnosis || null,
@@ -133,8 +144,12 @@ export const Inpatient: React.FC<Props> = ({
 
     /* ─── Reliz 4: dori varag'i, o'lchovlar, ko'chirish, epikriz ───────────── */
 
-    const canGiveMeds = ['NURSE', 'DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(userRole || '');
-    const canTransfer = ['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(userRole || '');
+    const canGiveMeds = ['NURSE', 'DOCTOR', 'CLINIC_ADMIN'].includes(userRole || '');
+    const canTransfer = ['DOCTOR', 'CLINIC_ADMIN'].includes(userRole || '');
+    /* Palata ochish, yotqizish va chiqarish — hamshiraning ishi emas; server
+       ham 403 beradi. Ro'yxat "kimga mumkin" emas, "kimga mumkin emas" bo'yicha:
+       shunda qolgan rollarda hech narsa o'zgarmaydi. */
+    const canManageStay = userRole !== 'NURSE';
 
     // Bitta bemorning kunlik dori varag'i
     const [mar, setMar] = useState<any>(null);
@@ -426,17 +441,19 @@ export const Inpatient: React.FC<Props> = ({
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <BedDouble className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">Statsionar</h2>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('inp.title')}</h2>
                 </div>
                 <div className="flex items-center gap-4 text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">Koyka: <b className="text-gray-900 dark:text-white tabular-nums">{stats.total}</b></span>
-                    <span className="text-emerald-600 dark:text-emerald-400">Bo'sh: <b className="tabular-nums">{stats.free}</b></span>
-                    <span className="text-primary-600 dark:text-primary-400">Band: <b className="tabular-nums">{stats.occupied}</b></span>
+                    <span className="text-gray-500 dark:text-gray-400">{t('inp.bedLabel')}<b className="text-gray-900 dark:text-white tabular-nums">{stats.total}</b></span>
+                    <span className="text-emerald-600 dark:text-emerald-400">{t('inp.free')}<b className="tabular-nums">{stats.free}</b></span>
+                    <span className="text-primary-600 dark:text-primary-400">{t('inp.occupied')}<b className="tabular-nums">{stats.occupied}</b></span>
                 </div>
-                <button onClick={() => setShowWard(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
-                    <Plus className="w-4 h-4" /> Palata
-                </button>
+                {canManageStay && (
+                    <button onClick={() => setShowWard(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+                        <Plus className="w-4 h-4" /> Palata
+                    </button>
+                )}
             </div>
 
             {error && (
@@ -468,10 +485,11 @@ export const Inpatient: React.FC<Props> = ({
             {/* Palatalar xaritasi */}
             {tab === 'beds' && (
                 wards.length === 0 ? (
-                    <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                        <BedDouble className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                        <p className="text-gray-500 dark:text-gray-400">Palatalar yo'q</p>
-                    </div>
+                    <EmptyState
+                    icon={<BedDouble className="w-12 h-12" />}
+                    title={t('inp.noWards')}
+                    hint={t('inp.noWardsHint')}
+                />
                 ) : (
                     <div className="space-y-4">
                         {wards.map(w => (
@@ -489,7 +507,7 @@ export const Inpatient: React.FC<Props> = ({
                                             <div key={b.id}
                                                 className={`p-3 rounded-lg border-2 transition-colors ${BED_UI[b.status] || BED_UI.Blocked}`}>
                                                 <button
-                                                    onClick={() => { if (b.status === 'Free') setAdmitBed({ bed: b, ward: w }); else if (occ) openDetail(admissions.find(a => a.id === occ.id) || null); }}
+                                                    onClick={() => { if (b.status === 'Free') { if (canManageStay) setAdmitBed({ bed: b, ward: w }); } else if (occ) openDetail(admissions.find(a => a.id === occ.id) || null); }}
                                                     className="w-full text-left hover:opacity-80">
                                                     <p className="text-sm font-medium text-gray-900 dark:text-white">{b.label}</p>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
@@ -519,11 +537,11 @@ export const Inpatient: React.FC<Props> = ({
                 <>
                     <div className="relative">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Bemor..." className={`${inputCls} pl-9`} />
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('inp.searchPh')} className={`${inputCls} pl-9`} />
                     </div>
                     {listed.length === 0 ? (
                         <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <p className="text-gray-500 dark:text-gray-400">Yozuvlar yo'q</p>
+                            <p className="text-gray-500 dark:text-gray-400">{t('inp.noRecords')}</p>
                         </div>
                     ) : (
                         <div className="grid gap-3">
@@ -551,7 +569,7 @@ export const Inpatient: React.FC<Props> = ({
                                                         className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                                                         Ochish
                                                     </button>
-                                                    {a.status === 'Active' && (
+                                                    {a.status === 'Active' && canManageStay && (
                                                         <button onClick={() => openDischarge(a)}
                                                             className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
                                                             Chiqarish
@@ -574,7 +592,7 @@ export const Inpatient: React.FC<Props> = ({
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                             <div>
-                                <h3 className="font-semibold text-gray-900 dark:text-white">Yotqizish</h3>
+                                <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.admit')}</h3>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                     {admitBed.ward.name} / {admitBed.bed.label} · {fmt(admitBed.ward.dailyRate)} so'm/kun
                                 </p>
@@ -583,30 +601,30 @@ export const Inpatient: React.FC<Props> = ({
                         </div>
                         <div className="p-5 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Bemor</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('common.patient2')}</label>
                                 <select value={admitForm.patientId} onChange={e => setAdmitForm(f => ({ ...f, patientId: e.target.value }))} className={inputCls}>
-                                    <option value="">Tanlang...</option>
-                                    {patients.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+                                    <option value="">{t('common.choose')}</option>
+                                    {patients.map(p => <option key={p.id} value={p.id}>{formatFullName(p)}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Davolovchi shifokor</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.attendingDoctor')}</label>
                                 <select value={admitForm.doctorId} onChange={e => setAdmitForm(f => ({ ...f, doctorId: e.target.value }))} className={inputCls}>
                                     <option value="">—</option>
-                                    {doctors.map((d: any) => <option key={d.id} value={d.id}>{d.firstName} {d.lastName}</option>)}
+                                    {doctors.map((d: any) => <option key={d.id} value={d.id}>{formatFullName(d)}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Yotqizish sababi</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.admitReason')}</label>
                                 <input value={admitForm.reason} onChange={e => setAdmitForm(f => ({ ...f, reason: e.target.value }))} className={inputCls} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tashxis</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.diagnosis')}</label>
                                 <input value={admitForm.diagnosis} onChange={e => setAdmitForm(f => ({ ...f, diagnosis: e.target.value }))} className={inputCls} />
                             </div>
                         </div>
                         <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setAdmitBed(null)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Bekor qilish</button>
+                            <button onClick={() => setAdmitBed(null)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={admit} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {saving ? '...' : 'Yotqizish'}
                             </button>
@@ -624,7 +642,7 @@ export const Inpatient: React.FC<Props> = ({
                 <div className="space-y-4">
                     <div className="flex flex-wrap items-center gap-3">
                         <select value={schedDept} onChange={e => setSchedDept(e.target.value)} className={inputCls + ' max-w-xs'}>
-                            <option value="">Barcha bo'limlar</option>
+                            <option value="">{t('inp.allDepts')}</option>
                             {departments.filter(d => d.isActive).map(d => (
                                 <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
@@ -648,7 +666,7 @@ export const Inpatient: React.FC<Props> = ({
                     ) : (schedule?.rows || []).length === 0 ? (
                         <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                             <Pill className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                            <p className="text-gray-500 dark:text-gray-400">Bugun tayinlangan dori yo'q</p>
+                            <p className="text-gray-500 dark:text-gray-400">{t('inp.noMedsToday')}</p>
                             <p className="text-xs text-gray-400 mt-1">
                                 Dori bemor kartasidan tayinlanadi: "Yotganlar" bo'limida bemorni ochib, "Dori tayinlash".
                             </p>
@@ -673,7 +691,7 @@ export const Inpatient: React.FC<Props> = ({
                                     </div>
 
                                     {(row.orders || []).length === 0 ? (
-                                        <p className="px-4 py-3 text-sm text-gray-400">Bugunga tayinlov yo'q</p>
+                                        <p className="px-4 py-3 text-sm text-gray-400">{t('inp.noOrdersToday')}</p>
                                     ) : (
                                         <div className="divide-y divide-gray-100 dark:divide-gray-700">
                                             {row.orders.map((o: any) => {
@@ -750,7 +768,7 @@ export const Inpatient: React.FC<Props> = ({
                                         <ArrowRightLeft className="w-3.5 h-3.5" /> Ko'chirish
                                     </button>
                                 )}
-                                {detail.status === 'Active' && (
+                                {detail.status === 'Active' && canManageStay && (
                                     <button onClick={() => openDischarge(detail)}
                                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
                                         <LogOut className="w-3.5 h-3.5" /> Chiqarish
@@ -961,12 +979,12 @@ export const Inpatient: React.FC<Props> = ({
                                         <Stethoscope className="w-4 h-4" /> Kunlik obxod
                                     </h4>
                                     <div className="grid grid-cols-3 gap-3 mb-3">
-                                        <input value={roundForm.temperature} onChange={e => setRoundForm(f => ({ ...f, temperature: e.target.value }))} className={inputCls} placeholder="Harorat °C" />
-                                        <input value={roundForm.bp} onChange={e => setRoundForm(f => ({ ...f, bp: e.target.value }))} className={inputCls} placeholder="AB (120/80)" />
-                                        <input value={roundForm.pulse} onChange={e => setRoundForm(f => ({ ...f, pulse: e.target.value }))} className={inputCls} placeholder="Puls" />
+                                        <input value={roundForm.temperature} onChange={e => setRoundForm(f => ({ ...f, temperature: e.target.value }))} className={inputCls} placeholder={t('inp.tempPh')} />
+                                        <input value={roundForm.bp} onChange={e => setRoundForm(f => ({ ...f, bp: e.target.value }))} className={inputCls} placeholder={t('inp.bpPh')} />
+                                        <input value={roundForm.pulse} onChange={e => setRoundForm(f => ({ ...f, pulse: e.target.value }))} className={inputCls} placeholder={t('inp.pulsePh')} />
                                     </div>
-                                    <textarea rows={2} value={roundForm.notes} onChange={e => setRoundForm(f => ({ ...f, notes: e.target.value }))} className={`${inputCls} mb-2`} placeholder="Holati..." />
-                                    <textarea rows={2} value={roundForm.plan} onChange={e => setRoundForm(f => ({ ...f, plan: e.target.value }))} className={`${inputCls} mb-3`} placeholder="Reja..." />
+                                    <textarea rows={2} value={roundForm.notes} onChange={e => setRoundForm(f => ({ ...f, notes: e.target.value }))} className={`${inputCls} mb-2`} placeholder={t('inp.notesPh')} />
+                                    <textarea rows={2} value={roundForm.plan} onChange={e => setRoundForm(f => ({ ...f, plan: e.target.value }))} className={`${inputCls} mb-3`} placeholder={t('inp.planPh')} />
                                     <button onClick={addRound} disabled={saving} className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50">
                                         Obxodni saqlash
                                     </button>
@@ -1013,8 +1031,8 @@ export const Inpatient: React.FC<Props> = ({
                                         <datalist id="xc-meds">
                                             {inventoryItems.filter(i => (i as any).isMedication).map(i => <option key={i.id} value={i.name} />)}
                                         </datalist>
-                                        <input value={medForm.dosage} onChange={e => setMedForm(f => ({ ...f, dosage: e.target.value }))} className={inputCls} placeholder="Doza (500 mg)" />
-                                        <input value={medForm.route} onChange={e => setMedForm(f => ({ ...f, route: e.target.value }))} className={inputCls} placeholder="Yo'li (ichish, v/i)" />
+                                        <input value={medForm.dosage} onChange={e => setMedForm(f => ({ ...f, dosage: e.target.value }))} className={inputCls} placeholder={t('inp.dosePh')} />
+                                        <input value={medForm.route} onChange={e => setMedForm(f => ({ ...f, route: e.target.value }))} className={inputCls} placeholder={t('inp.routePh')} />
                                         <input value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))} className={inputCls} placeholder="Kuniga 2 mahal" />
                                     </div>
                                     <button onClick={addMedication} disabled={saving} className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50">
@@ -1025,7 +1043,7 @@ export const Inpatient: React.FC<Props> = ({
 
                             {!!detail.medicationOrders?.length && (
                                 <div>
-                                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Tayinlangan dorilar</h4>
+                                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{t('inp.medOrders')}</h4>
                                     <div className="space-y-1.5">
                                         {detail.medicationOrders.map(m => (
                                             <div key={m.id} className="text-sm flex flex-wrap gap-x-2 text-gray-700 dark:text-gray-300">
@@ -1054,7 +1072,7 @@ export const Inpatient: React.FC<Props> = ({
                                 if (filled.length === 0) return null;
                                 return (
                                     <div>
-                                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Chiqarish epikrizi</h4>
+                                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{t('inp.dischargeEpicrisis')}</h4>
                                         <div className="space-y-2">
                                             {filled.map(([k, v]) => (
                                                 <div key={k}>
@@ -1076,35 +1094,35 @@ export const Inpatient: React.FC<Props> = ({
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowWard(false)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">Yangi palata</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.newWard')}</h3>
                             <button onClick={() => setShowWard(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-5 grid grid-cols-2 gap-4">
                             <div className="col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Nomi</label>
-                                <input value={wardForm.name} onChange={e => setWardForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="5-palata" />
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.name')}</label>
+                                <input value={wardForm.name} onChange={e => setWardForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder={t('inp.wardNamePh')} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Turi</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.kind')}</label>
                                 <select value={wardForm.kind} onChange={e => setWardForm(f => ({ ...f, kind: e.target.value }))} className={inputCls}>
                                     {['Umumiy', 'Yarim lyuks', 'Lyuks', 'Reanimatsiya'].map(k => <option key={k}>{k}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Qavat</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.floor')}</label>
                                 <input value={wardForm.floor} onChange={e => setWardForm(f => ({ ...f, floor: e.target.value }))} className={inputCls} placeholder="1" />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Kunlik narx</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.dailyPrice')}</label>
                                 <input type="number" value={wardForm.dailyRate} onChange={e => setWardForm(f => ({ ...f, dailyRate: e.target.value }))} className={inputCls} placeholder="150000" />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Koyka soni</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.bedCount')}</label>
                                 <input type="number" value={wardForm.bedCount} onChange={e => setWardForm(f => ({ ...f, bedCount: e.target.value }))} className={inputCls} />
                             </div>
                         </div>
                         <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setShowWard(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Bekor qilish</button>
+                            <button onClick={() => setShowWard(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={createWard} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {saving ? '...' : 'Yaratish'}
                             </button>
@@ -1121,7 +1139,7 @@ export const Inpatient: React.FC<Props> = ({
                         <div className="flex items-start gap-3 mb-4">
                             <Wallet className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                             <div>
-                                <h3 className="font-semibold text-gray-900 dark:text-white">To'lanmagan qarz bor</h3>
+                                <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.hasDebt')}</h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                     {debtConfirm.count} qator, jami <b className="tabular-nums">{fmt(debtConfirm.due)}</b> so'm.
                                 </p>
@@ -1152,11 +1170,11 @@ export const Inpatient: React.FC<Props> = ({
             {skipFor && (
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setSkipFor(null)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
-                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Dori berilmadi</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{t('inp.medNotGiven')}</h3>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{skipFor.name}</p>
                         <input value={skipReason} autoFocus
                             onChange={e => setSkipReason(e.target.value)}
-                            placeholder="Sababi: bemor rad etdi, tomir topilmadi..."
+                            placeholder={t('inp.notGivenPh')}
                             className={inputCls} />
                         <p className="text-[11px] text-gray-400 mt-1.5">
                             Sabab yozuvda qoladi va o'chirilmaydi.
@@ -1181,7 +1199,7 @@ export const Inpatient: React.FC<Props> = ({
             {transferFor && (
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setTransferFor(null)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
-                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Boshqa koykaga ko'chirish</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{t('inp.transferBed')}</h3>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
                             {transferFor.patientName} · hozir: {transferFor.bed ? `${transferFor.bed.ward?.name} / ${transferFor.bed.label}` : 'koyka biriktirilmagan'}
                         </p>
@@ -1194,15 +1212,15 @@ export const Inpatient: React.FC<Props> = ({
                             </div>
                         ) : (
                             <>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Yangi koyka</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.newBed')}</label>
                                 <select value={transferBed} onChange={e => setTransferBed(e.target.value)} className={inputCls}>
-                                    <option value="">Tanlang</option>
+                                    <option value="">{t('common.chooseShort')}</option>
                                     {freeBeds.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
                                 </select>
 
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 mt-3">Sababi</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 mt-3">{t('inp.reason')}</label>
                                 <input value={transferReason} onChange={e => setTransferReason(e.target.value)}
-                                    placeholder="Reanimatsiyadan palataga, bemor iltimosi..." className={inputCls} />
+                                    placeholder={t('inp.transferPh')} className={inputCls} />
                                 <p className="text-[11px] text-gray-400 mt-1.5">
                                     Ko'chirish tarixda qoladi: bemor qayerda qancha yotgani ko'rinadi.
                                     Bo'shagan koyka tozalashga o'tadi.
@@ -1231,7 +1249,7 @@ export const Inpatient: React.FC<Props> = ({
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setDischargeFor(null)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-gray-200 dark:border-gray-700">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">Chiqarish epikrizi</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.dischargeEpicrisis')}</h3>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {dischargeFor.patientName} · {daysIn(dischargeFor.admittedAt, null)} kun yotdi
                             </p>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { formatDate, formatFullName } from '../utils/format';
 import {
     Percent, Plus, X, AlertCircle, Check, Loader2, Trash2,
     FileText, Wallet, CheckCircle, ChevronDown, ChevronUp, RefreshCw,
@@ -38,7 +39,7 @@ const monthStart = () => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
 };
-const fmtDate = (v?: string | null) => v ? new Date(v).toLocaleDateString('uz-UZ') : '—';
+const fmtDate = (v?: string | null) => v ? formatDate(v) : '—';
 
 const RUN_UI: Record<string, { label: string; cls: string }> = {
     Draft: { label: 'Qoralama', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' },
@@ -233,7 +234,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clini
                                 <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Davr oxiri</label>
                                 <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} />
                             </div>
-                            <button onClick={loadPreview} disabled={previewLoading}
+                            <button aria-label="Qayta hisoblash" onClick={loadPreview} disabled={previewLoading}
                                 className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Qayta hisoblash">
                                 <RefreshCw className={`w-5 h-5 ${previewLoading ? 'animate-spin' : ''}`} />
                             </button>
@@ -348,7 +349,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clini
                             <select value={rateDoctor} onChange={e => setRateDoctor(e.target.value)} className={inputCls + ' w-full'}>
                                 <option value="">Tanlang</option>
                                 {activeDoctors.map(d => (
-                                    <option key={d.id} value={d.id}>{d.lastName} {d.firstName}</option>
+                                    <option key={d.id} value={d.id}>{formatFullName(d)}</option>
                                 ))}
                             </select>
                         </div>

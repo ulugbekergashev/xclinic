@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Calendar, DollarSign, Activity, Package, Settings, MoreHorizontal, MessageSquare, Wallet } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, DollarSign, Activity, Package, Settings, MoreHorizontal, MessageSquare, Wallet, BedDouble } from 'lucide-react';
 import { UserRole, AccessControl } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 import { isModuleHidden, canSeeFinance } from '../utils/accessControl';
 
 interface BottomNavProps {
@@ -13,20 +14,23 @@ interface BottomNavProps {
 
 export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, setIsSidebarOpen, accessControl = {} }) => {
     const navigate = useNavigate();
+    const { t } = useLanguage();
     const location = useLocation();
-
-    if (userRole === UserRole.SUPER_ADMIN) return null;
 
     // Full list of available items for clinic roles
     const allItems = [
-        { id: 'dashboard', path: '/', label: 'Bosh Paneli', icon: LayoutDashboard, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-        { id: 'patients', path: '/patients', label: 'Bemorlar', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-        { id: 'calendar', path: '/calendar', label: 'Kalendar', icon: Calendar, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-        { id: 'finance', path: '/finance', label: 'Moliya', icon: Wallet, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-        { id: 'doctors', path: '/doctors', label: 'Shifokorlar', icon: Activity, roles: [UserRole.CLINIC_ADMIN] },
-        { id: 'inventory', path: '/inventory', label: 'Ombor', icon: Package, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-        { id: 'messages', path: '/messages', label: 'Xabarlar', icon: MessageSquare, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-        { id: 'settings', path: '/settings', label: 'Sozlamalar', icon: Settings, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
+        { id: 'dashboard', path: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
+        { id: 'patients', path: '/patients', labelKey: 'nav.patients', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
+        { id: 'calendar', path: '/calendar', labelKey: 'nav.calendar', icon: Calendar, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
+        { id: 'finance', path: '/finance', labelKey: 'nav.finance', icon: Wallet, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
+        { id: 'doctors', path: '/doctors', labelKey: 'nav.doctors', icon: Activity, roles: [UserRole.CLINIC_ADMIN] },
+        { id: 'inventory', path: '/inventory', labelKey: 'nav.inventory', icon: Package, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
+        { id: 'messages', path: '/messages', labelKey: 'nav.messages', icon: MessageSquare, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
+        { id: 'settings', path: '/settings', labelKey: 'nav.settings', icon: Settings, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
+        /* Pastki menyu — qisqartirilgan ro'yxat, statsionar unga kirmagan.
+           Hamshira uchun esa bu yagona ekran: qo'shmasak, telefonda pastki
+           menyu umuman bo'sh bo'lib qoladi. Boshqa rollarda o'zgarish yo'q. */
+        { id: 'inpatient', path: '/inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: [UserRole.NURSE] },
     ];
 
     // Filter items based on role + ruxsatlar (Sozlamalar → Ruxsatlar)
@@ -65,7 +69,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
                             <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-primary-50 dark:bg-primary-900/30 scale-110' : ''}`}>
                                 <Icon className={`w-5 h-5 ${active ? 'fill-current' : ''}`} />
                             </div>
-                            <span className="text-[10px] font-medium mt-1 truncate max-w-full px-1">{item.label}</span>
+                            <span className="text-[10px] font-medium mt-1 truncate max-w-full px-1">{t(item.labelKey)}</span>
                             {active && (
                                 <div className="absolute bottom-1 w-1 h-1 bg-primary-600 dark:bg-primary-400 rounded-full" />
                             )}
@@ -84,7 +88,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
                         <div className={`p-1.5 rounded-xl transition-all duration-300 ${isSidebarOpen ? 'bg-primary-50 dark:bg-primary-900/30 scale-110' : ''}`}>
                             <MoreHorizontal className="w-5 h-5" />
                         </div>
-                        <span className="text-[10px] font-medium mt-1">Barchasi</span>
+                        <span className="text-[10px] font-medium mt-1">{t('nav.all')}</span>
                     </button>
                 )}
             </div>

@@ -3,6 +3,7 @@ import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import http from 'http';
 import fs from 'fs';
+import { applyPendingRestore } from './restore';
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -149,8 +150,35 @@ function startCloudflared(userData: string) {
     const logStream = fs.createWriteStream(path.join(userData, 'cloudflared.log'), { flags: 'a' });
     logStream.write(`\n=== ${new Date().toISOString()} START (cfExe=${cfExe}) ===\n`);
 
-    // Quick tunnel always runs as a fallback link
-    startQuickTunnel(userData, logStream);
+    /* MASOFAVIY KIRISH ENDI IXTIYORIY, sukut bo'yicha O'CHIQ.
+
+       Ilgari bu yerda "Quick tunnel always runs as a fallback link" yozilgan
+       edi va tunnel SHARTSIZ ko'tarilardi — ya'ni har bir o'rnatma o'zi
+       bilmagan holda `trycloudflare.com` manzili orqali INTERNETGA ochiq
+       bo'lardi. Standart `admin` / `admin` login bilan birga bu jiddiy
+       teshik edi.
+
+       Endi u `remote-access.json` bilan boshqariladi va yoqish uchun standart
+       parol almashtirilgan bo'lishi shart (backend tekshiradi). */
+    let remoteEnabled = false;
+    try {
+        const p = path.join(userData, 'remote-access.json');
+        if (fs.existsSync(p)) remoteEnabled = JSON.parse(fs.readFileSync(p, 'utf8'))?.enabled === true;
+    } catch { /* fayl buzuq bo'lsa — o'chiq deb hisoblaymiz */ }
+
+    if (remoteEnabled) {
+        startQuickTunnel(userData, logStream);
+    } else {
+        logStream.write('[CF-Quick] Masofaviy kirish o\'chirilgan — tunnel ko\'tarilmadi\n');
+        // Eski manzil fayli qolib ketmasin: aks holda Sozlamalar "internetdan
+        // ochiq" deb YOLG'ON ogohlantirish ko'rsatib turardi.
+        for (const f of ['cf-quick-tunnel.json', 'cf-tunnel.json']) {
+            try {
+                const p = path.join(userData, f);
+                if (fs.existsSync(p)) fs.unlinkSync(p);
+            } catch { /* ixtiyoriy */ }
+        }
+    }
 
     const { token, url } = readTunnelEnv(userData);
     if (token) startNamedTunnel(userData, logStream, token, url);
@@ -170,81 +198,6 @@ function startCloudflared(userData: string) {
             }
         }
     }, 30000);
-}
-
-/**
- * Belgilangan tiklashni qo'llaydi. Backend ishga tushishidan OLDIN chaqiriladi.
- *
- * Tartib muhim:
- *   1. joriy bazani yonma-yon saqlaymiz (noto'g'ri nusxa tanlangan bo'lsa qaytish yo'li);
- *   2. nusxani asosiy joyga qo'yamiz;
- *   3. uploads arxivi bo'lsa — fayllarni tiklaymiz;
- *   4. belgini o'chiramiz, aks holda har ishga tushishda takrorlanadi.
- *
- * Xatolik bo'lsa: belgi O'CHIRILADI va joriy baza tegilmagan holda qoladi —
- * cheksiz qayta urinish holatiga tushmaslik uchun.
- */
-function applyPendingRestore(userData: string, dbPath: string) {
-    const marker = path.join(userData, 'restore-pending.json');
-    if (!fs.existsSync(marker)) return;
-
-    let file = '';
-    try {
-        file = String(JSON.parse(fs.readFileSync(marker, 'utf8')).file || '');
-    } catch {
-        console.error("[Restore] belgi fayli o'qilmadi — bekor qilinadi");
-        try { fs.unlinkSync(marker); } catch { /* ignore */ }
-        return;
-    }
-
-    // Nomni qat'iy tekshiramiz: belgi fayli orqali istalgan yo'lni ko'rsatib
-    // bo'lmasligi kerak.
-    if (!/^xclinic-\d{8}-\d{6}\.db$/.test(file)) {
-        console.error("[Restore] nusxa nomi noto'g'ri:", file);
-        try { fs.unlinkSync(marker); } catch { /* ignore */ }
-        return;
-    }
-
-    const backupDir = path.join(userData, 'backups');
-    const source = path.join(backupDir, file);
-    if (!fs.existsSync(source)) {
-        console.error('[Restore] nusxa topilmadi:', source);
-        try { fs.unlinkSync(marker); } catch { /* ignore */ }
-        return;
-    }
-
-    try {
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        if (fs.existsSync(dbPath)) {
-            const aside = path.join(backupDir, `pre-restore-${stamp}.db`);
-            fs.copyFileSync(dbPath, aside);
-            console.log('[Restore] joriy baza saqlandi:', path.basename(aside));
-        }
-        fs.copyFileSync(source, dbPath);
-        // SQLite yordamchi fayllari eski bazadan qolib ketmasligi kerak
-        for (const suffix of ['-wal', '-shm', '-journal']) {
-            const extra = dbPath + suffix;
-            try { if (fs.existsSync(extra)) fs.unlinkSync(extra); } catch { /* ignore */ }
-        }
-        console.log('[Restore] baza tiklandi:', file);
-
-        const zip = path.join(backupDir, file.replace(/\.db$/, '-uploads.zip'));
-        if (fs.existsSync(zip)) {
-            try {
-                const AdmZip = require('adm-zip');
-                const uploadsDir = path.join(userData, 'uploads');
-                if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-                new AdmZip(zip).extractAllTo(uploadsDir, true);
-                console.log('[Restore] fayllar tiklandi');
-            } catch (e: any) {
-                console.error('[Restore] fayllar arxividan tiklanmadi:', e?.message || e);
-            }
-        }
-    } catch (e: any) {
-        console.error('[Restore] tiklash bajarilmadi:', e?.message || e);
-    } finally {
-        try { fs.unlinkSync(marker); } catch { /* ignore */ }
-    }
 }
 
 async function startBackend() {
@@ -475,11 +428,22 @@ webPreferences: {
         mainWindow.loadURL(`http://localhost:${FRONTEND_PORT}`);
         mainWindow.webContents.openDevTools();
     } else {
-        const indexPath = path.join(__dirname, '../dist/index.html');
-        // Backend porti 3001 dan boshqa bo'lishi mumkin — uni frontendga uzatamiz
-        // (services/api.ts dagi getBaseUrl shu ?port= ni o'qiydi).
-        mainWindow.loadFile(indexPath, { query: { port: String(BACKEND_PORT) } }).catch(err => {
-            dialog.showErrorBox('UI Error', `Frontend yuklanmadi: ${indexPath}\n${err.message}`);
+        /* BACKEND ORQALI YUKLANADI, `file://` DAN EMAS (S1.3).
+
+           Sabab: sessiyani `httpOnly` cookie ushlab turadi, `file://` da esa
+           cookie umuman ishlamaydi — Electron o'rnatmasi har ochilganda
+           parol so'rab qolardi.
+
+           Bu yangi infratuzilma talab qilmaydi: backend `dist/` ni
+           allaqachon beradi (`express.static`, backend/server.ts) va SPA
+           uchun catch-all marshruti bor. Oyna esa faqat `startBackend()`
+           tayyor deganidan keyin ochiladi, ya'ni port albatta tinglayapti.
+
+           Yon foyda: front va API bitta manbaga tushdi — `?port=` uzatish
+           ham, CORS ham bu yerda keraksiz bo'ldi. */
+        const appUrl = `http://localhost:${BACKEND_PORT}`;
+        mainWindow.loadURL(appUrl).catch(err => {
+            dialog.showErrorBox('UI Error', `Frontend yuklanmadi: ${appUrl}\n${err.message}`);
         });
     }
 

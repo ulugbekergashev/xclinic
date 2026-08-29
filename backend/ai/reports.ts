@@ -71,12 +71,12 @@ const monthRange = (today: string) => ({
 
 /** Har bir hisobot uchun: qaysi rollar ko'ra oladi. */
 const REPORT_ROLES: Record<ReportType, string[]> = {
-    today: ['SUPER_ADMIN', 'CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST'],
-    performance: ['SUPER_ADMIN', 'CLINIC_ADMIN'],
-    finance: ['SUPER_ADMIN', 'CLINIC_ADMIN'],
-    debtors: ['SUPER_ADMIN', 'CLINIC_ADMIN', 'RECEPTIONIST'],
-    inventory: ['SUPER_ADMIN', 'CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST'],
-    leads: ['SUPER_ADMIN', 'CLINIC_ADMIN', 'RECEPTIONIST'],
+    today: ['CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST'],
+    performance: ['CLINIC_ADMIN'],
+    finance: ['CLINIC_ADMIN'],
+    debtors: ['CLINIC_ADMIN', 'RECEPTIONIST'],
+    inventory: ['CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST'],
+    leads: ['CLINIC_ADMIN', 'RECEPTIONIST'],
 };
 
 export type Lang = 'uz' | 'ru';
@@ -155,7 +155,7 @@ const BUILDERS: Record<ReportType, Builder> = {
         let tushum = 0;
 
         // Moliya faqat ruxsati borlar uchun.
-        if (['SUPER_ADMIN', 'CLINIC_ADMIN'].includes(ctx.role)) {
+        if (ctx.role === 'CLINIC_ADMIN') {
             const rev = await runTool('get_revenue', { dateFrom: today, dateTo: today }, ctx);
             if (!rev.xato) {
                 tushum = rev.kassaga_kirgan || 0;

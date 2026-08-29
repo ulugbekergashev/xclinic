@@ -22,7 +22,7 @@ export const IOSInstallModal: React.FC<IOSInstallModalProps> = ({ isOpen, onClos
                             </div>
                             <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('app.install')}</h2>
                         </div>
-                        <button
+                        <button aria-label="Yopish"
                             onClick={onClose}
                             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-500"
                         >

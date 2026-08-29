@@ -15,6 +15,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { qty } from './money';
 import { tashkentDateStr, tashkentRangeBounds } from './tashkentTime';
 
 type Deps = {
@@ -23,34 +24,106 @@ type Deps = {
     getScopedClinicId: (req: any) => string | null;
 };
 
-const round = (n: number) => Math.round(n * 1000) / 1000;
+/* Ombor miqdori — uch xona (0.5 ampula, 2.5 ml real qiymatlar).
+   Pul emas, shuning uchun `som` emas, `qty`. */
+const round = qty;
 const today = () => tashkentDateStr();
 
+/* ─── Vaqtinchalik xatolarda qayta urinish ────────────────────────────────
+   SQLite bitta yozuvchiga ruxsat beradi. O'lchov (`_t_locking.ts`, 12 ta
+   parallel tranzaksiya) hozirgi sozlamada qulf xatosi bermadi, lekin ombor
+   chiqimi ALOHIDA holat: uning ikki chaqiruvchisi xatoni ATAYLAB yutadi —
+   `inpatient.ts` (dori berish fakti ombor xatosi tufayli yo'qolmasin) va
+   `multiprofile.ts` (xizmat qo'shish to'xtamasin). Ikkalasi ham to'g'ri
+   qaror, lekin natijada rollback bo'lgan chiqim JIMGINA yo'qoladi.
+
+   Shuning uchun bu yerda qayta urinish shart, ixtiyoriy emas: tranzaksiya
+   atomar bo'lgani uchun qayta urinish xavfsiz — yarim bajarilgan holat
+   qolmaydi.                                                              */
+const TRANSIENT = /database is locked|SQLITE_BUSY|Timed out fetching|Transaction already closed|P2028|P2034/i;
+
+async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): Promise<T> {
+    let lastErr: any;
+    for (let i = 1; i <= attempts; i++) {
+        try {
+            return await fn();
+        } catch (e: any) {
+            lastErr = e;
+            const msg = String(e?.message || e);
+            if (!TRANSIENT.test(msg) || i === attempts) throw e;
+            // Qisqa kutish: to'qnashuv odatda millisekundlarda tarqaydi
+            await new Promise((r) => setTimeout(r, 40 * i));
+            console.warn(`${label}: ${i}-urinish muvaffaqiyatsiz (${msg.slice(0, 60)}), qayta urinilmoqda`);
+        }
+    }
+    throw lastErr;
+}
+
+export type StockClient = any;   // prisma yoki tranzaksiya klienti
+
 /**
- * FEFO bo'yicha chiqim: muddati eng yaqin partiyadan boshlab yechadi.
- * Muddati ko'rsatilmagan partiyalar oxirida qoladi.
+ * FEFO chiqimining O'ZAGI. `db` — prisma yoki tranzaksiya klienti.
+ *
+ * ATAYLAB tranzaksiya OCHMAYDI: uni chaqiruvchi ochadi. Shunda retsept
+ * bo'yicha bir necha modda chiqarilganda hammasi BITTA tranzaksiyaga tushadi
+ * va yarim bajarilgan retsept qolmaydi.
  *
  * Qoldiq yetmasa ham chiqim yoziladi (manfiy qoldiqqa yo'l qo'yamiz) — chunki
  * xizmat allaqachon ko'rsatilgan va uni "material yetmadi" deb bekor qilib
  * bo'lmaydi. Farq inventarizatsiyada ko'rinadi.
  */
-export async function writeOff(prisma: any, input: {
+async function writeOffCore(db: StockClient, input: {
     clinicId: string;
     itemId: string;
     quantity: number;
     reason: string;
     visitId?: string | null;
     serviceId?: number | null;
+    /** Bemor kartasidan sarflangan material — 0028 dan keyin shu yerda */
+    patientId?: string | null;
     note?: string | null;
     userName?: string | null;
+    /** Muddati o'tgan partiyani ATAYLAB sarflashga ruxsat (S2.5). */
+    allowExpired?: boolean;
 }) {
     const { clinicId, itemId, quantity } = input;
     if (!(quantity > 0)) return [];
 
-    const batches = await prisma.inventoryBatch.findMany({
+    const all = await db.inventoryBatch.findMany({
         where: { itemId, quantity: { gt: 0 } },
         orderBy: [{ expiryDate: 'asc' }, { receivedAt: 'asc' }],
     });
+
+    /* MUDDATI O'TGANLAR CHIQARIB TASHLANADI (S2.5, audit B-25).
+
+       Bu yerda ilgari FEFO tartibi ishlardi — «muddati eng yaqini
+       birinchi». Mantiq to'g'ri, lekin oqibati teskari edi: MUDDATI
+       ALLAQACHON O'TGAN partiya ro'yxatning eng boshida turardi, ya'ni
+       tizim yaroqsiz dorini BIRINCHI NAVBATDA sarflardi.
+
+       Dev bazada 13 ta partiyaning muddati o'tgan va ularning hech biri
+       hech narsani to'smasdi. */
+    const today = tashkentDateStr();
+    const expired = all.filter((b: any) => b.expiryDate && b.expiryDate < today);
+    const batches = input.allowExpired ? all : all.filter((b: any) => !(b.expiryDate && b.expiryDate < today));
+
+    if (!input.allowExpired && expired.length > 0) {
+        const usable = batches.reduce((n: number, b: any) => n + b.quantity, 0);
+        if (usable < quantity) {
+            /* Jimgina partiyasiz chiqim qilib qo'ymaymiz: quyidagi
+               `left > 0` shoxi aynan shuni qilardi va yaroqsiz dori
+               «yo'q» bo'lib ko'rinardi. Sabab aniq aytiladi. */
+            const err: any = new Error(
+                `Yaroqli qoldiq yetarli emas: ${usable} bor, ${quantity} kerak. ` +
+                `Muddati o'tgan ${expired.length} ta partiya hisobga olinmadi.`);
+            err.code = 'EXPIRED_STOCK_BLOCKED';
+            err.expired = expired.map((b: any) => ({
+                id: b.id, batchNumber: b.batchNumber, expiryDate: b.expiryDate, quantity: b.quantity,
+            }));
+            err.usable = usable;
+            throw err;
+        }
+    }
 
     // Muddati ko'rsatilmaganlarni oxirga suramiz
     batches.sort((a: any, b: any) => {
@@ -66,17 +139,18 @@ export async function writeOff(prisma: any, input: {
     for (const b of batches) {
         if (left <= 0) break;
         const take = Math.min(left, b.quantity);
-        await prisma.inventoryBatch.update({
+        await db.inventoryBatch.update({
             where: { id: b.id },
             data: { quantity: round(b.quantity - take) },
         });
-        moves.push(await prisma.stockMovement.create({
+        moves.push(await db.stockMovement.create({
             data: {
                 clinicId, itemId, batchId: b.id,
                 type: 'Out', quantity: -take,
                 reason: input.reason,
                 visitId: input.visitId || null,
                 serviceId: input.serviceId || null,
+                patientId: input.patientId || null,
                 note: input.note || null,
                 userName: input.userName || null,
             },
@@ -86,25 +160,36 @@ export async function writeOff(prisma: any, input: {
 
     // Partiyalar yetmadi — qolganini partiyasiz chiqim qilamiz
     if (left > 0) {
-        moves.push(await prisma.stockMovement.create({
+        moves.push(await db.stockMovement.create({
             data: {
                 clinicId, itemId, batchId: null,
                 type: 'Out', quantity: -left,
                 reason: input.reason,
                 visitId: input.visitId || null,
                 serviceId: input.serviceId || null,
+                patientId: input.patientId || null,
                 note: [input.note, 'partiyasiz (qoldiq yetmadi)'].filter(Boolean).join(' · '),
                 userName: input.userName || null,
             },
         }));
     }
 
-    await prisma.inventoryItem.update({
+    await db.inventoryItem.update({
         where: { id: itemId },
         data: { quantity: { decrement: quantity } },
     });
 
     return moves;
+}
+
+/**
+ * Bitta moddani chiqim qilish — TASHQI chaqiruvchilar uchun.
+ * O'z tranzaksiyasini ochadi va vaqtinchalik xatoda qayta urinadi.
+ */
+export async function writeOff(prisma: any, input: Parameters<typeof writeOffCore>[1]): Promise<any[]> {
+    return withRetry<any[]>('Ombor chiqimi', () =>
+        prisma.$transaction((tx: any) => writeOffCore(tx, input), { timeout: 15000, maxWait: 10000 }),
+    );
 }
 
 /**
@@ -124,22 +209,33 @@ export async function applyServiceRecipe(prisma: any, input: {
     });
     if (lines.length === 0) return { applied: 0, cost: 0 };
 
-    let cost = 0;
-    for (const line of lines) {
-        if (!line.item?.isConsumable) continue;
-        await writeOff(prisma, {
-            clinicId: input.clinicId,
-            itemId: line.itemId,
-            quantity: line.quantity,
-            reason: 'Service',
-            visitId: input.visitId,
-            serviceId: input.serviceId,
-            note: `Retsept: ${line.item?.name || ''}`,
-            userName: input.userName,
-        });
-        cost += (line.item?.price || 0) * line.quantity;
-    }
-    return { applied: lines.length, cost: round(cost) };
+    /* HAMMA modda BITTA tranzaksiyada. Ilgari har modda uchun alohida
+       `writeOff` chaqirilardi — ya'ni uchinchi moddada xato bo'lsa, birinchi
+       ikkitasi ombordan yechilgan holda qolardi. Retsept bo'linmas: yo
+       hammasi chiqadi, yo hech biri.
+
+       Ichkarida `writeOffCore` TO'G'RIDAN-TO'G'RI chaqiriladi — `writeOff`
+       o'z tranzaksiyasini ochadi va ichma-ich tranzaksiya bo'lardi. */
+    return withRetry('Retsept bo\'yicha chiqim', () =>
+        prisma.$transaction(async (tx: any) => {
+            let cost = 0;
+            for (const line of lines) {
+                if (!line.item?.isConsumable) continue;
+                await writeOffCore(tx, {
+                    clinicId: input.clinicId,
+                    itemId: line.itemId,
+                    quantity: line.quantity,
+                    reason: 'Service',
+                    visitId: input.visitId,
+                    serviceId: input.serviceId,
+                    note: `Retsept: ${line.item?.name || ''}`,
+                    userName: input.userName,
+                });
+                cost += (line.item?.price || 0) * line.quantity;
+            }
+            return { applied: lines.length, cost: round(cost) };
+        }, { timeout: 20000, maxWait: 10000 }),
+    );
 }
 
 export function registerInventoryRoutes(app: express.Express, deps: Deps) {
@@ -165,12 +261,13 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
     // ═══ HARAKATLAR ══════════════════════════════════════════════════════════
 
     route('get', '/api/stock-movements', async (req, res, clinicId) => {
-        const { itemId, visitId, from, to } = req.query;
+        const { itemId, visitId, patientId, from, to } = req.query;
         const items = await prisma.stockMovement.findMany({
             where: {
                 clinicId,
                 ...(itemId ? { itemId: String(itemId) } : {}),
                 ...(visitId ? { visitId: String(visitId) } : {}),
+                ...(patientId ? { patientId: String(patientId) } : {}),
                 /* Chegaralar Toshkent kuni bo'yicha. Ilgari `gte` UTC,
                    `lte` esa lokal vaqtda o'lchanardi (reports.ts dagi bilan
                    bir xil xato) va davr boshidagi harakatlar tushib qolardi. */
@@ -181,7 +278,11 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
                     },
                 } : {}),
             },
-            include: { item: { select: { name: true, unit: true } }, batch: { select: { batchNumber: true, expiryDate: true } } },
+            include: {
+                item: { select: { name: true, unit: true } },
+                batch: { select: { batchNumber: true, expiryDate: true } },
+                patient: { select: { firstName: true, lastName: true } },
+            },
             orderBy: { createdAt: 'desc' },
             take: 300,
         });
@@ -197,37 +298,136 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
         const qty = Number(quantity);
         if (!(qty > 0)) return res.status(400).json({ error: "Miqdor noto'g'ri" });
 
-        const batch = await prisma.inventoryBatch.create({
-            data: {
-                itemId, quantity: qty, cost: Number(cost) || 0,
-                batchNumber: batchNumber || null, expiryDate: expiryDate || null,
-            },
-        });
-        const move = await prisma.stockMovement.create({
-            data: {
-                clinicId, itemId, batchId: batch.id,
-                type: 'In', quantity: qty, reason: 'Purchase',
-                note: note || null, userName: userName || null,
-            },
-        });
-        await prisma.inventoryItem.update({ where: { id: itemId }, data: { quantity: { increment: qty } } });
+        /* Uchta yozuv — bitta tranzaksiyada. Ilgari alohida edi: o'rtada
+           uzilsa partiya yaratilib, qoldiq oshmay qolardi yoki teskarisi. */
+        const { batch, move } = await withRetry<any>('Ombor kirimi', () =>
+            prisma.$transaction(async (tx: any) => {
+                const batch = await tx.inventoryBatch.create({
+                    data: {
+                        itemId, quantity: qty, cost: Number(cost) || 0,
+                        batchNumber: batchNumber || null, expiryDate: expiryDate || null,
+                    },
+                });
+                const move = await tx.stockMovement.create({
+                    data: {
+                        clinicId, itemId, batchId: batch.id,
+                        type: 'In', quantity: qty, reason: 'Purchase',
+                        note: note || null, userName: userName || null,
+                    },
+                });
+                await tx.inventoryItem.update({
+                    where: { id: itemId }, data: { quantity: { increment: qty } },
+                });
+                return { batch, move };
+            }, { timeout: 15000, maxWait: 10000 }),
+        );
         res.json({ batch, move });
     });
 
-    /** Qo'lda chiqim — buzilgan, muddati o'tgan, yo'qolgan */
+    /**
+     * Qo'lda chiqim — buzilgan, muddati o'tgan, yo'qolgan, va BEMOR
+     * KARTASIDAN sarflangan material (`patientId` bilan).
+     *
+     * Bemor materiali ilgari `PUT /api/inventory/:id/stock` orqali eski
+     * jurnalga tushardi va partiyalarga tegmasdi — 0028 dan keyin u ham shu
+     * yerdan, FEFO bo'yicha o'tadi.
+     */
     route('post', '/api/stock-movements/out', async (req, res, clinicId) => {
-        const { itemId, quantity, reason, note, userName } = req.body;
+        const { itemId, quantity, reason, note, userName, patientId, visitId } = req.body;
         const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } });
         if (!item || item.clinicId !== clinicId) return res.status(403).json({ error: "Ruxsat yo'q" });
 
         const qty = Number(quantity);
         if (!(qty > 0)) return res.status(400).json({ error: "Miqdor noto'g'ri" });
 
-        const moves = await writeOff(prisma, {
-            clinicId, itemId, quantity: qty,
-            reason: reason || 'Manual', note, userName,
-        });
+        // Bemor ham shu klinikadan bo'lishi shart — aks holda begona bemorga
+        // material yozib, uni ko'rinmas qilib qo'yish mumkin bo'lardi
+        if (patientId) {
+            const p = await prisma.patient.findUnique({ where: { id: String(patientId) } });
+            if (!p || p.clinicId !== clinicId) {
+                return res.status(400).json({ error: 'Bemor topilmadi yoki boshqa klinikaga tegishli' });
+            }
+        }
+
+        /* `force: true` — muddati o'tgan partiyani ATAYLAB sarflash.
+           Server TO'SMAYDI, TANLOV beradi: loyihadagi mavjud naqsh
+           (bemor dublikati, qabul to'qnashuvi). Sarflangani jurnalda
+           ko'rinib turadi. */
+        let moves;
+        try {
+            moves = await writeOff(prisma, {
+                clinicId, itemId, quantity: qty,
+                reason: reason || 'Manual', note,
+                allowExpired: !!req.body.force,
+            // Ism mijozdan kelmasa tokendan olinadi: jurnalda «kim» ustuni
+            // bo'sh qolmasligi kerak
+                userName: userName || req.user?.name || null,
+                patientId: patientId || null,
+                visitId: visitId || null,
+            });
+        } catch (e: any) {
+            if (e?.code === 'EXPIRED_STOCK_BLOCKED') {
+                return res.status(409).json({
+                    error: e.message, code: e.code, expired: e.expired, usable: e.usable,
+                });
+            }
+            throw e;
+        }
         res.json({ moves });
+    });
+
+    /**
+     * Chiqimni bekor qilish — material xato yozilgan bo'lsa.
+     *
+     * Harakat O'CHIRILMAYDI. Ilgari bemor kartasidagi «o'chirish» tugmasi
+     * jurnal qatorini yo'q qilardi: qoldiq tiklanardi, lekin «kim, qachon,
+     * nega» degan iz ham yo'qolardi. Endi teskari harakat yoziladi —
+     * ikkala qator ham jurnalda qoladi.
+     */
+    route('post', '/api/stock-movements/:id/reverse', async (req, res, clinicId) => {
+        const { note, userName } = req.body || {};
+        const id = req.params.id;
+
+        const result = await withRetry<any>('Chiqimni bekor qilish', () =>
+            prisma.$transaction(async (tx: any) => {
+                const move = await tx.stockMovement.findUnique({ where: { id } });
+                if (!move || move.clinicId !== clinicId) return { code: 403 };
+                if (move.type !== 'Out') return { code: 400, error: 'Faqat chiqimni bekor qilish mumkin' };
+
+                const already = await tx.stockMovement.findFirst({ where: { reversalOfId: id } });
+                if (already) return { code: 409, error: 'Bu chiqim allaqachon bekor qilingan' };
+
+                const back = -move.quantity;   // chiqim manfiy edi → qaytish musbat
+
+                if (move.batchId) {
+                    await tx.inventoryBatch.update({
+                        where: { id: move.batchId },
+                        data: { quantity: { increment: back } },
+                    });
+                }
+                await tx.inventoryItem.update({
+                    where: { id: move.itemId },
+                    data: { quantity: { increment: back } },
+                });
+
+                const created = await tx.stockMovement.create({
+                    data: {
+                        clinicId, itemId: move.itemId, batchId: move.batchId,
+                        type: 'In', quantity: back, reason: 'Manual',
+                        patientId: move.patientId, visitId: move.visitId,
+                        reversalOfId: id,
+                        note: note || 'Chiqim bekor qilindi',
+                        userName: userName || req.user?.name || null,
+                    },
+                });
+                return { code: 200, move: created };
+            }, { timeout: 15000, maxWait: 10000 }),
+        );
+
+        if (result.code !== 200) {
+            return res.status(result.code).json({ error: result.error || "Ruxsat yo'q" });
+        }
+        res.json({ move: result.move });
     });
 
     /**
@@ -284,24 +484,33 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
     /** Inventarizatsiya — haqiqiy qoldiqqa tenglashtirish */
     route('post', '/api/stock-movements/adjust', async (req, res, clinicId) => {
         const { itemId, actualQuantity, note, userName } = req.body;
-        const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } });
-        if (!item || item.clinicId !== clinicId) return res.status(403).json({ error: "Ruxsat yo'q" });
-
         const actual = Number(actualQuantity);
         if (isNaN(actual)) return res.status(400).json({ error: "Qoldiq noto'g'ri" });
 
-        const diff = round(actual - item.quantity);
-        if (diff === 0) return res.json({ changed: false });
+        /* Qoldiq tranzaksiya ICHIDA o'qiladi. Ilgari tashqarida o'qilardi va
+           o'sha oraliqda chiqim o'tsa, `diff` eskirgan qoldiqdan hisoblanib,
+           inventarizatsiya o'sha chiqimni O'CHIRIB tashlardi. */
+        const result = await withRetry<any>('Inventarizatsiya', () =>
+            prisma.$transaction(async (tx: any) => {
+                const item = await tx.inventoryItem.findUnique({ where: { id: itemId } });
+                if (!item || item.clinicId !== clinicId) return { forbidden: true };
 
-        const move = await prisma.stockMovement.create({
-            data: {
-                clinicId, itemId, type: 'Adjust', quantity: diff, reason: 'Inventory',
-                note: note || `Inventarizatsiya: ${item.quantity} → ${actual}`,
-                userName: userName || null,
-            },
-        });
-        await prisma.inventoryItem.update({ where: { id: itemId }, data: { quantity: actual } });
-        res.json({ changed: true, move, diff });
+                const diff = round(actual - item.quantity);
+                if (diff === 0) return { changed: false };
+
+                const move = await tx.stockMovement.create({
+                    data: {
+                        clinicId, itemId, type: 'Adjust', quantity: diff, reason: 'Inventory',
+                        note: note || `Inventarizatsiya: ${item.quantity} → ${actual}`,
+                        userName: userName || null,
+                    },
+                });
+                await tx.inventoryItem.update({ where: { id: itemId }, data: { quantity: actual } });
+                return { changed: true, move, diff };
+            }, { timeout: 15000, maxWait: 10000 }),
+        );
+        if ((result as any).forbidden) return res.status(403).json({ error: "Ruxsat yo'q" });
+        res.json(result);
     });
 
     /**

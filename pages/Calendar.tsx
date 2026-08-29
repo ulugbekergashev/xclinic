@@ -1,4 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { formatDoctorName, formatFullName, formatNumber } from '../utils/format';
+import {
+    ComposedChart, Area, Line, BarChart, Bar, XAxis, YAxis,
+    CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
+} from 'recharts';
+import { doctorColor } from '../utils/chartColors';
+import { confirmAction } from '../services/confirm';
+import { toast } from '../services/toast';
 import { todayISO } from '../utils/dateUtils';
 import { Card, Button, Modal, Input, Select, Badge, SearchableSelect } from '../components/Common';
 import {
@@ -6,7 +14,7 @@ import {
   XCircle, CheckCircle, Send, Bell, Edit2, Loader2,
   Search
 } from 'lucide-react';
-import { Appointment, Patient, Doctor, UserRole, Clinic, SubscriptionPlan, ServiceCategory } from '../types';
+import { Appointment, Patient, Doctor, UserRole, Clinic, ServiceCategory } from '../types';
 import { api } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -23,26 +31,341 @@ interface CalendarProps {
   userRole: UserRole;
   doctorId: string;
   currentClinic?: Clinic;
-  plans: SubscriptionPlan[];
   onPatientClick?: (id: string) => void;
 }
 
 
 
+/* ─────────────────────────────────────────────────────────────────────
+   DAVOMAT HISOBOTI.
+
+   «Qaysi kunlarda mijoz yaxshi kelyapti?» — klinika egasining jadval
+   tuzishdagi asosiy savoli. Kam keladigan kunga ko'p shifokor qo'yish
+   ham, gavjum kunga kam qo'yish ham zarar.
+
+   Hisobot kalendarning ichida turadi (uchinchi ko'rinish), chunki savol
+   aynan shu ekranga qarab tug'iladi.
+   Grafiklar `recharts` da — loyihada allaqachon shu ishlatiladi
+   (Boshqaruv paneli, Shifokorlar tahlili, Moliya hisoboti), ya'ni
+   yangi kutubxona qo'shilmadi va uslub bir xil bo'lib qoldi.
+   ───────────────────────────────────────────────────────────────── */
+const StatTile: React.FC<{ label: string; value: string; hint?: string; tone?: 'ok' | 'warn' | 'plain' }> =
+  ({ label, value, hint, tone = 'plain' }) => (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
+      <div className={`text-2xl font-bold mt-1 ${
+        tone === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
+        : tone === 'warn' ? 'text-amber-600 dark:text-amber-400'
+        : 'text-gray-900 dark:text-white'}`}>{value}</div>
+      {hint && <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{hint}</div>}
+    </div>
+  );
+
+/* Grafiklar `recharts` da — loyihada allaqachon shu ishlatiladi
+   (Boshqaruv paneli, Shifokorlar tahlili, Moliya hisoboti). Yangi
+   kutubxona qo'shish kerak emas va uslub bir xil bo'lib qoladi. */
+const AXIS = '#9ca3af';
+const GRID = '#374151';
+
+/* Grafik ustidagi izoh oynasi. Recharts ning o'zinikisi oq fonli va
+   to'q mavzuda o'qilmaydi, shuning uchun o'zimizniki. */
+const ChartTip: React.FC<any> = ({ active, payload, label, suffix }) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 shadow-lg text-xs">
+      <div className="font-semibold text-gray-900 dark:text-white mb-1">{label}</div>
+      {payload.map((x: any) => (
+        <div key={x.dataKey} className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: x.color || x.fill }} />
+          <span className="text-gray-500 dark:text-gray-400">{x.name}:</span>
+          <span className="font-medium text-gray-900 dark:text-white tabular-nums">
+            {formatNumber(x.value)}{suffix || ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const AttendanceReport: React.FC<{
+  data: any; busy: boolean; days: number; onDays: (d: number) => void; error: string | null;
+}> = ({ data, busy, days, onDays, error }) => {
+  if (busy && !data) {
+    return <div className="flex-1 grid place-items-center text-gray-400 py-20">Hisobot yig'ilmoqda…</div>;
+  }
+  if (!data) {
+    /* Sabab KO'RSATILADI. Ilgari bu yerda quruq «yuklab bo'lmadi»
+       turardi va nima bo'lganini bilishning iloji yo'q edi — server
+       eskimi, tarmoqmi, ruxsatmi, hech narsa aytilmasdi. */
+    return (
+      <div className="flex-1 grid place-items-center py-20 px-4">
+        <div className="text-center max-w-md">
+          <div className="text-gray-500 dark:text-gray-400 mb-2">Hisobotni yuklab bo'lmadi.</div>
+          {error && (
+            <div className="text-xs font-mono text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2 mb-2">
+              {error}
+            </div>
+          )}
+          <div className="text-xs text-gray-400">
+            Agar «404» yozilgan bo'lsa — server eski versiyada ishlayapti, uni qayta ishga tushirish kerak.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const t = data.totals || {};
+  const wd = data.byWeekday || [];
+  const docs = data.byDoctor || [];
+
+  /* Kunlik qator. Sana «24.08» ko'rinishida — grafik o'qi ostida
+     to'liq sana sig'maydi. */
+  const daily = (data.byDay || []).map((d: any) => ({
+    ...d,
+    label: d.date.slice(8, 10) + '.' + d.date.slice(5, 7),
+    revenueK: Math.round((d.revenue || 0) / 1000),
+  }));
+
+  const hours = (data.byHour || []).filter((h: any) => h.booked > 0)
+    .map((h: any) => ({ ...h, label: h.hour + ':00', kelmagan: Math.max(0, h.booked - h.arrived) }));
+
+  const wdChart = wd.map((w: any) => ({ ...w, short: w.name.slice(0, 3) }));
+  const maxWd = Math.max(1, ...wd.map((w: any) => w.avgVisits || 0));
+
+  return (
+    <div className="flex-1 overflow-auto space-y-4 pb-4">
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-gray-500 dark:text-gray-400">Davr:</span>
+        {[30, 90, 365].map(d => (
+          <button key={d} type="button" onClick={() => onDays(d)}
+            className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+              days === d
+                ? 'border-primary-600 bg-primary-600 text-white'
+                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+            {d === 365 ? '1 yil' : `${d} kun`}
+          </button>
+        ))}
+        <span className="text-xs text-gray-400 ml-1">
+          {data.range?.from} — {data.range?.to} · {data.range?.days} kunda yozuv bor
+        </span>
+        {busy && <span className="text-xs text-gray-400">yangilanmoqda…</span>}
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <StatTile label="Yozilgan" value={formatNumber(t.booked)} hint="kalendardagi yozuvlar" />
+        <StatTile label="Kelgan" value={formatNumber(t.arrived)} tone="ok" hint={`${t.arrivalRate}%`} />
+        <StatTile label="Kelmagan" value={formatNumber(t.noShow)} tone={t.noShowRate > 15 ? 'warn' : 'plain'}
+                  hint={`${t.noShowRate}% — ogohlantirmasdan`} />
+        <StatTile label="Bekor qilingan" value={formatNumber(t.cancelled)} hint="oldindan aytgan" />
+        <StatTile label="Tushum" value={formatNumber(t.revenue)} hint="so'm, shu davrda" />
+      </div>
+
+      {data.best && data.worst && data.best.name !== data.worst.name && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div className="text-sm text-gray-600 dark:text-gray-300">
+            Eng gavjum kun — <b className="text-emerald-600 dark:text-emerald-400">{data.best.name}</b>,
+            kuniga o'rtacha <b>{data.best.avgVisits}</b> ta qabul.
+            Eng bo'shi — <b className="text-amber-600 dark:text-amber-400">{data.worst.name}</b>,
+            <b> {data.worst.avgVisits}</b> ta.
+            {data.worst.avgVisits > 0 && (
+              <> Farqi <b>{Math.round((data.best.avgVisits / data.worst.avgVisits) * 10) / 10} barobar</b>.</>
+            )}
+          </div>
+          <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            Shifokorlar jadvalini shu nisbatga qarab tuzish mumkin.
+          </div>
+        </div>
+      )}
+
+      {/* ── Kunlik dinamika ─────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        <h3 className="font-semibold text-gray-900 dark:text-white">Kunma-kun</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          Ustunlar — yozilgan va kelgan; chiziq — tushum (ming so'm, o'ng o'q)
+        </p>
+        {daily.length === 0 ? (
+          <div className="text-sm text-gray-400 py-10 text-center">Bu davrda yozuv yo'q</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <ComposedChart data={daily} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} vertical={false} />
+              <XAxis dataKey="label" stroke={AXIS} fontSize={10} tickLine={false} interval="preserveStartEnd" minTickGap={18} />
+              <YAxis yAxisId="l" stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} width={32} />
+              <YAxis yAxisId="r" orientation="right" stroke="#059669" fontSize={10} tickLine={false} axisLine={false} width={44} />
+              <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar yAxisId="l" dataKey="booked" name="Yozilgan" fill="#93B4F5" radius={[3, 3, 0, 0]} />
+              <Bar yAxisId="l" dataKey="arrived" name="Kelgan" fill="#2563EB" radius={[3, 3, 0, 0]} />
+              <Line yAxisId="r" type="monotone" dataKey="revenueK" name="Tushum (ming)" stroke="#059669" strokeWidth={2} dot={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4">
+        {/* ── Hafta kunlari ────────────────────────────────────── */}
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Hafta kunlari</h3>
+          <p className="text-xs text-gray-400 mb-3">Kuniga o'rtacha nechta qabul</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={wdChart} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} vertical={false} />
+              <XAxis dataKey="short" stroke={AXIS} fontSize={11} tickLine={false} />
+              <YAxis stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} width={28} />
+              <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
+              <Bar dataKey="avgVisits" name="Kuniga o'rtacha" radius={[4, 4, 0, 0]}>
+                {wdChart.map((w: any) => (
+                  <Cell key={w.weekday}
+                        fill={w.avgVisits >= maxWd * 0.85 ? '#059669'
+                            : w.avgVisits <= maxWd * 0.45 ? '#D97706' : '#2563EB'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="text-xs text-gray-400 mt-1">
+            Yashil — eng gavjum, sariq — eng bo'sh kunlar.
+          </p>
+        </div>
+
+        {/* ── Soatlar ──────────────────────────────────────────── */}
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Kun davomida</h3>
+          <p className="text-xs text-gray-400 mb-3">Qaysi soatda gavjum</p>
+          {hours.length === 0 ? (
+            <div className="text-sm text-gray-400 py-16 text-center">Ma'lumot yo'q</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={hours} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} vertical={false} />
+                <XAxis dataKey="label" stroke={AXIS} fontSize={10} tickLine={false} />
+                <YAxis stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} width={28} />
+                <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="arrived" name="Kelgan" stackId="h" fill="#2563EB" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="kelmagan" name="Kelmagan" stackId="h" fill="#94A3B8" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ── Shifokorlar ────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        <h3 className="font-semibold text-gray-900 dark:text-white">Shifokorlar bo'yicha</h3>
+        <p className="text-xs text-gray-400 mb-3">Yozuvlar soni va nechtasi kelgani</p>
+        {docs.length === 0 ? (
+          <div className="text-sm text-gray-400 py-10 text-center">Ma'lumot yo'q</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(160, docs.length * 38)}>
+            <BarChart data={docs} layout="vertical" margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} horizontal={false} />
+              <XAxis type="number" stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="doctorName" stroke={AXIS} fontSize={11}
+                     tickLine={false} axisLine={false} width={130} />
+              <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="arrived" name="Kelgan" stackId="d" fill="#2563EB" />
+              <Bar dataKey="noShow" name="Kelmagan" stackId="d" fill="#D97706" radius={[0, 3, 3, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── Raqamli jadval ─────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Hafta kunlari — raqamlar</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
+            <thead>
+              <tr className="text-xs text-gray-500 dark:text-gray-400">
+                <th className="text-left font-normal pb-2">Kun</th>
+                <th className="text-right font-normal pb-2">Kuniga o'rtacha</th>
+                <th className="text-right font-normal pb-2">Yozilgan</th>
+                <th className="text-right font-normal pb-2">Kelgan</th>
+                <th className="text-right font-normal pb-2">Kelmagan</th>
+                <th className="text-right font-normal pb-2">Kuniga tushum</th>
+              </tr>
+            </thead>
+            <tbody>
+              {wd.map((w: any) => (
+                <tr key={w.weekday} className="border-t border-gray-100 dark:border-gray-700">
+                  <td className="py-2 font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                    {w.name}<span className="text-xs text-gray-400 font-normal ml-1">{w.days} kun</span>
+                  </td>
+                  <td className="py-2 text-right tabular-nums font-semibold">{w.avgVisits}</td>
+                  <td className="py-2 text-right tabular-nums">{formatNumber(w.booked)}</td>
+                  <td className="py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatNumber(w.arrived)}</td>
+                  <td className="py-2 text-right tabular-nums text-amber-600 dark:text-amber-400">{formatNumber(w.noShow)}</td>
+                  <td className="py-2 text-right tabular-nums">{formatNumber(w.avgRevenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
 export const Calendar: React.FC<CalendarProps> = ({
-  appointments, patients, doctors, services, categories, onAddAppointment, onUpdateAppointment, onDeleteAppointment, onAddPatient, userRole, doctorId, currentClinic, plans, onPatientClick
+  appointments, patients, doctors, services, categories, onAddAppointment, onUpdateAppointment, onDeleteAppointment, onAddPatient, userRole, doctorId, currentClinic, onPatientClick
 }) => {
   const { t } = useLanguage();
   const startHour = currentClinic?.startHour ?? 8;
   const endHour = currentClinic?.endHour ?? 20;
   const HOURS = Array.from({ length: Math.max(1, endHour - startHour + 1) }, (_, i) => i + startHour);
-  // Filter appointments for doctors
-  const filteredAppointments = userRole === UserRole.DOCTOR && doctorId
-    ? appointments.filter(a => a.doctorId === doctorId)
-    : appointments;
+
   // State
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<'day' | 'week'>('week');
+  /* ─── OYNA TASHQARISI (FIX-PLAN 10.3) ────────────────────────────────────
+     `App.tsx` kirishda oxirgi 45 kunni yuklaydi. Bu ekranda esa undan
+     eskiroq davr tanlanishi mumkin — o'shanda propdagi ro'yxatda o'sha davr
+     UMUMAN yo'q va ekran "hech narsa bo'lmagan" deb ko'rsatardi.
+     Jimgina yolg'on — eng yomon xato turi. Shuning uchun serverdan olamiz. */
+  const WINDOW_START = useMemo(
+    () => new Date(Date.now() - 45 * 86400000).toISOString().split('T')[0], []);
+
+  const [rangeAppts, setRangeAppts] = useState<Appointment[] | null>(null);
+  useEffect(() => {
+    // Ko'rinayotgan oyning chegaralari
+    const y = currentDate.getFullYear(), m = currentDate.getMonth();
+    const from = new Date(y, m, 1).toISOString().split('T')[0];
+    const to = new Date(y, m + 1, 0).toISOString().split('T')[0];
+    if (from >= WINDOW_START || !currentClinic?.id) { setRangeAppts(null); return; }
+    let alive = true;
+    api.appointments.getAll(currentClinic.id, { from, to })
+      .then(a => { if (alive) setRangeAppts(a); })
+      .catch(() => { if (alive) setRangeAppts(null); });
+    return () => { alive = false; };
+  }, [currentDate, currentClinic?.id, WINDOW_START]);
+
+  const effectiveAppointments = rangeAppts ?? appointments;
+
+  /* Shifokor filtri (S5.3). `null` — hammasi.
+     E'lon shu yerda, chunki quyidagi `filteredAppointments` unga tayanadi. */
+  const [doctorFilter, setDoctorFilter] = useState<string | null>(null);
+
+  /* Ikki xil cheklov, ikkalasi ham qo'llanadi:
+       • SHIFOKOR o'zi kirganda faqat o'z qabullarini ko'radi (ruxsat);
+       • legenda filtri — ko'rinishni toraytirish (qulaylik). */
+  const filteredAppointments = (userRole === UserRole.DOCTOR && doctorId
+    ? effectiveAppointments.filter(a => a.doctorId === doctorId)
+    : effectiveAppointments
+  ).filter(a => !doctorFilter || a.doctorId === doctorFilter);
+
+  const [view, setView] = useState<'day' | 'week' | 'report'>('week');
+
+  /* HISOBOT. Kalendar «kim qachon yozilgan» ni ko'rsatadi, lekin
+     «qaysi kunlarda mijoz ko'p keladi» degan savolga javob bermaydi —
+     buning uchun tarixni yig'ish kerak. Shuning uchun hisobot aynan shu
+     yerda, kalendarning uchinchi ko'rinishi sifatida turadi: savol shu
+     ekranda tug'iladi, javobi ham shu yerda bo'lgani ma'qul. */
+  const [report, setReport] = useState<any>(null);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportDays, setReportDays] = useState(90);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [editingApptId, setEditingApptId] = useState<string | null>(null);
@@ -158,14 +481,72 @@ export const Calendar: React.FC<CalendarProps> = ({
     return days;
   };
 
-  const displayDays = getDisplayDays(currentDate, view);
+  const displayDays = getDisplayDays(currentDate, view === 'report' ? 'week' : view);
 
-  const activeDoctors = doctors.filter(d => d.status === 'Active');
-  const gridColsClass = view === 'week' 
-    ? 'grid-cols-8' 
-    : activeDoctors.length > 0 
-      ? `grid-cols-[60px_repeat(${activeDoctors.length},minmax(200px,1fr))]` 
-      : 'grid-cols-[60px_1fr]';
+  /* Hisobot faqat OCHILGANDA so'raladi — kalendarni har ochganda
+     og'ir so'rov yubormaslik uchun. Davr o'zgarsa qayta so'raladi. */
+  useEffect(() => {
+    if (view !== 'report') return;
+    let alive = true;
+    setReportBusy(true);
+    const to = new Date();
+    const from = new Date(to.getTime() - reportDays * 86400000);
+    const iso = (d: Date) => d.toISOString().split('T')[0];
+    setReportError(null);
+    api.reports.attendance(iso(from), iso(to))
+      .then(d => { if (alive) { setReport(d); setReportError(null); } })
+      .catch(e => {
+        /* Sabab SAQLANADI va ekranda ko'rsatiladi. Quruq «yuklab
+           bo'lmadi» nima bo'lganini aytmaydi: server eskimi, tarmoqmi,
+           ruxsatmi — hammasi bir xil ko'rinardi. */
+        if (alive) { setReport(null); setReportError(e?.message || String(e)); }
+      })
+      .finally(() => { if (alive) setReportBusy(false); });
+    return () => { alive = false; };
+  }, [view, reportDays]);
+
+  /* Kunlik ko'rinishda ustunlar ham filtrga bo'ysunadi — aks holda
+     filtr yoqilganda bo'sh ustunlar qatori qolib ketardi. */
+  const activeDoctors = doctors
+    .filter(d => d.status === 'Active')
+    .filter(d => !doctorFilter || d.id === doctorFilter);
+  /* HAFTA + HAMMA SHIFOKOR = O'QIB BO'LMAYDIGAN EKRAN.
+
+     Hafta ko'rinishida bir kunning USTUNI ~140px. Bir vaqtda 6 ta
+     shifokorda qabul bo'lsa, oltalasi shu 140px ni bo'lishadi — har
+     biriga 23px tushadi va bemor ismi «Tosh...» ga aylanadi. Ya'ni
+     ekran to'la, lekin undan hech narsa o'qib bo'lmaydi.
+
+     Sabab pastdagi `getGroupKey`: hafta ko'rinishida u faqat SANA
+     bo'yicha guruhlaydi, shifokorni hisobga olmaydi — shuning uchun
+     turli shifokorlarning bir vaqtdagi qabullari bir-biriga raqib
+     bo'lib qoladi. Kunlik ko'rinishda esa shifokor alohida ustun.
+
+     Yechim: siqilgan holatda ism yozishga URINMAYMIZ. Blok rangli
+     chiziqqa aylanadi (kun qanchalik band ekani baribir ko'rinadi),
+     ism esa sichqoncha ustiga kelganda chiqadi. Ismlarni ro'yxat
+     bo'lib o'qish uchun shifokor tanlanadi — o'shanda ustun bo'linmaydi. */
+  const weekAll = view === 'week' && !doctorFilter && activeDoctors.length > 1;
+
+  /* USTUNLAR — KLASS EMAS, INLINE STIL.
+
+     Ilgari bu yerda shunday yozilgan edi:
+         `grid-cols-[60px_repeat(${activeDoctors.length},minmax(200px,1fr))]`
+
+     Tailwind klasslarni MANBA MATNIDAN qidirib topadi va shu topilganlari
+     uchun CSS yozadi. `${...}` bilan yig'ilgan nom manbada hech qachon
+     to'liq holda uchramaydi — ya'ni bu klass uchun CSS umuman
+     yaratilmagan. Natijada kunlik ko'rinishda grid'ning ustunlari
+     e'lon qilinmay qolgan va shifokorlar yonma-yon emas, bir-birining
+     ostiga tik qatorga tushib qolgan; vaqt ustuni ham joyidan chiqqan.
+
+     Inline stil Tailwind'ga bog'liq emas — u to'g'ridan-to'g'ri
+     brauzerga boradi va har qanday shifokorlar soni bilan ishlaydi. */
+  const gridCols: React.CSSProperties = view === 'week'
+    ? { gridTemplateColumns: 'repeat(8, minmax(0, 1fr))' }
+    : activeDoctors.length > 0
+      ? { gridTemplateColumns: `60px repeat(${activeDoctors.length}, minmax(200px, 1fr))` }
+      : { gridTemplateColumns: '60px 1fr' };
 
   // Handlers
   const handlePrev = () => {
@@ -196,7 +577,7 @@ export const Calendar: React.FC<CalendarProps> = ({
 
     // Validation check
     if (!formData.patientId) {
-      alert("Iltimos, avval bemorni tanlang!");
+      toast.error("Iltimos, avval bemorni tanlang!");
       return;
     }
 
@@ -226,13 +607,13 @@ export const Calendar: React.FC<CalendarProps> = ({
           finalDoctorName = `Dr. ${newDoctor.lastName}`;
 
           // Notify user (optional, but good for context)
-          // alert("Individual tarif bo'yicha shifokor profili avtomatik yaratildi.");
+          // toast.error("Individual tarif bo'yicha shifokor profili avtomatik yaratildi.");
         } catch (err) {
           /* Shifokor yaratish faqat klinika EGASIDA (reliz 4). Registrator
              shu yerga tushsa 403 oladi — xabar shuni aytishi kerak, aks
              holda "nimadir ishlamadi" degan tuyuq ko'chaga olib boradi. */
           console.error('Failed to auto-create doctor', err);
-          alert("Shifokor profili yo'q. Uni klinika egasi Sozlamalar bo'limida qo'shadi.");
+          toast.error("Shifokor profili yo'q. Uni klinika egasi Sozlamalar bo'limida qo'shadi.");
           return;
         }
       } else if (doctors.length > 0) {
@@ -240,13 +621,13 @@ export const Calendar: React.FC<CalendarProps> = ({
         finalDoctorId = doctors[0].id;
         finalDoctorName = `Dr. ${doctors[0].lastName}`;
       } else {
-        alert("Tizimda shifokor mavjud emas! Iltimos, 'Sozlamalar' bo'limiga o'tib, kamida bitta shifokor profilini yarating.");
+        toast.error("Tizimda shifokor mavjud emas! Iltimos, 'Sozlamalar' bo'limiga o'tib, kamida bitta shifokor profilini yarating.");
         return;
       }
     }
 
     if (!isIndividualPlan && !finalDoctorId) {
-      alert("Iltimos, shifokorni tanlang!");
+      toast.error("Iltimos, shifokorni tanlang!");
       return;
     }
 
@@ -264,14 +645,14 @@ export const Calendar: React.FC<CalendarProps> = ({
     // but we have finalDoctorId and finalDoctorName now.
 
     if (!patient) {
-      alert("Bemor topilmadi.");
+      toast.error("Bemor topilmadi.");
       return;
     }
 
     // Only check for doctor object if we didn't just create it
     if (!doctor && !finalDoctorName) {
       // Should not match here if we handled creation
-      alert("Shifokor topilmadi.");
+      toast.error("Shifokor topilmadi.");
       return;
     }
 
@@ -280,68 +661,77 @@ export const Calendar: React.FC<CalendarProps> = ({
       finalDoctorName = `Dr. ${doctor.lastName}`;
     }
 
-    // Doctor Conflict Validation
-    const doctorConflict = appointments.some(appt =>
-      appt.id !== editingApptId &&
-      appt.doctorId === finalDoctorId &&
-      appt.date === formData.date &&
-      appt.time === formData.time &&
-      appt.status !== 'Cancelled'
-    );
+    /* SHIFOKOR BANDLIGI — endi SERVERDA tekshiriladi (S2.4).
 
-    if (doctorConflict) {
-      alert('Ushbu vaqtda shifokorda boshqa qabul mavjud! Iltimos, boshqa vaqt tanlang.');
-      return;
-    }
+       Bu yerda ilgari ikkita tekshiruv turardi va ikkalasi ham
+       `appt.time === formData.time` bilan solishtirardi — ya'ni faqat
+       AYNAN bir xil boshlanish vaqtini topardi. 08:30 dagi 60 daqiqalik
+       qabul ustiga 09:00 ni yozib bo'laverardi (audit B-19).
 
-    // Patient Conflict Validation
-    const patientConflict = appointments.some(appt =>
-      appt.id !== editingApptId &&
-      appt.patientId === patient.id &&
-      appt.date === formData.date &&
-      appt.time === formData.time &&
-      appt.status !== 'Cancelled'
-    );
+       Ikkinchi kamchiligi: `appointments` — brauzerga yuklangan qism,
+       butun jadval emas. Ya'ni tekshiruv ko'rmagan qabulni "yo'q" deb
+       hisoblardi.
 
-    if (patientConflict) {
-      alert('Ushbu vaqtda bemorda boshqa qabul mavjud! Iltimos, boshqa vaqt tanlang.');
-      return;
-    }
+       Server 409 va `code: 'DOCTOR_BUSY'` qaytaradi, quyidagi `catch`
+       esa foydalanuvchidan tasdiq so'raydi. Bemorning o'zi bilan
+       to'qnashuv ham server tomonda: bemor + sana + shifokor bo'yicha
+       dublikat tekshiruvi allaqachon bor.
 
-    try {
+       Bemorni ikki shifokorga bir vaqtda yozish esa TAQIQLANMAYDI: bu
+       xato emas, klinikada odatiy hol (tahlil va konsultatsiya bir
+       vaqtda buyurilishi mumkin). */
+
+    /* Yozishning o'zi alohida funksiyada: 409 dan keyin AYNAN shu
+       so'rovni `force` bilan takrorlash kerak, ya'ni tanani ikki joyda
+       yozib qo'ymaslik uchun. */
+    const submit = async (force: boolean) => {
+      const payload = {
+        patientId: patient.id,
+        patientName: `${formatFullName(patient)}`,
+        doctorId: finalDoctorId,
+        doctorName: finalDoctorName,
+        type: formData.type || 'Konsultatsiya',
+        date: formData.date,
+        time: formData.time,
+        duration: Number(formData.duration),
+        notes: formData.notes,
+        ...(force ? { force: true } : {}),
+      };
       if (editingApptId) {
-        await onUpdateAppointment(editingApptId, {
-          patientId: patient.id,
-          patientName: `${patient.lastName} ${patient.firstName}`,
-          doctorId: finalDoctorId,
-          doctorName: finalDoctorName,
-          type: formData.type || 'Konsultatsiya',
-          date: formData.date,
-          time: formData.time,
-          duration: Number(formData.duration),
-          notes: formData.notes
-        });
+        await onUpdateAppointment(editingApptId, payload);
       } else {
-        await onAddAppointment({
-          patientId: patient.id,
-          patientName: `${patient.lastName} ${patient.firstName}`,
-          doctorId: finalDoctorId,
-          doctorName: finalDoctorName,
-          type: formData.type || 'Konsultatsiya',
-          date: formData.date,
-          time: formData.time,
-          duration: Number(formData.duration),
-          status: 'Pending',
-          notes: formData.notes
-        });
+        await onAddAppointment({ ...payload, status: 'Pending' });
       }
       setIsAddModalOpen(false);
       setEditingApptId(null);
-    } catch (error) {
-      // Error is handled by App.tsx toast and re-thrown
-      // Keeping modal open on failure
+    };
+
+    try {
+      await submit(false);
+    } catch (error: any) {
+      /* SHIFOKOR BAND (409). Server TO'SMAYDI, TANLOV beradi — bu
+         loyihadagi mavjud naqsh (bemor dublikatida ham shunday).
+         Shoshilinch holatda registrator ustiga yozishi kerak bo'lishi
+         mumkin. */
+      const code = error?.data?.code || error?.code;
+      if (code === 'DOCTOR_BUSY') {
+        const busy = error?.data?.conflict;
+        const when = busy ? `${busy.time} — ${busy.patientName || 'bemor'}` : '';
+        const msg = when
+          ? `Bu vaqtda shifokor band: ${when}.
+
+Baribir yozilsinmi?`
+          : 'Bu vaqtda shifokor band. Baribir yozilsinmi?';
+        if (await confirmAction({ title: msg })) {
+          try { await submit(true); } catch { /* xatoni App.tsx toast ko'rsatadi */ }
+        }
+        return;
+      }
+      /* Boshqa xato: App.tsx toast ko'rsatadi va qayta uloqtiradi.
+         Oyna OCHIQ qoladi — kiritilgan ma'lumot yo'qolmasin. */
     }
   };
+
 
   const handleStatusUpdate = async (status: Appointment['status']) => {
     if (selectedAppointment) {
@@ -349,7 +739,11 @@ export const Calendar: React.FC<CalendarProps> = ({
         await onUpdateAppointment(selectedAppointment.id, { status });
         setSelectedAppointment({ ...selectedAppointment, status }); // Optimistic update for modal
       } catch (error) {
-        // Error handled by App.tsx
+        /* `App.tsx` toast ko'rsatadi va xatoni qayta uloqtiradi. Bu yerda
+           MODALDAGI holatni orqaga qaytarish kerak: yuqoridagi optimistik
+           yangilanish qolib ketsa, oyna «bajarildi» deb ko'rsatadi, baza
+           esa eski holatda turadi. */
+        setSelectedAppointment(prev => prev ? { ...prev } : prev);
       }
     }
   };
@@ -360,17 +754,17 @@ export const Calendar: React.FC<CalendarProps> = ({
 
     try {
       await api.patients.sendMessage(messagePatientId, messageText);
-      alert('Xabar muvaffaqiyatli yuborildi!');
+      toast.success('Xabar muvaffaqiyatli yuborildi!');
       setIsMessageModalOpen(false);
       setMessageText('');
     } catch (error: any) {
       console.error('Error sending message:', error);
       if (error.message === 'Bot not configured' || error.error === 'Bot not configured') {
-        alert('⚠️ Bot sozlanmagan. Iltimos, Sozlamalar bo\'limida bot tokenini kiriting.');
+        toast.error('⚠️ Bot sozlanmagan. Iltimos, Sozlamalar bo\'limida bot tokenini kiriting.');
       } else if (error.message === 'Patient telegram not linked' || error.error === 'Patient telegram not linked') {
-        alert('⚠️ Bemor Telegram botga ulanmagan. Iltimos, bemorga bot havolasini yuboring.');
+        toast.error('⚠️ Bemor Telegram botga ulanmagan. Iltimos, bemorga bot havolasini yuboring.');
       } else {
-        alert(`Xatolik: ${error.message || 'Xabar yuborishda xatolik yuz berdi.'}`);
+        toast.error(`Xatolik: ${error.message || 'Xabar yuborishda xatolik yuz berdi.'}`);
       }
     }
   };
@@ -378,7 +772,7 @@ export const Calendar: React.FC<CalendarProps> = ({
   const handlePatientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!patientFormData.firstName || !patientFormData.lastName) {
-      alert("Iltimos, bemor ismi va familiyasini kiriting!");
+      toast.error("Iltimos, bemor ismi va familiyasini kiriting!");
       return;
     }
 
@@ -468,14 +862,14 @@ export const Calendar: React.FC<CalendarProps> = ({
         <div className="flex items-center gap-4 w-full sm:w-auto">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('calendar.title')}</h1>
           <div className="flex items-center bg-white dark:bg-gray-800 rounded-md shadow-sm border border-gray-200 dark:border-gray-700 flex-1 sm:flex-none justify-between sm:justify-start">
-            <button onClick={handlePrev} className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronLeft className="w-4 h-4" /></button>
+            <button aria-label="Oldingi" onClick={handlePrev} className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronLeft className="w-4 h-4" /></button>
             <span className="px-4 text-sm font-medium min-w-[140px] text-center">
               {view === 'week'
                 ? `${displayDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${displayDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
                 : displayDays[0].toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
               }
             </span>
-            <button onClick={handleNext} className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronRight className="w-4 h-4" /></button>
+            <button aria-label="Keyingi" onClick={handleNext} className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronRight className="w-4 h-4" /></button>
           </div>
           {/* View Toggle for Desktop/Tablet */}
           <div className="hidden md:flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
@@ -491,6 +885,12 @@ export const Calendar: React.FC<CalendarProps> = ({
             >
               {t('calendar.week')}
             </button>
+            <button
+              onClick={() => setView('report')}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'report' ? 'bg-white dark:bg-gray-600 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+            >
+              Hisobot
+            </button>
           </div>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
@@ -498,22 +898,64 @@ export const Calendar: React.FC<CalendarProps> = ({
         </div>
       </div>
 
-      {/* Doctor Color Legend */}
-      <div className="flex flex-wrap gap-4 px-1 py-1">
-        {doctors.filter(d => d.status === 'Active').map(doc => (
-          <div key={doc.id} className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: doc.color || '#3B82F6' }} />
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Dr. {doc.lastName}</span>
-          </div>
-        ))}
+      {/* SHIFOKOR RANGI VA FILTRI (S5.3, audit B-18).
+
+          Audit: «Legendadagi 6 nuqta ham bir xil ko'k, qabul bloklari
+          ham. Legenda bosilmaydi, shifokor bo'yicha filtr yo'q».
+
+          Rang endi barqaror (`doctorColor` — `Doctor.color` bazada NULL
+          bo'lsa ID dan hisoblanadi), legenda esa FILTR: bosilganda shu
+          shifokorning qabullari qoladi, ikkinchi bosish bekor qiladi. */}
+      <div className="flex flex-wrap items-center gap-2 px-1 py-1">
+        {doctors.filter(d => d.status === 'Active').map(doc => {
+          const on = doctorFilter === doc.id;
+          return (
+            <button
+              key={doc.id}
+              type="button"
+              onClick={() => setDoctorFilter(on ? null : doc.id)}
+              aria-pressed={on}
+              title={on ? 'Filtrni bekor qilish' : `Faqat Dr. ${doc.lastName}`}
+              className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors
+                ${on
+                  ? 'border-gray-900 dark:border-white bg-gray-900 dark:bg-white text-white dark:text-gray-900'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+            >
+              <span className="w-3 h-3 rounded-full shadow-sm shrink-0"
+                    style={{ backgroundColor: doctorColor(doc) }} />
+              Dr. {doc.lastName}
+            </button>
+          );
+        })}
+        {doctorFilter && (
+          <button type="button" onClick={() => setDoctorFilter(null)}
+            className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline px-1">
+            Hammasi
+          </button>
+        )}
       </div>
 
-      {/* Calendar Grid */}
+      {weekAll && (
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 mb-1 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-900 dark:text-amber-200">
+          <span className="font-medium">Hafta ko'rinishida {activeDoctors.length} ta shifokor birga ko'rsatilyapti.</span>
+          <span className="opacity-80">Bir vaqtga to'g'ri kelganlaridan bittasi ko'rinadi, qolgani «+N» yorlig'iga yig'iladi — ustiga bosing.</span>
+          <span className="opacity-80">Bitta shifokorning jadvalini to'liq ko'rish uchun yuqoridan uni tanlang yoki</span>
+          <button type="button" onClick={() => setView('day')}
+            className="font-semibold underline underline-offset-2 hover:no-underline">
+            kunlik ko'rinishga o'ting
+          </button>
+        </div>
+      )}
+
+      {view === 'report' ? (
+        <AttendanceReport data={report} busy={reportBusy} days={reportDays} onDays={setReportDays} error={reportError} />
+      ) : (
+      /* Calendar Grid */
       <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col relative">
         <div className="flex-1 overflow-auto">
           <div className={`h-full relative ${view === 'week' ? 'min-w-[1000px]' : activeDoctors.length > 2 ? 'min-w-fit' : 'w-full'}`}>
             {/* Header Row */}
-            <div className={`grid ${gridColsClass} border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30 bg-white dark:bg-gray-800`}>
+            <div style={gridCols} className="grid border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30 bg-white dark:bg-gray-800">
               <div className="p-4 border-r border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 sticky left-0 z-40"></div>
               {view === 'week' ? (
                 displayDays.map((day, i) => {
@@ -530,7 +972,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                   activeDoctors.map((doc, i) => (
                     <div key={doc.id} className="p-3 text-center border-r border-gray-100 dark:border-gray-700 last:border-0">
                       <div className="flex items-center justify-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: doc.color || '#3B82F6' }} />
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: doctorColor(doc) }} />
                         <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">Dr. {doc.lastName}</p>
                       </div>
                       <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{doc.specialty}</p>
@@ -546,7 +988,7 @@ export const Calendar: React.FC<CalendarProps> = ({
             </div>
 
             {/* Body */}
-            <div className={`grid ${gridColsClass} h-[1200px] relative`}>
+            <div style={gridCols} className="grid h-[1200px] relative">
               {/* Time Column */}
               <div className="border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 sticky left-0 z-20">
                 {HOURS.map(hour => (
@@ -627,6 +1069,22 @@ export const Calendar: React.FC<CalendarProps> = ({
                 // Calculate layout data for overlapping appointments
                 const layoutData: Record<string, { col: number; total: number }> = {};
 
+                /* Hafta ko'rinishida bir vaqtda ko'rsatiladigan eng ko'p
+                   qabul — BITTA.
+
+                   Avval ikkita edi. Ekranga qarab tekshirilganda ma'lum
+                   bo'ldiki, 140px lik ustunni ikkiga bo'lib, yana «+N»
+                   yorlig'iga ham joy ajratilsa, har blokka ~50px qoladi
+                   va ism yana «T.. Bog…» bo'lib kesiladi. Ya'ni ikkita
+                   o'qib bo'lmaydigan ism paydo bo'ladi.
+
+                   Bitta blokka ~104px tegadi va ism to'liq o'qiladi.
+                   Bitta o'qiladigan ism ikkita o'qilmaydiganidan afzal:
+                   hafta ko'rinishining vazifasi — mo'ljal olish, to'liq
+                   ro'yxat kunlik ko'rinishda. */
+                const WEEK_LANES = 1;
+                const overflow: { id: string; date: string; time: string; minutes: number; count: number; names: string }[] = [];
+
                 // Group by day (+ doctor if in day view) to handle overlaps independently
                 const getGroupKey = (app: Appointment) => view === 'day' ? `${app.date}-${app.doctorId}` : app.date;
                 const dayGroups: Record<string, Appointment[]> = {};
@@ -676,10 +1134,44 @@ export const Calendar: React.FC<CalendarProps> = ({
                     group.forEach(app => {
                       layoutData[app.id] = { col: columns.findIndex(c => c.includes(app.id)), total: columns.length };
                     });
+
+                    /* HAMMASINI CHIZMAYMIZ.
+
+                       Hafta ustuni ~140px. Bir vaqtga 6 ta qabul to'g'ri
+                       kelsa, oltalasini sig'dirishga urinish ikkala
+                       ma'noda ham ishlamaydi: ism yozilsa «Tosh…» bo'lib
+                       kesiladi, rangli to'rtburchakka aylantirilsa esa
+                       ekran o'qib bo'lmaydigan yamoqqa aylanadi.
+
+                       Shuning uchun ikkitasi ODDIY ko'rinishda qoladi
+                       (ism o'qiladi), qolganlari bitta «+N ta» yorlig'iga
+                       yig'iladi. Yorliq bosilsa o'sha kun kunlik
+                       ko'rinishda ochiladi — u yerda har shifokorning
+                       o'z ustuni bor va joy yetadi.
+
+                       Kunlik ko'rinishda cheklov yo'q: u yerda ustunlar
+                       shifokorlarga bo'lingan, siqilish yuzaga kelmaydi. */
+                    if (view === 'week' && columns.length > WEEK_LANES) {
+                      const hidden = group.filter(a => layoutData[a.id].col >= WEEK_LANES);
+                      if (hidden.length) {
+                        const ms = (a: Appointment) => new Date(`${a.date}T${a.time}`).getTime();
+                        const s0 = Math.min(...hidden.map(ms));
+                        const e0 = Math.max(...hidden.map(a => ms(a) + a.duration * 60000));
+                        const d0 = new Date(s0);
+                        overflow.push({
+                          id: 'ov-' + group[0].id,
+                          date: hidden[0].date,
+                          time: `${String(d0.getHours()).padStart(2, '0')}:${String(d0.getMinutes()).padStart(2, '0')}`,
+                          minutes: Math.max(30, (e0 - s0) / 60000),
+                          count: hidden.length,
+                          names: hidden.map(a => `${a.time} · ${a.patientName}`).join('\n'),
+                        });
+                      }
+                    }
                   });
                 });
 
-                return filteredAppointments.map(app => {
+                const blocks = filteredAppointments.map(app => {
                   const appDate = new Date(app.date);
                   const dayIndex = displayDays.findIndex(d => d.toDateString() === appDate.toDateString());
                   if (dayIndex === -1 && view === 'week') return null;
@@ -692,7 +1184,17 @@ export const Calendar: React.FC<CalendarProps> = ({
                   const height = (app.duration / 30) * 48;
 
                   const { col = 0, total = 1 } = layoutData[app.id] || {};
-                  const colWidth = 100 / total;
+
+                  /* Chegaradan tashqaridagilar chizilmaydi — ular «+N ta»
+                     yorlig'ida hisobga olingan. */
+                  const over = view === 'week' && total > WEEK_LANES;
+                  if (over && col >= WEEK_LANES) return null;
+
+                  /* Yorliq uchun o'ng chetdan joy ajratamiz, qolgani
+                     ko'rinadigan ikkitasiga teng bo'linadi. */
+                  const span = over ? 74 : 100;
+                  const lanes = over ? WEEK_LANES : total;
+                  const colWidth = span / lanes;
                   const colOffset = col * colWidth;
 
                   let left = '';
@@ -713,7 +1215,25 @@ export const Calendar: React.FC<CalendarProps> = ({
                   }
 
                   const doctor = doctors.find(d => d.id === app.doctorId);
-                  const doctorColor = doctor?.color || '#3B82F6';
+                  const blockColor = doctorColor(doctor);
+
+                  /* SIQILGANMI? `total` — shu vaqtda nechta qabul yonma-yon
+                     turgani. Hafta ustuni ~140px, ya'ni uchtadan boshlab
+                     har biriga 45px dan kam joy qoladi va ism kesiladi.
+
+                     Shart `total` ga tayanadi, ekran kengligiga emas:
+                     kun bo'sh bo'lsa (bir-ikkita qabul) ism hafta
+                     ko'rinishida ham to'liq ko'rinaveradi. */
+
+
+                  /* Shaffoflikni faqat HEX ga qo'shsa bo'ladi. Shifokor
+                     rangi bazadan keladi (`Doctor.color`) va Sozlamalardan
+                     `rgb(...)` yoki nom ko'rinishida kiritilishi mumkin —
+                     unga `20` qo'shilsa CSS butunlay yaroqsiz bo'lib,
+                     blok yana fonsiz qolardi. */
+                  const withAlpha = (c: string, a: string) =>
+                      /^#[0-9a-fA-F]{6}$/.test(c) ? c + a : c;
+                  const tip = `${app.time} · ${app.patientName} · ${app.type}${app.doctorName ? ' · Dr. ' + app.doctorName : ''}`;
 
                   const statusColors = {
                     'Confirmed': 'border-current',
@@ -730,15 +1250,27 @@ export const Calendar: React.FC<CalendarProps> = ({
                     <div
                       key={app.id}
                       onClick={() => setSelectedAppointment(app)}
-                      className={`absolute m-1 p-2 rounded-md border-l-4 text-xs shadow-sm cursor-pointer hover:brightness-95 transition-all z-10 ${isSpecialStatus ? statusColors : ''}`}
+                      title={tip}
+                      className={`absolute m-1 p-2 rounded-md border-l-4 text-xs shadow-sm cursor-pointer transition-all z-10 hover:brightness-95 ${isSpecialStatus ? statusColors : ''}`}
                       style={!isSpecialStatus ? {
                         top: `${topOffset}px`,
                         left: left,
                         width: width,
                         height: `${height - 4}px`,
-                        backgroundColor: `${doctorColor}15`,
-                        borderLeftColor: doctorColor,
-                        color: doctorColor,
+                        /* `doctorColor` — FUNKSIYA, rang emas. Bu yerda u
+                           to'g'ridan-to'g'ri qo'yilgan edi: shablonga
+                           qo'yilganda funksiyaning kodi satrga aylanardi
+                           («(doc)=>{...}15»), CSS uni tashlab yuborardi va
+                           bloklar fonsiz qolardi. Natijada oltala
+                           shifokorning qabuli bir xil ko'k ko'rinardi —
+                           audit legenda haqida aytgan gap aslida
+                           BLOKLARGA ham tegishli edi.
+
+                           `blockColor` — 826-qatorda hisoblangan haqiqiy
+                           rang; `20` — shaffoflik (hex alpha). */
+                        backgroundColor: withAlpha(blockColor, '20'),
+                        borderLeftColor: blockColor,
+                        color: blockColor,
                       } : {
                         top: `${topOffset}px`,
                         left: left,
@@ -765,12 +1297,44 @@ export const Calendar: React.FC<CalendarProps> = ({
                     </div>
                   );
                 });
+
+                /* «+N ta» YORLIG'I. Ko'rsatilmagan qabullar shu yerda
+                   hisobga olinadi — ular yo'qolmaydi, yig'iladi.
+                   Bosilsa o'sha kun kunlik ko'rinishda ochiladi. */
+                const chips = overflow.map(o => {
+                  const dayIndex = displayDays.findIndex(d => d.toDateString() === new Date(o.date).toDateString());
+                  if (dayIndex === -1) return null;
+                  const [h, m] = o.time.split(':').map(Number);
+                  if (isNaN(h)) return null;
+                  const topOffset = ((h - startHour) * 96) + (m / 60) * 96;
+                  const height = Math.max(26, (o.minutes / 30) * 48);
+
+                  return (
+                    <div
+                      key={o.id}
+                      onClick={() => { setCurrentDate(new Date(o.date)); setView('day'); }}
+                      title={`Yana ${o.count} ta qabul:\n${o.names}\n\nKunlik ko'rinishda ochish uchun bosing`}
+                      className="absolute m-1 rounded-md border border-dashed border-gray-400 dark:border-gray-500 bg-gray-100/80 dark:bg-gray-700/60 text-[10px] font-semibold text-gray-600 dark:text-gray-300 flex items-center justify-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors z-10"
+                      style={{
+                        top: `${topOffset}px`,
+                        left: `calc(${(dayIndex + 1) * (100 / 8)}% + 2px + ${(74 / 100) * (100 / 8)}%)`,
+                        width: `calc(${(26 / 100) * (100 / 8)}% - 4px)`,
+                        height: `${height - 4}px`,
+                      }}
+                    >
+                      +{o.count}
+                    </div>
+                  );
+                });
+
+                return <>{blocks}{chips}</>;
               })()}
 
             </div>
           </div>
         </div>
       </div>
+      )}
 
       {/* Add Appointment Modal */}
       <Modal isOpen={isAddModalOpen} onClose={() => { setIsAddModalOpen(false); setEditingApptId(null); }} title={editingApptId ? t('calendar.editAppointment') : t('calendar.newAppointment')}>
@@ -779,7 +1343,7 @@ export const Calendar: React.FC<CalendarProps> = ({
             <div className="flex-1">
               <SearchableSelect
                 label={t('calendar.patient')}
-                options={patients.map(p => ({ value: p.id, label: `${p.lastName} ${p.firstName}` }))}
+                options={patients.map(p => ({ value: p.id, label: `${formatFullName(p)}` }))}
                 value={formData.patientId}
                 onChange={(val) => setFormData({ ...formData, patientId: val })}
               />
@@ -800,7 +1364,7 @@ export const Calendar: React.FC<CalendarProps> = ({
           {currentClinic?.planId !== 'individual' && (
             <Select
               label={t('calendar.doctor')}
-              options={doctors.map(d => ({ value: d.id, label: `Dr. ${d.firstName} ${d.lastName}` }))}
+              options={doctors.map(d => ({ value: d.id, label: `${formatDoctorName(d)}` }))}
               value={formData.doctorId}
               onChange={(e) => setFormData({ ...formData, doctorId: e.target.value })}
             />
@@ -867,7 +1431,7 @@ export const Calendar: React.FC<CalendarProps> = ({
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h3
+                <h2
                   className={`text-xl font-bold text-gray-900 dark:text-white ${onPatientClick ? 'cursor-pointer hover:text-primary-600 transition-colors hover:underline title-transition' : ''}`}
                   onClick={() => {
                     if (onPatientClick) {
@@ -878,7 +1442,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                   title={onPatientClick ? "Bemor profiliga o'tish" : ""}
                 >
                   {selectedAppointment.patientName}
-                </h3>
+                </h2>
                 <p className="text-gray-500 text-sm">{selectedAppointment.type}</p>
               </div>
               <div className="flex items-center gap-3">
@@ -953,11 +1517,16 @@ export const Calendar: React.FC<CalendarProps> = ({
                       variant="ghost"
                       className="text-red-500 hover:text-red-700"
                       onClick={async () => {
-                        if (confirm('Haqiqatan ham bu qabulni butunlay o\'chirmoqchimisiz?')) {
+                        if (await confirmAction({ title: 'Haqiqatan ham bu qabulni butunlay o\'chirmoqchimisiz?', danger: true, confirmLabel: "O'chirish" })) {
                           try {
                             await onDeleteAppointment(selectedAppointment.id);
                             setSelectedAppointment(null);
-                          } catch (e) { }
+                          } catch {
+                            /* Xato xabarini `App.tsx` toast ko'rsatadi.
+                               Oyna ATAYLAB ochiq qoladi: o'chirish
+                               bajarilmagan bo'lsa, uni yopish
+                               «bajarildi» degan taassurot beradi. */
+                          }
                         }
                       }}
                     >

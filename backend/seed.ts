@@ -236,7 +236,10 @@ const CLINICAL_SERVICES: Record<string, { name: string; price: number; duration:
 async function main() {
     console.log('🌱 XClinic — boshlang\'ich ma\'lumotlar\n');
 
-    // ── Tarif (Clinic.planId majburiy FK) ───────────────────────────────────
+    /* ── Tarif ───────────────────────────────────────────────────────────
+       Bu obuna tushunchasi EMAS (u olib tashlangan) — `Clinic.planId` hali
+       majburiy tashqi kalit bo'lgani uchun bitta qator kerak. Sxemadagi
+       izohga qarang: ustunni yo'qotish jadvalni qayta qurishni talab qiladi. */
     const plan = await prisma.subscriptionPlan.upsert({
         where: { id: 'local' },
         update: {},

@@ -124,3 +124,82 @@ body {
 .animate-in {
   animation: fadeIn 0.2s ease-out;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KLAVIATURA FOKUSI (S4.2, audit B-15)
+
+   Audit topgani: butun stil faylida atigi BITTA `:focus` qoidasi bor edi va
+   tugmalarda `outline: none` turardi. Tab bilan yurganda kursor qayerdaligini
+   bilib bo'lmasdi — WCAG 2.4.7 buzilishi, va klaviatura bilan ishlash amalda
+   imkonsiz edi.
+
+   `:focus-visible` — `:focus` EMAS. Farqi muhim: `:focus` sichqoncha bilan
+   bosilganda ham ishlaydi va har bosishda halqa chiqib, dizaynni buzadi.
+   `:focus-visible` esa brauzer «bu klaviatura navigatsiyasi» deb hisoblagan
+   holatdagina ko'rinadi — aynan kerak bo'lgan joyda.
+
+   Qoida global: har bir tugmaga alohida stil yozish kerak emas va yangi
+   komponent avtomatik qamrab olinadi. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.dark :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline-color: var(--color-primary-400);
+}
+
+/* Qorong'i fonli tugmalarda ko'k halqa ko'rinmay qoladi — oq bilan ajratamiz */
+:where(.bg-primary-600, .bg-primary-700, .bg-red-600, .bg-green-600):focus-visible {
+  outline-color: #fff;
+  outline-offset: 3px;
+}
+
+/* Sichqoncha bilan bosilganda halqa chiqmasin (ba'zi brauzerlarda `:focus`
+   hali ham qo'llaniladi) */
+:where(a, button):focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOSISH MAYDONI (S4.3, audit B-35)
+
+   Audit: tekshirilgan 209 ta tugmaning BITTASI ham 44×44px ga yetmaydi
+   (WCAG 2.5.5). Klinikada planshet ishlatilsa, ombor va navbat
+   qatorlaridagi ikonkalarga tegish qiyin.
+
+   Ko'rinishni O'ZGARTIRMAYDIGAN yechim: `::after` bilan ko'rinmas maydon
+   qo'yiladi. Tugmaning o'zini kattalashtirish jadval qatorlarini buzardi.
+
+   FAQAT SENSORLI qurilmada: sichqoncha bilan ishlaganda 44px maydon
+   qo'shni tugmalar bilan kesishib, noto'g'ri bosishga olib kelishi mumkin. */
+@media (pointer: coarse) {
+  button, [role="button"], a[href] {
+    position: relative;
+  }
+
+  button::after,
+  [role="button"]::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 44px;
+    min-height: 44px;
+    /* Faqat bosish uchun — ko'rinmaydi va o'lchamga ta'sir qilmaydi */
+    pointer-events: auto;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ANIMATSIYA (audit: `prefers-reduced-motion` hisobga olingan — saqlanadi) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

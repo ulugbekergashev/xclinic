@@ -5,7 +5,7 @@ import {
   Volume2, VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { API_URL, isDemoMode } from '../services/api';
+import { API_URL, isDemoMode, getAuthToken as readAuthToken } from '../services/api';
 import { UserRole } from '../types';
 
 // ─── Tiplар ─────────────────────────────────────────────────────────────────
@@ -59,17 +59,8 @@ const DEMO_INSIGHTS = [
 
 // ─── Helper: API so'rov ──────────────────────────────────────────────────────
 
-function getAuthToken(): string | null {
-  try {
-    const raw =
-      sessionStorage.getItem('xclinic_auth') ||
-      localStorage.getItem('xclinic_auth');
-    if (!raw) return null;
-    return JSON.parse(raw)?.token || null;
-  } catch {
-    return null;
-  }
-}
+// Token xotiradan olinadi (S1.3) — `services/authStore.ts`.
+const getAuthToken = (): string | null => readAuthToken();
 
 async function apiPost<T>(path: string, body: object): Promise<T> {
   const token = getAuthToken();
@@ -92,7 +83,7 @@ async function apiPost<T>(path: string, body: object): Promise<T> {
 
 export const DashboardAiTab: React.FC<DashboardAiTabProps> = ({ userRole, stats }) => {
   const isAdmin =
-    userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.SUPER_ADMIN;
+    userRole === UserRole.CLINIC_ADMIN;
 
   // Chat holati
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -289,7 +280,7 @@ export const DashboardAiTab: React.FC<DashboardAiTabProps> = ({ userRole, stats 
           </div>
           <div>
             <h3 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300">
-              DentaAI Yordamchi
+              AI Yordamchi
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {isAdmin ? 'Ma\'lumotlar bazasi bilan bog\'langan' : 'Umumiy stomatologiya maslahatlari'}

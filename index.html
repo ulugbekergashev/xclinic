@@ -4,9 +4,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Brauzer manzil qatorining rangi (S5.7, audit B-36). Yorug' va
+       qorong'i tema uchun alohida — `index.css` dagi primary rangi. -->
+  <meta name="theme-color" content="#2563eb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1e3a8a" media="(prefers-color-scheme: dark)" />
+  <meta name="description" content="XClinic — ko'p profilli klinika uchun boshqaruv tizimi: registratura, navbat, qabul, kassa, laboratoriya, ombor va statsionar." />
   <title>XClinic</title>
-  <link rel="icon" type="image/png" href="./logo-icon.png" />
-  <link rel="shortcut icon" href="./logo-icon.png" />
+  <!-- SVG birinchi: har qanday o'lchamda tiniq. PNG eski brauzerlar uchun
+       zaxira bo'lib qoldi (SVG favikonni tushunmaydiganlar hali uchraydi). -->
+  <link rel="icon" type="image/svg+xml" href="./logo.svg" />
+  <link rel="alternate icon" type="image/png" href="./logo-icon.png" />
   <!--
     DIQQAT: bu yerga CDN <script>/<link> QO'SHMANG (cdn.tailwindcss.com,
     fonts.googleapis.com, aistudiocdn.com va h.k.). XClinic internetsiz

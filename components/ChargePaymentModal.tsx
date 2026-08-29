@@ -48,8 +48,8 @@ const remainingOf = (c: VisitCharge) => Math.round((c.total - (c.paidAmount || 0
 export const ChargePaymentModal: React.FC<Props> = ({
     isOpen, onClose, patientName, charges, patientId, receivedByName, role, onDone, addToast,
 }) => {
-    const canDiscount = role === 'CLINIC_ADMIN' || role === 'SUPER_ADMIN' || role === 'RECEPTIONIST';
-    const canRefund = role === 'CLINIC_ADMIN' || role === 'SUPER_ADMIN';
+    const canDiscount = role === 'CLINIC_ADMIN' || role === 'RECEPTIONIST';
+    const canRefund = role === 'CLINIC_ADMIN';
 
     // To'langan qatorlar — faqat qaytarish uchun, alohida so'rov bilan
     const [paidRows, setPaidRows] = useState<VisitCharge[]>([]);

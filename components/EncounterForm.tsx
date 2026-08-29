@@ -1,6 +1,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ClipboardList, Save, ChevronDown } from 'lucide-react';
 import type { Department, EncounterTemplate, EncounterField } from '../types';
+import {
+    validateEncounterField, rangeForField, isVitalAbnormal, calcBmi, bmiLabel,
+    ENCOUNTER_FIELD_TO_VITAL,
+} from '../shared/validation';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Qabul bayoni — tish kartasining o'rnini bosadi.
@@ -14,6 +18,10 @@ import type { Department, EncounterTemplate, EncounterField } from '../types';
 interface Props {
     departments: Department[];
     templates: EncounterTemplate[];
+    /** Bemor jinsi — mos kelmaydigan shablonni yashirish uchun (B-09) */
+    patientGender?: 'Male' | 'Female' | null;
+    /** Bemor yoshi, to'liq yil. `null` — noma'lum, chegara qo'llanmaydi */
+    patientAge?: number | null;
     departmentId?: string;
     templateId?: string;
     /** Saqlangan qiymatlar (JSON matn yoki obyekt) */
@@ -31,7 +39,7 @@ const parseValue = (v: Props['value']): Record<string, any> => {
 };
 
 export const EncounterForm: React.FC<Props> = ({
-    departments, templates, departmentId, templateId,
+    departments, templates, departmentId, templateId, patientGender, patientAge,
     value, readOnly = false, onChange, onSave, onDepartmentChange,
 }) => {
     const [data, setData] = useState<Record<string, any>>(() => parseValue(value));
@@ -47,14 +55,45 @@ export const EncounterForm: React.FC<Props> = ({
         [departments],
     );
 
+    /* BEMORGA MOS SHABLONLAR (audit B-09).
+     *
+     * Ilgari bu yerda faqat bo'lim bo'yicha filtr bor edi, so'ng
+     * `deptTemplates.find(t => t.isDefault) || deptTemplates[0]` ishlardi.
+     * Bazadagi yettita shablonning HAMMASI `isDefault` edi va ro'yxat
+     * alifbo tartibida kelardi — ya'ni «Ginekolog ko'rigi» har doim
+     * birinchi turardi va ERKAK bemorda ham ochilardi: menarxe, hayz
+     * sanasi, bimanual tekshiruv.
+     *
+     * Endi ikki qatlam: server bemor bo'yicha filtrlaydi (`?patientId=`),
+     * bu yerda esa yana bir bor tekshiriladi — ro'yxat keshdan yoki
+     * filtrsiz kelgan bo'lishi mumkin. */
+    const fitsPatient = (t: EncounterTemplate) => {
+        if (t.gender && patientGender && t.gender !== patientGender) return false;
+        /* Yosh noma'lum bo'lsa chegara QO'LLANMAYDI: tug'ilgan sanasi
+           kiritilmagan bemorda hamma shablon yopilib qolsa, shifokor hech
+           narsa yoza olmaydi. */
+        if (patientAge === null || patientAge === undefined) return true;
+        if (t.minAge != null && patientAge < t.minAge) return false;
+        if (t.maxAge != null && patientAge > t.maxAge) return false;
+        return true;
+    };
+
     const deptTemplates = useMemo(
-        () => templates.filter(t => !departmentId || t.departmentId === departmentId),
-        [templates, departmentId],
+        () => templates
+            .filter(t => !departmentId || t.departmentId === departmentId)
+            .filter(fitsPatient),
+        [templates, departmentId, patientGender, patientAge],
     );
 
     // Shablon tanlanmagan bo'lsa — bo'limning standart shabloni
     const template = useMemo(() => {
-        if (activeTemplateId) return deptTemplates.find(t => t.id === activeTemplateId) || deptTemplates[0];
+        if (activeTemplateId) {
+            const chosen = deptTemplates.find(t => t.id === activeTemplateId);
+            /* Tanlangan shablon bemorga mos kelmasa, unga QAYTMAYMIZ:
+               ilgari `|| deptTemplates[0]` shu yerda ham turardi va
+               mos kelmaydigan tanlovni jimgina boshqasiga almashtirardi. */
+            if (chosen) return chosen;
+        }
         return deptTemplates.find(t => t.isDefault) || deptTemplates[0];
     }, [deptTemplates, activeTemplateId]);
 
@@ -69,6 +108,38 @@ export const EncounterForm: React.FC<Props> = ({
         }
         return Array.from(map.entries());
     }, [template]);
+
+    /* Chegaradan chiqqan maydon — saqlashga to'siq. */
+    const fieldProblem = (key: string, value: any): string | null => {
+        const r = validateEncounterField(key, value);
+        return r.ok === true ? null : (r as any).error;
+    };
+
+    /* Normadan chiqqan, lekin fiziologik mumkin — ogohlantirish, to'siq emas. */
+    const fieldAbnormal = (key: string, value: any): boolean => {
+        const kind = ENCOUNTER_FIELD_TO_VITAL[key];
+        if (!kind || value === '' || value === null || value === undefined) return false;
+        const n = Number(value);
+        return Number.isFinite(n) && isVitalAbnormal(kind, n);
+    };
+
+    /* Barcha chegara xatolari — saqlash tugmasi uchun. */
+    const problems = useMemo(() => {
+        const list: string[] = [];
+        for (const f of (template?.fields || [])) {
+            const p = fieldProblem(f.key, data[f.key]);
+            if (p) list.push(p);
+        }
+        return list;
+    }, [template, data]);
+
+    /* VKI — bo'y va vazndan avtomatik (audit B-10: «hisoblanmaydi»).
+       Saqlanmaydi, hisoblanadi: ikkala manba ham shu formada turibdi. */
+    const bmi = useMemo(() => {
+        const h = Number(data['height']);
+        const w = Number(data['weight']);
+        return calcBmi(Number.isFinite(h) ? h : null, Number.isFinite(w) ? w : null);
+    }, [data]);
 
     const update = (key: string, v: any) => {
         const next = { ...data, [key]: v };
@@ -114,18 +185,40 @@ export const EncounterForm: React.FC<Props> = ({
                         <span className="text-sm text-gray-600 dark:text-gray-400">Ha</span>
                     </label>
                 );
-            case 'number':
+            case 'number': {
+                /* FIZIOLOGIK CHEGARA (S3.2, audit B-10).
+
+                   Auditdagi 500 °C harorat, −40 puls va 9999 sistolik
+                   AYNAN shu maydonlardan kiritilgan. Chegaralar
+                   `shared/validation.ts` da — server ham o'sha fayldan
+                   o'qiydi, ya'ni ikkalasi ajralib keta olmaydi.
+
+                   Ikki xil belgi:
+                     qizil  — fiziologik imkonsiz, SAQLASHGA yo'l yo'q;
+                     sariq  — normadan chiqqan, lekin saqlanadi (kasal
+                              odamning harorati 39 bo'ladi va yozilishi
+                              kerak). */
+                const problem = fieldProblem(f.key, v);
+                const abnormal = !problem && fieldAbnormal(f.key, v);
+                const range = rangeForField(f.key);
                 return (
-                    <div className="relative">
-                        <input type="number" className={inputClass} value={v} disabled={readOnly}
-                            onChange={e => update(f.key, e.target.value)} />
-                        {f.unit && (
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                                {f.unit}
-                            </span>
-                        )}
+                    <div>
+                        <div className="relative">
+                            <input type="number" value={v} disabled={readOnly}
+                                min={range?.min} max={range?.max} step="any"
+                                className={`${inputClass} ${problem ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : abnormal ? 'border-amber-500' : ''}`}
+                                onChange={e => update(f.key, e.target.value)} />
+                            {f.unit && (
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                                    {f.unit}
+                                </span>
+                            )}
+                        </div>
+                        {problem && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{problem}</p>}
+                        {abnormal && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Normadan tashqarida</p>}
                     </div>
                 );
+            }
             default:
                 return (
                     <input type="text" className={inputClass} value={v} disabled={readOnly}
@@ -203,11 +296,29 @@ export const EncounterForm: React.FC<Props> = ({
                         </div>
                     ))}
 
+                    {/* VKI — bo'y va vazn kiritilgan bo'lsa avtomatik.
+                        Audit: «Bo'y va vazndan VKI ham hisoblanmaydi». */}
+                    {bmi !== null && (
+                        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+                            <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">VKI</span>
+                            <span className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">{bmi}</span>
+                            <span className="text-sm text-gray-600 dark:text-gray-300">{bmiLabel(bmi)}</span>
+                        </div>
+                    )}
+
                     {!readOnly && onSave && (
-                        <div className="flex justify-end pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                            {problems.length > 0 && (
+                                <p className="text-xs text-red-600 dark:text-red-400 flex-1">
+                                    {problems.length === 1 ? problems[0] : `${problems.length} ta ko'rsatkich chegaradan tashqarida`}
+                                </p>
+                            )}
                             <button
                                 onClick={handleSave}
-                                disabled={!dirty}
+                                /* Chegaradan chiqqan qiymat bilan SAQLASH YO'Q:
+                                   server ham uni rad etadi, va «saqladim» deb
+                                   o'ylab qolish eng yomon holat. */
+                                disabled={!dirty || problems.length > 0}
                                 className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium
                                            hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >

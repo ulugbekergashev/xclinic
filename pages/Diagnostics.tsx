@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatDate, formatFullName } from '../utils/format';
+import { confirmAction } from '../services/confirm';
 import {
     Activity, Plus, Search, X, Trash2, AlertCircle, CheckCircle,
     Clock, Printer, Image as ImageIcon, Upload,
 } from 'lucide-react';
 import { DiagnosticStudy, Modality, MODALITY_LABELS, Patient, Department, Service, Clinic } from '../types';
 import { api, getFileUrl, API_URL } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
+import { EmptyState } from '../components/Common';
 import { printStudyConclusion } from '../utils/printForms';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -37,12 +41,13 @@ interface Props {
 }
 
 const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
-const fmtDate = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('uz-UZ') : '—';
+const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
 export const Diagnostics: React.FC<Props> = ({
     clinicId, patients = [], departments = [], services = [], doctors = [], currentUserName, token,
     currentClinic,
 }) => {
+    const { t } = useLanguage();
     const [studies, setStudies] = useState<DiagnosticStudy[]>([]);
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
@@ -167,7 +172,7 @@ export const Diagnostics: React.FC<Props> = ({
     };
 
     const remove = async (id: string) => {
-        if (!confirm("Tekshiruv o'chiriladi. Davom etasizmi?")) return;
+        if (!await confirmAction({ title: "Tekshiruv o'chiriladi. Davom etasizmi?", danger: true, confirmLabel: "O'chirish" })) return;
         try { await api.studies.delete(id); await reload(); }
         catch (e: any) { setError(e.message || 'O\'chirilmadi'); }
     };
@@ -179,7 +184,7 @@ export const Diagnostics: React.FC<Props> = ({
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <Activity className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">Diagnostika</h2>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('diag.title')}</h2>
                     <span className="text-sm text-gray-500 dark:text-gray-400">{filtered.length} ta tekshiruv</span>
                 </div>
                 <button onClick={() => setShowNew(true)}
@@ -200,19 +205,20 @@ export const Diagnostics: React.FC<Props> = ({
                 <div className="relative flex-1 min-w-[220px]">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input value={search} onChange={e => setSearch(e.target.value)}
-                        placeholder="Bemor yoki tekshiruv..." className={`${inputCls} pl-9`} />
+                        placeholder={t('diag.searchPh')} className={`${inputCls} pl-9`} />
                 </div>
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${inputCls} max-w-[200px]`}>
-                    <option value="all">Barcha holatlar</option>
+                    <option value="all">{t('diag.allStatuses')}</option>
                     {Object.entries(STATUS_UI).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                 </select>
             </div>
 
             {filtered.length === 0 ? (
-                <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                    <Activity className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400">Tekshiruvlar yo'q</p>
-                </div>
+                <EmptyState
+                    icon={<Activity className="w-12 h-12" />}
+                    title={t('diag.noStudies')}
+                    hint={t('diag.noStudiesHint')}
+                />
             ) : (
                 <div className="grid gap-3">
                     {filtered.map(s => {
@@ -238,7 +244,7 @@ export const Diagnostics: React.FC<Props> = ({
                                         <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{s.name}</p>
                                         {s.conclusion && (
                                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-                                                <span className="font-medium">Xulosa:</span> {s.conclusion}
+                                                <span className="font-medium">{t('diag.conclusionLabel')}</span> {s.conclusion}
                                             </p>
                                         )}
                                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{fmtDate(s.orderedAt)}</p>
@@ -268,51 +274,51 @@ export const Diagnostics: React.FC<Props> = ({
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowNew(false)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">Yangi tekshiruv</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('diag.newStudy')}</h3>
                             <button onClick={() => setShowNew(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-5 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Bemor</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('common.patient2')}</label>
                                 <select value={form.patientId} className={inputCls}
                                     onChange={e => {
                                         const p = patients.find(x => x.id === e.target.value);
-                                        setForm(f => ({ ...f, patientId: e.target.value, patientName: p ? `${p.firstName} ${p.lastName}` : '' }));
+                                        setForm(f => ({ ...f, patientId: e.target.value, patientName: p ? `${formatFullName(p)}` : '' }));
                                     }}>
-                                    <option value="">Tanlang...</option>
-                                    {patients.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+                                    <option value="">{t('common.choose')}</option>
+                                    {patients.map(p => <option key={p.id} value={p.id}>{formatFullName(p)}</option>)}
                                 </select>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tur</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('diag.type')}</label>
                                     <select value={form.modality} onChange={e => setForm(f => ({ ...f, modality: e.target.value as Modality }))} className={inputCls}>
                                         {MODALITIES.map(m => <option key={m} value={m}>{MODALITY_LABELS[m]}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Narx</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('diag.price')}</label>
                                     <input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} className={inputCls} placeholder="0" />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tekshiruv nomi</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('diag.studyName')}</label>
                                 {diagServices.length > 0 && (
                                     <select className={`${inputCls} mb-2`}
                                         onChange={e => {
                                             const svc = diagServices.find(x => String(x.id) === e.target.value);
                                             if (svc) setForm(f => ({ ...f, name: svc.name, price: String(svc.price) }));
                                         }}>
-                                        <option value="">Xizmatlar ro'yxatidan...</option>
+                                        <option value="">{t('diag.fromServices')}</option>
                                         {diagServices.map(sv => <option key={sv.id} value={sv.id}>{sv.name} — {fmt(sv.price)}</option>)}
                                     </select>
                                 )}
                                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                                    className={inputCls} placeholder="Masalan: Qorin bo'shlig'i UZI" />
+                                    className={inputCls} placeholder={t('diag.namePh')} />
                             </div>
                         </div>
                         <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Bekor qilish</button>
+                            <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={create} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {saving ? 'Saqlanmoqda...' : 'Yaratish'}
                             </button>
@@ -333,7 +339,7 @@ export const Diagnostics: React.FC<Props> = ({
                                 </p>
                             </div>
                             <div className="ml-auto flex items-center gap-2">
-                                <button onClick={printConclusion} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Xulosani chop etish">
+                                <button aria-label={t('diag.printConclusion')} onClick={printConclusion} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={t('diag.printConclusion')}>
                                     <Printer className="w-5 h-5" />
                                 </button>
                                 <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
@@ -344,18 +350,18 @@ export const Diagnostics: React.FC<Props> = ({
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tavsif (tafsilot)</label>
                                 <textarea rows={6} value={draft.findings} onChange={e => setDraft(d => ({ ...d, findings: e.target.value }))}
-                                    className={inputCls} placeholder="Tekshiruvda aniqlangan o'zgarishlar..." />
+                                    className={inputCls} placeholder={t('diag.findingsPh')} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Xulosa</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('diag.conclusion')}</label>
                                 <textarea rows={3} value={draft.conclusion} onChange={e => setDraft(d => ({ ...d, conclusion: e.target.value }))}
-                                    className={inputCls} placeholder="Yakuniy xulosa..." />
+                                    className={inputCls} placeholder={t('diag.conclusionPh')} />
                             </div>
 
                             {/* Rasmlar */}
                             <div>
                                 <div className="flex items-center gap-3 mb-2">
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Rasmlar</label>
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('diag.images')}</label>
                                     <label className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
                                         <Upload className="w-3.5 h-3.5" />
                                         {uploading ? 'Yuklanmoqda...' : 'Rasm qo\'shish'}
@@ -373,7 +379,7 @@ export const Diagnostics: React.FC<Props> = ({
                                         ))}
                                     </div>
                                 ) : (
-                                    <p className="text-xs text-gray-400 dark:text-gray-500">Rasm biriktirilmagan</p>
+                                    <p className="text-xs text-gray-400 dark:text-gray-500">{t('diag.noImages')}</p>
                                 )}
                             </div>
                         </div>

@@ -1,36 +1,61 @@
 ﻿
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+
+/* ─── MARSHRUT BO'YICHA BO'LISH (S5.5, T08) ─────────────────────────────────
+
+   MUAMMO. 15 modulning hammasi bitta bundle'ga tushardi — ~2,1 MB. Audit
+   buni to'g'ridan-to'g'ri o'lchamagan, lekin tavsiyada aytilgan:
+   «registratorning eski kompyuterida birinchi ochilish sekin bo'ladi».
+
+   Registrator kuniga faqat 3-4 modul ochadi (registratura, navbat,
+   bemorlar, kassa) — qolgan 11 tasini yuklab o'tirishning ma'nosi yo'q.
+
+   ATAYLAB LAZY EMAS:
+     • `SignIn`  — birinchi ko'rinadigan ekran, kechiktirish ko'rinadi;
+     • `QueueBoard` — kiosk rejimida alohida oynada ochiladi va u yerda
+       yuklash indikatori xunuk;
+     • `NotFound` — kichkina, ajratishning foydasi yo'q. */
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Patients = React.lazy(() => import('./pages/Patients').then(m => ({ default: m.Patients })));
+const PatientDetails = React.lazy(() => import('./pages/PatientDetails').then(m => ({ default: m.PatientDetails })));
+const Calendar = React.lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
+const FinanceHub = React.lazy(() => import('./pages/FinanceHub').then(m => ({ default: m.FinanceHub })));
+const Leads = React.lazy(() => import('./pages/Leads').then(m => ({ default: m.Leads })));
+const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const DoctorsAnalytics = React.lazy(() => import('./pages/DoctorsAnalytics').then(m => ({ default: m.DoctorsAnalytics })));
+const DoctorDetails = React.lazy(() => import('./pages/DoctorDetails').then(m => ({ default: m.DoctorDetails })));
+const Inventory = React.lazy(() => import('./pages/Inventory').then(m => ({ default: m.Inventory })));
+const LabOrders = React.lazy(() => import('./pages/LabOrders').then(m => ({ default: m.LabOrders })));
+const Diagnostics = React.lazy(() => import('./pages/Diagnostics').then(m => ({ default: m.Diagnostics })));
+const Reception = React.lazy(() => import('./pages/Reception').then(m => ({ default: m.Reception })));
+const MyQueue = React.lazy(() => import('./pages/MyQueue').then(m => ({ default: m.MyQueue })));
+const VisitWorkspace = React.lazy(() => import('./pages/VisitWorkspace').then(m => ({ default: m.VisitWorkspace })));
+const Inpatient = React.lazy(() => import('./pages/Inpatient').then(m => ({ default: m.Inpatient })));
+const MessagesManagement = React.lazy(() => import('./pages/MessagesManagement').then(m => ({ default: m.MessagesManagement })));
 import { todayISO } from './utils/dateUtils';
 import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Calendar as CalendarIcon,
   DollarSign, Settings as SettingsIcon, Menu, X, Moon, Sun, LogOut,
-  Activity, RefreshCw, AlertTriangle, Loader2, Package, Search, UserCheck, Plus, Edit, Trash2, ListOrdered, FlaskConical, MessageSquare, Wallet, Scan, BedDouble, UserPlus, Stethoscope
-} from 'lucide-react';
-import { Dashboard } from './pages/Dashboard';
-import { Patients } from './pages/Patients';
-import { PatientDetails } from './pages/PatientDetails';
-import { Calendar } from './pages/Calendar';
-import { FinanceHub } from './pages/FinanceHub';
-import { Leads } from './pages/Leads';
-import { Settings } from './pages/Settings';
+  Activity, RefreshCw, AlertTriangle, Loader2, Package, Search, UserCheck, Plus, Edit, Trash2, ListOrdered, FlaskConical, MessageSquare, Wallet, Scan, BedDouble, UserPlus, Stethoscope, Sparkles} from 'lucide-react';
 import { SignIn } from './pages/SignIn';
-import { DoctorsAnalytics } from './pages/DoctorsAnalytics';
-import { DoctorDetails } from './pages/DoctorDetails';
-import { Inventory } from './pages/Inventory';
 import { QueueBoard } from './pages/QueueBoard';
-import { LabOrders } from './pages/LabOrders';
-import { Diagnostics } from './pages/Diagnostics';
-import { Reception } from './pages/Reception';
-import { MyQueue } from './pages/MyQueue';
-import { VisitWorkspace } from './pages/VisitWorkspace';
-import { Inpatient } from './pages/Inpatient';
-import { MessagesManagement } from './pages/MessagesManagement';
-import { UserRole, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, InventoryItem, ServiceCategory, Lead, LabTechnician, LabOrder, CashRegisterDay, CashMovement, Department, VisitCharge } from './types';
+import { UserRole, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, Service, InventoryItem, ServiceCategory, Lead, LabTechnician, LabOrder, CashRegisterDay, CashMovement, Department, VisitCharge } from './types';
 import { ToastContainer, ToastMessage } from './components/Common';
 import { InstallPWAButton } from './components/InstallPWAButton';
 import { BottomNav } from './components/BottomNav';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { Flag } from './components/Flag';
+import { LogoWordmark } from './components/Logo';
+import { ForcePasswordChange } from './components/ForcePasswordChange';
+import { useHotkeys } from './hooks/useHotkeys';
+import { startLiveUpdates, stopLiveUpdates } from './hooks/useLiveUpdates';
+import { API_URL, getAuthToken } from './services/api';
+import * as auth from './services/authStore';
+import { connectToast, disconnectToast } from './services/toast';
+import { ConfirmDialog } from './components/ConfirmDialog';
+import { NotFound } from './pages/NotFound';
+import { confirmAction } from './services/confirm';
 import { api } from './services/api';
 import type { CashCloseInput } from './services/api';
 import { parseAccessControl, isModuleHidden, canSeeFinance, canSeePatientPhone } from './utils/accessControl';
@@ -41,17 +66,28 @@ import { Language } from './i18n/translations';
 const CLINIC_NAVIGATION = [
   { id: 'dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
   { id: 'reception', labelKey: 'nav.reception', icon: UserPlus, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  { id: 'myqueue', labelKey: 'nav.myqueue', icon: Stethoscope, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
+  /* Hamshira navbatni va bemor kartasini ko'radi: dori berish va harorat
+     varag'i uchun kimga nima buyurilganini bilishi kerak. Ilgari u faqat
+     `inpatient` ni ko'rardi va bemorni izlashning yo'li yo'q edi. */
+  { id: 'myqueue', labelKey: 'nav.myqueue', icon: Stethoscope, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
   { id: 'leads', labelKey: 'nav.leads', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  { id: 'patients', labelKey: 'nav.patients', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
+  { id: 'patients', labelKey: 'nav.patients', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
   { id: 'calendar', labelKey: 'nav.calendar', icon: CalendarIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
+  /* Moliya registratorda qoladi — u kassada ishlaydi. Hisobot va Ulush
+     tablari FinanceHub ichida allaqachon egaga cheklangan. */
   { id: 'finance', labelKey: 'nav.finance', icon: Wallet, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  { id: 'doctors', labelKey: 'nav.doctors', icon: Activity, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
+  /* Shifokorlar analitikasi har shifokorning hisoblangan ULUSHINI va
+     tushumini ko'rsatadi (`DoctorsAnalytics` → `calculateDoctorShare`).
+     Bu oylik ma'lumoti — registrator uni ko'rmasligi kerak. Sahifaning
+     o'zida rol tekshiruvi yo'q edi, shuning uchun cheklov shu yerda va
+     marshrut qo'riqchisida qo'yiladi. */
+  { id: 'doctors', labelKey: 'nav.doctors', icon: Activity, roles: [UserRole.CLINIC_ADMIN] },
   { id: 'inventory', labelKey: 'inventory.title', icon: Package, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
   { id: 'board', labelKey: 'nav.board', icon: ListOrdered, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
   { id: 'lab', labelKey: 'nav.lab', icon: FlaskConical, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.LAB_TECHNICIAN] },
   { id: 'diagnostics', labelKey: 'nav.diagnostics', icon: Scan, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-  { id: 'inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
+  // Hamshiraning yagona ish o'rni — statsionar (dori varag'i, harorat varag'i)
+  { id: 'inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
   { id: 'messages', labelKey: 'nav.messages', icon: MessageSquare, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
   { id: 'settings', labelKey: 'nav.settings', icon: SettingsIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
 ];
@@ -104,6 +140,11 @@ const AppContent: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* Standart parol bilan kirilgan. Server bu holatda CHEKLANGAN token beradi
+     (faqat parol almashtirishga yaraydi), interfeys esa boshqa hech narsani
+     ko'rsatmaydi. Ikkalasi ham kerak: faqat interfeys to'sig'i `curl` ni
+     to'xtatmaydi, faqat server to'sig'i esa foydalanuvchini chalkashtiradi. */
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   // Data Store
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -150,14 +191,18 @@ const AppContent: React.FC = () => {
     return { patients: filteredPatients, doctors: filteredDoctors };
   }, [searchBarTerm, patients, doctors]);
 
-  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
 
   // Check for stored session on mount
   useEffect(() => {
-    const storedAuth = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
+    /* Eski sessiyani diskdan xotiraga ko'chirish (S1.3): bu o'zgarishgacha
+       token `localStorage` da yotgan. Bir marta ko'chiriladi va diskdan
+       o'chiriladi — xodimlar bir kunda tizimdan chiqib qolmasin. */
+    auth.migrateLegacyStorage();
+
+    const storedAuth = auth.getSession();
     if (storedAuth) {
       try {
-        const { role, name, clinicId: storedClinicId, doctorId: storedDoctorId, receptionistId: storedReceptionistId, technicianId: storedTechnicianId } = JSON.parse(storedAuth);
+        const { role, name, clinicId: storedClinicId, doctorId: storedDoctorId, receptionistId: storedReceptionistId, technicianId: storedTechnicianId } = storedAuth;
         if (role && name) {
           setUserRole(role);
           setUserName(name);
@@ -177,30 +222,61 @@ const AppContent: React.FC = () => {
         }
       } catch (e) {
         console.error('Failed to parse stored auth', e);
-        localStorage.removeItem('xclinic_auth');
-        sessionStorage.removeItem('xclinic_auth');
+        auth.setSession(null);
       }
+      setAuthChecked(true);
+    } else {
+      /* `sessionStorage` bo'sh — yangi tab yoki brauzer qaytadan ochilgan.
+         Lekin `httpOnly` cookie 30 kun yashaydi, ya'ni sessiya hali tirik
+         bo'lishi mumkin. Bir marta so'raymiz: cookie bo'lsa foydalanuvchi
+         parolsiz davom etadi, bo'lmasa kirish sahifasi ochiladi. */
+      auth.refresh(API_URL)
+        .then((restored) => {
+          if (restored?.role && restored.name) {
+            setUserRole(restored.role as UserRole);
+            setUserName(restored.name);
+            if (restored.clinicId) setClinicId(restored.clinicId);
+            if (restored.doctorId) setDoctorId(restored.doctorId);
+            if (restored.receptionistId) setReceptionistId(restored.receptionistId);
+            if (restored.technicianId) setTechnicianId(restored.technicianId);
+            setIsAuthenticated(true);
+            if (restored.clinicId) {
+              api.clinics.getById(restored.clinicId).then(setCurrentClinic).catch(console.error);
+            }
+          }
+        })
+        .finally(() => setAuthChecked(true));
     }
 
-    setAuthChecked(true);
     const handleAuthError = () => handleLogout();
     window.addEventListener('auth:unauthorized', handleAuthError);
     return () => window.removeEventListener('auth:unauthorized', handleAuthError);
   }, []);
 
+  /* Kirishda yuklanadigan oyna. Katta qilib qo'yish xavfsiz ko'rinadi, lekin
+   aynan shu 41 MB ga olib kelgan edi — o'lcham har oy o'sadi. */
+const INITIAL_DAYS = 45;
+const INITIAL_PATIENTS = 500;
+
+/** `n` kun oldingi sana, YYYY-MM-DD */
+const sinceDate = (n: number) =>
+  new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+
   // Load Data
   useEffect(() => {
-    if (!isAuthenticated) return;
+    /* `mustChangePassword` ham tekshiriladi. Bu effekt RENDER dan mustaqil
+       ishlaydi: faqat ekranni yashirish yetarli emas edi — yuklash zanjiri
+       baribir ishga tushib, cheklangan token bilan 403 lar yog'ilardi. */
+    if (!isAuthenticated || mustChangePassword) return;
 
     const loadData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const storedAuth = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-        const isDemo = storedAuth ? JSON.parse(storedAuth).isDemo : false;
+        const isDemo = auth.getSession()?.isDemo === true;
 
         if (isDemo && clinicId === 'demo-clinic-1') {
-          const { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_SERVICES, DEMO_DOCTORS, DEMO_CLINIC, DEMO_PLAN, DEMO_CATEGORIES, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_RECEPTIONISTS, DEMO_LEADS, DEMO_INVENTORY } = await import('./services/demoData');
+          const { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_SERVICES, DEMO_DOCTORS, DEMO_CLINIC, DEMO_CATEGORIES, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_RECEPTIONISTS, DEMO_LEADS, DEMO_INVENTORY } = await import('./services/demoData');
           setCurrentClinic(DEMO_CLINIC);
           setPatients(DEMO_PATIENTS);
           setAppointments(DEMO_APPOINTMENTS);
@@ -209,24 +285,36 @@ const AppContent: React.FC = () => {
           setServices(DEMO_SERVICES);
           setCategories(DEMO_CATEGORIES);
           setDoctors(DEMO_DOCTORS);
-          setPlans([DEMO_PLAN]);
           setInventoryItems(DEMO_INVENTORY || []);
           setLabTechnicians(DEMO_LAB_TECHNICIANS || []);
           setLabOrders(DEMO_LAB_ORDERS || []);
           setReceptionists(DEMO_RECEPTIONISTS || []);
           setLeads(DEMO_LEADS || []);
         } else if (clinicId) {
-          const [pts, appts, txs, exps, svcs, docs, recs, plns, invItems, cats, revs, leadsData, clinicData, labTechs, labOrds, closures, movements, depts, chrgs] = await Promise.all([
+          const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs, leadsData, clinicData, labTechs, labOrds, closures, movements, depts, chrgs] = await Promise.all([
             // Butun klinika bo'yicha: shifokor boshqa bo'lim ko'rgan bemorning
             // kartasini ocha olishi kerak (ko'p profilli klinikaning asosi).
-            api.patients.getAllForClinic(clinicId),
-            api.appointments.getAll(clinicId),
-            api.transactions.getAll(clinicId),
+            /* ─── KIRISHDA CHEKLANGAN OYNA (FIX-PLAN 10.3) ───────────────
+               Ilgari bu uch chaqiruv BUTUN jadvalni tortardi. O'lchov
+               (`backend/tests/bench/scale.ts`, 3 yillik ma'lumot): 110 510
+               qator, 41 MB. Localhost'da 1.3 s, LAN orqali 7-16 soniya — va
+               bu har kirishda va har yangilashda takrorlanardi.
+
+               Endi kirishda faqat KERAKLI oyna olinadi:
+                 - bemorlar: oxirgi 500 ta (qidiruv allaqachon serverda, 8.1);
+                 - tranzaksiya va qabullar: oxirgi 90 kun.
+
+               Uzoqroq davr kerak bo'lgan ekranlar (Kassa, Kalendar, Hisobot)
+               o'z oralig'ini o'zi so'raydi. Bosh sahifadagi UMUMIY raqamlar
+               esa serverdan keladi (`api.reports.dashboard`) — aks holda
+               qisqargan ro'yxatdan sanalgan son yolg'on bo'lardi. */
+            api.patients.getAllForClinic(clinicId, INITIAL_PATIENTS),
+            api.appointments.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }),
+            api.transactions.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }),
             api.expenses.getAll(clinicId),
             api.services.getAll(clinicId),
             api.doctors.getAll(clinicId),
             api.receptionists.getAll(clinicId),
-            api.plans.getAll(),
             api.inventory.getAll(clinicId),
             api.categories.getAll(clinicId),
             api.reviews.getAll(clinicId),
@@ -249,7 +337,6 @@ const AppContent: React.FC = () => {
           setServices(svcs);
           setDoctors(docs);
           setReceptionists(recs);
-          setPlans(plns);
           setInventoryItems(invItems);
           // @ts-ignore
           setCategories(cats);
@@ -274,7 +361,7 @@ const AppContent: React.FC = () => {
       }
     };
     loadData();
-  }, [isAuthenticated, clinicId, userRole]);
+  }, [isAuthenticated, clinicId, userRole, mustChangePassword]);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -289,13 +376,20 @@ const AppContent: React.FC = () => {
   }, [isDarkMode]);
 
   // --- Auth Actions ---
-  const handleLogin = (role: UserRole, name: string, clinicIdParam?: string, doctorIdParam?: string, receptionistIdParam?: string) => {
+  const handleLogin = (role: UserRole, name: string, clinicIdParam?: string, doctorIdParam?: string, receptionistIdParam?: string, mustChange?: boolean) => {
     setUserRole(role);
     setUserName(name);
     if (clinicIdParam) setClinicId(clinicIdParam);
     if (doctorIdParam) setDoctorId(doctorIdParam);
     if (receptionistIdParam) setReceptionistId(receptionistIdParam);
     setIsAuthenticated(true);
+
+    /* Standart parol — boshqa hech qayerga o'tkazmaymiz. Marshrutlash va
+       "Xush kelibsiz" ham keraksiz: foydalanuvchi bitta ekranni ko'radi. */
+    if (mustChange) {
+      setMustChangePassword(true);
+      return;
+    }
 
     // Navigate based on role
     // Har kim o'z ish o'rniga tushadi — hamma Dashboard'ga emas
@@ -305,6 +399,8 @@ const AppContent: React.FC = () => {
       navigate('/myqueue');
     } else if (role === UserRole.LAB_TECHNICIAN) {
       navigate('/lab');
+    } else if (role === UserRole.NURSE) {
+      navigate('/inpatient');
     } else {
       navigate('/');
     }
@@ -312,8 +408,11 @@ const AppContent: React.FC = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('xclinic_auth');
-    sessionStorage.removeItem('xclinic_auth');
+    setMustChangePassword(false);
+    /* `httpOnly` cookie'ni JavaScript o'chira olmaydi — server o'chiradi.
+       Faqat lokal tozalash yetarli emas edi: cookie qolib, keyingi
+       ochilishda sessiya o'z-o'zidan tiklanib ketardi. */
+    void auth.clearSession(API_URL);
     setIsAuthenticated(false);
     setUserRole(UserRole.CLINIC_ADMIN);
     setUserName('');
@@ -327,8 +426,7 @@ const AppContent: React.FC = () => {
     // Sessiya allaqachon tozalangan bo'lsa qayta urinish befoyda — tokensiz so'rov
     // yana 401 beradi va foydalanuvchi xato ekranida qamalib qoladi. To'g'ridan-to'g'ri
     // login sahifasiga chiqaramiz.
-    const storedAuth = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-    if (!storedAuth) {
+    if (!auth.getSession()) {
       handleLogout();
       return;
     }
@@ -336,7 +434,7 @@ const AppContent: React.FC = () => {
     setError(null);
     try {
       if (clinicId) {
-        const [pts, appts, txs, exps, svcs, docs, recs, plns, invItems, cats, revs, leadsData] = await Promise.all([
+        const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs, leadsData] = await Promise.all([
           api.patients.getAllForClinic(clinicId),
           api.appointments.getAll(clinicId),
           api.transactions.getAll(clinicId),
@@ -344,7 +442,6 @@ const AppContent: React.FC = () => {
           api.services.getAll(clinicId),
           api.doctors.getAll(clinicId),
           api.receptionists.getAll(clinicId),
-          api.plans.getAll(),
           api.inventory.getAll(clinicId),
           api.categories.getAll(clinicId),
           api.reviews.getAll(clinicId),
@@ -357,7 +454,6 @@ const AppContent: React.FC = () => {
         setServices(svcs);
         setDoctors(docs);
         setReceptionists(recs);
-        setPlans(plns);
         setInventoryItems(invItems);
         setCategories(cats);
         // @ts-ignore
@@ -374,10 +470,21 @@ const AppContent: React.FC = () => {
   };
 
   // --- UI Actions ---
-  const addToast = (type: 'success' | 'error' | 'info', message: string) => {
+  const addToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     const id = Math.random().toString(36).substr(2, 9);
     setToasts(prev => [...prev, { id, type, message }]);
-  };
+  }, []);
+
+  /* Toast'ni butun ilovaga OCHIB QO'YAMIZ (S3.3).
+
+     Ilgari u faqat prop orqali uzatilardi va chuqurdagi fayllarga yetib
+     bormasdi — shuning uchun ular `alert()` ishlatardi (88 ta joy).
+     `services/toast.ts` modul darajasidagi bitta nuqta: `catch` bloki ham,
+     `api.ts` ham, hodisa ishlovchisi ham undan foydalana oladi. */
+  useEffect(() => {
+    connectToast(addToast);
+    return () => disconnectToast();
+  }, [addToast]);
 
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -386,24 +493,25 @@ const AppContent: React.FC = () => {
   // Patient Actions
   const addPatient = async (patient: Omit<Patient, 'id'>) => {
     try {
-      const normalizedFirst = patient.firstName.trim().toLowerCase();
-      const normalizedLast = patient.lastName.trim().toLowerCase();
-      const isDuplicate = patients.some(
-        p => p.firstName.trim().toLowerCase() === normalizedFirst &&
-          p.lastName.trim().toLowerCase() === normalizedLast
-      );
+      /* Takror tekshiruvi SERVERGA ko'chdi.
 
-      if (isDuplicate) {
-        throw new Error(t('patients.alerts.duplicateName') || "Bunday ism va familiyali bemor allaqachon mavjud!");
-      }
+         Bu yerda ilgari faqat ism va familiya bo'yicha tekshiruv bor edi va u
+         yaratishni BUTUNLAY BLOKLARDI. Uch kamchiligi bor edi:
+           - bir xil ismli ikki bemor bo'lishi mumkin, lekin ikkinchisini
+             kiritishning iloji yo'q edi;
+           - tug'ilgan sana va telefonni hisobga olmasdi, ya'ni haqiqiy
+             takrorlarning ko'pini o'tkazib yuborardi;
+           - brauzerdagi ro'yxatga tayanardi — unda yo'q bemor "yo'q" edi.
+
+         Endi server tekshiradi (telefon normallashtirilgan holda va
+         ism+familiya+tug'ilgan sana bo'yicha), 409 va topilganlar ro'yxatini
+         qaytaradi, interfeys esa TANLOV beradi: mavjud kartani ochish yoki
+         `force` bilan baribir yaratish. */
 
       let activeClinicId = clinicId;
       if (!activeClinicId) {
-        const stored = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed.clinicId) activeClinicId = parsed.clinicId;
-        }
+        const parsed = auth.getSession();
+        if (parsed?.clinicId) activeClinicId = parsed.clinicId;
       }
       if (!activeClinicId) {
         addToast('error', 'Klinika aniqlanmadi. Iltimos sahafani yangilang.');
@@ -418,7 +526,11 @@ const AppContent: React.FC = () => {
       return newPatient;
     } catch (e: any) {
       console.error('Add patient error:', e);
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      /* Takror haqidagi 409 — xato emas, savol. Uni modal o'zi ro'yxat bilan
+         ko'rsatadi, shuning uchun bu yerda toast chiqarmaymiz. */
+      if (e?.data?.code !== 'DUPLICATE_PATIENT') {
+        addToast('error', e.message || 'Xatolik yuz berdi');
+      }
       throw e;
     }
   };
@@ -660,11 +772,30 @@ const AppContent: React.FC = () => {
 
   // Leads Actions
   const addLead = async (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => {
-    try {
-      const newLead = await api.leads.create({ ...lead, clinicId });
+    const create = async (force: boolean) => {
+      const newLead = await api.leads.create({ ...lead, clinicId, ...(force ? { force: true } : {}) } as any);
       setLeads(prev => [newLead, ...prev]);
       addToast('success', 'Yangi lid qo\'shildi.');
+    };
+
+    try {
+      await create(false);
     } catch (e: any) {
+      /* TAKROR LID (409, S3.4). Bloklamaydi, TANLOV beradi: reklama bir
+         odamni ikki marta yuborishi mumkin, lekin operator buni bilishi
+         kerak — aks holda bitta odamga ikki marta qo'ng'iroq qilinadi. */
+      if (e?.data?.code === 'DUPLICATE_LEAD') {
+        const m = (e.data.matches || [])[0];
+        const okToAdd = await confirmAction({
+          title: 'Bu raqam bilan lid allaqachon bor',
+          body: m ? `${m.name} — ${m.phone}. Baribir yangisini yaratasizmi?` : undefined,
+          confirmLabel: 'Baribir yaratish',
+        });
+        if (okToAdd) {
+          try { await create(true); } catch (e2: any) { addToast('error', e2.message || 'Xatolik yuz berdi'); }
+        }
+        return;
+      }
       addToast('error', e.message || 'Xatolik yuz berdi');
     }
   };
@@ -678,11 +809,37 @@ const AppContent: React.FC = () => {
     }
   };
 
+  /* LIDNI O'CHIRISH — QAYTARISH IMKONI BILAN (S3.6, audit B-05).
+
+     «Lid bitta tugma bosilishi bilan yo'qoladi» degan e'tiroz ikki
+     qismdan iborat edi: tasdiq yo'qligi (endi `confirmAction`,
+     `Leads.tsx` da) va qaytarib bo'lmasligi.
+
+     NIMA UCHUN AYNAN LID. Qaytarish bu yerda XAVFSIZ: lidga hech narsa
+     bog'lanmagan, ya'ni uni qayta yaratish hech qanday havolani buzmaydi.
+     Bemor yoki to'lov bilan bunday qilib bo'lmaydi — yangi `id` eski
+     havolalarni yetim qoldiradi. Ular uchun javobgarlik boshqa yo'ldan:
+     har o'chirish kirish jurnaliga tushadi (S1.4).
+
+     `id` o'zgaradi — bu ataylab: tiklash emas, QAYTA YARATISH. */
   const deleteLead = async (id: string) => {
+    const removed = leads.find(l => l.id === id);
     try {
       await api.leads.delete(id);
       setLeads(prev => prev.filter(l => l.id !== id));
-      addToast('info', 'Lid o\'chirildi.');
+
+      if (removed) {
+        const { id: _oldId, createdAt: _c, updatedAt: _u, ...payload } = removed as any;
+        const toastId = Math.random().toString(36).substr(2, 9);
+        setToasts(prev => [...prev, {
+          id: toastId,
+          type: 'info',
+          message: `Lid o'chirildi: ${removed.name || ''}`.trim(),
+          action: { label: 'Bekor qilish', run: () => { void addLead(payload); } },
+        }]);
+      } else {
+        addToast('info', 'Lid o\'chirildi.');
+      }
     } catch (e: any) {
       addToast('error', e.message || 'Xatolik yuz berdi');
     }
@@ -870,24 +1027,10 @@ const AppContent: React.FC = () => {
     } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
   };
 
-  /* ESKIRGAN — interfeys endi bundan FOYDALANMAYDI.
-     Bu funksiya `PUT /api/inventory/:id/stock` ni chaqiradi, u esa qoldiqni
-     to'g'ridan-to'g'ri qayta yozadi va harakat qatorini yozmaydi. Ombor ekrani
-     endi `api.stock.*` orqali ishlaydi: kirim/chiqim/inventarizatsiya —
-     hammasi StockMovement bo'lib tushadi, shunda qoldiq isbotlanadi.
-     Endpoint o'z joyida qoldirildi (ishlayotgan narsani buzmaymiz), lekin bu
-     yo'lni QAYTA ISHLATMANG. */
-  const updateInventoryStock = async (id: string, data: { change: number; type: 'IN' | 'OUT'; note?: string; userName: string; cost?: number }) => {
-    try {
-      const updated = await api.inventory.updateStock(id, data);
-      setInventoryItems(prev => prev.map(item => item.id === id ? updated : item));
-
-      // Kirim narxi bo'lsa backend Ombor xarajatini yaratadi вЂ” ro'yxatni yangilaymiz
-      if (data.type === 'IN' && data.cost && data.cost > 0) refreshExpenses();
-
-      addToast('success', 'Miqdor yangilandi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
-  };
+  /* `updateInventoryStock` OLIB TASHLANDI (0028).
+     U `PUT /api/inventory/:id/stock` ni chaqirardi — qoldiqni qayta yozib,
+     eski jurnalga tushardi va partiyalarga tegmasdi. Chaqiruvchisi yo'q edi;
+     endpointning o'zi ham yopildi (410). Ombor endi faqat `api.stock.*`. */
 
   const deleteInventoryItem = async (id: string) => {
     try {
@@ -929,6 +1072,161 @@ const AppContent: React.FC = () => {
     && (nav.id !== 'finance' || showFinanceForRole)
   );
   const showPatientPhoneForRole = canSeePatientPhone(accessControl, userRole);
+
+  /* ⚠️ QUYIDAGI HOOKLAR HAR RENDERDA CHAQIRILISHI SHART.
+
+     Ular ilgari pastroqda — `if (!isAuthenticated) return ...` va boshqa erta
+     `return` lardan KEYIN turgan edi. Natijada login ekranida uchta hook
+     ishlamas, kirgandan keyin esa ishlar edi va React "Rendered more hooks
+     than during the previous render" bilan yiqilardi: kirgandan keyin BO'SH
+     OQ EKRAN.
+
+     Typecheck ham, 170 ta backend sinovi ham buni ko'rmadi — xato faqat
+     brauzerda ko'rinadi. Shuning uchun hook chaqiruvlari erta `return`
+     lardan YUQORIDA turishi kerak. */
+  /* NAV PANELINING SURILISHI (S5.1, audit B-03).
+
+     `navOverflow` — qaysi tomonga surish mumkinligini aytadi; gradient
+     faqat o'sha tomonda chiziladi. Ikkalasi ham `false` bo'lsa hech
+     narsa ko'rinmaydi — panel to'liq sig'gan.
+
+     ⚠️ Bu hooklar erta `return` lardan OLDIN turishi shart (yuqoridagi
+     ogohlantirishga qarang). */
+  const navRef = React.useRef<HTMLDivElement | null>(null);
+  const [navOverflow, setNavOverflow] = useState({ left: false, right: false });
+
+  const updateNavOverflow = React.useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setNavOverflow({
+      left: el.scrollLeft > 4,
+      // 4px — yaxlitlash xatosi uchun zaxira: `scrollWidth` kasr bo'lishi mumkin
+      right: el.scrollLeft < max - 4,
+    });
+  }, []);
+
+  useEffect(() => {
+    updateNavOverflow();
+    window.addEventListener('resize', updateNavOverflow);
+    return () => window.removeEventListener('resize', updateNavOverflow);
+  }, [updateNavOverflow, visibleNavigation.length]);
+
+  /* Faol modulni ko'rinishga surish. `#/settings` da panel `scrollLeft = 0`
+     bo'lib qolardi va faol tugma ekrandan tashqarida turardi (audit B-03).
+
+     `scrollIntoView` ATAYLAB ishlatilmadi: birinchi renderda panel hali
+     o'lchamga ega emas (`clientWidth = 0`) va u hech narsa qilmaydi —
+     brauzer E2E sinovi aynan shuni ko'rsatdi («viewport ratio 0»).
+
+     `requestAnimationFrame` layoutdan KEYIN ishlaydi, `scrollLeft` esa
+     qo'lda hisoblanadi: faol element markazga tushadi. Ikkinchi kadr —
+     shrift yuklangandan keyin kenglik biroz o'zgarishi mumkin. */
+  useEffect(() => {
+    let raf = 0, timer = 0;
+    const deadline = Date.now() + 3000;
+
+    /* `true` qaytarsa — surish HAQIQATAN bajarildi. */
+    const center = (): boolean => {
+      const el = navRef.current;
+      if (!el || el.clientWidth === 0) return false;
+      const active = el.querySelector('[aria-current="page"]') as HTMLElement | null;
+      if (!active || active.offsetWidth === 0) return false;
+      const target = active.offsetLeft - (el.clientWidth - active.offsetWidth) / 2;
+      el.scrollLeft = Math.max(0, Math.min(target, el.scrollWidth - el.clientWidth));
+      updateNavOverflow();
+      return true;
+    };
+
+    /* MUVAFFAQIYATGACHA TAKRORLASH.
+
+       Ilgari uchta urinish bor edi: ikkita `requestAnimationFrame` va
+       250ms lik zaxira. Ular panel hali render bo'lmaganda ham «ishlab»
+       ketardi — `clientWidth = 0` bo'lgani uchun funksiya jimgina
+       qaytardi, uchala urinish sarflanardi va boshqa hech qachon
+       takrorlanmasdi. Faol tugma ekrandan tashqarida qolib ketardi.
+
+       Bu tasodifiy edi: E2E sinovi to'plam bilan birga yurganda
+       (sekinroq) yiqilardi, yolg'iz yurganda o'tardi — ya'ni xato
+       sinovda emas, shu yerda edi.
+
+       Endi 3 soniya davomida har kadrda urinib ko'riladi va birinchi
+       muvaffaqiyatda to'xtaydi. */
+    const tick = () => {
+      if (center() || Date.now() > deadline) return;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    /* Shrift kech yuklansa element kengligi o'zgaradi va markaz suriladi
+       — o'lcham o'zgarishini kuzatib qayta markazlashtiramiz. */
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && navRef.current) {
+      ro = new ResizeObserver(() => {
+        clearTimeout(timer);
+        timer = window.setTimeout(center, 60);
+      });
+      ro.observe(navRef.current);
+    }
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      ro?.disconnect();
+    };
+  }, [location.pathname, updateNavOverflow, visibleNavigation.length]);
+
+  /* SAHIFA SARLAVHASI (S5.7, audit B-36).
+
+     Audit: «Barcha route'da `document.title` — XClinic. Bir nechta tab
+     ochilganda qaysi biri qayer ekanini bilib bo'lmaydi, brauzer tarixi
+     ham foydasiz».
+
+     `react-helmet-async` qo'shilmadi: bitta qatorlik ish uchun yangi
+     bog'liqlik ortiqcha. Klinika nomi ham qo'shiladi — bir necha
+     klinikaning oynasi ochiq bo'lishi mumkin.
+
+     ⚠️ Bu hook YUQORIDAGI ogohlantirish ostida: erta `return` lardan
+     OLDIN turishi shart. */
+  useEffect(() => {
+    const label = t(getPageLabelKey(location.pathname));
+    document.title = [label, currentClinic?.name || 'XClinic'].filter(Boolean).join(' · ');
+  }, [location.pathname, currentClinic?.name, t]);
+
+  /* SAHIFA ALMASHGANDA SKROLL TEPAGA (audit B-37).
+
+     «Shifokorlar sahifasini pastga skroll qiling → Ombor ga o'ting» —
+     Ombor ro'yxatning o'rtasidan ochilardi. Brauzer o'zi qaytarmaydi:
+     SPA da sahifa qayta yuklanmaydi, ya'ni skroll holati saqlanadi. */
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [location.pathname]);
+
+  /* ─── Tezkor tugmalar (FIX-PLAN 8.2) ──────────────────────────────────────
+     Registrator kuniga 100 bemor kiritadi. Har kiritishda 10 soniya yutilsa —
+     kuniga 17 daqiqa, oyiga 6 soat.
+
+     Marshrutga o'tish shu yerda, chunki `navigate` faqat shu daraja uchun
+     mavjud. Sahifa ichidagi ish (fokus, modal ochish) esa sahifaning o'zida
+     bo'ladi — u yerda `Escape` va `Ctrl+S` ishlatiladi. */
+  const hotkeys = React.useMemo(() => ({
+    F2: () => navigate('/reception'),
+    F3: () => navigate('/patients'),
+    F4: () => { if (showFinanceForRole) navigate('/finance'); },
+  }), [navigate, showFinanceForRole]);
+  useHotkeys(hotkeys, isAuthenticated && !mustChangePassword);
+
+  /* Hodisalar oqimi — kirgandan keyin ochiladi, chiqishda yopiladi.
+     Cheklangan token (standart parol) bilan ochmaymiz: server uni baribir
+     rad etadi va bekorga qayta ulanish sikli boshlanardi. */
+  React.useEffect(() => {
+    if (isAuthenticated && !mustChangePassword) {
+      startLiveUpdates();
+      return () => stopLiveUpdates();
+    }
+    stopLiveUpdates();
+  }, [isAuthenticated, mustChangePassword]);
+
 
   // --- Main Render ---
   if (!isAuthenticated) {
@@ -995,21 +1293,27 @@ const AppContent: React.FC = () => {
     );
   }
 
+  /* ─── Majburiy parol almashtirish ────────────────────────────────────────
+     Standart `admin` / `admin` bilan kirilgan. Bu ekrandan chetga yo'l yo'q:
+     serverdagi token ham cheklangan, ya'ni interfeysni chetlab o'tish
+     (localStorage ni tahrirlash, curl) ham foyda bermaydi. */
+  if (mustChangePassword) {
+    return <ForcePasswordChange onDone={() => setMustChangePassword(false)} onLogout={handleLogout} addToast={addToast} />;
+  }
+
   const pageLabel = t(getPageLabelKey(location.pathname));
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-200">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
+      {/* Tasdiqlash oynasi — ilovada BIR MARTA. Qolgan joylar uni
+          `confirmAction()` orqali chaqiradi (S3.6). */}
+      <ConfirmDialog />
       <InstallPWAButton />
 
       {/* Mobile Header (Hidden on Desktop) */}
       <div className="lg:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
-        <div className="flex items-center gap-2 font-bold text-xl text-primary dark:text-primary-400">
-          <div className="w-8 h-8 rounded-[8px] overflow-hidden shadow-sm">
-            <img src="/logo-icon.png" alt="Logo" className="w-full h-full object-cover" />
-          </div>
-          XClinic
-        </div>
+        <LogoWordmark size="sm" />
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-600 dark:text-gray-300">
           {isSidebarOpen ? <X /> : <Menu />}
         </button>
@@ -1019,12 +1323,7 @@ const AppContent: React.FC = () => {
       <aside className={`lg:hidden fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full pb-16">
           <div className="h-16 flex items-center px-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 font-bold text-xl text-primary dark:text-primary-400">
-              <div className="w-8 h-8 rounded-[8px] overflow-hidden shadow-sm">
-                <img src="/logo-icon.png" alt="Logo" className="w-full h-full object-cover" />
-              </div>
-              XClinic
-            </div>
+            <LogoWordmark size="sm" />
             <button onClick={() => setIsSidebarOpen(false)} className="ml-auto p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <X className="w-5 h-5" />
             </button>
@@ -1064,7 +1363,7 @@ const AppContent: React.FC = () => {
                 </div>
                 <div className="ml-3 truncate">
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate" title={userName}>{userName}</p>
-                  <p className="text-xs text-gray-500 capitalize">{userRole === UserRole.CLINIC_ADMIN ? 'Administrator' : userRole === UserRole.RECEPTIONIST ? 'Resepshn' : userRole === UserRole.LAB_TECHNICIAN ? 'Laborant' : 'Shifokor'}</p>
+                  <p className="text-xs text-gray-500 capitalize">{userRole === UserRole.CLINIC_ADMIN ? 'Administrator' : userRole === UserRole.RECEPTIONIST ? 'Resepshn' : userRole === UserRole.LAB_TECHNICIAN ? 'Laborant' : userRole === UserRole.NURSE ? 'Hamshira' : 'Shifokor'}</p>
                 </div>
               </div>
               <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Chiqish">
@@ -1082,7 +1381,7 @@ const AppContent: React.FC = () => {
                       : 'text-gray-500 dark:text-gray-400'
                     }`}
                 >
-                  <span className="text-base leading-none">{lang === 'uz' ? '🇺🇿' : '🇷🇺'}</span>
+                  <Flag code={lang} />
                   <span className="uppercase tracking-wide">{lang}</span>
                 </button>
               ))}
@@ -1099,30 +1398,28 @@ const AppContent: React.FC = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-6">
               {/* Logo */}
-              <div className="flex items-center gap-3 font-extrabold text-primary dark:text-primary-400 text-2xl tracking-tight">
-                <div className="w-10 h-10 rounded-[10px] overflow-hidden shadow-md">
-                  <img src="/logo-icon.png" alt="XClinic" className="w-full h-full object-cover" />
-                </div>
-                XClinic
-              </div>
+              <LogoWordmark />
 
               {clinicId === 'demo-clinic-1' && (
                 <span className="px-2 py-1 text-xs font-bold bg-primary-100 dark:bg-primary-900/40 text-primary dark:text-primary-400 rounded-full border border-primary-200 dark:border-primary-800">
-                  рџ§Є DEMO MODE
+                  🧪 DEMO MODE
                 </span>
               )}
 
               {/* Search and Branch Control */}
-              <div className="flex items-center gap-3 ml-4 bg-gray-50 dark:bg-gray-800/50 p-1 rounded-xl border border-gray-100 dark:border-gray-700">
-                <div className="relative group">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-primary-500 transition-colors" />
+              {/* Qidiruv — keng va yumaloq. Ilgari u qo'shimcha ramkali quti
+                  ichida, tor (w-72) va to'rtburchak edi; qidiruv esa bu
+                  dasturdagi eng ko'p ishlatiladigan maydon. */}
+              <div className="flex items-center gap-3 ml-2 flex-1 max-w-xl">
+                <div className="relative group w-full">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-primary-500 transition-colors" />
                   <input
                     type="text"
                     placeholder={t('header.search')}
                     value={searchBarTerm}
                     onChange={(e) => setSearchBarTerm(e.target.value)}
                     onFocus={() => setIsSearchFocused(true)}
-                    className="pl-9 pr-4 py-2 w-72 bg-white dark:bg-gray-800 border-none rounded-lg text-sm focus:ring-2 focus:ring-primary-500/20 placeholder-gray-400 transition-all outline-none"
+                    className="pl-11 pr-4 py-2.5 w-full bg-gray-100 dark:bg-white/[0.07] border border-gray-200 dark:border-white/10 focus:border-primary-500/40 rounded-full text-sm focus:ring-2 focus:ring-primary-500/15 placeholder-gray-400 transition-all outline-none"
                   />
 
                   {/* Search Results Dropdown */}
@@ -1214,8 +1511,24 @@ const AppContent: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-5">
-              <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                {new Date().toLocaleDateString('uz-UZ', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+              {/* AI yordamchi — ilgari faqat bosh panel ichidagi tab edi, ya'ni
+                  uni bilmagan odam umuman topmasdi. Endi har bir sahifadan
+                  bitta bosishda ochiladi. Hamshira moliyaviy panelni ko'rmaydi,
+                  shuning uchun unga tugma ham chiqmaydi. */}
+              {userRole !== UserRole.NURSE && (
+                <button
+                  onClick={() => navigate('/?tab=ai')}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white
+                             bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500
+                             shadow-sm hover:shadow-md transition-all shrink-0"
+                  title={t('ai.tab')}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span className="hidden xl:inline">{t('ai.tab')}</span>
+                </button>
+              )}
+              <span className="hidden 2xl:inline text-sm font-medium text-gray-500 dark:text-gray-400">
+                {formatHeaderDate(new Date(), language)}
               </span>
               <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
               <button
@@ -1236,7 +1549,7 @@ const AppContent: React.FC = () => {
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                       }`}
                   >
-                    <span className="text-base leading-none">{lang === 'uz' ? '🇺🇿' : '🇷🇺'}</span>
+                    <Flag code={lang} />
                     <span className="uppercase tracking-wide">{lang}</span>
                   </button>
                 ))}
@@ -1250,7 +1563,7 @@ const AppContent: React.FC = () => {
                 <div className="flex flex-col">
                   <span className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{userName}</span>
                   <span className="text-xs text-gray-500 capitalize leading-tight">
-                    {userRole === UserRole.CLINIC_ADMIN ? t('roles.admin') : userRole === UserRole.RECEPTIONIST ? t('roles.receptionist') : userRole === UserRole.LAB_TECHNICIAN ? 'Laborant' : t('roles.doctor')}
+                    {userRole === UserRole.CLINIC_ADMIN ? t('roles.admin') : userRole === UserRole.RECEPTIONIST ? t('roles.receptionist') : userRole === UserRole.LAB_TECHNICIAN ? 'Laborant' : userRole === UserRole.NURSE ? 'Hamshira' : t('roles.doctor')}
                   </span>
                 </div>
                 <button onClick={handleLogout} className="ml-2 p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title={t('common.logout')}>
@@ -1265,7 +1578,32 @@ const AppContent: React.FC = () => {
         {/* Bottom Row: Navigation Links */}
         <div className="border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/80">
           <div className="w-full px-4 sm:px-6 lg:px-10 xl:px-14">
-            <div className="h-12 flex items-center gap-2 overflow-x-auto no-scrollbar">
+            {/* NAV PANELI (S5.1, audit B-03).
+
+                Audit: «Panel kengligi 1990px, ekranda 1193px ko'rinadi —
+                15 modulning 6 tasi tashqarida. Scrollbar `no-scrollbar`
+                bilan yashirilgan, chekkada gradient yoki o'q ham yo'q,
+                ya'ni davomi borligini bildiradigan hech narsa yo'q».
+
+                Ikkita narsa qo'shildi:
+                  • chekkalarda gradient — faqat surish MUMKIN bo'lgan
+                    tomonda ko'rinadi, ya'ni u ma'lumot beradi, bezak emas;
+                  • route o'zgarganda faol element ko'rinishga suriladi —
+                    `#/settings` da panel `scrollLeft = 0` bo'lib qolardi
+                    va «Sozlamalar» umuman ko'rinmasdi. */}
+            <div className="relative">
+              {navOverflow.left && (
+                <div aria-hidden="true"
+                  className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10
+                             bg-gradient-to-r from-gray-50 dark:from-gray-800 to-transparent" />
+              )}
+              {navOverflow.right && (
+                <div aria-hidden="true"
+                  className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10
+                             bg-gradient-to-l from-gray-50 dark:from-gray-800 to-transparent" />
+              )}
+            <div ref={navRef} onScroll={updateNavOverflow}
+                 className="h-12 flex items-center gap-2 overflow-x-auto no-scrollbar">
               {visibleNavigation.map((item) => {
                 const to = item.id === 'dashboard' ? '/' : `/${item.id}`;
                 return (
@@ -1297,6 +1635,7 @@ const AppContent: React.FC = () => {
                 );
               })}
             </div>
+            </div>
           </div>
         </div>
       </header>
@@ -1304,10 +1643,24 @@ const AppContent: React.FC = () => {
       <main className="flex-1 lg:pt-28 min-h-screen flex flex-col items-center">
         <div className="w-full px-4 sm:px-6 lg:px-10 xl:px-14 py-4 sm:py-6 lg:py-8 flex-1 overflow-x-hidden pb-24 lg:pb-8">
           <ErrorBoundary key={location.pathname} section={t(getPageLabelKey(location.pathname))}>
+          {/* `Suspense` — `React.lazy` bilan bo'lingan sahifalar uchun (S5.5).
+              Yuklash indikatori ERROR BOUNDARY ICHIDA: chunk yuklanmasa
+              (tarmoq uzildi, eski kesh) xato ushlansin va oq ekran
+              bo'lmasin. */}
+          <React.Suspense fallback={
+            <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
+              <div className="w-8 h-8 rounded-full border-2 border-gray-300 dark:border-gray-600 border-t-primary-600 animate-spin" />
+              <span className="sr-only">Yuklanmoqda…</span>
+            </div>
+          }>
           <Routes>
 
             <>
               <Route path="/" element={
+                /* Hamshira bosh panelni ko'rmaydi — unda butun klinikaning
+                   moliyasi turadi. Fallback ham shu manzilga tushadi, shuning
+                   uchun qayta yo'naltirish aynan marshrutning o'zida. */
+                userRole === UserRole.NURSE ? <Navigate to="/inpatient" replace /> : (
                   <Dashboard
                     patients={patients}
                     appointments={appointments}
@@ -1330,7 +1683,8 @@ const AppContent: React.FC = () => {
                     onAddAppointment={addAppointment}
                     addToast={addToast}
                   />
-                } />
+                )
+              } />
 
               <Route path="/patients" element={
                 <Patients
@@ -1373,7 +1727,6 @@ const AppContent: React.FC = () => {
                   services={services}
                   categories={categories}
                   currentClinic={currentClinic}
-                  plans={plans}
                   userRole={userRole}
                   doctorId={doctorId}
                   showPatientPhone={showPatientPhoneForRole}
@@ -1400,7 +1753,6 @@ const AppContent: React.FC = () => {
                   userRole={userRole}
                   doctorId={doctorId}
                   currentClinic={currentClinic}
-                  plans={plans}
                   onPatientClick={handlePatientClick}
                 />
               } />
@@ -1495,12 +1847,7 @@ const AppContent: React.FC = () => {
                   doctors={doctors}
                   currentUserName={userName}
                   currentClinic={currentClinic}
-                  token={(() => {
-                    try {
-                      const raw = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-                      return raw ? JSON.parse(raw).token : undefined;
-                    } catch { return undefined; }
-                  })()}
+                  token={getAuthToken() ?? undefined}
                 />
               } />
 
@@ -1538,6 +1885,10 @@ const AppContent: React.FC = () => {
 
               {(userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST) && (
                 <>
+                  {/* Shifokor ulushi va tushumi — faqat klinika egasiga.
+                      Menyudan olib tashlash yetarli emas: `#/doctors` ni
+                      qo'lda yozib kirish mumkin edi. */}
+                  {userRole === UserRole.CLINIC_ADMIN && <>
                   <Route path="/doctors" element={
                     <DoctorsAnalytics
                       doctors={doctors}
@@ -1560,6 +1911,7 @@ const AppContent: React.FC = () => {
                       onPatientClick={handlePatientClick}
                     />
                   } />
+                  </>}
 
                   <Route path="/inventory" element={
                     <Inventory
@@ -1605,17 +1957,19 @@ const AppContent: React.FC = () => {
                       onUpdateLabTechnician={updateLabTechnician}
                       onDeleteLabTechnician={deleteLabTechnician}
                       currentClinic={currentClinic}
-                      plans={plans}
-                      reviews={reviews}
+                          reviews={reviews}
                     />
                   } />
                 </>
               )}
 
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
+              {/* 404 — jimgina bosh sahifaga tashlamaydi (S5.7, audit B-37).
+                  Ilgari `<Navigate to="/">` turardi va noto'g'ri manzil
+                  sababsiz Dashboard'ga olib borardi. */}
+              <Route path="*" element={<NotFound userRole={userRole} />} />
             </>
           </Routes>
+          </React.Suspense>
           </ErrorBoundary>
         </div>
       </main>
@@ -1636,6 +1990,23 @@ const AppContent: React.FC = () => {
     </div>
   );
 };
+
+
+/* Sarlavhadagi sana.
+
+   `toLocaleDateString('uz-UZ', …)` ISHLATILMAYDI: Chrome'da o'zbek locali
+   uchun oy nomi yo'q va u "2026 M08 28, Fri" deb chiqadi — ya'ni oy nomi
+   o'rniga texnik "M08" va inglizcha hafta kuni. Nomlar shuning uchun qo'lda. */
+const UZ_MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun',
+    'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
+const UZ_DAYS = ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'];
+
+function formatHeaderDate(d: Date, lang: 'uz' | 'ru'): string {
+    if (lang === 'ru') {
+        return d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
+    }
+    return `${d.getDate()} ${UZ_MONTHS[d.getMonth()]}, ${UZ_DAYS[d.getDay()]}`;
+}
 
 const App: React.FC = () => {
   return (

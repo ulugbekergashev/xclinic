@@ -1,9 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { formatFullName } from '../utils/format';
+import { confirmAction } from '../services/confirm';
+import { toast } from '../services/toast';
+import { validatePatient } from '../shared/validation';
 import { Card, Button, Input, Badge, Modal, Select } from '../components/Common';
 import { StatCard } from '../components/StatCard';
 import { Search, Plus, Eye, Trash2, Loader2, Download, Filter, UserCheck, AlertCircle, ChevronDown, Cake, Wallet, Users as UsersIcon, UserPlus as UserPlusIcon, Activity } from 'lucide-react';
 import { Patient, Doctor, Appointment, Transaction, Clinic } from '../types';
 import { api, getFileUrl } from '../services/api';
+import type { Snapshot } from '../services/api';
+import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useLanguage } from '../context/LanguageContext';
 import { calcAge } from '../utils/dateUtils';
 import { maskPhone } from '../utils/accessControl';
@@ -69,9 +75,24 @@ export const Patients: React.FC<PatientsProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
 
+  /* Qidiruv SERVERDA, qolgan filtrlar brauzerda.
+
+     Nima uchun aralash. Server qidiruvi karta raqami va JSHSHIR ni ham
+     biladi — brauzerdagi filtr esa faqat ism va telefonni bilardi, ya'ni
+     karta bo'yicha bemorni topib bo'lmasdi. Qolgan filtrlar (jins, shifokor,
+     sana, holat) hozircha brauzerda qoladi: ularni serverga chiqarish
+     10-relizdagi sahifalash bilan birga bo'ladi.
+
+     Qidiruv yozilganda ASOS serverdan kelgan ro'yxat bo'ladi, aks holda —
+     odatdagi to'liq ro'yxat. Filtrlar ikkala holatda ham bir xil qo'llanadi. */
+  const { results: searchResults, loading: searching, active: searchActive } =
+    usePatientSearch(searchTerm);
+
   const filteredPatients = useMemo(() => {
-    return patients.filter((p) => {
-      const matchesSearch =
+    const base = searchActive ? searchResults : patients;
+    return base.filter((p) => {
+      // Qidiruv serverda bajarilgan bo'lsa, bu yerda qayta filtrlash shart emas
+      const matchesSearch = searchActive || !searchTerm ||
         p.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.phone.includes(searchTerm);
@@ -110,12 +131,12 @@ export const Patients: React.FC<PatientsProps> = ({
         const lastVisitDate = p.lastVisit === 'Never' ? null : new Date(p.lastVisit);
         matchesStat = lastVisitDate ? lastVisitDate >= sevenDaysAgo : true;
       } else if (activeStatFilter === 'debtor') {
-        const patientTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${p.lastName} ${p.firstName}`);
+        const patientTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${formatFullName(p)}`);
         const totalDebt = patientTxs.filter(t => t.status === 'Pending').reduce((sum, t) => sum + t.amount, 0);
         matchesStat = totalDebt > 0;
       } else if (activeStatFilter === 'waiting') {
-        const patientAppts = appointments.filter(a => a.patientId === p.id || a.patientName === `${p.lastName} ${p.firstName}`);
-        const patientTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${p.lastName} ${p.firstName}`);
+        const patientAppts = appointments.filter(a => a.patientId === p.id || a.patientName === `${formatFullName(p)}`);
+        const patientTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${formatFullName(p)}`);
         const hasUnpaid = patientAppts.some(app => {
           const hasTransaction = patientTxs.some(t => t.date === app.date);
           return (app.status === 'Completed' || app.status === 'Checked-In') && !hasTransaction;
@@ -125,25 +146,41 @@ export const Patients: React.FC<PatientsProps> = ({
 
       return matchesSearch && matchesStatus && matchesGender && matchesDoctor && matchesDateFrom && matchesDateTo && matchesStat;
     });
-  }, [patients, searchTerm, filterStatus, filterGender, filterDoctor, filterDateFrom, filterDateTo, activeStatFilter, appointments, transactions]);
+  }, [patients, searchResults, searchActive, searchTerm, filterStatus, filterGender, filterDoctor, filterDateFrom, filterDateTo, activeStatFilter, appointments, transactions]);
+
+  /* KPI RAQAMLARI SERVERDAN (S2.1).
+
+     Ilgari uchalasi ham shu yerda, BRAUZERDAGI ro'yxatdan sanalardi va
+     uchtasi ham noto'g'ri chiqardi:
+
+     - «Jami» — yuklangan 500 bemorni sanardi, bazadagi hammasini emas;
+     - «Yangi» — `lastVisit === 'Never'` ni ham yangi deb hisoblardi, ya'ni
+       hech qachon kelmagan bemor ham «oxirgi 7 kunda yangi» bo'lardi va
+       butun baza «yangi» chiqardi;
+     - «Qarzdorlar» — `Transaction.status === 'Pending'` dan sanardi va
+       bemorni ISMI bo'yicha moslashtirardi. To'g'ri manba —
+       to'lanmagan `VisitCharge` qatorlari (`billing.ts`), va u serverda.
+
+     Endi uchalasi ham `/api/reports/snapshot` dan, ya'ni bosh sahifadagi
+     raqamlar bilan AYNAN bir xil. */
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.reports.snapshot().then(s => { if (alive) setSnapshot(s); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // Stats
   const stats = useMemo(() => {
-    const total = patients.length;
-
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const newPatients = patients.filter(p => p.lastVisit === 'Never' || (p.lastVisit !== 'Never' && new Date(p.lastVisit) >= sevenDaysAgo)).length;
-
-    const debtors = patients.filter(p => {
-      const pTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${p.lastName} ${p.firstName}`);
-      const totalDebt = pTxs.filter(t => t.status === 'Pending').reduce((sum, t) => sum + t.amount, 0);
-      return totalDebt > 0;
-    }).length;
+    /* Server javobi kelmaguncha yuklangan ro'yxatdan ko'rsatiladi — kartalar
+       bo'sh turmasin. Kelgach, serverdagi raqam ustun turadi. */
+    const total = snapshot?.patients.total ?? patients.length;
+    const newPatients = snapshot?.patients.newLast7Days ?? 0;
+    const debtors = snapshot?.debt.patients ?? 0;
 
     const waiting = patients.filter(p => {
-      const pAppts = appointments.filter(a => a.patientId === p.id || a.patientName === `${p.lastName} ${p.firstName}`);
-      const pTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${p.lastName} ${p.firstName}`);
+      const pAppts = appointments.filter(a => a.patientId === p.id || a.patientName === `${formatFullName(p)}`);
+      const pTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${formatFullName(p)}`);
       return pAppts.some(app => {
         const hasTransaction = pTxs.some(t => t.date === app.date);
         return (app.status === 'Completed' || app.status === 'Checked-In') && !hasTransaction;
@@ -151,7 +188,7 @@ export const Patients: React.FC<PatientsProps> = ({
     }).length;
 
     return { total, newPatients, debtors, waiting };
-  }, [patients, appointments, transactions]);
+  }, [patients, appointments, transactions, snapshot]);
 
   const unassignedCount = patients.filter((p) => !p.doctorId).length;
 
@@ -161,7 +198,7 @@ export const Patients: React.FC<PatientsProps> = ({
     if (p.doctorName) return p.doctorName;
     if (!p.doctorId) return null;
     const doc = doctors.find(d => d.id === p.doctorId);
-    return doc ? `${doc.lastName} ${doc.firstName}` : null;
+    return doc ? `${formatFullName(doc)}` : null;
   };
 
   // CSV Export
@@ -203,7 +240,7 @@ export const Patients: React.FC<PatientsProps> = ({
       const doctor = doctors.find((d) => d.id === assignDoctorId);
       await onUpdatePatient(selectedPatient.id, {
         doctorId: assignDoctorId || undefined,
-        doctorName: doctor ? `${doctor.lastName} ${doctor.firstName}` : undefined,
+        doctorName: doctor ? `${formatFullName(doctor)}` : undefined,
       });
       setIsAssignModalOpen(false);
     } catch {
@@ -215,7 +252,7 @@ export const Patients: React.FC<PatientsProps> = ({
 
   const handleLookupPinfl = async () => {
     if (!formData.pinfl || formData.pinfl.length !== 14) {
-      alert('JSHSHIR 14 ta raqamdan iborat bo\'lishi kerak');
+      toast.error('JSHSHIR 14 ta raqamdan iborat bo\'lishi kerak');
       return;
     }
     setIsLookingUp(true);
@@ -232,15 +269,43 @@ export const Patients: React.FC<PatientsProps> = ({
         }));
       }
     } catch (error: any) {
-      alert('DMED orqali topilmadi: ' + (error.message || 'Xatolik'));
+      toast.error('DMED orqali topilmadi: ' + (error.message || 'Xatolik'));
     } finally {
       setIsLookingUp(false);
     }
   };
 
+  /* IKKINCHI BEMOR FORMASI (S3.1 davomi).
+
+     Bu sahifada `AddPatientModal` dan ALOHIDA, o'z formasi bor. Ikkalasi
+     bir xil ishni qiladi, lekin validatsiya faqat bittasiga qo'yilgan edi
+     — ya'ni «abcdefg!!!» bu yerdan baribir o'tib ketardi (audit B-13).
+
+     Bundan tashqari tekshiruv JIMGINA `return` qilardi: ism yoki familiya
+     bo'sh bo'lsa tugma bosiladi, hech narsa bo'lmaydi va sabab
+     ko'rsatilmaydi. Buni brauzer E2E sinovi topdi — so'rov umuman
+     ketmasdi va ekranda hech qanday belgi yo'q edi.
+
+     Endi ikkala forma ham `shared/validation.ts` dan o'qiydi. */
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.firstName || !formData.lastName) return;
+
+    const checked = validatePatient({
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      gender: formData.gender,
+      phone: formData.phone,
+      dob: formData.dob,
+      pinfl: (formData as any).pinfl,
+    });
+    if (!checked.ok) {
+      setFormErrors((checked as any).errors || {});
+      return;
+    }
+    setFormErrors({});
+
     setIsSubmitting(true);
     try {
       const doctor = doctors.find((d) => d.id === formData.doctorId);
@@ -250,7 +315,7 @@ export const Patients: React.FC<PatientsProps> = ({
         lastVisit: 'Never',
         gender: formData.gender as 'Male' | 'Female',
         doctorId: formData.doctorId || undefined,
-        doctorName: doctor ? `${doctor.lastName} ${doctor.firstName}` : undefined,
+        doctorName: doctor ? `${formatFullName(doctor)}` : undefined,
       });
 
       // Upload photo if selected
@@ -419,7 +484,7 @@ export const Patients: React.FC<PatientsProps> = ({
                 <option value="all">{t('patients.filter.all')}</option>
                 <option value="none">{t('patients.filter.unassigned')}</option>
                 {doctors.map((d) => (
-                  <option key={d.id} value={d.id}>{d.lastName} {d.firstName}</option>
+                  <option key={d.id} value={d.id}>{formatFullName(d)}</option>
                 ))}
               </select>
             </div>
@@ -493,7 +558,7 @@ export const Patients: React.FC<PatientsProps> = ({
                       </div>
                       <div className="ml-3">
                         <div className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                          {patient.lastName} {patient.firstName}
+                          {formatFullName(patient)}
                         </div>
                         <div className="text-xs text-gray-500">ID: {patient.id}</div>
                       </div>
@@ -550,9 +615,9 @@ export const Patients: React.FC<PatientsProps> = ({
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          if (confirm(t('patients.deleteConfirm'))) onDeletePatient(patient.id);
+                          if (await confirmAction({ title: t('patients.deleteConfirm') })) onDeletePatient(patient.id);
                         }}
                         className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                         title={t('patients.actions.delete')}
@@ -585,7 +650,7 @@ export const Patients: React.FC<PatientsProps> = ({
                 {selectedPatient.firstName[0]}{selectedPatient.lastName[0]}
               </div>
               <div>
-                <p className="font-semibold text-gray-900 dark:text-white">{selectedPatient.lastName} {selectedPatient.firstName}</p>
+                <p className="font-semibold text-gray-900 dark:text-white">{formatFullName(selectedPatient)}</p>
                 <p className="text-sm text-gray-500">{showPatientPhone ? selectedPatient.phone : maskPhone(selectedPatient.phone)}</p>
               </div>
             </div>
@@ -599,7 +664,7 @@ export const Patients: React.FC<PatientsProps> = ({
               >
                 <option value="">— Biriktirilmagan —</option>
                 {doctors.filter((d) => d.status === 'Active').map((d) => (
-                  <option key={d.id} value={d.id}>{d.lastName} {d.firstName} ({d.specialty})</option>
+                  <option key={d.id} value={d.id}>{formatFullName(d)} ({d.specialty})</option>
                 ))}
               </select>
             </div>
@@ -620,8 +685,10 @@ export const Patients: React.FC<PatientsProps> = ({
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Yangi Bemor Qo'shish">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Familiya" name="lastName" value={formData.lastName} onChange={handleInputChange} required />
-            <Input label="Ism" name="firstName" value={formData.firstName} onChange={handleInputChange} required />
+            <Input label="Familiya" name="lastName" value={formData.lastName} onChange={handleInputChange}
+                   error={formErrors.lastName} required />
+            <Input label="Ism" name="firstName" value={formData.firstName} onChange={handleInputChange}
+                   error={formErrors.firstName} required />
           </div>
           
           <div className="space-y-1">
@@ -652,7 +719,8 @@ export const Patients: React.FC<PatientsProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Asosiy Telefon" name="phone" value={formData.phone} onChange={handleInputChange} placeholder="+998 XX XXX XX XX" required />
+            <Input label="Asosiy Telefon" name="phone" value={formData.phone} onChange={handleInputChange}
+                   error={formErrors.phone} placeholder="+998 XX XXX XX XX" required />
             <Input label="Qo'shimcha Telefon" name="secondaryPhone" value={formData.secondaryPhone} onChange={handleInputChange} placeholder="+998 XX XXX XX XX" />
           </div>
           <Input label="Tug'ilgan sana" type="date" name="dob" value={formData.dob} onChange={handleInputChange} required helperText="Sanani qo'lda kiritish uchun maydonga bosing" />
@@ -704,7 +772,7 @@ export const Patients: React.FC<PatientsProps> = ({
               >
                 <option value="">— Keyinroq biriktirish —</option>
                 {doctors.filter((d) => d.status === 'Active').map((d) => (
-                  <option key={d.id} value={d.id}>{d.lastName} {d.firstName} ({d.specialty})</option>
+                  <option key={d.id} value={d.id}>{formatFullName(d)} ({d.specialty})</option>
                 ))}
               </select>
             </div>

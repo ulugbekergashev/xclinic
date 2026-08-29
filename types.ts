@@ -3,11 +3,18 @@ import type { PaymentMethod } from './utils/paymentMethods';
 export type { PaymentMethod };
 
 export enum UserRole {
-  SUPER_ADMIN = 'SUPER_ADMIN',
+  /* SUPER_ADMIN OLIB TASHLANDI: XClinic bitta o'rnatma = bitta klinika
+     (SaaS emas), ya'ni klinikalar ustidan turadigan rol keraksiz meros edi.
+     U hech qachon kira olmagan ham — env o'zgaruvchilari sozlanmagan. */
   CLINIC_ADMIN = 'CLINIC_ADMIN',
   DOCTOR = 'DOCTOR',
   RECEPTIONIST = 'RECEPTIONIST',
   LAB_TECHNICIAN = 'LAB_TECHNICIAN',
+  /* Hamshira (qaror V17, reliz 4). Backend bu rolni login'da qaytaradi va
+     dori berish/vitals unga bog'langan, lekin bu ro'yxatda rol yo'q edi —
+     menyu shu ro'yxat bo'yicha filtrlanadi, shuning uchun hamshira kirsa
+     hech qanday bo'lim ko'rmasdi. */
+  NURSE = 'NURSE',
   SALES_AGENT = 'SALES_AGENT'
 }
 
@@ -102,6 +109,10 @@ export interface Transaction {
   receivedByName?: string | null;
   discountPercent?: number; // Chegirma foizi (0-100)
   discountAmount?: number;  // Chegirma summasi
+  /** Chek xizmat qatorlariga (`VisitCharge`) bog'langanmi. Bunday chekni
+   *  tahrirlash yoki o'chirish qatorning to'lov holatini buzadi, shuning
+   *  uchun server uni rad etadi (409) — kassa ekrani tugmalarni o'chiradi. */
+  linkedToCharges?: boolean;
 }
 
 export type ExpenseCategory = 'DoctorShare' | 'Salary' | 'Rent' | 'Utilities' | 'Inventory' | 'Lab' | 'Other';
@@ -555,6 +566,12 @@ export interface InventoryItem {
   price?: number;
   /** Dori — partiya va yaroqlilik muddati nazorat qilinadi */
   isMedication?: boolean;
+  /** Muddati O'TGAN partiyalardagi qoldiq (S2.5). Serverda sanaladi.
+   *  «Qoldiqlar» ro'yxatida belgi ko'rsatish uchun: ilgari muddat faqat
+   *  «Partiya va muddat» tabida ko'rinardi (audit B-25). */
+  expiredQuantity?: number;
+  /** Eng yaqin YARAMLI partiyaning muddati, `YYYY-MM-DD`. */
+  nextExpiry?: string | null;
   /** Xizmat ko'rsatilganda retsept bo'yicha avtomatik hisobdan chiqadi */
   isConsumable?: boolean;
   form?: string | null;
@@ -562,6 +579,13 @@ export interface InventoryItem {
   departmentId?: string | null;
 }
 
+/**
+ * Ombor sarfi qatori.
+ *
+ * 0028 dan keyin manba — `StockMovement`, eski `InventoryLog` jadvali emas.
+ * Shakl ataylab saqlab qolindi (`change`, `date`), lekin `id` endi HARAKAT
+ * identifikatori: uni `api.stock.reverse()` ga berish mumkin.
+ */
 export interface InventoryLog {
   id: string;
   itemId: string;
@@ -572,6 +596,9 @@ export interface InventoryLog {
   userName: string;
   patientId?: string;
   patientName?: string;
+  /** Chiqim bekor qilingan — teskari harakat yozilgan */
+  reversed?: boolean;
+  item?: { name: string; unit: string };
 }
 
 export interface SMSCampaign {
@@ -830,6 +857,12 @@ export interface EncounterTemplate {
   id: string;
   clinicId: string;
   departmentId: string;
+  /** Kimga mos: 'Male' | 'Female' | null (hammaga). Migratsiya 0031.
+   *  Erkak bemorda ginekologiya shabloni ochilib qolgan edi (audit B-09). */
+  gender?: 'Male' | 'Female' | null;
+  /** Yosh chegarasi, to'liq yil. null — chegara yo'q. */
+  minAge?: number | null;
+  maxAge?: number | null;
   name: string;
   fields: EncounterField[];
   isDefault: boolean;
@@ -1078,4 +1111,20 @@ export interface ServiceCost {
 export interface InventoryAlerts {
   expiring: (InventoryBatch & { expired?: boolean })[];
   lowStock: { id: string; name: string; unit: string; quantity: number; minQuantity: number }[];
+}
+
+/* Avtomatik zaxira nusxa sozlamasi. Bazada emas, `%APPDATA%\xclinic\
+   backup-config.json` da saqlanadi: bu o'rnatmaning sozlamasi, klinikaniki
+   emas, va migratsiya talab qilmaydi. */
+export interface BackupConfig {
+  enabled: boolean;
+  /** Toshkent bo'yicha soat (0-23) va daqiqa (0-59) */
+  hour: number;
+  minute: number;
+  /** Oxirgi N kunning nusxalari — hammasi saqlanadi */
+  keepDaily: number;
+  /** Undan oldingi N oy — har oydan eng yangisi */
+  keepMonthly: number;
+  /** Ikkinchi manzil: flesh yoki tarmoq diski */
+  extraDir: string | null;
 }

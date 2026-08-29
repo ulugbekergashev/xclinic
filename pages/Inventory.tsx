@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLanguage } from '../context/LanguageContext';
+import { confirmAction } from '../services/confirm';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 import { InventoryItem, UserRole } from '../types';
 import {
@@ -61,6 +63,7 @@ const OUT_REASONS = ['Expired', 'Damaged', 'Manual'];
 export const Inventory: React.FC<InventoryProps> = ({
     items, userName, userRole, departments = [], onAddItem, onDeleteItem, onRefreshItems,
 }) => {
+    const { t } = useLanguage();
     const [tab, setTab] = useState<Tab>('stock');
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
@@ -197,21 +200,47 @@ export const Inventory: React.FC<InventoryProps> = ({
         } catch { setOutPreview([]); }
     }, []);
 
+    /* Ko'p qatorli xabar uchun. Shablon satri ichida haqiqiy qator
+       tashlash o'rniga aniq doimiy — matn tahrirlanganda buzilmasin. */
+    const NL = String.fromCharCode(10);
+
     const submitOut = async () => {
         if (!outTarget) return;
         const qty = Number(outForm.quantity);
         if (!(qty > 0)) return;
         setBusy(true); setError('');
-        try {
+
+        const doIssue = async (force: boolean) => {
             await api.stock.issue({
                 itemId: outTarget.id, quantity: qty,
                 reason: outForm.reason, note: outForm.note || undefined, userName,
+                ...(force ? { force: true } : {}),
             });
             setOutTarget(null);
             reloadItems();
             if (tab === 'movements') loadMovements();
             if (tab === 'batches') loadAlerts();
+        };
+
+        try {
+            await doIssue(false);
         } catch (e: any) {
+            /* MUDDATI O'TGAN QOLDIQ (409, S2.5). Server to'smaydi, TANLOV
+               beradi: yaroqli qoldiq yetmasa, sabab aniq aytiladi va
+               foydalanuvchi ongli ravishda ustidan o'tishi mumkin. */
+            if (e?.data?.code === 'EXPIRED_STOCK_BLOCKED') {
+                const list = (e.data.expired || [])
+                    .map((b: any) => `${b.batchNumber || 'raqamsiz'} (${b.expiryDate}, ${b.quantity})`)
+                    .join(NL);
+                const okToForce = await confirmAction({ title: [e.data.error, '', "Muddati o'tgan partiyalar:", list, '',
+                     "Baribir sarflansinmi? Bu jurnalda ko'rinib turadi."].join(NL) });
+                if (okToForce) {
+                    try { await doIssue(true); }
+                    catch (e2: any) { setError(e2?.message || 'Chiqim yozilmadi'); }
+                }
+                setBusy(false);
+                return;
+            }
             setError(e?.message || 'Chiqim yozilmadi');
         } finally { setBusy(false); }
     };
@@ -287,6 +316,10 @@ export const Inventory: React.FC<InventoryProps> = ({
     };
 
     const lowStock = items.filter((i) => (i.minQuantity || 0) > 0 && (i.quantity || 0) <= (i.minQuantity || 0));
+    /* Muddati o'tgan qoldiq — serverda sanaladi (`expiredQuantity`).
+       Brauzerda partiyalar ro'yxati yo'q, ya'ni buni bu yerda hisoblab
+       bo'lmasdi — shuning uchun audit B-25 da belgi umuman ko'rinmasdi. */
+    const expiredItems = items.filter((i) => (i.expiredQuantity || 0) > 0);
 
     const TABS: { id: Tab; name: string; icon: React.ElementType }[] = [
         { id: 'stock', name: 'Qoldiqlar', icon: Package },
@@ -305,8 +338,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                 </div>
                 {!readOnly && (
                     <Button size="sm" onClick={() => setAddOpen(true)}>
-                        <Plus className="w-4 h-4 mr-1.5" /> Mahsulot qo'shish
-                    </Button>
+                        <Plus className="w-4 h-4 mr-1.5" />{t('inventory.ui.addItem')}</Button>
                 )}
             </div>
 
@@ -335,6 +367,18 @@ export const Inventory: React.FC<InventoryProps> = ({
             {/* ═══ QOLDIQLAR ═══════════════════════════════════════════════ */}
             {tab === 'stock' && (
                 <Card className="p-0 overflow-hidden">
+                    {/* Muddati o'tgani BIRINCHI ko'rsatiladi: yaroqsiz dori
+                        kam qoldiqdan muhimroq. Ilgari yuqorida faqat
+                        «minimal qoldiqdan tushgan» yozuvi turardi. */}
+                    {expiredItems.length > 0 && (
+                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+                            <p className="text-sm text-red-800 dark:text-red-200">
+                                {expiredItems.length} ta mahsulotda muddati o'tgan qoldiq bor — ular sarflanmaydi
+                            </p>
+                        </div>
+                    )}
+
                     {lowStock.length > 0 && (
                         <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center gap-2">
                             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -347,8 +391,8 @@ export const Inventory: React.FC<InventoryProps> = ({
                     {items.length === 0 ? (
                         <div className="text-center py-12">
                             <Package className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Ombor bo'sh</p>
-                            {!readOnly && <Button size="sm" onClick={() => setAddOpen(true)}>Mahsulot qo'shish</Button>}
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{t('inventory.ui.empty')}</p>
+                            {!readOnly && <Button size="sm" onClick={() => setAddOpen(true)}>{t('inventory.ui.addItem')}</Button>}
                         </div>
                     ) : (
                         <div className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -369,10 +413,21 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                         kam qoldi
                                                     </span>
                                                 )}
+                                                {/* MUDDATI O'TGAN (S2.5, audit B-25). Ilgari bu belgi
+                                                    faqat «Partiya va muddat» tabida bor edi — asosiy
+                                                    ro'yxatga qarab ishlayotgan odam yaroqsiz dori
+                                                    borligini bilmasdi. */}
+                                                {(it.expiredQuantity || 0) > 0 && (
+                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                                                        title={`${fmt(it.expiredQuantity || 0)} ${it.unit} muddati o'tgan — sarflab bo'lmaydi`}>
+                                                        MUDDATI O'TGAN {fmt(it.expiredQuantity || 0)}
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                                 minimal {fmt(it.minQuantity || 0)} {it.unit}
                                                 {it.price ? ` · tannarx ${fmt(it.price)}` : ''}
+                                                {it.nextExpiry ? ` · eng yaqin muddat ${it.nextExpiry.split('-').reverse().join('.')}` : ''}
                                             </p>
                                         </div>
                                         <div className="text-right shrink-0 min-w-[90px]">
@@ -384,10 +439,10 @@ export const Inventory: React.FC<InventoryProps> = ({
                                         <div className="flex items-center gap-1.5 shrink-0">
                                             {!readOnly && (
                                                 <>
-                                                    <Button variant="secondary" size="sm" onClick={() => openIn(it)} title="Kirim">
+                                                    <Button variant="secondary" size="sm" onClick={() => openIn(it)} title={t('inventory.ui.stockIn')}>
                                                         <ArrowDownToLine className="w-4 h-4" />
                                                     </Button>
-                                                    <Button variant="secondary" size="sm" onClick={() => openOut(it)} title="Chiqim">
+                                                    <Button variant="secondary" size="sm" onClick={() => openOut(it)} title={t('inventory.ui.stockOut')}>
                                                         <ArrowUpFromLine className="w-4 h-4" />
                                                     </Button>
                                                     {departments.length > 0 && (
@@ -401,7 +456,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                     )}
                                                 </>
                                             )}
-                                            <Button variant="secondary" size="sm" onClick={() => openHistory(it)} title="Tarix">
+                                            <Button variant="secondary" size="sm" onClick={() => openHistory(it)} title={t('inventory.ui.history')}>
                                                 <History className="w-4 h-4" />
                                             </Button>
                                             {!readOnly && (
@@ -423,14 +478,13 @@ export const Inventory: React.FC<InventoryProps> = ({
                 <Card className="p-4">
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
                         <Select value={movFilter.itemId} onChange={(e: any) => setMovFilter(f => ({ ...f, itemId: e.target.value }))}>
-                            <option value="">Barcha mahsulotlar</option>
+                            <option value="">{t('inventory.ui.allItems')}</option>
                             {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                         </Select>
                         <Input type="date" value={movFilter.from} onChange={(e: any) => setMovFilter(f => ({ ...f, from: e.target.value }))} />
                         <Input type="date" value={movFilter.to} onChange={(e: any) => setMovFilter(f => ({ ...f, to: e.target.value }))} />
                         <Button variant="secondary" onClick={loadMovements} disabled={movLoading}>
-                            <RefreshCw className="w-4 h-4 mr-1.5" /> Ko'rsatish
-                        </Button>
+                            <RefreshCw className="w-4 h-4 mr-1.5" />{t('inventory.ui.show')}</Button>
                     </div>
 
                     {movLoading && movements.length === 0 ? (
@@ -440,9 +494,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                     ) : movements.length === 0 ? (
                         <div className="text-center py-10">
                             <History className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                                Tanlangan shart bo'yicha harakat yo'q
-                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">{t('inventory.ui.noMovesForFilter')}</p>
                         </div>
                     ) : (
                         <div className="space-y-1.5">
@@ -480,9 +532,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                     ) : !alerts || (alerts.expiring.length === 0 && alerts.lowStock.length === 0) ? (
                         <div className="text-center py-10">
                             <CalendarClock className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                                Muddati yaqinlashgan partiya ham, kam qoldiq ham yo'q
-                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">{t('inventory.ui.noAlerts')}</p>
                             <p className="text-xs text-gray-400 mt-1">
                                 Partiyalar kirim paytida yaroqlilik muddati ko'rsatilganda paydo bo'ladi
                             </p>
@@ -552,7 +602,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                     </p>
 
                     {items.length === 0 ? (
-                        <p className="text-sm text-gray-400 py-8 text-center">Ombor bo'sh</p>
+                        <p className="text-sm text-gray-400 py-8 text-center">{t('inventory.ui.empty')}</p>
                     ) : (
                         <>
                             <div className="space-y-1.5 mb-4">
@@ -577,15 +627,12 @@ export const Inventory: React.FC<InventoryProps> = ({
                             </div>
 
                             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                                <p className="text-sm text-gray-600 dark:text-gray-300 flex-1">
-                                    Farqi bor qatorlar: <b>{auditChanged.length}</b>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 flex-1">{t('inventory.ui.diffRows')}<b>{auditChanged.length}</b>
                                 </p>
                                 <Button variant="secondary" onClick={() => setAuditValues({})} disabled={busy}>
                                     Tozalash
                                 </Button>
-                                <Button onClick={() => setAuditConfirm(true)} disabled={busy || readOnly || auditChanged.length === 0}>
-                                    Inventarizatsiyani o'tkazish
-                                </Button>
+                                <Button onClick={() => setAuditConfirm(true)} disabled={busy || readOnly || auditChanged.length === 0}>{t('inventory.ui.runAudit')}</Button>
                             </div>
                         </>
                     )}
@@ -593,24 +640,22 @@ export const Inventory: React.FC<InventoryProps> = ({
             )}
 
             {/* ─── Mahsulot qo'shish ──────────────────────────────────────── */}
-            <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title="Yangi mahsulot">
+            <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title={t('inventory.ui.newItem')}>
                 <form onSubmit={handleAdd} className="space-y-4">
                     <Input label="Nomi" value={addForm.name} required
                         onChange={(e: any) => setAddForm(f => ({ ...f, name: e.target.value }))} />
                     <div className="grid grid-cols-2 gap-3">
                         <Input label="O'lchov birligi" value={addForm.unit} required placeholder="dona, ml, quti"
                             onChange={(e: any) => setAddForm(f => ({ ...f, unit: e.target.value }))} />
-                        <Input label="Minimal qoldiq" type="number" value={addForm.minQuantity}
+                        <Input label={t('inventory.ui.minQty')} type="number" value={addForm.minQuantity}
                             onChange={(e: any) => setAddForm(f => ({ ...f, minQuantity: e.target.value }))} />
                     </div>
-                    <Input label="Tannarx (birlik uchun)" type="number" value={addForm.price}
+                    <Input label={t('inventory.ui.costPerUnit')} type="number" value={addForm.price}
                         helperText="Xizmat retsepti tannarxni shu narxdan hisoblaydi"
                         onChange={(e: any) => setAddForm(f => ({ ...f, price: e.target.value }))} />
                     <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                         <input type="checkbox" checked={addForm.isMedication} className="w-4 h-4 rounded"
-                            onChange={(e) => setAddForm(f => ({ ...f, isMedication: e.target.checked }))} />
-                        Dori — partiya va yaroqlilik muddati nazorat qilinadi
-                    </label>
+                            onChange={(e) => setAddForm(f => ({ ...f, isMedication: e.target.checked }))} />{t('inventory.ui.isMedicationHint')}</label>
                     <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
                         <p className="text-xs text-gray-600 dark:text-gray-300">
                             Boshlang'ich qoldiq bu yerda kiritilmaydi: qoldiq faqat KIRIM orqali
@@ -618,8 +663,8 @@ export const Inventory: React.FC<InventoryProps> = ({
                         </p>
                     </div>
                     <div className="flex justify-end gap-2">
-                        <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>Bekor qilish</Button>
-                        <Button type="submit">Qo'shish</Button>
+                        <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>{t('inventory.ui.cancel')}</Button>
+                        <Button type="submit">{t('inventory.ui.add')}</Button>
                     </div>
                 </form>
             </Modal>
@@ -631,20 +676,20 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <div className="grid grid-cols-2 gap-3">
                             <Input label={`Miqdor (${inTarget.unit})`} type="number" step="any" value={inForm.quantity}
                                 onChange={(e: any) => setInForm(f => ({ ...f, quantity: e.target.value }))} />
-                            <Input label="Tannarx (birlik)" type="number" value={inForm.cost}
+                            <Input label={t('inventory.ui.costUnit')} type="number" value={inForm.cost}
                                 onChange={(e: any) => setInForm(f => ({ ...f, cost: e.target.value }))} />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="Partiya raqami" value={inForm.batchNumber}
+                            <Input label={t('inventory.ui.batchNumber')} value={inForm.batchNumber}
                                 onChange={(e: any) => setInForm(f => ({ ...f, batchNumber: e.target.value }))} />
                             <Input label={inTarget.isMedication ? 'Yaroqlilik muddati (majburiy)' : 'Yaroqlilik muddati'}
                                 type="date" value={inForm.expiryDate}
                                 onChange={(e: any) => setInForm(f => ({ ...f, expiryDate: e.target.value }))} />
                         </div>
-                        <Input label="Izoh" value={inForm.note}
+                        <Input label={t('inventory.ui.note')} value={inForm.note}
                             onChange={(e: any) => setInForm(f => ({ ...f, note: e.target.value }))} />
                         <div className="flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setInTarget(null)}>Bekor qilish</Button>
+                            <Button variant="secondary" onClick={() => setInTarget(null)}>{t('inventory.ui.cancel')}</Button>
                             <Button onClick={submitIn} disabled={busy || !(Number(inForm.quantity) > 0)}>
                                 {busy ? 'Saqlanmoqda…' : 'Kirimni yozish'}
                             </Button>
@@ -663,20 +708,18 @@ export const Inventory: React.FC<InventoryProps> = ({
                                 setOutForm(f => ({ ...f, quantity: v }));
                                 previewOut(outTarget, Number(v));
                             }} />
-                        <Select label="Sababi" value={outForm.reason}
+                        <Select label={t('inventory.ui.reason')} value={outForm.reason}
                             onChange={(e: any) => setOutForm(f => ({ ...f, reason: e.target.value }))}>
                             {OUT_REASONS.map((r) => <option key={r} value={r}>{REASON_LABEL[r]}</option>)}
                         </Select>
-                        <Input label="Izoh" value={outForm.note}
+                        <Input label={t('inventory.ui.note')} value={outForm.note}
                             onChange={(e: any) => setOutForm(f => ({ ...f, note: e.target.value }))} />
 
                         {/* FEFO ko'rinishi TASDIQLASHDAN OLDIN: odam nima bo'layotganini
                             tushunmasa, qoldiq bilan ishonch yo'qoladi */}
                         {outPreview.length > 0 && (
                             <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                    Qaysi partiyalardan yechiladi (muddati yaqinidan boshlab):
-                                </p>
+                                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">{t('inventory.ui.fefoPreview')}</p>
                                 <div className="space-y-1">
                                     {outPreview.map((p, i) => (
                                         <div key={i} className="flex items-center justify-between text-xs">
@@ -693,7 +736,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         )}
 
                         <div className="flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setOutTarget(null)}>Bekor qilish</Button>
+                            <Button variant="secondary" onClick={() => setOutTarget(null)}>{t('inventory.ui.cancel')}</Button>
                             <Button onClick={submitOut} disabled={busy || !(Number(outForm.quantity) > 0)}>
                                 {busy ? 'Saqlanmoqda…' : 'Chiqimni yozish'}
                             </Button>
@@ -715,24 +758,24 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <Input label={`Miqdor (${moveTarget.unit}) — mavjud ${fmt(moveTarget.quantity || 0)}`}
                             type="number" step="any" value={moveForm.quantity}
                             onChange={(e: any) => setMoveForm(f => ({ ...f, quantity: e.target.value }))} />
-                        <Select label="Qayerdan (ixtiyoriy)" value={moveForm.fromDepartmentId}
+                        <Select label={t('inventory.ui.fromOptional')} value={moveForm.fromDepartmentId}
                             onChange={(e: any) => setMoveForm(f => ({ ...f, fromDepartmentId: e.target.value }))}>
-                            <option value="">Ko'rsatilmagan (umumiy ombor)</option>
+                            <option value="">{t('inventory.ui.noLocation')}</option>
                             {departments.filter(d => d.isActive !== false).map(d => (
                                 <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                         </Select>
-                        <Select label="Qayerga" value={moveForm.toDepartmentId}
+                        <Select label={t('inventory.ui.toWhere')} value={moveForm.toDepartmentId}
                             onChange={(e: any) => setMoveForm(f => ({ ...f, toDepartmentId: e.target.value }))}>
                             <option value="">Tanlang…</option>
                             {departments.filter(d => d.isActive !== false && d.id !== moveForm.fromDepartmentId).map(d => (
                                 <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                         </Select>
-                        <Input label="Izoh" value={moveForm.note}
+                        <Input label={t('inventory.ui.note')} value={moveForm.note}
                             onChange={(e: any) => setMoveForm(f => ({ ...f, note: e.target.value }))} />
                         <div className="flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setMoveTarget(null)}>Bekor qilish</Button>
+                            <Button variant="secondary" onClick={() => setMoveTarget(null)}>{t('inventory.ui.cancel')}</Button>
                             <Button onClick={submitMove}
                                 disabled={busy || !(Number(moveForm.quantity) > 0) || !moveForm.toDepartmentId}>
                                 {busy ? 'Saqlanmoqda…' : "Ko'chirishni yozish"}
@@ -746,7 +789,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             {historyItem && (
                 <Modal isOpen={true} onClose={() => setHistoryItem(null)} title={`Tarix — ${historyItem.name}`}>
                     {historyRows.length === 0 ? (
-                        <p className="text-sm text-gray-400 py-6 text-center">Harakat yo'q</p>
+                        <p className="text-sm text-gray-400 py-6 text-center">{t('inventory.ui.noMoves')}</p>
                     ) : (
                         <div className="space-y-1.5 max-h-96 overflow-y-auto">
                             {historyRows.map((m) => (
@@ -785,7 +828,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                             ))}
                         </div>
                         <div className="flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setAuditConfirm(false)}>Bekor qilish</Button>
+                            <Button variant="secondary" onClick={() => setAuditConfirm(false)}>{t('inventory.ui.cancel')}</Button>
                             <Button onClick={submitAudit} disabled={busy}>
                                 {busy ? 'Yozilmoqda…' : 'Tasdiqlash'}
                             </Button>

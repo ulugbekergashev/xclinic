@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { formatMoney, formatDate, formatFullName } from '../utils/format';
+import { confirmAction } from '../services/confirm';
+import { toast } from '../services/toast';
 import { todayISO } from '../utils/dateUtils';
 import { Plus, Check, Calendar, CreditCard, X, Clock } from 'lucide-react';
 import { Button, Card, Modal, Input, Select, Badge } from './Common';
@@ -74,7 +77,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
          const initial = parseFloat(createForm.initialPayment || '0');
          const months = parseInt(createForm.months);
          if (isNaN(amount) || amount <= 0 || isNaN(months) || months <= 0) {
-            alert('Iltimos ma\'lumotlarni to\'g\'ri kiriting');
+            toast.error('Iltimos ma\'lumotlarni to\'g\'ri kiriting');
             return;
          }
 
@@ -113,7 +116,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
          // If initial payment > 0, we can create a regular transaction for it via the Transaction API separately,
          // but since it's just a demo level integration right now, we trust the user.
       } catch (e: any) {
-         alert(e?.message || 'Xatolik yuz berdi');
+         toast.error(e?.message || 'Xatolik yuz berdi');
       }
    };
 
@@ -124,17 +127,17 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
          setIsPayModalOpen(false);
          loadPlans();
       } catch (e: any) {
-         alert(e?.message || 'Xatolik yuz berdi');
+         toast.error(e?.message || 'Xatolik yuz berdi');
       }
    };
 
    const handleDelete = async (planId: string) => {
-      if (window.confirm('Haqiqatdan ham bu rejani o\'chirmoqchimisiz?')) {
+      if (await confirmAction({ title: 'Haqiqatdan ham bu rejani o\'chirmoqchimisiz?' })) {
          try {
             await api.installments.delete(planId);
             loadPlans();
          } catch (e) {
-            alert('Xatolik yuz berdi');
+            toast.error('Xatolik yuz berdi');
          }
       }
    };
@@ -170,21 +173,21 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
                               <Badge status={plan.status === 'Active' ? 'pending' : 'completed'} />
                            </div>
                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              Shifokor: {plan.doctor ? `${plan.doctor.lastName} ${plan.doctor.firstName}` : 'Klinika'}
+                              Shifokor: {plan.doctor ? `${formatFullName(plan.doctor)}` : 'Klinika'}
                            </p>
                         </div>
                         <div className="mt-4 md:mt-0 flex gap-6 text-sm">
                            <div>
                               <p className="text-gray-500 dark:text-gray-400 mb-1">Umumiy summa</p>
-                              <p className="font-medium text-gray-900 dark:text-gray-100">{plan.totalAmount.toLocaleString()} UZS</p>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">{formatMoney(plan.totalAmount)} UZS</p>
                            </div>
                            <div>
                               <p className="text-gray-500 dark:text-gray-400 mb-1">To'landi</p>
-                              <p className="font-medium text-green-600 dark:text-green-400">{plan.totalPaid.toLocaleString()} UZS</p>
+                              <p className="font-medium text-green-600 dark:text-green-400">{formatMoney(plan.totalPaid)} UZS</p>
                            </div>
                            <div>
                               <p className="text-gray-500 dark:text-gray-400 mb-1">Qoldiq</p>
-                              <p className="font-medium text-red-600 dark:text-red-400">{(plan.totalAmount - plan.totalPaid).toLocaleString()} UZS</p>
+                              <p className="font-medium text-red-600 dark:text-red-400">{formatMoney((plan.totalAmount - plan.totalPaid))} UZS</p>
                            </div>
                            <button onClick={() => handleDelete(plan.id)} className="text-red-500 p-2 hover:bg-red-50 rounded-full dark:hover:bg-red-900/20 transition-colors self-start">
                               <X className="w-4 h-4" />
@@ -215,14 +218,14 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
                                        <p className="font-medium text-gray-900 dark:text-gray-100">{idx + 1}-oylik to'lov</p>
                                        <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
                                           <Calendar className="w-3 h-3" />
-                                          {expectedDate.toLocaleDateString('uz-UZ')}
-                                          {item.status === 'Paid' && item.paidDate && ` (To'landi: ${new Date(item.paidDate).toLocaleDateString('uz-UZ')})`}
+                                          {formatDate(expectedDate)}
+                                          {item.status === 'Paid' && item.paidDate && ` (To'landi: ${formatDate(new Date(item.paidDate))})`}
                                        </p>
                                     </div>
                                  </div>
                                  
                                  <div className="flex items-center gap-4">
-                                    <p className="font-bold text-gray-900 dark:text-gray-100">{item.amount.toLocaleString()} UZS</p>
+                                    <p className="font-bold text-gray-900 dark:text-gray-100">{formatMoney(item.amount)} UZS</p>
                                     {item.status === 'Pending' && (
                                        <Button size="sm" onClick={() => {
                                           setPaymentItem(item);
@@ -255,7 +258,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
                      onChange={(e) => setCreateForm(prev => ({ ...prev, doctorId: e.target.value }))}
                      options={[
                         { value: '', label: 'Klinika' },
-                        ...doctors.map(d => ({ value: d.id, label: `${d.lastName} ${d.firstName}` }))
+                        ...doctors.map(d => ({ value: d.id, label: `${formatFullName(d)}` }))
                      ]}
                   />
                </div>
@@ -307,7 +310,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
                      <p className="text-sm text-primary-800 dark:text-primary-300 mb-1">Oylik to'lov summasi:</p>
                      <p className="text-lg font-bold text-primary-900 dark:text-primary-100">
                         {createForm.totalAmount && createForm.months ? 
-                           Math.round((parseFloat(createForm.totalAmount) - parseFloat(createForm.initialPayment || '0')) / parseInt(createForm.months)).toLocaleString() + ' UZS' 
+                           formatMoney((parseFloat(createForm.totalAmount) - parseFloat(createForm.initialPayment || '0')) / parseInt(createForm.months)) + ' UZS' 
                            : '0 UZS'}
                      </p>
                   </div>
@@ -330,7 +333,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({ patientId, cli
                {paymentItem && (
                   <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl text-center">
                      <p className="text-sm text-gray-500 mb-1">To'lanayotgan summa:</p>
-                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{paymentItem.amount.toLocaleString()} UZS</p>
+                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatMoney(paymentItem.amount)} UZS</p>
                   </div>
                )}
                

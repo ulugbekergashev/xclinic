@@ -7,11 +7,17 @@
   "scripts": {
     "dev": "ts-node server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/backend/server.js",
     "bundle": "prisma generate && ncc build server.ts -o dist-bundle --external prisma --external @prisma/client && node scripts/copy-prisma-engine.js",
     "db:push": "prisma db push --schema=prisma/schema.prisma",
     "db:studio": "prisma studio --schema=prisma/schema.prisma",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test": "vitest run tests",
+    "test:watch": "vitest tests",
+    "test:api": "ts-node --transpile-only tests/run-api.ts",
+    "seed:demo": "ts-node --transpile-only demoSeed.ts",
+    "test:migration": "ts-node --transpile-only tests/migration0028.ts",
+    "test:all": "npm run test && npm run test:migration && npm run test:api"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -38,7 +44,8 @@
     "dotenv": "^17.2.3",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "@types/express-serve-static-core": "5.1.0"

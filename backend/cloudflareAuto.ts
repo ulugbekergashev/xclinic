@@ -141,11 +141,25 @@ export async function checkAndRegisterAutoTunnel() {
     // This installation's own unique identity for the public tunnel. It is a random id
     // stored in this machine's userData, so every clinic gets its OWN independent link and
     // no other machine can ever claim or steal it.
+    /* ─── DOMEN SOZLAMADAN OLINADI ────────────────────────────────────────
+       Bu yerda `denta-crm.com` QATTIQ yozilgan edi va subdomen `denta-${uid}`
+       deb nomlanardi — ya'ni sozlamalar qo'yilsa, XClinic denta7 ning
+       domenida yozuv yaratardi. Modul hech qayerdan chaqirilmaydi va
+       kalitlarsiz ishlamaydi, ya'ni tirik xavf emas edi; lekin mina bo'lib
+       turardi: XClinic denta7 ning hisoblariga TEGMASLIGI shart.
+
+       Endi domen `CLOUDFLARE_TUNNEL_DOMAIN` dan olinadi va u yo'q bo'lsa
+       modul umuman ishlamaydi. */
     const uid = getTunnelSubdomainId();
-    const subdomain = `denta-${uid}`;
+    const baseDomain = (process.env.CLOUDFLARE_TUNNEL_DOMAIN || '').trim().replace(/^\.+/, '');
+    if (!baseDomain) {
+        console.log('📡 [Cloudflare Auto] CLOUDFLARE_TUNNEL_DOMAIN sozlanmagan — avtomatik ro'yxatdan o'tish o'tkazib yuborildi.');
+        return;
+    }
+    const subdomain = `xclinic-${uid}`;
     const tunnelName = `xclinic-${uid}`;
-    const domain = `${subdomain}.denta-crm.com`;
-    const targetSuffix = '.denta-crm.com';
+    const domain = `${subdomain}.${baseDomain}`;
+    const targetSuffix = `.${baseDomain}`;
 
     // Self-healing: the cached URL is stale/foreign if it doesn't end with our domain suffix,
     // OR its subdomain does not match THIS installation's own id. The second case is what

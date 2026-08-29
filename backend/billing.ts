@@ -12,6 +12,8 @@
 
 import type express from 'express';
 import { tashkentDateStr } from './tashkentTime';
+import { emitEvent } from './events';
+import { som, splitProportionally } from './money';
 
 type Deps = {
     prisma: any;
@@ -21,7 +23,11 @@ type Deps = {
 
 // Sana Toshkent bo'yicha: UTC ishlatilsa tunda kechagi kun yozilardi
 const nowDate = () => tashkentDateStr();
-const round = (n: number) => Math.round(n * 100) / 100;
+
+/* Pul — BUTUN so'm, `money.ts` dagi yagona qoida bo'yicha. Ilgari bu yerda
+   o'zining `Math.round(n*100)/100` i turardi va loyihada yana besh joyda
+   xuddi shunday nusxalari bor edi. */
+const round = som;
 
 export type ChargeSource = 'Service' | 'Lab' | 'Study' | 'Medication' | 'Bed' | 'Other';
 
@@ -105,6 +111,83 @@ export function summarize(charges: any[]) {
 }
 
 
+/* ─── Tranzaksiya ichidan HTTP javob ──────────────────────────────────────
+   Interaktiv tranzaksiya ichida `return res.status(400).json(...)` qilib
+   bo'lmaydi: callback dan qaytish tranzaksiyani BEKOR QILMAYDI, ya'ni javob
+   yuborilgan bo'lsa ham yozuvlar commit bo'lib ketaveradi.
+
+   Shuning uchun ichkaridagi har bir tekshiruv xato TASHLAYDI — bu rollback
+   ning yagona to'g'ri usuli — `route()` esa uni kerakli HTTP kodiga
+   o'giradi. */
+export class HttpError extends Error {
+    constructor(public status: number, message: string, public payload?: Record<string, any>) {
+        super(message);
+        this.name = 'HttpError';
+    }
+}
+
+/* ─── Avans balansining YAGONA formulasi ──────────────────────────────────
+   Balansga uch xil hodisa ta'sir qiladi:
+     1. 'Avans' xizmati bilan kirim       → oshadi
+     2. `type: 'Balance'` bilan to'lov    → kamayadi
+     3. avansga QAYTARISH                 → oshadi
+
+   Uchinchisi chekda ko'rinmaydi (uning turi 'Refund'), usuli esa
+   `CashMovement.method` da saqlanadi — shuning uchun alohida o'qiladi.
+
+   Bu funksiya IKKI joyda ishlatiladi: balanslarni qayta hisoblashda va
+   yaxlitlik tekshiruvida. Yagona manba bo'lgani uchun ular ayri ketolmaydi —
+   aynan shu ayrilik 7.7-B dagi xatoning sababi edi. */
+export async function findBalanceMismatches(prisma: any, patientWhere: any) {
+    const patients = await prisma.patient.findMany({
+        where: patientWhere,
+        select: { id: true, firstName: true, lastName: true, balance: true },
+    });
+
+    const diffs: {
+        patientId: string; patientName: string;
+        current: number; correct: number; diff: number;
+    }[] = [];
+
+    for (const patient of patients) {
+        const [transactions, refunds] = await Promise.all([
+            prisma.transaction.findMany({
+                where: { patientId: patient.id, status: 'Paid' },
+                select: { service: true, type: true, amount: true },
+            }),
+            /* Avansga qaytarish. `transactionId` shart: balansni FAQAT
+               qaytarish oqimi oshiradi va u har doim chek bilan yoziladi.
+               Qo'lda kiritilgan kassa harakati balansga tegmaydi. */
+            prisma.cashMovement.findMany({
+                where: {
+                    patientId: patient.id, type: 'Refund', method: 'Balance',
+                    transactionId: { not: null },
+                },
+                select: { amount: true },
+            }),
+        ]);
+
+        let correct = 0;
+        for (const t of transactions) {
+            if (t.service === 'Avans') correct += t.amount;
+            else if (t.type === 'Balance') correct -= t.amount;
+        }
+        for (const r of refunds) correct += r.amount;
+
+        const current = patient.balance || 0;
+        if (Math.abs(current - correct) > 0.001) {
+            diffs.push({
+                patientId: patient.id,
+                patientName: `${patient.lastName} ${patient.firstName}`,
+                current: Math.round(current),
+                correct: Math.round(correct),
+                diff: Math.round(correct - current),
+            });
+        }
+    }
+    return { checked: patients.length, diffs };
+}
+
 /** Kassa izi. Ilgari to'lov va qator bekor qilinishi jurnalga TUSHMASDI —
  *  bu kassa dasturidagi eng klassik teshik (GAP-ANALYSIS, A19). */
 async function writeAuditFor(prisma: any, input: {
@@ -142,11 +225,23 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
                 if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
                 await handler(req, res, clinicId);
             } catch (e: any) {
+                // Tranzaksiya ichidan tashlangan tekshiruv xatosi — 500 emas
+                if (e instanceof HttpError) {
+                    return res.status(e.status).json({ error: e.message, ...(e.payload || {}) });
+                }
                 console.error(`[${method.toUpperCase()} ${path}]`, e.message);
                 res.status(500).json({ error: e.message || 'Server xatoligi' });
             }
         });
     };
+
+    /* Qatorlar to'plamining "barmoq izi": id, to'langan summa va jami.
+       To'lovni tayyorlash paytida o'qilgan holat bilan tranzaksiya ichida
+       o'qilgan holatni solishtirish uchun — farq bo'lsa, boshqa kassir
+       oradan o'tgan degani. */
+    const fingerprint = (rows: any[]): string =>
+        rows.map((r) => `${r.id}:${round(r.paidAmount || 0)}:${round(r.total)}:${r.status}`)
+            .sort().join('|');
 
     const writeAudit = (input: any) => writeAuditFor(prisma, input);
 
@@ -258,7 +353,7 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
            qatorlari `POST /medication-orders/:id/administer` orqali
            SERVER o'zi yaratadi, qo'lda kiritish kerak emas. */
         const user = (req as any).user;
-        if (!['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+        if (!['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN'].includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
 
@@ -295,7 +390,25 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
         if (charge.status === 'Paid') {
             return res.status(409).json({ error: "To'langan qatorni o'chirib bo'lmaydi" });
         }
-        await prisma.visitCharge.update({ where: { id: req.params.id }, data: { status: 'Cancelled' } });
+
+        /* Shartli yangilash: o'qish bilan yozish orasida kassir qatorni to'lab
+           qo'ygan bo'lishi mumkin — u holda `status` allaqachon 'Paid' va
+           `updateMany` hech narsani o'zgartirmaydi.
+
+           `status: { not: 'Paid' }` ATAYLAB: allaqachon bekor qilingan qator
+           yana bekor qilinaveradi va javob muvaffaqiyatli bo'ladi. Ikki marta
+           bosish yoki eskirgan ro'yxatdan o'chirish xato ko'rsatmasligi kerak —
+           bu hozirgi xatti-harakat va u saqlanadi. */
+        const cancelled = await prisma.visitCharge.updateMany({
+            where: { id: req.params.id, clinicId, status: { not: 'Paid' } },
+            data: { status: 'Cancelled' },
+        });
+        if (cancelled.count === 0) {
+            return res.status(409).json({
+                error: "Qator oradan to'landi — o'chirib bo'lmaydi. Ro'yxatni yangilang.",
+                code: 'CHARGE_CHANGED',
+            });
+        }
 
         /* Ilgari bekor qilish jurnalga TUSHMASDI: to'lanmagan xizmatni jimgina
            yo'q qilish mumkin edi va hech qanday iz qolmasdi (A19). */
@@ -337,11 +450,46 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             return res.status(400).json({ error: 'Kamida bitta qator tanlanishi kerak' });
         }
 
-        const charges = await prisma.visitCharge.findMany({
+        /* ─── NIMA UCHUN QATORLAR IKKI MARTA O'QILADI ────────────────────────
+
+           BIRINCHI o'qish (shu yerda) — faqat O'ZGARISH ANIQLASH uchun.
+           IKKINCHI o'qish tranzaksiya ichida bo'ladi va hamma hisob-kitob
+           AYNAN o'sha yangi ma'lumotdan quriladi.
+
+           Nima uchun shunday. Ilgari hamma narsa tranzaksiyadan tashqarida
+           o'qilib, keyin alohida-alohida yozilardi. Ikki kassir bitta qatorni
+           bir vaqtda to'lasa, ikkalasi ham o'tib ketardi.
+
+           Lekin "tranzaksiya ichida qayta o'qish" ning O'ZI yetarli emas va
+           yangi xato tug'diradi: to'lov summasi (`received`, `methodSplit`)
+           tashqi o'qishga tayanadi, ichki o'qish esa qatorni topmasligi
+           mumkin (boshqa kassir to'lab bo'lgan). U holda chek YARATILADI,
+           `ChargePayment` esa yaratilmaydi — kassada UYDIRMA chek paydo
+           bo'ladi. Hozirgi kodda bunday holat yo'q, ya'ni sodda tuzatish
+           ahvolni yomonlashtirardi.
+
+           Shuning uchun: holat o'zgargan bo'lsa umuman to'lamaymiz —
+           409 qaytaramiz va kassir ro'yxatni yangilaydi. Bu to'g'ri javob,
+           chunki kassir bemordan olgan summa eski qarzga hisoblangan edi. */
+        const before = await prisma.visitCharge.findMany({
+            where: { id: { in: chargeIds }, clinicId, status: 'Unpaid' },
+            select: { id: true, paidAmount: true, total: true, status: true },
+        });
+        if (before.length === 0) return res.status(400).json({ error: "To'lanmagan qator topilmadi" });
+        const beforeFp = fingerprint(before);
+
+        const outcome = await prisma.$transaction(async (tx: any) => {
+
+        const charges = await tx.visitCharge.findMany({
             where: { id: { in: chargeIds }, clinicId, status: 'Unpaid' },
             orderBy: { createdAt: 'asc' },
         });
-        if (charges.length === 0) return res.status(400).json({ error: "To'lanmagan qator topilmadi" });
+        if (charges.length === 0 || fingerprint(charges) !== beforeFp) {
+            throw new HttpError(409,
+                "Bu qatorlar oradan o'zgardi — boshqa kassir to'lov qabul qilgan bo'lishi mumkin. "
+                + "Ro'yxatni yangilab, qaytadan urinib ko'ring.",
+                { code: 'CHARGES_CHANGED' });
+        }
 
         const remainingOf = (c: any) => round(c.total - (c.paidAmount || 0));
         const due = round(charges.reduce((s: number, c: any) => s + remainingOf(c), 0));
@@ -355,21 +503,19 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
                 const want = round(Number(perCharge[c.id] ?? 0));
                 if (!(want > 0)) continue;
                 if (want > remainingOf(c) + 0.001) {
-                    return res.status(400).json({
-                        error: `"${c.name}" uchun summa qarzdan ko'p (qarz: ${remainingOf(c)})`,
-                    });
+                    throw new HttpError(400, `"${c.name}" uchun summa qarzdan ko'p (qarz: ${remainingOf(c)})`);
                 }
                 plan.set(c.id, want);
             }
-            if (plan.size === 0) return res.status(400).json({ error: "Summa ko'rsatilmagan" });
+            if (plan.size === 0) throw new HttpError(400, "Summa ko'rsatilmagan");
         }
 
         const received = plan.size > 0
             ? round(Array.from(plan.values()).reduce((a, b) => a + b, 0))
             : (amount != null ? round(Number(amount)) : due);
 
-        if (received <= 0) return res.status(400).json({ error: "Summa noto'g'ri" });
-        if (received > due) return res.status(400).json({ error: `Summa qarzdan ko'p (qarz: ${due})` });
+        if (received <= 0) throw new HttpError(400, "Summa noto'g'ri");
+        if (received > due) throw new HttpError(400, `Summa qarzdan ko'p (qarz: ${due})`);
 
         if (plan.size === 0) {
             // Navbat bo'yicha: eng eski qatordan boshlab
@@ -392,11 +538,9 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
                 amount: round(Number(p.amount) || 0),
             })).filter((p) => p.amount > 0);
             const sum = round(methodSplit.reduce((s, p) => s + p.amount, 0));
-            if (methodSplit.length === 0) return res.status(400).json({ error: "To'lov usuli ko'rsatilmagan" });
+            if (methodSplit.length === 0) throw new HttpError(400, "To'lov usuli ko'rsatilmagan");
             if (Math.abs(sum - received) > 0.01) {
-                return res.status(400).json({
-                    error: `Usullar yig'indisi (${sum}) umumiy summaga (${received}) teng emas`,
-                });
+                throw new HttpError(400, `Usullar yig'indisi (${sum}) umumiy summaga (${received}) teng emas`);
             }
         } else {
             methodSplit = [{ method: String(method || 'Cash'), amount: received }];
@@ -421,20 +565,19 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
         );
         if (balanceSpend > 0) {
             if (!first.patientId) {
-                return res.status(400).json({ error: "Avansdan to'lash uchun bemor ko'rsatilishi kerak" });
+                throw new HttpError(400, "Avansdan to'lash uchun bemor ko'rsatilishi kerak");
             }
-            const patient = await prisma.patient.findUnique({
+            const patient = await tx.patient.findUnique({
                 where: { id: first.patientId },
                 select: { balance: true, clinicId: true },
             });
             if (!patient || patient.clinicId !== clinicId) {
-                return res.status(404).json({ error: 'Bemor topilmadi' });
+                throw new HttpError(404, 'Bemor topilmadi');
             }
             const have = round(patient.balance || 0);
             if (balanceSpend > have + 0.001) {
-                return res.status(400).json({
-                    error: `Avans yetarli emas: hisobda ${Math.round(have)}, kerak ${Math.round(balanceSpend)}`,
-                });
+                throw new HttpError(400,
+                    `Avans yetarli emas: hisobda ${Math.round(have)}, kerak ${Math.round(balanceSpend)}`);
             }
         }
         const chargeById = new Map(charges.map((c: any) => [c.id, c]));
@@ -448,8 +591,9 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
         const createdTx: any[] = [];
         const paidPerCharge = new Map<string, number>();
 
-        for (const ms of methodSplit) {
-            const tx = await prisma.transaction.create({
+        for (let mi = 0; mi < methodSplit.length; mi++) {
+            const ms = methodSplit[mi];
+            const receipt = await tx.transaction.create({
                 data: {
                     clinicId,
                     patientId: first.patientId || null,
@@ -466,20 +610,40 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
                     receivedByName: receivedByName || null,
                 },
             });
-            createdTx.push(tx);
+            createdTx.push(receipt);
 
-            const share = received > 0 ? ms.amount / received : 0;
-            for (const [chargeId, chargeAmount] of plan.entries()) {
-                const part = round(chargeAmount * share);
+            /* ── USUL ULUSHINI QATORLARGA TAQSIMLASH ────────────────────────
+               Ilgari har qism alohida yaxlitlanardi: `round(chargeAmount * share)`.
+               Butun so'mga o'tgach bu qismlar yig'indisini chekka teng
+               qilmasdi — 100 000 ni uchga bo'lsak 33 333 × 3 = 99 999 va bitta
+               so'm yo'qolardi. Yaxlitlik tekshiruvi (7.5) buni darhol
+               "buzilish" deb ko'rsatardi.
+
+               Ikki qavatli kafolat:
+                 - qatorlar bo'yicha: `splitProportionally` (eng katta qoldiq)
+                   yig'indini AYNAN `ms.amount` ga tenglashtiradi;
+                 - usullar bo'yicha: OXIRGI usul qolgan summani oladi, ya'ni
+                   har qator bo'yicha jami aynan `plan[chargeId]` bo'ladi. */
+            const entries = Array.from(plan.entries());
+            const isLastMethod = mi === methodSplit.length - 1;
+
+            const parts = isLastMethod
+                ? entries.map(([chargeId, chargeAmount]) =>
+                    som(chargeAmount - (paidPerCharge.get(chargeId) || 0)))
+                : splitProportionally(ms.amount, entries.map(([, amt]) => amt));
+
+            for (let i = 0; i < entries.length; i++) {
+                const [chargeId] = entries[i];
+                const part = parts[i];
                 if (part <= 0) continue;
-                await prisma.chargePayment.create({
+                await tx.chargePayment.create({
                     data: {
-                        clinicId, chargeId, transactionId: tx.id,
+                        clinicId, chargeId, transactionId: receipt.id,
                         amount: part, kind: 'Payment',
                         createdByName: receivedByName || null,
                     },
                 });
-                paidPerCharge.set(chargeId, round((paidPerCharge.get(chargeId) || 0) + part));
+                paidPerCharge.set(chargeId, som((paidPerCharge.get(chargeId) || 0) + part));
             }
         }
 
@@ -491,7 +655,7 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             const c: any = chargeById.get(chargeId);
             const newPaid = round((c.paidAmount || 0) + part);
             const fully = newPaid >= c.total - 0.001;
-            updated.push(await prisma.visitCharge.update({
+            updated.push(await tx.visitCharge.update({
                 where: { id: chargeId },
                 data: {
                     paidAmount: newPaid,
@@ -505,27 +669,50 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
            bo'lgandan KEYIN: qatorlar yangilanmasa avans ham sarflanmasligi
            kerak. */
         if (balanceSpend > 0 && first.patientId) {
-            await prisma.patient.update({
+            await tx.patient.update({
                 where: { id: first.patientId },
                 data: { balance: { decrement: balanceSpend } },
             });
         }
 
-        // Kassa izi: ilgari to'lov jurnalga TUSHMASDI — GAP-ANALYSIS, A19.
+        return {
+            payload: {
+                transaction: createdTx[0],
+                transactions: createdTx,
+                charges: updated,
+                received,
+                due: round(due - received),
+            },
+            audit: {
+                patientId: first.patientId || null,
+                patientName: first.patientName,
+                received,
+                methods: methodSplit.map((m) => `${m.method} ${Math.round(m.amount)}`).join(' + '),
+                chargeIds: updated.map((c: any) => c.id).join(','),
+                rows: updated.length,
+            },
+        };
+
+        /* Tranzaksiya CHEGARASI shu yerda. `timeout` — Prisma o'z taymeri;
+           15 s klinika uchun juda ko'p, lekin sekin diskda ham yetadi. */
+        }, { timeout: 15000, maxWait: 10000 });
+
+        /* Kassa izi — tranzaksiyadan TASHQARIDA va commit dan KEYIN.
+           Ikki sabab: (1) jurnal yozuvi to'lovni to'xtatmasligi kerak —
+           `writeAuditFor` xatoni o'zi yutadi; (2) tranzaksiya ichida bo'lsa
+           rollback jurnalni ham o'chirib yuborardi, holbuki bekor bo'lgan
+           urinish ham iz qoldirishi mumkin edi. Bu yerda esa jurnal faqat
+           HAQIQATAN bo'lgan to'lov uchun yoziladi. */
+        const a = outcome.audit;
         await writeAudit({
             clinicId, date: nowDate(), action: 'Payment', entityType: 'VisitCharge',
-            entityId: updated.map((c) => c.id).join(','),
-            summary: `${first.patientName}: ${Math.round(received)} (${methodSplit.map((m) => `${m.method} ${Math.round(m.amount)}`).join(' + ')}), ${updated.length} qator`,
+            entityId: a.chargeIds,
+            summary: `${a.patientName}: ${Math.round(a.received)} (${a.methods}), ${a.rows} qator`,
             byName: receivedByName || null,
         });
 
-        res.json({
-            transaction: createdTx[0],
-            transactions: createdTx,
-            charges: updated,
-            received,
-            due: round(due - received),
-        });
+        emitEvent(clinicId, 'charge.paid', { patientId: outcome.audit.patientId || null });
+        res.json(outcome.payload);
     });
 
     /**
@@ -541,21 +728,28 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
      */
     route('post', '/api/charges/:id/refund', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (user?.role !== 'CLINIC_ADMIN' && user?.role !== 'SUPER_ADMIN') {
+        if (user?.role !== 'CLINIC_ADMIN') {
             return res.status(403).json({ error: "Ruxsat yo'q — qaytarishni faqat klinika admini qiladi" });
         }
 
-        const charge = await prisma.visitCharge.findUnique({ where: { id: req.params.id } });
-        if (!charge || charge.clinicId !== clinicId) return res.status(404).json({ error: 'Qator topilmadi' });
-
         const { amount, method, reason } = req.body;
+
+        /* Beshta yozuv (chek, ChargePayment, balans, qator, kassa harakati) —
+           BITTA tranzaksiyada. Qator ham tranzaksiya ICHIDA o'qiladi: aks
+           holda `paidAmount` eskirgan bo'lib, bir vaqtda ikki marta qaytarish
+           to'langanidan ko'p pul chiqarishi mumkin edi. */
+        const outcome = await prisma.$transaction(async (dbtx: any) => {
+
+        const charge = await dbtx.visitCharge.findUnique({ where: { id: req.params.id } });
+        if (!charge || charge.clinicId !== clinicId) throw new HttpError(404, 'Qator topilmadi');
+
         const paid = round(charge.paidAmount || 0);
         const back = amount != null ? round(Number(amount)) : paid;
-        if (!(back > 0)) return res.status(400).json({ error: "Summa noto'g'ri" });
-        if (back > paid) return res.status(400).json({ error: `To'langan summadan ko'p (to'langan: ${paid})` });
+        if (!(back > 0)) throw new HttpError(400, "Summa noto'g'ri");
+        if (back > paid) throw new HttpError(400, `To'langan summadan ko'p (to'langan: ${paid})`);
 
         // Qaytarish ham chek: kassa kitobi pul harakatini ko'rishi kerak
-        const tx = await prisma.transaction.create({
+        const tx = await dbtx.transaction.create({
             data: {
                 clinicId,
                 patientId: charge.patientId || null,
@@ -575,7 +769,7 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             },
         });
 
-        await prisma.chargePayment.create({
+        await dbtx.chargePayment.create({
             data: {
                 clinicId, chargeId: charge.id, transactionId: tx.id,
                 amount: -back, kind: 'Refund',
@@ -587,14 +781,14 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
            bemorning hisobiga qaytadi va keyingi xizmatga ishlatiladi.
            Buni yozmasa, qaytarish "hech qayerga" ketardi. */
         if (String(method) === 'Balance' && charge.patientId) {
-            await prisma.patient.update({
+            await dbtx.patient.update({
                 where: { id: charge.patientId },
                 data: { balance: { increment: back } },
             });
         }
 
         const newPaid = round(paid - back);
-        const updated = await prisma.visitCharge.update({
+        const updated = await dbtx.visitCharge.update({
             where: { id: charge.id },
             data: {
                 paidAmount: newPaid,
@@ -605,7 +799,7 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
         });
 
         // Kassa harakati: inkassatsiya/qaytarish xarajat EMAS, alohida hisob
-        const movement = await prisma.cashMovement.create({
+        const movement = await dbtx.cashMovement.create({
             data: {
                 clinicId, date: nowDate(), type: 'Refund',
                 amount: back, method: String(method || 'Cash'),
@@ -616,14 +810,24 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             },
         });
 
+        return {
+            payload: { charge: updated, transaction: tx, movement },
+            audit: { patientName: charge.patientName, back, name: charge.name, id: charge.id },
+        };
+
+        }, { timeout: 15000, maxWait: 10000 });
+
+        // Jurnal — commit dan keyin, to'lovdagi bilan bir xil sabab bo'yicha
+        const a = outcome.audit;
         await writeAudit({
             clinicId, date: nowDate(), action: 'Refund', entityType: 'VisitCharge',
-            entityId: charge.id,
-            summary: `${charge.patientName}: ${Math.round(back)} qaytarildi (${charge.name})${reason ? ' — ' + reason : ''}`,
+            entityId: a.id,
+            summary: `${a.patientName}: ${Math.round(a.back)} qaytarildi (${a.name})${reason ? ' — ' + reason : ''}`,
             byName: user?.name || null,
         });
 
-        res.json({ charge: updated, transaction: tx, movement });
+        emitEvent(clinicId, 'charge.changed', { reason: 'refund' });
+        res.json(outcome.payload);
     });
 
     /**
@@ -638,7 +842,7 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
      */
     route('put', '/api/charges/:id/discount', async (req, res, clinicId) => {
         const user = (req as any).user;
-        const allowed = ['CLINIC_ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST'];
+        const allowed = ['CLINIC_ADMIN', 'RECEPTIONIST'];
         if (!allowed.includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
@@ -664,13 +868,25 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             return res.status(400).json({ error: "Chegirmadan keyingi summa to'langandan kam bo'lib qoladi" });
         }
 
-        const updated = await prisma.visitCharge.update({
-            where: { id: charge.id },
+        /* Shartli yangilash: chegirma `paidAmount` ga qarab hisoblangan
+           (yuqoridagi "to'langandan kam bo'lib qoladi" tekshiruvi). O'qish
+           bilan yozish orasida qisman to'lov o'tsa, o'sha tekshiruv eskirgan
+           bo'lib qoladi — shuning uchun yozuv aynan o'sha holatga shartlanadi. */
+        const changed = await prisma.visitCharge.updateMany({
+            where: { id: charge.id, clinicId, status: charge.status, paidAmount: charge.paidAmount },
             data: {
                 discount, total: newTotal,
                 status: newTotal <= round(charge.paidAmount || 0) + 0.001 ? 'Paid' : 'Unpaid',
             },
         });
+        if (changed.count === 0) {
+            return res.status(409).json({
+                error: "Qator oradan o'zgardi (to'lov qabul qilingan bo'lishi mumkin). "
+                    + 'Ro\'yxatni yangilab, chegirmani qaytadan bering.',
+                code: 'CHARGE_CHANGED',
+            });
+        }
+        const updated = await prisma.visitCharge.findUnique({ where: { id: charge.id } });
 
         await writeAudit({
             clinicId, date: nowDate(), action: 'Discount', entityType: 'VisitCharge',

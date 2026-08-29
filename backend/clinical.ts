@@ -15,6 +15,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
 import { logAccess } from './compliance';
 
@@ -25,7 +26,9 @@ type Deps = {
     assertPatientOwnership: (req: any, res: any, patientId: string) => Promise<boolean>;
 };
 
-const round = (n: number) => Math.round(n * 100) / 100;
+/* Pul — BUTUN so'm, `money.ts` dagi yagona qoida. Ilgari bu yerda
+   o'zining nusxasi turardi va modullar orasida aniqlik farq qilardi. */
+const round = som;
 
 export function registerClinicalRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId, assertPatientOwnership } = deps;
@@ -201,7 +204,7 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
 
     route('post', '/api/patients/:id/allergies', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+        if (!['DOCTOR', 'CLINIC_ADMIN'].includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         if (!(await assertPatientOwnership(req, res, req.params.id))) return;
@@ -244,7 +247,7 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
     /** Allergiya O'CHIRILMAYDI, faolsizlantiriladi: tibbiy tarix saqlanadi */
     route('delete', '/api/patients/:id/allergies/:allergyId', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+        if (!['DOCTOR', 'CLINIC_ADMIN'].includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const rec = await prisma.patientAllergy.findUnique({ where: { id: req.params.allergyId } });
@@ -344,7 +347,7 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
      */
     route('post', '/api/visits/:id/lock', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+        if (!['DOCTOR', 'CLINIC_ADMIN'].includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const visit = await prisma.visit.findUnique({ where: { id: req.params.id } });
@@ -481,7 +484,7 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
 
     route('post', '/api/referrals', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+        if (!['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN'].includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const { patientId, visitId, kind, targetDepartmentId, items } = req.body || {};
@@ -606,7 +609,7 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
 
     route('post', '/api/referrals/:id/cancel', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!['DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+        if (!['DOCTOR', 'CLINIC_ADMIN'].includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const item = await prisma.referral.findUnique({ where: { id: req.params.id } });

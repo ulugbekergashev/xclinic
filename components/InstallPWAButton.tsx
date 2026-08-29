@@ -32,7 +32,7 @@ export const InstallPWAButton = () => {
 
     return (
         <>
-            <button
+            <button aria-label="Yuklab olish"
                 onClick={handleClick}
                 className="fixed bottom-4 right-4 z-50 flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-full shadow-lg transition-all duration-300 animate-fade-in hover:scale-105 active:scale-95"
             >

@@ -7,6 +7,13 @@ import {
 } from 'lucide-react';
 import { Visit, Department, UserRole } from '../types';
 import { api } from '../services/api';
+import { SkeletonList } from '../components/Common';
+import { useLanguage } from '../context/LanguageContext';
+import { useLiveUpdates, useLiveHealthy, LiveEventType } from '../hooks/useLiveUpdates';
+
+/* Modul darajasida: `useLiveUpdates` bog'liqlik sifatida ishlatadi, ya'ni
+   har renderda yangi massiv bersak qayta-qayta obuna bo'lardi. */
+const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Shifokorning bugungi navbati.
@@ -44,6 +51,7 @@ const waitedMin = (v: Visit) => {
 };
 
 export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addToast }) => {
+    const { t } = useLanguage();
     const navigate = useNavigate();
     const [visits, setVisits] = useState<Visit[]>([]);
     /* "Natija kutilmoqda" ro'yxati serverdan alohida olinadi.
@@ -74,11 +82,19 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
 
     useEffect(() => { reload(); }, [reload]);
 
-    // Navbat o'zgarib turadi — har yarim daqiqada yangilanadi
+    /* Real vaqtda: registrator qabul ochsa yoki kassir to'lov qabul qilsa,
+       shifokorning ro'yxati DARHOL yangilanadi. Ilgari 30 soniyagacha
+       kutardi. */
+    const streamOk = useLiveHealthy();
+    useLiveUpdates(LIVE_EVENTS, reload);
+
+    // Navbat o'zgarib turadi — oqim uzilsa polling zaxira bo'lib qoladi
     useEffect(() => {
-        const t = setInterval(reload, 30000);
+        /* Polling ZAXIRA sifatida qoladi: oqim ishlayotganda u ortiqcha,
+           lekin oqim uzilsa yagona yangilanish yo'li bo'lib qoladi. */
+        const t = setInterval(reload, streamOk ? 120000 : 30000);
         return () => clearInterval(t);
-    }, [reload]);
+    }, [reload, streamOk]);
 
     const filtered = useMemo(
         () => deptFilter ? visits.filter(v => v.departmentId === deptFilter) : visits,
@@ -141,7 +157,7 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                     {showCall && v.status === 'Waiting' && (
-                        <button onClick={() => call(v)} title="Chaqirish"
+                        <button onClick={() => call(v)} title={t('queue.call')}
                             className="p-2 text-gray-400 hover:text-primary-600 rounded-lg border border-gray-200 dark:border-gray-700">
                             <Volume2 className="w-4 h-4" />
                         </button>
@@ -209,13 +225,13 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
                 </div>
                 {userRole !== UserRole.DOCTOR && (
                     <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className={inputCls}>
-                        <option value="">Barcha bo'limlar</option>
+                        <option value="">{t('queue.allDepts')}</option>
                         {departments.filter(d => d.isActive && d.type === 'CLINICAL').map(d => (
                             <option key={d.id} value={d.id}>{d.name}</option>
                         ))}
                     </select>
                 )}
-                <button onClick={reload} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Yangilash">
+                <button aria-label={t('common.refresh')} onClick={reload} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={t('common.refresh')}>
                     <RefreshCw className="w-5 h-5" />
                 </button>
             </div>
@@ -229,7 +245,7 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
             )}
 
             {loading ? (
-                <p className="text-sm text-gray-400 py-10 text-center">Yuklanmoqda...</p>
+                <SkeletonList rows={4} />
             ) : (
                 <div className="space-y-6">
                     {/* Navbatdan OLDIN turadi: tayyor natija hech kim so'ramasa
@@ -254,7 +270,7 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
                         {groups.active.length === 0 ? (
                             <div className="text-center py-10 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                                 <CheckCircle className="w-10 h-10 mx-auto text-emerald-400 mb-2" />
-                                <p className="text-sm text-gray-500 dark:text-gray-400">Navbat bo'sh</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">{t('queue.empty')}</p>
                             </div>
                         ) : (
                             <div className="space-y-2">{groups.active.map(v => <Card key={v.id} v={v} showCall />)}</div>

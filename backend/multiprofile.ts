@@ -10,6 +10,8 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { emitEvent } from './events';
+import { validateEncounterField } from '../shared/validation';
 import { createCharge, cancelChargesBySource } from './billing';
 import { applyServiceRecipe } from './inventory';
 import { tashkentDateStr } from './tashkentTime';
@@ -108,6 +110,18 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         return rec && rec.clinicId === clinicId ? rec : null;
     };
 
+    /* Hamshira endi statsionar ekraniga kiradi (roli menyuga qo'shildi), va
+       shu bilan quyidagi uchta amal ham unga ochilib qolgan edi: bu faylda
+       rol umuman tekshirilmaydi. Palata ochish, yotqizish va CHIQARISH —
+       hamshiraning ishi emas: chiqarishda epikriz yoziladi, ya'ni bu
+       shifokor qarori. Qolgan rollarning huquqi o'zgarmaydi — bu yerda
+       faqat NURSE qaytariladi. */
+    const nurseDenied = (req: any, res: any) => {
+        if (req?.user?.role !== 'NURSE') return false;
+        res.status(403).json({ error: "Hamshirada bunga ruxsat yo'q" });
+        return true;
+    };
+
     // ═══ BO'LIMLAR ═══════════════════════════════════════════════════════════
 
     route('get', '/api/departments', async (req, res, clinicId) => {
@@ -157,23 +171,58 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
 
     // ═══ QABUL BAYONI SHABLONLARI ════════════════════════════════════════════
 
+    /* Shablonlar ro'yxati.
+     *
+     * `?patientId=` berilsa — BEMORGA MOS kelmaydigan shablonlar chiqarib
+     * tashlanadi (migratsiya 0031). Sabab: ilgari erkak bemorda ginekologiya
+     * shabloni ochilardi (audit B-09), chunki tanlov alifboga tushib
+     * qolgandi va «Ginekolog ko'rigi» birinchi turardi.
+     *
+     * Filtrsiz ro'yxat ham kerak — Sozlamalarda shablonlarni tahrirlashda
+     * hammasi ko'rinishi shart. Shuning uchun `patientId` majburiy emas.
+     */
     route('get', '/api/encounter-templates', async (req, res, clinicId) => {
-        const { departmentId } = req.query;
+        const { departmentId, patientId } = req.query;
         const items = await prisma.encounterTemplate.findMany({
             where: { clinicId, ...(departmentId ? { departmentId: String(departmentId) } : {}) },
             orderBy: { name: 'asc' },
         });
-        res.json(items.map((t: any) => ({ ...t, fields: safeParse(t.fields, []) })));
+
+        let filtered = items;
+        if (patientId) {
+            const patient = await prisma.patient.findFirst({
+                where: { id: String(patientId), clinicId },
+                select: { gender: true, dob: true },
+            });
+            if (patient) {
+                const age = ageFromDob(patient.dob);
+                filtered = items.filter((t: any) => {
+                    if (t.gender && patient.gender && t.gender !== patient.gender) return false;
+                    /* Yosh noma'lum bo'lsa chegara QO'LLANMAYDI: tug'ilgan
+                       sanasi kiritilmagan bemorda hamma shablon yopilib
+                       qolsa, shifokor hech narsa yoza olmaydi. */
+                    if (age === null) return true;
+                    if (t.minAge !== null && t.minAge !== undefined && age < t.minAge) return false;
+                    if (t.maxAge !== null && t.maxAge !== undefined && age > t.maxAge) return false;
+                    return true;
+                });
+            }
+        }
+
+        res.json(filtered.map((t: any) => ({ ...t, fields: safeParse(t.fields, []) })));
     });
 
     route('post', '/api/encounter-templates', async (req, res, clinicId) => {
-        const { departmentId, name, fields, isDefault } = req.body;
+        const { departmentId, name, fields, isDefault, gender, minAge, maxAge } = req.body;
         if (!departmentId || !name) return res.status(400).json({ error: "Bo'lim va nom majburiy" });
         const tpl = await prisma.encounterTemplate.create({
             data: {
                 clinicId, departmentId, name,
                 fields: JSON.stringify(fields || []),
                 isDefault: !!isDefault,
+                gender: normalizeGender(gender),
+                minAge: normalizeAge(minAge),
+                maxAge: normalizeAge(maxAge),
             },
         });
         res.json({ ...tpl, fields: safeParse(tpl.fields, []) });
@@ -181,13 +230,16 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
 
     route('put', '/api/encounter-templates/:id', async (req, res, clinicId) => {
         if (!(await owns('encounterTemplate', req.params.id, clinicId))) return res.status(403).json({ error: "Ruxsat yo'q" });
-        const { name, fields, isDefault } = req.body;
+        const { name, fields, isDefault, gender, minAge, maxAge } = req.body;
         const tpl = await prisma.encounterTemplate.update({
             where: { id: req.params.id },
             data: {
                 ...(name !== undefined && { name }),
                 ...(fields !== undefined && { fields: JSON.stringify(fields) }),
                 ...(isDefault !== undefined && { isDefault }),
+                ...(gender !== undefined && { gender: normalizeGender(gender) }),
+                ...(minAge !== undefined && { minAge: normalizeAge(minAge) }),
+                ...(maxAge !== undefined && { maxAge: normalizeAge(maxAge) }),
             },
         });
         res.json({ ...tpl, fields: safeParse(tpl.fields, []) });
@@ -326,6 +378,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             },
             include: { patient: true, department: true, procedures: true },
         });
+        emitEvent(clinicId, 'visit.created', { visitId: visit.id, departmentId: visit.departmentId });
         res.json(visit);
     });
 
@@ -392,6 +445,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             doctorName: proc.doctorName || null,
         });
 
+        emitEvent(clinicId, 'charge.changed', { reason: 'procedure', visitId: visit.id });
         res.json(proc);
     });
 
@@ -409,9 +463,82 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         if (!(await owns('visit', req.params.id, clinicId))) return res.status(403).json({ error: "Ruxsat yo'q" });
         const { departmentId, doctorId, doctorName, templateId, examData, complaints,
                 vitalSigns, notes, diagnosis, treatmentPlan, status } = req.body;
+
+        /* KO'RIK BAYONIDAGI KO'RSATKICHLAR (S3.2, audit B-10).
+
+           Auditdagi 500 °C harorat va −40 puls AYNAN shu yo'ldan kirgan:
+           «Ko'rik bayoni → KO'RSATKICHLAR». `examData` — shablon
+           maydonlarining JSON'i va u hech qanday tekshiruvsiz saqlanardi.
+
+           Front ham tekshiradi, lekin u yagona qo'riqchi bo'la olmaydi:
+           `curl` bilan istalgan qiymat yuborish mumkin. Qoida bitta
+           joydan — `shared/validation.ts`. */
+        const raw = examData !== undefined ? examData : null;
+        if (raw) {
+            let parsed: any = raw;
+            if (typeof raw === 'string') { try { parsed = JSON.parse(raw); } catch { parsed = null; } }
+            if (parsed && typeof parsed === 'object') {
+                for (const [key, value] of Object.entries(parsed)) {
+                    const check = validateEncounterField(key, value);
+                    if (!check.ok) {
+                        return res.status(400).json({
+                            error: check.error, code: 'VITAL_OUT_OF_RANGE', field: key,
+                        });
+                    }
+                }
+            }
+        }
+
+        /* QABULNI YAKUNLASHDA NAZORAT (S3.7, audit B-12).
+
+           Audit: «Qabulni yakunlash tashxissiz, ko'rsatkichsiz, bayonsiz,
+           105 000 so'm to'lanmagan va tahlil natijasi Kutilmoqda holatida —
+           tasdiqlashsiz o'tadi».
+
+           TAQIQ EMAS, TANLOV. Bemor qarzga qolishi mumkin, natija ertaga
+           kelishi mumkin — bular haqiqiy holatlar. Lekin shifokor ularni
+           BILIB yopishi kerak, bilmay emas. Shuning uchun 409 va sabablar
+           ro'yxati; `force: true` bilan yopiladi va sabab `notes` ga
+           yoziladi.
+
+           Server tomonda, chunki front yagona qo'riqchi bo'la olmaydi. */
+        if (status === 'Completed' && req.body?.force !== true) {
+            const [diagCount, unpaid, pendingLabs, pendingStudies] = await Promise.all([
+                prisma.patientDiagnosis.count({ where: { visitId: req.params.id } }),
+                prisma.visitCharge.aggregate({
+                    where: { visitId: req.params.id, status: 'Unpaid' },
+                    _sum: { total: true, paidAmount: true }, _count: { _all: true },
+                }),
+                prisma.labOrder.count({ where: { visitId: req.params.id, status: { notIn: ['Completed', 'Cancelled'] } } }),
+                prisma.diagnosticStudy.count({ where: { visitId: req.params.id, status: { notIn: ['Completed', 'Cancelled'] } } }),
+            ]);
+
+            const due = (unpaid._sum.total || 0) - (unpaid._sum.paidAmount || 0);
+            const reasons: { code: string; text: string }[] = [];
+            if (diagCount === 0) reasons.push({ code: 'NO_DIAGNOSIS', text: "Tashxis qo'yilmagan" });
+            if (due > 0) reasons.push({ code: 'UNPAID', text: `To'lanmagan: ${Math.round(due).toLocaleString('uz-UZ')} so'm` });
+            if (pendingLabs > 0) reasons.push({ code: 'LAB_PENDING', text: `${pendingLabs} ta tahlil natijasi kelmagan` });
+            if (pendingStudies > 0) reasons.push({ code: 'STUDY_PENDING', text: `${pendingStudies} ta tekshiruv yakunlanmagan` });
+
+            if (reasons.length) {
+                return res.status(409).json({
+                    error: 'Qabulni yakunlashdan oldin tekshiring',
+                    code: 'VISIT_INCOMPLETE',
+                    reasons,
+                });
+            }
+        }
+
+        /* Sabab bilan yopilgan bo'lsa — u YOZIB QOLADI. «Nega tashxissiz
+           yopilgan?» degan savol keyin ham javobsiz qolmasin. */
+        const closeNote = (status === 'Completed' && req.body?.force === true && req.body?.closeReason)
+            ? String(req.body.closeReason).slice(0, 200)
+            : null;
+
         const visit = await prisma.visit.update({
             where: { id: req.params.id },
             data: {
+                ...(closeNote && { notes: closeNote }),
                 ...(departmentId !== undefined && { departmentId }),
                 ...(doctorId !== undefined && { doctorId }),
                 ...(doctorName !== undefined && { doctorName }),
@@ -431,6 +558,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             },
             include: { procedures: true, department: true },
         });
+        emitEvent(clinicId, 'visit.status', { visitId: visit.id, status: visit.status });
         res.json(visit);
     });
 
@@ -443,6 +571,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             data: { status: 'Called', calledAt: new Date() },
             include: { patient: true, department: true },
         });
+        emitEvent(clinicId, 'visit.status', { visitId: updated.id, status: 'Called' });
         res.json(updated);
     });
 
@@ -460,11 +589,23 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                     date: nowDate(),
                     status: { in: ['Waiting', 'Called', 'In Progress'] },
                 },
-                include: { department: { select: { name: true, color: true } } },
+                include: { department: { select: { name: true, color: true, code: true } } },
                 orderBy: [{ status: 'asc' }, { queueNumber: 'asc' }],
             });
             res.json(visits.map((v: any) => ({
                 queueNumber: v.queueNumber,
+                /* TALON YORLIG'I (S5.6, audit B-1 tablo).
+
+                   Navbat raqami HAR BO'LIMDA 1 dan boshlanadi (yuqoridagi
+                   `POST /api/visits` ga qarang) — ya'ni to'rt bo'limda bir
+                   vaqtda to'rtta «2» turadi va tabloga qaragan bemor
+                   qaysi biri o'ziniki ekanini bilmaydi.
+
+                   Yorliq bo'lim kodi bilan: K-02, P-02. Kod yo'q bo'lsa
+                   raqamning o'zi qoladi — bo'lim majburiy emas. */
+                ticket: v.department?.code
+                    ? `${v.department.code}-${String(v.queueNumber ?? 0).padStart(2, '0')}`
+                    : (v.queueNumber != null ? String(v.queueNumber) : null),
                 status: v.status,
                 calledAt: v.calledAt,
                 department: v.department?.name || null,
@@ -716,6 +857,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             });
         }
 
+        emitEvent(clinicId, 'lab.result', { orderId: order.id, patientId: order.patientId || null });
         res.json({ success: true });
     });
 
@@ -789,6 +931,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             },
             include: { files: true },
         });
+        emitEvent(clinicId, 'study.result', { studyId: study.id, patientId: study.patientId || null });
         res.json(study);
     });
 
@@ -862,6 +1005,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     });
 
     route('post', '/api/wards', async (req, res, clinicId) => {
+        if (nurseDenied(req, res)) return;
         const { name, floor, kind, dailyRate, departmentId, bedCount } = req.body;
         if (!name) return res.status(400).json({ error: 'Nom majburiy' });
         const ward = await prisma.ward.create({
@@ -912,6 +1056,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     });
 
     route('post', '/api/admissions', async (req, res, clinicId) => {
+        if (nurseDenied(req, res)) return;
         const { patientId, patientName, departmentId, doctorId, doctorName, bedId, reason, diagnosis, dailyRate } = req.body;
         if (!patientId) return res.status(400).json({ error: 'Bemor majburiy' });
 
@@ -968,6 +1113,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
 
     /** Chiqarish — koyka bo'shaydi */
     route('post', '/api/admissions/:id/discharge', async (req, res, clinicId) => {
+        if (nurseDenied(req, res)) return;
         const existing = await owns('admission', req.params.id, clinicId);
         if (!existing) return res.status(403).json({ error: "Ruxsat yo'q" });
         if (existing.status === 'Discharged') return res.status(400).json({ error: 'Allaqachon chiqarilgan' });
@@ -1135,17 +1281,43 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         if (!item) return res.status(403).json({ error: "Ruxsat yo'q" });
         const { batchNumber, expiryDate, quantity, cost } = req.body;
         const qty = Number(quantity) || 0;
-        const batch = await prisma.inventoryBatch.create({
-            data: {
-                itemId: req.params.id, batchNumber: batchNumber || null,
-                expiryDate: expiryDate || null, quantity: qty, cost: Number(cost) || 0,
-            },
-        });
-        // Partiya kirimi mahsulot qoldig'ini ham oshiradi
-        await prisma.inventoryItem.update({
-            where: { id: req.params.id },
-            data: { quantity: { increment: qty } },
-        });
+
+        /* YAGONA JURNAL INVARIANTI (migratsiya 0028).
+
+           Bu yerda ilgari ikkita amal bor edi: partiya yaratilardi va
+           `item.quantity` oshirilardi — lekin `StockMovement` YOZILMASDI.
+           0028 dan keyin qoldiq harakatlar yig'indisiga teng bo'lishi
+           shart, ya'ni har partiya kirimi jimgina invariantni buzardi.
+           Yaxlitlik tekshiruvi buni «item invarianti» xatosi deb
+           ko'rsatadi.
+
+           Ikkinchi kamchiligi: uchta amal alohida edi — o'rtada uzilsa
+           partiya yaratilib, qoldiq oshmay qolardi. Endi tranzaksiyada,
+           `/stock-movements/in` bilan bir xil tartibda. */
+        const batch = await prisma.$transaction(async (tx: any) => {
+            const created = await tx.inventoryBatch.create({
+                data: {
+                    itemId: req.params.id, batchNumber: batchNumber || null,
+                    expiryDate: expiryDate || null, quantity: qty, cost: Number(cost) || 0,
+                },
+            });
+            if (qty > 0) {
+                await tx.stockMovement.create({
+                    data: {
+                        clinicId, itemId: req.params.id, batchId: created.id,
+                        type: 'In', quantity: qty, reason: 'Purchase',
+                        note: batchNumber ? `Partiya ${batchNumber}` : null,
+                        userName: req.user?.name || null,
+                    },
+                });
+                await tx.inventoryItem.update({
+                    where: { id: req.params.id },
+                    data: { quantity: { increment: qty } },
+                });
+            }
+            return created;
+        }, { timeout: 15000, maxWait: 10000 });
+
         res.json(batch);
     });
 
@@ -1171,6 +1343,26 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     });
 
     console.log("✅ Ko'p profil endpointlari ulandi");
+}
+
+/* ─── Shablon chegaralari (migratsiya 0031) ──────────────────────────────── */
+
+/* `ageFromDob` shu faylning yuqorisida allaqachon bor (tahlil normasi
+   uchun yozilgan) — shablon chegarasi ham o'shani ishlatadi. */
+
+/** Faqat 'Male' yoki 'Female'; qolgani `null` — «hammaga mos». */
+function normalizeGender(v: any): string | null {
+    const s = String(v ?? '').trim();
+    return s === 'Male' || s === 'Female' ? s : null;
+}
+
+/** Yosh chegarasi: 0–130 oralig'idagi butun son yoki `null`. */
+function normalizeAge(v: any): number | null {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    const i = Math.trunc(n);
+    return i >= 0 && i <= 130 ? i : null;
 }
 
 function safeParse<T>(raw: string | null, fallback: T): T {

@@ -60,9 +60,9 @@ export interface ToolDef {
     roles: string[];
 }
 
-const ALL = ['SUPER_ADMIN', 'CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST'];
-const FINANCE = ['SUPER_ADMIN', 'CLINIC_ADMIN'];
-const FRONT_DESK = ['SUPER_ADMIN', 'CLINIC_ADMIN', 'RECEPTIONIST'];
+const ALL = ['CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST'];
+const FINANCE = ['CLINIC_ADMIN'];
+const FRONT_DESK = ['CLINIC_ADMIN', 'RECEPTIONIST'];
 
 export const TOOL_DEFS: ToolDef[] = [
     {

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { toast } from '../services/toast';
 import { Plus, Trash2 } from 'lucide-react';
 import { Modal, Button, Select, Input } from './Common';
 import { Service, ServiceCategory, Department } from '../types';
@@ -68,7 +69,7 @@ export const AddProcedureModal: React.FC<AddProcedureModalProps> = ({
 
     const addToQueue = () => {
         if (!selectedServiceId) {
-            alert(t('patients.details.alerts.selectServiceReq'));
+            toast.error(t('patients.details.alerts.selectServiceReq'));
             return;
         }
         const service = services.find(s => s.id === selectedServiceId);
@@ -96,7 +97,7 @@ export const AddProcedureModal: React.FC<AddProcedureModalProps> = ({
 
     const handleSaveAll = () => {
         if (queue.length === 0) {
-            alert(t('patients.details.alerts.listEmpty'));
+            toast.error(t('patients.details.alerts.listEmpty'));
             return;
         }
         if (onAddProcedures) onAddProcedures(queue);

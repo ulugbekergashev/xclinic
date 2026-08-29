@@ -35,7 +35,7 @@ const KINDS: Kind[] = ['patient-photo', 'study-file', 'patient-avatar', 'patient
 
 /** Faylni ko'rishi mumkin bo'lgan rollar. Laborant va sotuvchi ro'yxatda YO'Q:
  *  laboratoriyada fayl bo'lmaydi, sotuvchi esa obuna bilan ishlaydi, bemor bilan emas. */
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST'];
+const ALLOWED_ROLES = ['CLINIC_ADMIN', 'DOCTOR', 'RECEPTIONIST'];
 
 /** Manzildagi token qiymatini jurnal uchun yashiradi. */
 export function redactToken(url: string): string {
@@ -91,7 +91,7 @@ export function registerFileRoutes(app: express.Express, deps: Deps) {
             }
 
             const clinicId = getScopedClinicId(req);
-            if (!clinicId && user?.role !== 'SUPER_ADMIN') {
+            if (!clinicId) {
                 return res.status(400).json({ error: 'clinicId aniqlanmadi' });
             }
 
@@ -130,7 +130,7 @@ export function registerFileRoutes(app: express.Express, deps: Deps) {
                 ownerPatientId = req.params.id;
             }
 
-            if (user?.role !== 'SUPER_ADMIN' && ownerClinicId !== clinicId) {
+            if (ownerClinicId !== clinicId) {
                 return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
             }
 

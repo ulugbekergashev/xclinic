@@ -8,7 +8,7 @@ import { API_URL } from '../services/api';
 import { UserRole } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
-// ─── DentaAI ─────────────────────────────────────────────────────────────────
+// ─── AI yordamchi ─────────────────────────────────────────────────────────────────
 // Bu modal EMAS. Sahifa ichida, ilova navigatsiyasi joyida turgan holda
 // ochiladi — foydalanuvchi qayerdaligini yo'qotmaydi. Ilgari `fixed inset-0`
 // overlay edi va ilovaning yuqori paneli ostida kesilib qolardi.
@@ -61,15 +61,11 @@ interface Turn {
 }
 
 // ─── API ─────────────────────────────────────────────────────────────────────
+import { getAuthToken } from '../services/api';
 
-function authToken(): string | null {
-  try {
-    const raw = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-    return raw ? JSON.parse(raw)?.token ?? null : null;
-  } catch {
-    return null;
-  }
-}
+/* Token XOTIRADA yashaydi, diskda emas (S1.3) — `services/authStore.ts`.
+   Ilgari bu yerda `localStorage` o'qilardi va u endi bo'sh qaytaradi. */
+const authToken = (): string | null => getAuthToken();
 
 async function api<T>(path: string, body?: object): Promise<T> {
   const token = authToken();
@@ -210,7 +206,7 @@ interface Props {
   onExit?: () => void;
 }
 
-export const DentaAiMode: React.FC<Props> = ({ onExit }) => {
+export const AiAssistant: React.FC<Props> = ({ onExit }) => {
   const { t, language } = useLanguage();
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -383,7 +379,7 @@ export const DentaAiMode: React.FC<Props> = ({ onExit }) => {
             );
           })}
           {(result || thread.length > 0) && (
-            <button
+            <button aria-label="Qaytarish"
               onClick={reset}
               className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px]
                          text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300
@@ -587,4 +583,4 @@ export const DentaAiMode: React.FC<Props> = ({ onExit }) => {
   );
 };
 
-export default DentaAiMode;
+export default AiAssistant;

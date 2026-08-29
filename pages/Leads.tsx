@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { formatFullName } from '../utils/format';
+import { confirmAction } from '../services/confirm';
+import { toast } from '../services/toast';
 import { todayISO } from '../utils/dateUtils';
 import {
     Search, Plus, MoreHorizontal, MessageSquare, Phone, Calendar as CalendarIcon,
@@ -177,7 +180,7 @@ export const Leads: React.FC<LeadsProps> = ({
         e.preventDefault();
         if (!convertingLeadId) return;
         if (!apptData.doctorId) {
-            alert(t('leads.alerts.selectDoctor'));
+            toast.error(t('leads.alerts.selectDoctor'));
             return;
         }
 
@@ -271,7 +274,7 @@ export const Leads: React.FC<LeadsProps> = ({
             setIsFBPageModalOpen(true);
         } catch (error: any) {
             console.error('Failed to fetch FB pages:', error);
-            alert(`${t('leads.alerts.fbFetchError')}: ${error.message || ''}`);
+            toast.error(`${t('leads.alerts.fbFetchError')}: ${error.message || ''}`);
         } finally {
             setIsFBLoading(false);
         }
@@ -279,7 +282,7 @@ export const Leads: React.FC<LeadsProps> = ({
 
     const handleConnectFB = async () => {
         if (!currentClinic?.id) {
-            alert(t('leads.alerts.fbConfigError'));
+            toast.error(t('leads.alerts.fbConfigError'));
             return;
         }
 
@@ -292,7 +295,7 @@ export const Leads: React.FC<LeadsProps> = ({
                 setIsFBPageModalOpen(true);
             } catch (error: any) {
                 console.error('FB Demo pages error:', error);
-                alert(`${t('leads.alerts.fbFetchError')}: ${error.message || ''}`);
+                toast.error(`${t('leads.alerts.fbFetchError')}: ${error.message || ''}`);
             } finally {
                 setIsFBLoading(false);
             }
@@ -313,7 +316,7 @@ export const Leads: React.FC<LeadsProps> = ({
             );
         } catch (error: any) {
             console.error('FB Connect error:', error);
-            alert(`${t('leads.alerts.fbConnectError')}: ${error.message || ''}`);
+            toast.error(`${t('leads.alerts.fbConnectError')}: ${error.message || ''}`);
         } finally {
             setIsFBLoading(false);
         }
@@ -330,11 +333,11 @@ export const Leads: React.FC<LeadsProps> = ({
                 pageName: page.name
             });
             setIsFBPageModalOpen(false);
-            alert(t('leads.alerts.fbSuccess'));
+            toast.error(t('leads.alerts.fbSuccess'));
             window.location.reload();
         } catch (error) {
             console.error('Failed to select FB page:', error);
-            alert(t('leads.alerts.fbFetchError'));
+            toast.error(t('leads.alerts.fbFetchError'));
         }
     };
 
@@ -383,7 +386,7 @@ export const Leads: React.FC<LeadsProps> = ({
                                 </button>
                                 <button
                                     onClick={async () => {
-                                        if (window.confirm(t('leads.alerts.fbDisconnectConfirm'))) {
+                                        if (await confirmAction({ title: t('leads.alerts.fbDisconnectConfirm') })) {
                                             await api.facebook.disconnect(currentClinic!.id);
                                             window.location.reload();
                                         }
@@ -395,7 +398,7 @@ export const Leads: React.FC<LeadsProps> = ({
                                 </button>
                             </div>
                         ) : (
-                            <button
+                            <button aria-label="Yangilash"
                                 onClick={handleConnectFB}
                                 disabled={isFBLoading}
                                 className="flex items-center gap-2 px-4 py-2 bg-[#1877F2] hover:bg-primary-600 text-white rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 active:scale-95"
@@ -464,12 +467,12 @@ export const Leads: React.FC<LeadsProps> = ({
                                             className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow group relative cursor-grab active:cursor-grabbing"
                                         >
                                             <div className="flex justify-between items-start mb-2">
-                                                <h4 
+                                                <h3
                                                     onClick={() => setSelectedLeadForDetail(lead)}
                                                     className="font-bold text-gray-900 dark:text-white text-sm hover:text-primary-600 transition-colors cursor-pointer"
                                                 >
                                                     {lead.name}
-                                                </h4>
+                                                </h3>
                                                 <div className="flex items-center gap-1.5">
                                                     <button
                                                         onClick={() => setSelectedLeadForDetail(lead)}
@@ -479,8 +482,8 @@ export const Leads: React.FC<LeadsProps> = ({
                                                         <Eye className="w-3.5 h-3.5" />
                                                     </button>
                                                     <button
-                                                        onClick={() => {
-                                                            if (window.confirm(t('common.confirm'))) {
+                                                        onClick={async () => {
+                                                            if (await confirmAction({ title: t('common.confirm') })) {
                                                                 onDeleteLead(lead.id);
                                                             }
                                                         }}
@@ -686,7 +689,7 @@ export const Leads: React.FC<LeadsProps> = ({
                                 >
                                     <option value="">— {t('leads.convertModal.selectDoctor')} —</option>
                                     {doctors.map((d) => (
-                                        <option key={d.id} value={d.id}>Dr. {d.lastName} {d.firstName}</option>
+                                        <option key={d.id} value={d.id}>Dr. {formatFullName(d)}</option>
                                     ))}
                                 </select>
                             </div>

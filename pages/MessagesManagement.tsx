@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatMoney, formatNumber, formatFullName } from '../utils/format';
+import { confirmAction } from '../services/confirm';
 import { todayISO } from '../utils/dateUtils';
 import { Card, Button } from '../components/Common';
 import { Patient, Doctor, Transaction, Clinic, MessageTemplate, AutomationRule, MessageLog, MessageChannel, AutomationTrigger, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, RuleSchedule } from '../types';
@@ -246,7 +248,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
     };
 
     const handleDeleteTemplate = async (tpl: MessageTemplate) => {
-        if (!confirm(`"${tpl.name}" shablonini o'chirishni tasdiqlaysizmi?`)) return;
+        if (!await confirmAction({ title: `"${tpl.name}" shablonini o'chirishni tasdiqlaysizmi?`, danger: true, confirmLabel: "O'chirish" })) return;
         try {
             await api.messageTemplates.delete(tpl.id);
             setTemplates(prev => prev.filter(t => t.id !== tpl.id));
@@ -337,7 +339,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
     };
 
     const handleDeleteRule = async (rule: AutomationRule) => {
-        if (!confirm(`"${rule.name}" qoidasini o'chirishni tasdiqlaysizmi?`)) return;
+        if (!await confirmAction({ title: `"${rule.name}" qoidasini o'chirishni tasdiqlaysizmi?`, danger: true, confirmLabel: "O'chirish" })) return;
         try {
             await api.automationRules.delete(rule.id);
             setRules(prev => prev.filter(r => r.id !== rule.id));
@@ -404,7 +406,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
         const q = recipientSearch.trim().toLowerCase();
         if (!q) return allRecipients;
         return allRecipients.filter(r =>
-            `${r.firstName} ${r.lastName}`.toLowerCase().includes(q) || r.phone.toLowerCase().includes(q)
+            `${formatFullName(r)}`.toLowerCase().includes(q) || r.phone.toLowerCase().includes(q)
         );
     }, [allRecipients, recipientSearch]);
 
@@ -430,7 +432,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
     };
 
     const handleDeleteSegment = async (s: SavedSegment) => {
-        if (!confirm(`"${s.name}" segmentini o'chirishni tasdiqlaysizmi?`)) return;
+        if (!await confirmAction({ title: `"${s.name}" segmentini o'chirishni tasdiqlaysizmi?`, danger: true, confirmLabel: "O'chirish" })) return;
         try {
             await api.messages.deleteSegment(clinicId, s.id);
             setSavedSegments(prev => prev.filter(x => x.id !== s.id));
@@ -450,7 +452,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
             .split('{klinika_nomi}').join(currentClinic?.name || '')
             .split('{sana}').join('2026-08-20')
             .split('{vaqt}').join('14:30')
-            .split('{shifokor_ismi}').join(longest(doctors.map(d => `${d.firstName} ${d.lastName}`)))
+            .split('{shifokor_ismi}').join(longest(doctors.map(d => `${formatFullName(d)}`)))
             .split('{qarz}').join('1 500 000');
         return analyzeSms(sample);
     }, [manualMessage, recipientSample, doctors, currentClinic]);
@@ -464,7 +466,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
     const previewText = useMemo(() => {
         if (!previewPatient) return '';
         return processTemplate(manualMessage, {
-            patientName: `${previewPatient.firstName} ${previewPatient.lastName}`,
+            patientName: `${formatFullName(previewPatient)}`,
             firstName: previewPatient.firstName,
             lastName: previewPatient.lastName,
             date: todayISO(),
@@ -548,7 +550,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
         const costNote = viaSms > 0
             ? `\n\n✈️ Telegram: ${viaTelegram} ta (bepul)\n📱 SMS: ${viaSms} ta × ${smsInfo.parts} qism = ${totalSmsParts} SMS (pullik)`
             : `\n\nHammasi Telegram orqali — bepul.`;
-        if (!confirm(`${recipientCount} ta bemorga xabar yuborilsinmi?${costNote}`)) return;
+        if (!await confirmAction({ title: `${recipientCount} ta bemorga xabar yuborilsinmi?${costNote}` })) return;
         setManualSending(true);
         try {
             const result = await api.messages.sendBulk(clinicId, recipientIds, manualMessage, manualChannel, ignoreCooldown);
@@ -692,9 +694,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     {isTemplateFormOpen && (
                         <Card className="p-6 space-y-4">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
                                     {editingTemplate ? 'Shablonni tahrirlash' : 'Yangi shablon'}
-                                </h3>
+                                </h2>
                                 <button onClick={() => { setIsTemplateFormOpen(false); setEditingTemplate(null); }} className="text-gray-400 hover:text-gray-600">
                                     <X className="w-5 h-5" />
                                 </button>
@@ -730,7 +732,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 <Card key={tpl.id} className="p-5 flex items-start justify-between gap-4">
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <h4 className="font-bold text-gray-900 dark:text-white">{tpl.name}</h4>
+                                            <h3 className="font-bold text-gray-900 dark:text-white">{tpl.name}</h3>
                                             {badge && (
                                                 <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${badge.cls}`}>
                                                     {badge.label}
@@ -776,7 +778,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     <Card className="p-5">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
-                                <h4 className="font-bold text-gray-900 dark:text-white text-sm">Chastota chegarasi</h4>
+                                <h3 className="font-bold text-gray-900 dark:text-white text-sm">Chastota chegarasi</h3>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                     Bitta bemorga shu muddat ichida bittadan ko'p xabar yuborilmaydi.
                                     Qabul eslatmalari bundan mustasno — ular baribir yetib boradi.
@@ -808,10 +810,10 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     {isRuleFormOpen && (
                         <Card className="p-6 space-y-4">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
                                     {editingRule ? 'Qoidani tahrirlash' : 'Yangi qoida'}
-                                </h3>
-                                <button onClick={closeRuleForm} className="text-gray-400 hover:text-gray-600">
+                                </h2>
+                                <button aria-label="Yopish" onClick={closeRuleForm} className="text-gray-400 hover:text-gray-600">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
@@ -981,7 +983,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     >
                                         <option value="">Barcha shifokorlar</option>
                                         {doctors.map(d => (
-                                            <option key={d.id} value={d.id}>{d.lastName} {d.firstName}</option>
+                                            <option key={d.id} value={d.id}>{formatFullName(d)}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -1016,7 +1018,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             return (
                                 <Card key={rule.id} className={`p-5 flex items-center justify-between gap-4 ${!rule.active ? 'opacity-60' : ''}`}>
                                     <div className="min-w-0">
-                                        <h4 className="font-bold text-gray-900 dark:text-white">{rule.name}</h4>
+                                        <h3 className="font-bold text-gray-900 dark:text-white">{rule.name}</h3>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                             {triggerIcon(rule.trigger)} {def?.label || rule.trigger}
                                             {def?.offset && rule.hoursBefore != null
@@ -1027,7 +1029,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                     : rule.channel === 'telegram_first' ? 'Avval Telegram, keyin SMS'
                                                         : 'SMS + Telegram'}
                                             {tpl ? ` · Shablon: ${tpl.name}` : ''}
-                                            {doctor ? ` · ${doctor.lastName} ${doctor.firstName}` : ''}
+                                            {doctor ? ` · ${formatFullName(doctor)}` : ''}
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
@@ -1108,9 +1110,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                     {/* Auditoriya */}
                     <Card className="p-6 space-y-4">
-                        <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <h2 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <Users className="w-5 h-5 text-gray-400" /> Kimga yuborish?
-                        </h3>
+                        </h2>
                         {/* Saqlangan segmentlar — bir marta yig'ilib qayta ishlatiladi */}
                         {savedSegments.length > 0 && (
                             <div className="flex flex-wrap items-center gap-2">
@@ -1212,7 +1214,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         )}
                                         {smsBalance !== null && (
                                             <span className={`text-xs ${totalSmsParts > smsBalance ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
-                                                Eskiz balansi: {smsBalance.toLocaleString()} SMS
+                                                Eskiz balansi: {formatMoney(smsBalance)} SMS
                                                 {totalSmsParts > smsBalance && ' — yetmaydi!'}
                                             </span>
                                         )}
@@ -1227,7 +1229,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                             className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-xs text-gray-500 hover:text-primary-600"
                                         >
                                             <span>
-                                                {recipientSample.map(r => `${r.firstName} ${r.lastName}`).join(', ')}
+                                                {recipientSample.map(r => `${formatFullName(r)}`).join(', ')}
                                                 {recipientCount > recipientSample.length ? ` va yana ${recipientCount - recipientSample.length} ta` : ''}
                                             </span>
                                             <span className="font-bold shrink-0">
@@ -1269,13 +1271,13 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                                     className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                                                 />
                                                                 <span className="font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0 truncate">
-                                                                    {r.firstName} {r.lastName}
+                                                                    {formatFullName(r)}
                                                                 </span>
                                                                 <span className={r.channel === 'telegram' ? 'text-emerald-600' : 'text-amber-600'}>
                                                                     {r.channel === 'telegram' ? '✈️ bepul' : '📱 SMS'}
                                                                 </span>
                                                                 {r.debt > 0 && (
-                                                                    <span className="text-gray-400 tabular-nums">{r.debt.toLocaleString()} so'm</span>
+                                                                    <span className="text-gray-400 tabular-nums">{formatNumber(r.debt)} so'm</span>
                                                                 )}
                                                             </label>
                                                         );
@@ -1330,9 +1332,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                     {/* Xabar matni */}
                     <Card className="p-6 space-y-4">
-                        <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <h2 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <MessageSquare className="w-5 h-5 text-gray-400" /> Xabar matni
-                        </h3>
+                        </h2>
                         {templates.length > 0 && (
                             <div>
                                 <p className="text-xs text-gray-500 mb-2">Shablondan foydalanish:</p>
@@ -1399,7 +1401,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         <Eye className="w-3.5 h-3.5" /> Bemor ko'radigan matn
                                     </span>
                                     <div className="flex items-center gap-2 text-xs">
-                                        <span className="text-gray-400">{previewPatient.firstName} {previewPatient.lastName}</span>
+                                        <span className="text-gray-400">{formatFullName(previewPatient)}</span>
                                         {recipientSample.length > 1 && (
                                             <button
                                                 onClick={() => setPreviewIndex(i => i + 1)}
@@ -1489,15 +1491,15 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     {/* Stats */}
                     <div className="grid grid-cols-3 gap-4">
                         <Card className="p-5 text-center">
-                            <h3 className="text-3xl font-black text-gray-900 dark:text-white">{logStats.total}</h3>
+                            <h2 className="text-3xl font-black text-gray-900 dark:text-white">{logStats.total}</h2>
                             <p className="text-sm text-gray-500 mt-1">Jami yuborilgan</p>
                         </Card>
                         <Card className="p-5 text-center border border-emerald-100 dark:border-emerald-900/40">
-                            <h3 className="text-3xl font-black text-emerald-600">{logStats.sent}</h3>
+                            <h2 className="text-3xl font-black text-emerald-600">{logStats.sent}</h2>
                             <p className="text-sm text-gray-500 mt-1">Muvaffaqiyatli</p>
                         </Card>
                         <Card className="p-5 text-center border border-red-100 dark:border-red-900/40">
-                            <h3 className="text-3xl font-black text-red-600">{logStats.failed}</h3>
+                            <h2 className="text-3xl font-black text-red-600">{logStats.failed}</h2>
                             <p className="text-sm text-gray-500 mt-1">Xato</p>
                         </Card>
                     </div>
@@ -1592,7 +1594,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         </div>
                         <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[60vh] overflow-y-auto">
                             {logs.map(log => {
-                                const name = log.patient ? `${log.patient.firstName} ${log.patient.lastName}` : (log.recipient || '-');
+                                const name = log.patient ? `${formatFullName(log.patient)}` : (log.recipient || '-');
                                 const contact = log.recipient || log.patient?.phone || '';
                                 const isFailed = log.status === 'Failed';
                                 const isRetried = log.status === 'Retried';

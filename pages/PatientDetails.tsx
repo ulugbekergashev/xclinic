@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { formatMoney, formatNumber, formatDateLong, formatDate, formatDoctorName, formatFullName } from '../utils/format';
+import { confirmAction } from '../services/confirm';
+import { toast } from '../services/toast';
 import { useParams } from 'react-router-dom';
 import { ArrowLeft, Calendar, CreditCard, FileText, User, Activity, Phone, MapPin, Clock, Edit, Printer, Send, Package, UserPlus, UserCheck, Plus, FlaskConical } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, Select } from '../components/Common';
@@ -9,8 +12,8 @@ import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 import { PatientDocuments } from '../components/PatientDocuments';
 import { LabDynamics } from '../components/LabDynamics';
 import { InstallmentsTab } from '../components/InstallmentsTab';
-import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, SubscriptionPlan, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate } from '../types';
-import { api, getFileUrl } from '../services/api';
+import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate } from '../types';
+import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
 import { calculateAppointmentTotal } from '../utils/financialCalculations';
@@ -29,7 +32,6 @@ interface PatientDetailsProps {
    services: Service[];
    categories: ServiceCategory[];
    currentClinic?: Clinic;
-   plans?: SubscriptionPlan[];
    userRole?: UserRole;
    doctorId?: string; // Kirgan shifokor (DOCTOR roli) — shifokor tanlovlarida defolt
    showPatientPhone?: boolean; // Ruxsatlar: bemor telefon raqamini ko'rsatish
@@ -50,7 +52,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    services = [], 
    categories = [], 
    currentClinic, 
-   plans = [], 
    userRole,
    doctorId: loggedDoctorId,
    showPatientPhone = true,
@@ -165,12 +166,52 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
    const [receiptTransaction, setReceiptTransaction] = useState<Transaction | null>(null);
 
+   /* ─── BEMORNING TO'LIQ TARIXI (FIX-PLAN 10.3 qoldig'i) ────────────────────
+      `App.tsx` kirishda oxirgi 45 kunni yuklaydi — bu to'g'ri qaror, aks holda
+      kirish 41 MB tortardi. Lekin bemor kartasi aynan ESKI tarix uchun
+      ochiladi: 45 kundan narigi qabullar va to'lovlar propda UMUMAN yo'q edi.
+
+      Butun jadvalni tortmaymiz — kesim serverda qisqartiriladi: `?patientId=`
+      bilan faqat shu bemorning qatorlari keladi, sana chegarasisiz.
+
+      SERVER RO'YXATI PROPNI ALMASHTIRMAYDI, BIRLASHTIRADI. Sabab: eski
+      to'lovlarda `patientId` bo'sh bo'lishi mumkin va ular bemorga ISM
+      bo'yicha bog'lanadi (quyida). Server bunday qatorlarni qaytarmaydi —
+      almashtirsak, ular kartadan yo'qolardi. */
+   const clinicIdForHistory = currentClinic?.id || getStoredClinicId();
+   const [history, setHistory] = useState<{ appts: Appointment[]; tx: Transaction[] } | null>(null);
+
+   useEffect(() => {
+      if (!clinicIdForHistory || !patientId) { setHistory(null); return; }
+      let alive = true;
+      Promise.all([
+         api.appointments.getAll(clinicIdForHistory, { patientId }),
+         api.transactions.getAll(clinicIdForHistory, { patientId }),
+      ]).then(([appts, tx]) => { if (alive) setHistory({ appts, tx }); })
+        .catch(() => { if (alive) setHistory(null); });
+      return () => { alive = false; };
+   }, [clinicIdForHistory, patientId]);
+
+   /** Ikki ro'yxatni `id` bo'yicha birlashtiradi — takror qator qolmaydi. */
+   const mergeById = <T extends { id: string }>(a: T[], b: T[]): T[] => {
+      const seen = new Map<string, T>();
+      for (const row of [...a, ...b]) if (row?.id) seen.set(row.id, row);
+      return [...seen.values()];
+   };
+
+   const effAppointments = useMemo(
+      () => (history ? mergeById(appointments, history.appts) : appointments),
+      [appointments, history]);
+   const effTransactions = useMemo(
+      () => (history ? mergeById(transactions, history.tx) : transactions),
+      [transactions, history]);
+
    // Parse procedures from appointment notes
    const pastProcedures = React.useMemo(() => {
       const results: { id: string; serviceName: string; date: string; toothNumber?: number }[] = [];
       const regex = /- ([^\n(]+) \((?:Tish #(\d+)|Umumiy)\)/g;
 
-      appointments.forEach(appt => {
+      effAppointments.forEach(appt => {
          if (appt.patientId !== (patientId || patient?.id) || !appt.notes) return;
          regex.lastIndex = 0;
          let match;
@@ -184,7 +225,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          }
       });
       return results;
-   }, [appointments, patientId, patient?.id]);
+   }, [effAppointments, patientId, patient?.id]);
 
    const allProceduresHistory = React.useMemo(() => {
       const today = todayISO();
@@ -199,13 +240,13 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
 
    useEffect(() => {
-      const storedAuth = sessionStorage.getItem('xclinic_auth') || localStorage.getItem('xclinic_auth');
-      if (storedAuth) {
+      // Token xotiradan olinadi (S1.3) — diskda saqlanmaydi.
+      const t = getAuthToken();
+      if (t) {
          try {
-            const { token } = JSON.parse(storedAuth);
-            setToken(token);
+            setToken(t);
          } catch (e) {
-            console.error('Failed to parse auth token');
+            console.error('Failed to read auth token');
          }
       }
    }, []);
@@ -219,11 +260,11 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          
          if (res.success) {
             onUpdatePatient(patient.id, { [type === 'avatar' ? 'avatarUrl' : 'portraitUrl']: res.url });
-            alert(t('common.save'));
+            toast.error(t('common.save'));
          }
       } catch (error) {
          console.error(`Failed to upload ${type}:`, error);
-         alert(t('patients.details.alerts.error'));
+         toast.error(t('patients.details.alerts.error'));
       }
    };
 
@@ -276,7 +317,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                try { setEncounterData(open.examData ? JSON.parse(open.examData) : {}); } catch { setEncounterData({}); }
             }
          }).catch(console.error);
-         api.encounterTemplates.getAll().then(setTemplates).catch(console.error);
+         /* `patient.id` uzatiladi — server bemorga mos kelmaydigan
+            shablonlarni chiqarib tashlaydi (jins va yosh, B-09). */
+         api.encounterTemplates.getAll(undefined, patient.id).then(setTemplates).catch(console.error);
 
          // Fetch inventory data
          if (currentClinic) {
@@ -293,9 +336,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       if (selectedDoctor) {
          onUpdatePatient(patient.id, {
             doctorId: selectedDoctor.id,
-            doctorName: `Dr. ${selectedDoctor.firstName} ${selectedDoctor.lastName}`
+            doctorName: `${formatDoctorName(selectedDoctor)}`
          });
-         alert(t('patients.details.alerts.doctorAssigned'));
+         toast.error(t('patients.details.alerts.doctorAssigned'));
       }
       setIsAssignDoctorModalOpen(false);
    };
@@ -356,20 +399,20 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          setDiagnosisNote('');
          setIcd10Query('');
          setIcd10Results([]);
-         alert(t('patients.details.alerts.diagnosisAdded'));
+         toast.error(t('patients.details.alerts.diagnosisAdded'));
       } catch (e) {
          console.error('Failed to add diagnosis', e);
-         alert(t('patients.details.alerts.error'));
+         toast.error(t('patients.details.alerts.error'));
       }
    };
 
    const handleDeleteDiagnosis = async (id: string) => {
-      if (!confirm(t('patients.details.alerts.deleteDiagnosisConfirm'))) return;
+      if (!await confirmAction({ title: t('patients.details.alerts.deleteDiagnosisConfirm') })) return;
       try {
          await api.diagnoses.delete(id);
          setDiagnoses(diagnoses.filter(d => d.id !== id));
       } catch (e) {
-         alert(t('patients.details.alerts.error'));
+         toast.error(t('patients.details.alerts.error'));
       }
    };
 
@@ -399,7 +442,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          }
       } catch (e) {
          console.error('Bayonni saqlab bo\'lmadi', e);
-         alert(t('patients.details.alerts.error'));
+         toast.error(t('patients.details.alerts.error'));
       }
    };
 
@@ -465,12 +508,19 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       if (!materialData.itemId || !patientId || !currentClinic) return;
 
       try {
-         await api.inventory.updateStock(materialData.itemId, {
-            change: Number(materialData.quantity),
-            type: 'OUT',
+         /* Chiqim ENDI ombor bilan bir xil yo'ldan (0028): partiya FEFO
+            bo'yicha tanlanadi va `StockMovement` yoziladi. Ilgari bu yer
+            qoldiqni qayta yozadigan eski jurnalga tushardi — omborda ikkinchi,
+            parallel hisob aynan shundan boshlanardi. */
+         await api.stock.issue({
+            itemId: materialData.itemId,
+            quantity: Number(materialData.quantity),
+            reason: 'Manual',
+            patientId,
             note: materialData.note || `Bemor: ${patient?.firstName} ${patient?.lastName}`,
-            userName: 'Doctor', // Ideally get from auth context
-            patientId: patientId
+            // Ism yuborilmasa server tokendan oladi — «Doctor» degan qotib
+            // qolgan matn o'rniga haqiqiy foydalanuvchi yoziladi
+            userName: myDoctor?.name,
          });
 
          // Refresh logs and items
@@ -481,10 +531,10 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
          setIsMaterialModalOpen(false);
          setMaterialData({ itemId: '', quantity: '', note: '' });
-         alert(t('patients.details.alerts.materialUsed'));
+         toast.error(t('patients.details.alerts.materialUsed'));
       } catch (e) {
          console.error('Failed to use material', e);
-         alert(t('patients.details.alerts.error'));
+         toast.error(t('patients.details.alerts.error'));
       }
    };
 
@@ -494,16 +544,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    }
 
    // Filter related data
-   const patientAppointments = (appointments || []).filter(a => a && a.patientId === patient.id);
-   const patientTransactions = (transactions || []).filter(t => {
+   const patientAppointments = (effAppointments || []).filter(a => a && a.patientId === patient.id);
+   const patientTransactions = (effTransactions || []).filter(t => {
       // Priority 1: Match by ID (new data)
       if (t.patientId) {
          return t.patientId === patient.id;
       }
       // Priority 2: Strict Name Match (legacy data)
       // Check both "LastName FirstName" and "FirstName LastName" formats
-      const fullName = `${patient.lastName} ${patient.firstName}`;
-      const fullNameReverse = `${patient.firstName} ${patient.lastName}`;
+      const fullName = `${formatFullName(patient)}`;
+      const fullNameReverse = `${formatFullName(patient)}`;
       return t.patientName === fullName || t.patientName === fullNameReverse;
    });
 
@@ -562,7 +612,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
       // Validate balance if using from-account payment
       if (paymentData.type === 'Balance' && paidAmount > (patient.balance || 0)) {
-         alert(t('patients.details.alerts.insufficientBalance'));
+         toast.error(t('patients.details.alerts.insufficientBalance'));
          isSubmittingRef.current = false;
          setIsPaymentSubmitting(false);
          return;
@@ -574,7 +624,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       // Validate doctor selection - required for multi-doctor plans, optional for individual with no doctors
       if (!paymentData.doctorId) {
          if (!isIndividualPlan || (isIndividualPlan && doctors.length > 0)) {
-            alert(t('patients.details.alerts.selectDoctorReq'));
+            toast.error(t('patients.details.alerts.selectDoctorReq'));
             isSubmittingRef.current = false;
             setIsPaymentSubmitting(false);
             return;
@@ -598,14 +648,14 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          if (debtAmount <= 0) {
             finalTransaction = await onAddTransaction({
                patientId: patient.id,
-               patientName: `${patient.lastName} ${patient.firstName}`,
+               patientName: `${formatFullName(patient)}`,
                date: paymentData.appointmentDate || todayISO(),
                amount: totalAmount,
                service: paymentData.service,
                type: paymentData.type as any,
                status: 'Paid',
                doctorId: paymentData.doctorId || '',
-               doctorName: doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : '',
+               doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
                discountPercent,
                discountAmount: discountAmount
             });
@@ -614,14 +664,14 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          else if (paidAmount <= 0) {
             finalTransaction = await onAddTransaction({
                patientId: patient.id,
-               patientName: `${patient.lastName} ${patient.firstName}`,
+               patientName: `${formatFullName(patient)}`,
                date: paymentData.appointmentDate || todayISO(),
                amount: totalAmount,
                service: paymentData.service,
                type: paymentData.type as any,
                status: 'Pending',
                doctorId: paymentData.doctorId || '',
-               doctorName: doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : '',
+               doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
                discountPercent,
                discountAmount: discountAmount
             });
@@ -631,14 +681,14 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             // 1. Paid Part
             finalTransaction = await onAddTransaction({
                patientId: patient.id,
-               patientName: `${patient.lastName} ${patient.firstName}`,
+               patientName: `${formatFullName(patient)}`,
                date: paymentData.appointmentDate || todayISO(),
                amount: paidAmount,
                service: `${paymentData.service} (Qisman to'lov)`,
                type: paymentData.type as any,
                status: 'Paid',
                doctorId: paymentData.doctorId || '',
-               doctorName: doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : '',
+               doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
                discountPercent,
                discountAmount: Math.round(paidAmount * (discountPercent / 100)) || 0
             });
@@ -646,14 +696,14 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             // 2. Pending Part (Debt)
             await onAddTransaction({
                patientId: patient.id,
-               patientName: `${patient.lastName} ${patient.firstName}`,
+               patientName: `${formatFullName(patient)}`,
                date: paymentData.appointmentDate || todayISO(),
                amount: debtAmount,
                service: `${paymentData.service} (Qarz)`,
                type: paymentData.type as any,
                status: 'Pending',
                doctorId: paymentData.doctorId || '',
-               doctorName: doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : '',
+               doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
                discountPercent,
                discountAmount: Math.round(debtAmount * (discountPercent / 100)) || 0
             });
@@ -671,7 +721,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          setVisitKey(prev => prev + 1);
       } catch (error: any) {
          console.error('Payment processing failed', error);
-         alert(`${t('patients.details.alerts.paymentError')} ${error.message || t('common.error')}`);
+         toast.error(`${t('patients.details.alerts.paymentError')} ${error.message || t('common.error')}`);
       } finally {
          isSubmittingRef.current = false;
          setIsPaymentSubmitting(false);
@@ -683,16 +733,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       e.preventDefault();
       try {
          await api.patients.sendMessage(patient.id, messageText);
-         alert(t('patients.details.alerts.messageSent'));
+         toast.error(t('patients.details.alerts.messageSent'));
          setIsMessageModalOpen(false);
          setMessageText('');
       } catch (error: any) {
          console.error('Error sending message:', error);
          if (error.message === 'Bot not configured' || error.error === 'Bot not configured') {
             setIsMessageModalOpen(false);
-            alert(`⚠️ ${t('patients.details.alerts.botNotConfigured')}`);
+            toast.error(`⚠️ ${t('patients.details.alerts.botNotConfigured')}`);
          } else {
-            alert(`${t('common.error')}: ${error.message || t('common.error')}`);
+            toast.error(`${t('common.error')}: ${error.message || t('common.error')}`);
          }
       }
    };
@@ -701,13 +751,13 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       e.preventDefault();
 
       if (!apptData.doctorId) {
-         alert(t('patients.details.alerts.selectDoctorReq'));
+         toast.error(t('patients.details.alerts.selectDoctorReq'));
          return;
       }
 
       const doctor = doctors.find(d => d.id === apptData.doctorId);
       if (!doctor) {
-         alert(t('patients.details.alerts.doctorNotFound'));
+         toast.error(t('patients.details.alerts.doctorNotFound'));
          return;
       }
 
@@ -720,12 +770,13 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       );
 
       if (doctorConflict) {
-         alert(t('patients.details.alerts.doctorConflict'));
+         toast.error(t('patients.details.alerts.doctorConflict'));
          return;
       }
 
       // Patient Conflict Validation
-      const patientConflict = appointments.some(appt =>
+      // Bemor kesimi — to'liq tarixdan (o'sha kun boshqa kartada band bo'lishi mumkin)
+      const patientConflict = effAppointments.some(appt =>
          appt.patientId === patient.id &&
          appt.date === apptData.date &&
          appt.time === apptData.time &&
@@ -733,15 +784,15 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       );
 
       if (patientConflict) {
-         alert(t('patients.details.alerts.patientConflict'));
+         toast.error(t('patients.details.alerts.patientConflict'));
          return;
       }
 
       onAddAppointment({
          patientId: patient.id,
-         patientName: `${patient.lastName} ${patient.firstName}`,
+         patientName: `${formatFullName(patient)}`,
          doctorId: doctor.id,
-         doctorName: `Dr. ${doctor.firstName} ${doctor.lastName}`,
+         doctorName: `${formatDoctorName(doctor)}`,
          type: apptData.type,
          date: apptData.date,
          time: apptData.time,
@@ -777,7 +828,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          return;
       }
 
-      const existingAppt = appointments.find(a =>
+      const existingAppt = effAppointments.find(a =>
          a.patientId === patient.id &&
          a.date === today &&
          a.status !== 'Cancelled'
@@ -801,7 +852,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          ko'chirilishi va to'lov oynasi o'sha qatorlarni yopadigan qilib
          ulanishi kerak. Matnni olib tashlash — tish kartasini yo'q qilish.
          Batafsil: BUILD-SPEC.md, Б4.1. */
-      const proceduresText = procedures.map(p => `- ${p.serviceName} (${p.toothNumber ? `Tish #${p.toothNumber}` : 'Umumiy'}) [${p.price.toLocaleString().replace(/,/g, ' ')} UZS]`).join('\n');
+      const proceduresText = procedures.map(p => `- ${p.serviceName} (${p.toothNumber ? `Tish #${p.toothNumber}` : 'Umumiy'}) [${formatMoney(p.price).replace(/,/g, ' ')} UZS]`).join('\n');
 
       try {
          // ENSURE DOCTOR EXISTS (especially for new clinics or individual plans)
@@ -843,7 +894,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             // Create NEW Appointment
             await onAddAppointment({
                patientId: patient.id,
-               patientName: `${patient.lastName} ${patient.firstName}`,
+               patientName: `${formatFullName(patient)}`,
                doctorId: finalDoctorId,
                doctorName: finalDoctorName,
                type: 'Davolash',
@@ -854,7 +905,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                notes: `Bajarilgan ishlar:\n` + proceduresText,
                clinicId: patient.clinicId
             });
-            alert(t('patients.details.alerts.visitSaved'));
+            toast.error(t('patients.details.alerts.visitSaved'));
          } else {
             // Update EXISTING Appointment
             const currentNotes = existingAppt.notes || '';
@@ -862,7 +913,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             // Deduplication check: if notes already contain this text, skip appending
             if (currentNotes.includes(proceduresText)) {
                console.log("Duplicate prevention: Procedures already in notes");
-               alert("Qabul tarixi yangilandi!");
+               toast.success("Qabul tarixi yangilandi!");
                setPendingProcedures([]);
                setVisitKey(prev => prev + 1);
                return;
@@ -874,7 +925,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                notes: newNotes,
                status: 'Completed'
             });
-            alert(t('patients.details.alerts.visitUpdated'));
+            toast.error(t('patients.details.alerts.visitUpdated'));
          }
 
          // 2. Cleanup only on SUCCESS
@@ -906,7 +957,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       } catch (error: any) {
          console.error('Visit completion failed', error);
          // Error toast is already shown by App.tsx, but we can add more specific alert here if needed
-         alert(`Xatolik: ${error.message || 'Tashrifni yakunlashda xato yuz berdi. Iltimos qaytadan urunib ko\'ring.'}`);
+         toast.error(`Xatolik: ${error.message || 'Tashrifni yakunlashda xato yuz berdi. Iltimos qaytadan urunib ko\'ring.'}`);
       }
    };
 
@@ -963,7 +1014,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   </div>
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
                      <div className="space-y-1">
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{patient.firstName} {patient.lastName}</h2>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{formatFullName(patient)}</h2>
                         <p className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
                            <span className="capitalize">{patient.gender === 'Male' ? t('patients.modal.male') : t('patients.modal.female')}</span> • {calcAge(patient.dob) ?? 'N/A'} {t('patients.details.age')}{patient.dob && ` (${formatDobDDMMYYYY(patient.dob)})`}
                         </p>
@@ -978,9 +1029,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                        : 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
                               }`}>
                                  {patient.balance > 0 
-                                    ? `Avans: ${patient.balance.toLocaleString()} UZS` 
+                                    ? `Avans: ${formatMoney(patient.balance)} UZS` 
                                     : patient.balance < 0 
-                                       ? `Qarz: ${Math.abs(patient.balance).toLocaleString()} UZS`
+                                       ? `Qarz: ${formatMoney(Math.abs(patient.balance))} UZS`
                                        : `Hisob: 0 UZS`}
                               </div>
                            )}
@@ -1075,7 +1126,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      patientId={patient.id}
                      canEdit={userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.DOCTOR}
                      // Bu ekranda toast tizimi yo'q — xabar alert bilan
-                     addToast={(_t, msg) => alert(msg)}
+                     addToast={(_t, msg) => toast.error(msg)}
                   />
 
                   {/* Rozilik, shartnoma, ma'lumotlarga rozilik — qonun talabi
@@ -1084,7 +1135,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   <PatientDocuments
                      patientId={patient.id}
                      canCreate={userRole !== UserRole.LAB_TECHNICIAN}
-                     addToast={(_t, msg) => alert(msg)}
+                     addToast={(_t, msg) => toast.error(msg)}
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                      <VisitWorkflow
@@ -1110,7 +1161,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                  className="h-7 text-xs"
                                  onClick={() => {
                                     onUpdatePatient(patient.id, { medicalHistory: historyText });
-                                    alert(t('common.save'));
+                                    toast.error(t('common.save'));
                                  }}
                               >
                                  {t('common.save')}
@@ -1156,7 +1207,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                              medicalHistory: newHistory
                                           });
                                        } else {
-                                          alert(t('patients.details.medicalHistory.alreadyAdded'));
+                                          toast.error(t('patients.details.medicalHistory.alreadyAdded'));
                                        }
                                     }}
                                     className="px-3 py-1.5 text-xs font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50 rounded-full transition-colors border border-primary-100 dark:border-primary-800"
@@ -1186,6 +1237,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      <EncounterForm
                         departments={departments}
                         templates={templates}
+                        patientGender={patient.gender === 'Male' || patient.gender === 'Female' ? patient.gender : null}
+                        patientAge={calcAge(patient.dob)}
                         departmentId={encounterDeptId}
                         templateId={encounterTemplateId}
                         value={encounterData}
@@ -1231,7 +1284,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                        </div>
                                        <div>
                                           <p className="font-bold text-gray-900 dark:text-white">
-                                             {new Date(app.date).toLocaleDateString('uz-UZ', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                             {formatDateLong(new Date(app.date))}
                                           </p>
                                           <p className="text-sm text-gray-600 dark:text-gray-300">
                                              {app.time} • {app.type} • {app.doctorName}
@@ -1277,10 +1330,10 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                     .map(app => (
                                        <tr key={app.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer" onClick={() => {
                                           // Optional: Add click handler if user wants to open details modal
-                                          if (app.notes) alert(app.notes); // Temporary quick view or just rely on the column
+                                          if (app.notes) toast.error(app.notes); // Temporary quick view or just rely on the column
                                        }}>
                                           <td className="p-4 text-gray-900 dark:text-white font-medium whitespace-nowrap">
-                                             {new Date(app.date).toLocaleDateString('uz-UZ')} <br />
+                                             {formatDate(new Date(app.date))} <br />
                                              <span className="text-xs text-gray-500 font-normal">{app.time}</span>
                                           </td>
                                           <td className="p-4 text-gray-600 dark:text-gray-300">{app.type}</td>
@@ -1337,7 +1390,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                     return (
                                        <tr key={app.id} className="hover:bg-yellow-50/50 dark:hover:bg-yellow-900/10 transition-colors">
                                           <td className="p-4 text-gray-900 dark:text-white font-medium whitespace-nowrap">
-                                             {app.date ? new Date(app.date).toLocaleDateString('uz-UZ') : 'N/A'} <br />
+                                             {app.date ? formatDate(new Date(app.date)) : 'N/A'} <br />
                                              <span className="text-xs text-gray-500 font-normal">{app.time}</span>
                                           </td>
                                           <td className="p-4 text-gray-600 dark:text-gray-300">{app.type}</td>
@@ -1368,21 +1421,21 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                              {(patient.balance || 0) > 0 && (
                                                 <Button size="sm" variant="secondary" className="bg-primary-50 text-primary-700 border-primary-100" onClick={async () => {
                                                    const { total, breakdown } = calculateAppointmentTotal(app.notes || '', services);
-                                                   if (confirm(`Ushbu qabul uchun ${total.toLocaleString()} UZS miqdorini bemor avansidan yechishga ruxsatingiz bormi?`)) {
+                                                   if (await confirmAction({ title: `Ushbu qabul uchun ${formatMoney(total)} UZS miqdorini bemor avansidan yechishga ruxsatingiz bormi?` })) {
                                                       const doctor = doctors.find(d => d.id === app.doctorId);
                                                       await onAddTransaction({
                                                          patientId: patient.id,
-                                                         patientName: `${patient.lastName} ${patient.firstName}`,
+                                                         patientName: `${formatFullName(patient)}`,
                                                          date: app.date,
                                                          amount: total,
                                                          service: breakdown || app.type,
                                                          type: 'Balance' as any,
                                                          status: 'Paid',
                                                          doctorId: app.doctorId,
-                                                         doctorName: doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : '',
+                                                         doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
                                                          clinicId: patient.clinicId
                                                       });
-                                                      alert("To'lov avans hisobidan muvaffaqiyatli amalga oshirildi!");
+                                                      toast.success("To'lov avans hisobidan muvaffaqiyatli amalga oshirildi!");
                                                    }
                                                 }}>Hisobdan</Button>
                                              )}
@@ -1403,16 +1456,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               <div className="text-right">
                                  <p className="text-sm text-gray-500">{t('patients.details.payments.totalPaid')}</p>
                                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                                    {(patientTransactions || [])
+                                    {formatMoney((patientTransactions || [])
                                        .filter(transaction => transaction && transaction.status === 'Paid' && transaction.type !== 'Balance')
                                        .reduce((acc, transaction) => acc + (Number(transaction.amount) || 0), 0)
-                                       .toLocaleString()} UZS
+                                    )} UZS
                                  </p>
                               </div>
                               <div className="text-right">
                                  <p className="text-sm text-gray-500">{t('patients.details.balance')}</p>
                                  <p className="text-xl font-bold text-primary-600 dark:text-primary-400">
-                                    {(patient.balance || 0).toLocaleString()} UZS
+                                    {formatMoney((patient.balance || 0))} UZS
                                  </p>
                               </div>
                               <div className="flex gap-2">
@@ -1452,12 +1505,12 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                        <td className="p-4 text-gray-900 dark:text-white">{transaction.date || 'N/A'}</td>
                                        <td className="p-4 text-gray-600 dark:text-gray-300">{transaction.service}</td>
                                        <td className="p-4 text-gray-600 dark:text-gray-300">{transaction.type}</td>
-                                       <td className="p-4 text-gray-900 dark:text-white font-medium">{(Number(transaction.amount) || 0).toLocaleString()} UZS</td>
+                                       <td className="p-4 text-gray-900 dark:text-white font-medium">{formatMoney((Number(transaction.amount) || 0))} UZS</td>
                                        <td className="p-4">
                                           {transaction.discountPercent ? (
                                              <div className="flex flex-col">
                                                 <span className="text-xs text-orange-600 dark:text-orange-400 font-bold">-{transaction.discountPercent}%</span>
-                                                {transaction.discountAmount ? <span className="text-[10px] text-gray-500">({(Number(transaction.discountAmount) || 0).toLocaleString()} UZS)</span> : null}
+                                                {transaction.discountAmount ? <span className="text-[10px] text-gray-500">({formatMoney((Number(transaction.discountAmount) || 0))} UZS)</span> : null}
                                              </div>
                                           ) : (
                                              <span className="text-gray-400">-</span>
@@ -1525,35 +1578,47 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                               {materialLogs.map(log => (
                                  <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                                    <td className="p-4 text-gray-900 dark:text-white">{new Date(log.date).toLocaleDateString('uz-UZ')}</td>
+                                    <td className="p-4 text-gray-900 dark:text-white">{formatDate(new Date(log.date))}</td>
                                     <td className="p-4 text-gray-900 dark:text-white font-medium">
                                        {log.item?.name}
                                        <span className="text-xs text-gray-500 ml-1">({log.item?.unit})</span>
                                     </td>
-                                    <td className="p-4 text-red-600 font-medium">{Math.abs(log.change)}</td>
+                                    <td className={`p-4 font-medium ${log.reversed ? 'text-gray-400 line-through' : 'text-red-600'}`}>
+                                       {Math.abs(log.change)}
+                                    </td>
                                     <td className="p-4 text-gray-600 dark:text-gray-300">{log.note || '-'}</td>
                                     <td className="p-4 text-gray-600 dark:text-gray-300">{log.userName}</td>
                                     <td className="p-4">
-                                       <button
-                                          onClick={async () => {
-                                             if (!confirm("Ushbu material yozuvini o'chirmoqchimisiz?")) return;
-                                             try {
-                                                await api.inventory.deleteLog(log.id);
-                                                setMaterialLogs(prev => prev.filter(l => l.id !== log.id));
-                                                // Refresh inventory items to restore stock
-                                                if (currentClinic) {
-                                                   const updatedItems = await api.inventory.getAll(currentClinic.id);
-                                                   setInventoryItems(updatedItems);
+                                       {/* Yozuv O'CHIRILMAYDI: bekor qilinganda teskari harakat
+                                           yoziladi va ikkala qator ham jurnalda qoladi (0028). */}
+                                       {log.reversed ? (
+                                          <span className="text-xs text-gray-400">
+                                             {t('patients.details.materials.reversed')}
+                                          </span>
+                                       ) : (
+                                          <button
+                                             onClick={async () => {
+                                                if (!await confirmAction({ title: t('patients.details.materials.reverseConfirm') })) return;
+                                                try {
+                                                   await api.stock.reverse(log.id);
+                                                   if (currentClinic) {
+                                                      const [updatedLogs, updatedItems] = await Promise.all([
+                                                         api.inventory.getLogs(currentClinic.id, patientId),
+                                                         api.inventory.getAll(currentClinic.id),
+                                                      ]);
+                                                      setMaterialLogs(updatedLogs);
+                                                      setInventoryItems(updatedItems);
+                                                   }
+                                                } catch (e: any) {
+                                                   toast.error(e?.message || t('patients.details.alerts.error'));
                                                 }
-                                             } catch (e) {
-                                                alert(t('patients.details.alerts.error'));
-                                             }
-                                          }}
-                                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                          title="O'chirish"
-                                       >
-                                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                       </button>
+                                             }}
+                                             className="px-2 py-1 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                             title={t('patients.details.materials.reverse')}
+                                          >
+                                             {t('patients.details.materials.reverse')}
+                                          </button>
+                                       )}
                                     </td>
                                  </tr>
                               ))}
@@ -1633,7 +1698,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         onChange={e => setPaymentData({ ...paymentData, doctorId: e.target.value })}
                         options={[
                            { value: '', label: 'Shifokorni tanlang' },
-                           ...doctors.map(d => ({ value: d.id, label: `Dr. ${d.firstName} ${d.lastName}` }))
+                           ...doctors.map(d => ({ value: d.id, label: `${formatDoctorName(d)}` }))
                         ]}
                         required
                      />
@@ -1695,7 +1760,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                        })
                                        .map(service => (
                                           <option key={service.id} value={service.id}>
-                                             {service.name} - {service.price.toLocaleString()} UZS
+                                             {service.name} - {formatMoney(service.price)} UZS
                                           </option>
                                        ))}
                                  </Select>
@@ -1777,9 +1842,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         {paymentData.discountPercent && Number(paymentData.discountPercent) > 0 && (
                            <div className="p-2.5 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-xs text-yellow-800 dark:text-yellow-200">
                               {discountType === 'percent' ? (
-                                 <>Chegirma summasi: <strong>{Math.round((Number(paymentData.amount) || 0) * (Number(paymentData.discountPercent) || 0) / 100).toLocaleString()} UZS</strong> ({paymentData.discountPercent}%)</>
+                                 <>Chegirma summasi: <strong>{formatMoney((Number(paymentData.amount) || 0) * (Number(paymentData.discountPercent) || 0) / 100)} UZS</strong> ({paymentData.discountPercent}%)</>
                               ) : (
-                                 <>Chegirma: <strong>{Number(paymentData.discountPercent).toLocaleString()} UZS</strong> &nbsp;(Umumiy {(Number(paymentData.amount)||0) > 0 ? Math.round((Number(paymentData.discountPercent)/(Number(paymentData.amount)||1))*100) : 0}%)</>
+                                 <>Chegirma: <strong>{formatNumber(Number(paymentData.discountPercent))} UZS</strong> &nbsp;(Umumiy {(Number(paymentData.amount)||0) > 0 ? Math.round((Number(paymentData.discountPercent)/(Number(paymentData.amount)||1))*100) : 0}%)</>
                               )}
                            </div>
                         )}
@@ -1811,7 +1876,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               });
                            }}
                         >
-                           <CreditCard className="w-4 h-4" /> Bemor avansidan to'lash (Mavjud: {patient.balance.toLocaleString()} UZS)
+                           <CreditCard className="w-4 h-4" /> Bemor avansidan to'lash (Mavjud: {formatMoney(patient.balance)} UZS)
                         </Button>
                      </div>
                   )}
@@ -1859,7 +1924,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg flex justify-between items-center">
                         <span className="text-gray-700 dark:text-gray-300 font-medium">Jami Summa:</span>
                         <span className="text-gray-900 dark:text-white font-bold text-lg">
-                           {((Number(paymentData.paidAmount) || 0) + (Number(paymentData.debtAmount) || 0)).toLocaleString()} UZS
+                           {formatMoney(((Number(paymentData.paidAmount) || 0) + (Number(paymentData.debtAmount) || 0)))} UZS
                         </span>
                      </div>
                   )}
@@ -1959,19 +2024,19 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               const day = dateObj.getDate();
                               const month = monthNames[dateObj.getMonth()];
 
-                              setMessageText(`🏥 Qabul eslatmasi\n\nHurmatli ${patient.lastName} ${patient.firstName}!\n\nSizni ertaga, ${day}-${month} (${dayName}) kuni soat ${appt.time} da ${appt.doctorName} qabuliga kutamiz.\n\n📍 Manzil: Klinikamiz\n⏰ Vaqt: ${appt.time}\n👨‍⚕️ Shifokor: ${appt.doctorName}\n\nIltimos, vaqtida kelishingizni so'raymiz.\n\nSavol bo'lsa, biz bilan bog'laning.`);
+                              setMessageText(`🏥 Qabul eslatmasi\n\nHurmatli ${formatFullName(patient)}!\n\nSizni ertaga, ${day}-${month} (${dayName}) kuni soat ${appt.time} da ${appt.doctorName} qabuliga kutamiz.\n\n📍 Manzil: Klinikamiz\n⏰ Vaqt: ${appt.time}\n👨‍⚕️ Shifokor: ${appt.doctorName}\n\nIltimos, vaqtida kelishingizni so'raymiz.\n\nSavol bo'lsa, biz bilan bog'laning.`);
                            } else {
-                              setMessageText(`🏥 Qabul eslatmasi\n\nHurmatli ${patient.lastName} ${patient.firstName}!\n\nSizni ertaga klinikamizga qabulga kutamiz.\n\nIltimos, aniq vaqtni aniqlash uchun biz bilan bog'laning.`);
+                              setMessageText(`🏥 Qabul eslatmasi\n\nHurmatli ${formatFullName(patient)}!\n\nSizni ertaga klinikamizga qabulga kutamiz.\n\nIltimos, aniq vaqtni aniqlash uchun biz bilan bog'laning.`);
                            }
                         } else if (type === 'Debt') {
                            const debt = patientTransactions.filter(t => t.status === 'Pending').reduce((acc, t) => acc + t.amount, 0);
                            if (debt > 0) {
-                              setMessageText(`💳 To'lov eslatmasi\n\nHurmatli ${patient.lastName} ${patient.firstName}!\n\nSizning ${debt.toLocaleString()} UZS miqdorida qarzdorligingiz mavjud.\n\nIltimos, to'lovni amalga oshiring.\n\n📞 To'lov bo'yicha savol bo'lsa, biz bilan bog'laning.`);
+                              setMessageText(`💳 To'lov eslatmasi\n\nHurmatli ${formatFullName(patient)}!\n\nSizning ${formatNumber(debt)} UZS miqdorida qarzdorligingiz mavjud.\n\nIltimos, to'lovni amalga oshiring.\n\n📞 To'lov bo'yicha savol bo'lsa, biz bilan bog'laning.`);
                            } else {
-                              setMessageText(`✅ To'lovlar\n\nHurmatli ${patient.lastName} ${patient.firstName}!\n\nSizning qarzdorligingiz yo'q.\n\nRahmat!`);
+                              setMessageText(`✅ To'lovlar\n\nHurmatli ${formatFullName(patient)}!\n\nSizning qarzdorligingiz yo'q.\n\nRahmat!`);
                            }
                         } else if (type === 'Missed') {
-                           setMessageText(`⚠️ Qoldirilgan qabul\n\nHurmatli ${patient.lastName} ${patient.firstName}!\n\nSiz bugungi qabulga kelmadingiz.\n\nIltimos, yangi vaqt belgilash uchun biz bilan bog'laning.\n\n📞 Telefon: [klinika telefoni]`);
+                           setMessageText(`⚠️ Qoldirilgan qabul\n\nHurmatli ${formatFullName(patient)}!\n\nSiz bugungi qabulga kelmadingiz.\n\nIltimos, yangi vaqt belgilash uchun biz bilan bog'laning.\n\n📞 Telefon: [klinika telefoni]`);
                         }
                      }}
                      options={[
@@ -2004,7 +2069,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                <form onSubmit={handleApptSubmit} className="space-y-4">
                   <Select
                      label={t('patients.details.modals.doctor')}
-                     options={doctors.map(d => ({ value: d.id, label: `Dr. ${d.firstName} ${d.lastName}` }))}
+                     options={doctors.map(d => ({ value: d.id, label: `${formatDoctorName(d)}` }))}
                      value={apptData.doctorId}
                      onChange={(e) => setApptData({ ...apptData, doctorId: e.target.value })}
                   />
@@ -2149,13 +2214,13 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             <div className="grid grid-cols-2 gap-8 mb-8">
                <div>
                   <h2 className="text-xs font-bold uppercase text-gray-500 mb-1">Bemor</h2>
-                  <p className="text-xl font-bold">{patient.lastName} {patient.firstName}</p>
+                  <p className="text-xl font-bold">{formatFullName(patient)}</p>
                   <p className="text-sm">{showPatientPhone ? patient.phone : maskPhone(patient.phone)}</p>
                   <p className="text-sm">{formatDobDDMMYYYY(patient.dob)} ({calcAge(patient.dob) ?? ''} yosh)</p>
                </div>
                <div className="text-right">
                   <h2 className="text-xs font-bold uppercase text-gray-500 mb-1">Sana</h2>
-                  <p className="text-xl font-bold">{new Date().toLocaleDateString('uz-UZ')}</p>
+                  <p className="text-xl font-bold">{formatDate(new Date())}</p>
                   <p className="text-sm">{new Date().toLocaleTimeString('uz-UZ')}</p>
                </div>
             </div>
@@ -2221,7 +2286,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               {doc.firstName[0]}{doc.lastName[0]}
                            </div>
                            <div>
-                              <p className="font-bold text-gray-900 dark:text-white">Dr. {doc.firstName} {doc.lastName}</p>
+                              <p className="font-bold text-gray-900 dark:text-white">Dr. {formatFullName(doc)}</p>
                               <p className="text-xs text-gray-500">{doc.specialty}</p>
                            </div>
                         </div>

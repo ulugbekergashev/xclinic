@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
+import { Logo } from '../components/Logo';
 import { Button, Input, Card } from '../components/Common';
 import { UserRole } from '../types';
 import { AlertCircle, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { api, API_BASE_URL } from '../services/api';
+import * as auth from '../services/authStore';
 import { useLanguage } from '../context/LanguageContext';
 
 interface SignInProps {
-  onLogin: (role: UserRole, name: string, clinicId?: string, doctorId?: string) => void;
+  onLogin: (role: UserRole, name: string, clinicId?: string, doctorId?: string,
+            receptionistId?: string, mustChangePassword?: boolean) => void;
 }
 
 export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
@@ -85,8 +88,9 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
           isDemo: true,
         };
 
-        // Har doim eslab qolinadi
-        localStorage.setItem('xclinic_auth', JSON.stringify(demoAuthData));
+        // Demo rejim soxta token bilan ishlaydi va serverga bormaydi —
+        // shuning uchun u yagona holat, tokeni saqlanadigan (authStore).
+        auth.setSession(demoAuthData);
 
         onLogin(UserRole.CLINIC_ADMIN, 'Demo Admin', 'demo-clinic-1');
         setIsLoading(false);
@@ -108,10 +112,13 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
           token: response.token
         };
 
-        // Har doim eslab qolinadi (localStorage)
-        localStorage.setItem('xclinic_auth', JSON.stringify(authData));
+        /* Token DISKKA TUSHMAYDI (S1.3): `setSession` uni xotiraga oladi,
+           qolgan ma'lumot `sessionStorage` da qoladi. Sessiyani sahifa
+           yangilangandan keyin tiklash `httpOnly` cookie orqali bo'ladi. */
+        auth.setSession(authData);
 
-        onLogin(response.role as UserRole, response.name, response.clinicId, response.doctorId);
+        onLogin(response.role as UserRole, response.name, response.clinicId, response.doctorId,
+                response.receptionistId, response.mustChangePassword === true);
       } else {
         setError(response.error || t('auth.errorInvalid'));
       }
@@ -126,12 +133,12 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center p-4 font-sans">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="mx-auto w-16 h-16 bg-primary-600 rounded-2xl flex items-center justify-center text-white shadow-lg mb-4 transform rotate-3">
-            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{t('auth.title')}</h1>
+          <Logo className="mx-auto w-16 h-16 shadow-lg rounded-2xl mb-4" />
+          {/* Sarlavhadagi bilan bir xil ikki rangli yozuv — brend ikki
+              ekranda ikki xil ko'rinmasligi uchun. Nom tarjima qilinmaydi. */}
+          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+            X<span className="text-primary dark:text-primary-400">Clinic</span>
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-2">{t('auth.subtitle')}</p>
         </div>
 
@@ -241,40 +248,22 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                   </div>
                 )}
 
-                {/* Demo: qiymatlar NUSXA olish uchun ochiq turadi */}
-                <div className="mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg text-left">
-                  <p className="text-xs text-primary-700 dark:text-primary-300 font-medium mb-2">
-                    🧪 Demo rejimi
-                  </p>
+                {/* DEMO BLOKI OLIB TASHLANDI.
 
-                  {([
-                    ['Login', 'demoklinikaadmin'],
-                    ['Parol', 'demoklinikaparol'],
-                  ] as const).map(([label, value]) => (
-                    <div key={value} className="flex items-center gap-2 mb-1">
-                      <span className="text-[11px] text-primary-500 dark:text-primary-400 w-10">{label}</span>
-                      <code className="px-1.5 py-0.5 rounded bg-white dark:bg-primary-900/40 border border-primary-200 dark:border-primary-800 text-xs text-primary-800 dark:text-primary-200 select-all">
-                        {value}
-                      </code>
-                      <button type="button" onClick={() => copy(value)}
-                        title="Nusxa olish"
-                        className="ml-auto px-1.5 py-0.5 rounded text-[11px] text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40">
-                        {copied === value ? "✓ nusxa olindi" : 'nusxa'}
-                      </button>
-                    </div>
-                  ))}
+                    Bu yerda demo login va paroli katta blok bo'lib,
+                    «Ikkalasini maydonlarga qo'yish» tugmasi bilan turardi.
+                    Haqiqiy login esa yuqoridagi kichik izohda edi.
 
-                  <button type="button"
-                    onClick={() => { setUsername('demoklinikaadmin'); setPassword('demoklinikaparol'); }}
-                    className="mt-2 w-full px-2 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-primary-900/40 border border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:border-primary-500">
-                    Ikkalasini maydonlarga qo'yish
-                  </button>
+                    Natijasi: odam demo bilan kirib, hamma ekranni BO'SH
+                    ko'radi (demo rejim serverga umuman bormaydi) va
+                    dasturda ma'lumot yo'q deb o'ylaydi. Bu haqiqatan sodir
+                    bo'ldi.
 
-                  <p className="text-[11px] text-primary-500 dark:text-primary-400 mt-2">
-                    Demoda ma'lumotlar soxta va yangi ekranlar bo'sh ko'rinadi.
-                    Haqiqiy ish uchun yuqoridagi login bilan kiring.
-                  </p>
-                </div>
+                    Demo hisobining O'ZI ishlaydi: `demoklinikaadmin` /
+                    `demoklinikaparol` ni qo'lda yozib kirish mumkin
+                    (yuqoridagi `handleSubmit` ga qarang). Faqat unga
+                    tasodifan tushib qolish yo'li yopildi. */}
+
               </>
             )}
             <p className="text-xs text-gray-400">

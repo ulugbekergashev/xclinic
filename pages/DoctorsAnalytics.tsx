@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { formatMoney, formatNumber, formatFullName } from '../utils/format';
 import { Doctor, Appointment, Service, Transaction, Review } from '../types';
 import { Card, Input } from '../components/Common';
 import { DollarSign, Calendar, Award, Users, Star } from 'lucide-react';
@@ -19,6 +20,7 @@ interface DoctorsAnalyticsProps {
 type DateRange = 'month' | '3months' | '6months' | 'year' | 'all' | 'custom';
 
 import { getCurrentMonthRange } from '../utils/dateUtils';
+import { api, getStoredClinicId } from '../services/api';
 
 export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, appointments, services, transactions, reviews }) => {
     const { t } = useLanguage();
@@ -28,72 +30,79 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
     const [customStartDate, setCustomStartDate] = useState(defaultStart);
     const [customEndDate, setCustomEndDate] = useState(defaultEnd);
 
+  /* ─── OYNA TASHQARISI (FIX-PLAN 10.3) ────────────────────────────────────
+     `App.tsx` kirishda oxirgi 45 kunni yuklaydi. Bu ekranda esa undan
+     eskiroq davr tanlanishi mumkin — o'shanda propdagi ro'yxatda o'sha davr
+     UMUMAN yo'q va ekran "hech narsa bo'lmagan" deb ko'rsatardi.
+     Jimgina yolg'on — eng yomon xato turi. Shuning uchun serverdan olamiz.
+
+     DAVR CHEGARASI BITTA JOYDA hisoblanadi va uchalasi — serverdan so'rash,
+     yozuvlar filtri va to'lovlar filtri — aynan shu chegaradan foydalanadi.
+     Ilgari ular uchta alohida joyda hisoblanardi va mos kelmasdi: so'rov
+     `customStartDate` ga qarardi (u esa `3 oy`/`6 oy`/`yil` da o'zgarmaydi),
+     ya'ni bu uch tanlovda serverga UMUMAN chiqilmasdi va ekran 45 kunlik
+     propdan sanardi. To'lovlar filtri esa serverdan kelgan ro'yxatni
+     umuman ishlatmasdi. */
+  const clinicId = getStoredClinicId();
+  const WINDOW_START = useMemo(
+    () => new Date(Date.now() - 45 * 86400000).toISOString().split('T')[0], []);
+
+  const isoDay = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  /** Tanlangan davrning haqiqiy chegaralari (YYYY-MM-DD). */
+  const range = useMemo(() => {
+    const now = new Date();
+    if (dateRange === 'all') return { from: '2000-01-01', to: isoDay(now) };
+    if (dateRange === 'custom') return { from: customStartDate, to: customEndDate };
+
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (dateRange === '3months') start.setMonth(now.getMonth() - 3);
+    else if (dateRange === '6months') start.setMonth(now.getMonth() - 6);
+    else if (dateRange === 'year') start.setFullYear(now.getFullYear() - 1);
+    return { from: isoDay(start), to: isoDay(now) };
+  }, [dateRange, customStartDate, customEndDate]);
+
+  const [rangeData, setRangeData] = useState<{ appts: Appointment[]; tx: Transaction[] } | null>(null);
+  useEffect(() => {
+    if (!clinicId || !range.from || range.from >= WINDOW_START) { setRangeData(null); return; }
+    let alive = true;
+    Promise.all([
+      api.appointments.getAll(clinicId, { from: range.from, to: range.to || undefined }),
+      api.transactions.getAll(clinicId, { from: range.from, to: range.to || undefined }),
+    ]).then(([appts, tx]) => { if (alive) setRangeData({ appts, tx }); })
+      .catch(() => { if (alive) setRangeData(null); });
+    return () => { alive = false; };
+  }, [range.from, range.to, clinicId, WINDOW_START]);
+
+  const effectiveAppointments = rangeData?.appts ?? appointments;
+  const effectiveTransactions = rangeData?.tx ?? transactions;
+
+  /** Davr ichidami. Yakuniy sana KUN OXIRIgacha — aks holda bugungi yozuvlar
+      tushib qolardi (yarim tundan keyingi hamma narsa chegaradan tashqarida). */
+  const inRange = (value: string) => {
+    if (!range.from || !range.to) return true;
+    const d = new Date(value);
+    return d >= new Date(range.from) && d <= new Date(`${range.to}T23:59:59.999`);
+  };
+
+
     // Detect if clinic has only 1 doctor (individual plan)
     const hasSingleDoctor = doctors.length === 1;
 
-    // Filter appointments by date range
+    /* Ikkala filtr ham `effective*` dan o'qiydi: oyna tashqarisidagi davrda bu
+       serverdan kelgan to'liq ro'yxat, ichkarisida esa propdagi ro'yxat. */
     const filteredAppointments = useMemo(() => {
-        if (dateRange === 'all') return appointments;
+        if (dateRange === 'all') return effectiveAppointments;
+        if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return effectiveAppointments;
+        return effectiveAppointments.filter(appt => inRange(appt.date));
+    }, [effectiveAppointments, dateRange, range.from, range.to, customStartDate, customEndDate]);
 
-        const now = new Date();
-        let startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        let endDate = now;
-
-        if (dateRange === 'custom') {
-            if (!customStartDate || !customEndDate) return appointments;
-            startDate = new Date(customStartDate);
-            endDate = new Date(customEndDate);
-        } else if (dateRange !== 'month') {
-            switch (dateRange) {
-                case '3months':
-                    startDate.setMonth(now.getMonth() - 3);
-                    break;
-                case '6months':
-                    startDate.setMonth(now.getMonth() - 6);
-                    break;
-                case 'year':
-                    startDate.setFullYear(now.getFullYear() - 1);
-                    break;
-            }
-        }
-
-        return appointments.filter(appt => {
-            const apptDate = new Date(appt.date);
-            return apptDate >= startDate && apptDate <= endDate;
-        });
-    }, [appointments, dateRange, customStartDate, customEndDate]);
-
-    // Filter transactions by date range
     const filteredTransactions = useMemo(() => {
-        if (dateRange === 'all') return transactions;
-
-        const now = new Date();
-        let startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        let endDate = now;
-
-        if (dateRange === 'custom') {
-            if (!customStartDate || !customEndDate) return transactions;
-            startDate = new Date(customStartDate);
-            endDate = new Date(customEndDate);
-        } else if (dateRange !== 'month') {
-            switch (dateRange) {
-                case '3months':
-                    startDate.setMonth(now.getMonth() - 3);
-                    break;
-                case '6months':
-                    startDate.setMonth(now.getMonth() - 6);
-                    break;
-                case 'year':
-                    startDate.setFullYear(now.getFullYear() - 1);
-                    break;
-            }
-        }
-
-        return transactions.filter(tx => {
-            const txDate = new Date(tx.date);
-            return txDate >= startDate && txDate <= endDate;
-        });
-    }, [transactions, dateRange, customStartDate, customEndDate]);
+        if (dateRange === 'all') return effectiveTransactions;
+        if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return effectiveTransactions;
+        return effectiveTransactions.filter(tx => inRange(tx.date));
+    }, [effectiveTransactions, dateRange, range.from, range.to, customStartDate, customEndDate]);
 
     // Calculate Metrics
     const analyticsData = useMemo(() => {
@@ -124,7 +133,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
             // Calculate Average Rating
             const doctorReviews = reviews.filter(r => {
                 // Since Review has appointmentId, we can match through filteredAppointments
-                const appt = appointments.find(a => a.id === r.appointmentId);
+                const appt = effectiveAppointments.find(a => a.id === r.appointmentId);
                 return appt?.doctorId === doctor.id;
             });
             const avgRating = doctorReviews.length > 0
@@ -227,7 +236,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
             {/* Detailed Table Moved to Top */}
             <Card className="overflow-hidden bg-white dark:bg-gray-800">
                 <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t('doctors.analytics.detailedMetrics')}</h3>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('doctors.analytics.detailedMetrics')}</h2>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
@@ -260,7 +269,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                                             </div>
                                             <div>
                                                 <Link to={`/doctors/${doc.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 hover:underline">
-                                                    Dr. {doc.firstName} {doc.lastName}
+                                                    Dr. {formatFullName(doc)}
                                                 </Link>
                                                 <p className="text-xs text-gray-500">{doc.phone}</p>
                                             </div>
@@ -280,13 +289,13 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                                         <div className="text-xs text-gray-500">{doc.topServiceCount} {t('common.times')}</div>
                                     </td>
                                     <td className="p-4 text-right font-bold text-gray-900 dark:text-white">
-                                        {doc.revenue.toLocaleString()} UZS
+                                        {formatMoney(doc.revenue)} UZS
                                     </td>
                                     <td className="p-4 text-right font-bold text-green-600 dark:text-green-400">
-                                        {doc.salary.toLocaleString()} UZS
+                                        {formatNumber(doc.salary)} UZS
                                     </td>
                                     <td className="p-4 text-right text-sm text-gray-700 dark:text-gray-300">
-                                        {Math.round(doc.avgRevenue).toLocaleString()} UZS
+                                        {formatMoney(Math.round(doc.avgRevenue))} UZS
                                     </td>
                                     <td className="p-4 text-center">
                                         {doc.avgRating > 0 ? (
@@ -339,7 +348,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-primary-100 text-sm font-medium mb-1">{t('doctors.analytics.thTotalRevenue')}</p>
-                            <h3 className="text-3xl font-bold">{totalRevenue.toLocaleString()} UZS</h3>
+                            <h2 className="text-3xl font-bold">{formatMoney(totalRevenue)} UZS</h2>
                         </div>
                         <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
                             <DollarSign className="w-8 h-8 text-white" />
@@ -351,7 +360,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-gray-500 dark:text-gray-400 text-sm font-medium mb-1">{t('doctors.analytics.totalAppointments')}</p>
-                            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{totalAppointments}</h3>
+                            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">{totalAppointments}</h2>
                         </div>
                         <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
                             <Calendar className="w-8 h-8 text-purple-600 dark:text-purple-400" />
@@ -363,7 +372,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-gray-500 dark:text-gray-400 text-sm font-medium mb-1">{t('doctors.analytics.totalPatients')}</p>
-                            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{totalPatients}</h3>
+                            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">{totalPatients}</h2>
                         </div>
                         <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl">
                             <Users className="w-8 h-8 text-green-600 dark:text-green-400" />
@@ -375,11 +384,11 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-gray-500 dark:text-gray-400 text-sm font-medium mb-1">{t('doctors.analytics.mostActive')}</p>
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-white truncate max-w-[180px]">
+                            <h2 className="text-xl font-bold text-gray-900 dark:text-white truncate max-w-[180px]">
                                 {topPerformer ? `Dr. ${topPerformer.lastName}` : '-'}
-                            </h3>
+                            </h2>
                             <p className="text-xs text-green-500 font-medium mt-1">
-                                {topPerformer ? `${topPerformer.revenue.toLocaleString()} UZS` : ''}
+                                {topPerformer ? `${formatMoney(topPerformer.revenue)} UZS` : ''}
                             </p>
                         </div>
                         <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl">
@@ -414,7 +423,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Revenue Comparison Chart */}
                 <Card className="p-6 bg-white dark:bg-gray-800">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('doctors.analytics.revenueComparison')}</h3>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('doctors.analytics.revenueComparison')}</h2>
                     <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={analyticsData} layout="vertical">
                             <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
@@ -422,7 +431,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                             <YAxis dataKey="name" type="category" stroke="#9ca3af" fontSize={12} width={80} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
-                                formatter={(value: number) => `${value.toLocaleString()} UZS`}
+                                formatter={(value: number) => `${formatNumber(value)} UZS`}
                             />
                             <Bar dataKey="revenue" radius={[0, 8, 8, 0]}>
                                 {analyticsData.map((entry, index) => (
@@ -435,7 +444,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
 
                 {/* Appointments Comparison Chart */}
                 <Card className="p-6 bg-white dark:bg-gray-800">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('doctors.analytics.appointmentsComparison')}</h3>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('doctors.analytics.appointmentsComparison')}</h2>
                     <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={analyticsData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
@@ -453,7 +462,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
 
                 {/* Completion Rate Chart */}
                 <Card className="p-6 bg-white dark:bg-gray-800">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('doctors.analytics.efficiencyRate')}</h3>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('doctors.analytics.efficiencyRate')}</h2>
                     <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={analyticsData.map(d => ({
                             ...d,
@@ -477,7 +486,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
 
                 {/* Average Revenue Chart */}
                 <Card className="p-6 bg-white dark:bg-gray-800">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('doctors.analytics.averageRevenuePerAppt')}</h3>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('doctors.analytics.averageRevenuePerAppt')}</h2>
                     <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={analyticsData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
@@ -485,7 +494,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                             <YAxis stroke="#9ca3af" fontSize={12} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
-                                formatter={(value: number) => `${value.toLocaleString()} UZS`}
+                                formatter={(value: number) => `${formatNumber(value)} UZS`}
                             />
                             <Bar dataKey="avgRevenue" name={t('doctors.analytics.thAverage')} fill="#f59e0b" radius={[8, 8, 0, 0]} />
                         </BarChart>

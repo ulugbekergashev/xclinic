@@ -74,23 +74,32 @@ app.get('/api/tts', async (req: any, res: any) => {
 
 // Load everything else
 import { registerMultiprofileRoutes } from './multiprofile';
-import { registerBillingRoutes, createCharge } from './billing';
+import { registerBillingRoutes, createCharge, findBalanceMismatches } from './billing';
 import { registerInventoryRoutes } from './inventory';
+import { registerPatientMergeRoutes } from './patientMerge';
+import { registerEventRoutes, emitEvent } from './events';
+import { som } from './money';
 import { registerReportRoutes } from './reports';
 import { registerFileRoutes } from './files';
-import { runMigrations, registerMaintenanceRoutes } from './maintenance';
+import {
+    runMigrations, registerMaintenanceRoutes, startBackupScheduler,
+    performBackup, readBackupConfig,
+} from './maintenance';
+import type { MigrationResult } from './maintenance';
 import { tashkentDateStr, tashkentDayBounds } from './tashkentTime';
 import { registerClinicalRoutes } from './clinical';
 import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
 import { registerPayrollRoutes } from './payroll';
-import { registerComplianceRoutes, logAccess, pruneAccessLog } from './compliance';
+import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
+import { check as checkPermission } from './permissions';
+import { validatePatient, validatePhone } from '../shared/validation';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
 const { smsService, normalizeUzPhone } = require('./smsService');
 const { dmedService } = require('./dmedService');
 const cors = require('cors');
 const axios = require('axios');
-const { prisma, USER_DATA_PATH, DB_PATH } = require('./db');
+const { prisma, USER_DATA_PATH, DB_PATH, applySqlitePragmas } = require('./db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
@@ -138,8 +147,27 @@ const JWT_SECRET: string = (() => {
 // Faol foydalanuvchining tokeni muddati yaqinlashganda jimgina yangilanadi,
 // shuning uchun har kuni ishlaydigan xodim hech qachon tizimdan chiqib qolmaydi.
 // 30 kun tegilmagan sessiya esa o'z-o'zidan kuchini yo'qotadi.
-const TOKEN_TTL = '30d';
-const TOKEN_RENEW_THRESHOLD_SEC = 7 * 24 * 60 * 60; // 7 kun
+/* IKKI TOKEN (S1.3).
+
+   Ilgari bitta 30 kunlik token bo'lardi va u `localStorage` da yotardi:
+   bitta XSS butun klinikaning sessiyasini olib qo'yardi, va o'g'irlangan
+   token bir oy amal qilardi.
+
+   Endi:
+   - KIRISH tokeni (`access`) — 30 daqiqa, faqat brauzer XOTIRASIDA. Diskda
+     hech qayerda saqlanmaydi, ya'ni XSS undan ko'p narsa ololmaydi va
+     o'g'irlangani yarim soatda kuchini yo'qotadi. Faol foydalanuvchida u
+     `X-Refreshed-Token` sarlavhasi orqali jimgina yangilanib turadi.
+   - YANGILASH tokeni (`refresh`) — 30 kun, `httpOnly` cookie'da. JavaScript
+     uni O'QIY OLMAYDI. Sahifa yangilanganda xotiradagi kirish tokeni
+     yo'qoladi va `/api/auth/refresh` shu cookie orqali yangisini beradi.
+
+   Ya'ni sessiya uzunligi o'zgarmadi (30 kun), lekin skript o'qiy oladigan
+   sirning umri 30 kundan 30 daqiqaga tushdi. */
+const TOKEN_TTL = '30m';           // kirish tokeni
+const REFRESH_TTL = '30d';         // yangilash tokeni (cookie)
+const REFRESH_COOKIE = 'xclinic_refresh';
+const TOKEN_RENEW_THRESHOLD_SEC = 10 * 60; // 10 daqiqa qolganda yangilanadi
 
 // Tashqi hamkorlarga (yuboraman va h.k.) beriladigan endpoint manzilini yasash uchun.
 // Railway'da PUBLIC_API_BASE_URL ni o'rnatib qo'yish kerak.
@@ -215,6 +243,17 @@ const frontendDist = [
 ].find((d) => fs.existsSync(path.join(d, 'index.html'))) || path.join(__dirname, '../../dist');
 
 console.log('[Frontend] manba:', frontendDist, '| mavjud:', fs.existsSync(path.join(frontendDist, 'index.html')));
+
+/* Ichki manzildagi resurslar. Bundle `base: './'` bilan qurilgan (Electron uni
+   `file://` orqali ochadi va u yerda mutlaq yo'l ishlamaydi). Natijada
+   brauzer `/patients/123` sahifasida resursni `/patients/assets/...` deb
+   so'raydi. Prefiksni kesib tashlaymiz — shunda ikkala rejim ham ishlaydi. */
+app.use((req, _res, next) => {
+    const i = req.url.indexOf('/assets/');
+    if (i > 0 && !req.url.startsWith('/api/')) req.url = req.url.slice(i);
+    next();
+});
+
 app.use(express.static(frontendDist));
 
 app.get('/', (_req, res) => {
@@ -319,6 +358,49 @@ app.get('/api/local-logins', async (req: any, res: any) => {
     }
 });
 
+/* ─── Cookie yordamchilari ────────────────────────────────────────────────────
+   `cookie-parser` qo'shilmadi: bitta cookie o'qish uchun yangi bog'liqlik
+   ortiqcha. Yozishda `Secure` faqat HTTPS da qo'yiladi — Electron va
+   lokal tarmoqdagi klinika `http://localhost` orqali ishlaydi va u yerda
+   `Secure` cookie'ni brauzer umuman qabul qilmasdi. */
+const readCookie = (req: any, name: string): string | null => {
+    const raw = req.headers?.cookie;
+    if (!raw) return null;
+    for (const part of String(raw).split(';')) {
+        const i = part.indexOf('=');
+        if (i < 0) continue;
+        if (part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+    }
+    return null;
+};
+
+const isSecureRequest = (req: any): boolean =>
+    req.secure || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+
+const setRefreshCookie = (req: any, res: any, token: string) => {
+    const parts = [
+        `${REFRESH_COOKIE}=${encodeURIComponent(token)}`,
+        'HttpOnly',
+        'Path=/',
+        'SameSite=Strict',
+        `Max-Age=${30 * 24 * 60 * 60}`,
+    ];
+    if (isSecureRequest(req)) parts.push('Secure');
+    res.setHeader('Set-Cookie', parts.join('; '));
+};
+
+const clearRefreshCookie = (req: any, res: any) => {
+    const parts = [`${REFRESH_COOKIE}=`, 'HttpOnly', 'Path=/', 'SameSite=Strict', 'Max-Age=0'];
+    if (isSecureRequest(req)) parts.push('Secure');
+    res.setHeader('Set-Cookie', parts.join('; '));
+};
+
+/** Foydalanuvchi ma'lumotidan ikkala tokenni yasaydi. */
+const issueTokens = (payload: any, accessTtl: string = TOKEN_TTL) => ({
+    access: jwt.sign({ ...payload, typ: 'access' }, JWT_SECRET, { expiresIn: accessTtl }),
+    refresh: jwt.sign({ ...payload, typ: 'refresh' }, JWT_SECRET, { expiresIn: REFRESH_TTL }),
+});
+
 const authenticateToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -336,7 +418,32 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
             // login sahifasiga qaytaradi. 403 faqat rol tekshiruvi uchun qoladi.
             return res.status(401).json({ error: 'Token yaroqsiz yoki muddati tugagan' });
         }
+        /* YANGILASH TOKENI KIRISH UCHUN YARAMAYDI.
+
+           Ikkalasi ham bitta sir bilan imzolanadi, ya'ni `verify` ikkalasini
+           ham qabul qiladi. Farqi `typ` da: agar bu tekshiruv bo'lmasa,
+           cookie'dan olingan 30 kunlik token oddiy token sifatida ishlab
+           ketardi va butun ajratishning ma'nosi qolmasdi.
+
+           `typ` YO'Q token — eski sessiya (bu o'zgarishdan oldin berilgan).
+           U qabul qilinadi: xodimlar bir kunda tizimdan chiqib qolmasin.
+           Eski tokenlar 30 kun ichida o'z-o'zidan tugaydi. */
+        if (user?.typ === 'refresh') {
+            return res.status(401).json({ error: 'Token yaroqsiz yoki muddati tugagan' });
+        }
+
         (req as any).user = user;
+
+        /* CHEKLANGAN TOKEN. Standart parol bilan kirilganda beriladigan token
+           `scope: 'password-change'` ni olib yuradi va FAQAT parol almashtirish
+           uchun yaraydi. Tekshiruv aynan shu yerda — middleware da: interfeysga
+           ishonib bo'lmaydi, `curl` bilan istalgan endpointga urish mumkin. */
+        if (user?.scope === 'password-change' && req.path !== '/api/auth/change-password') {
+            return res.status(403).json({
+                error: "Standart parol almashtirilmaguncha tizimdan foydalanib bo'lmaydi.",
+                code: 'MUST_CHANGE_PASSWORD',
+            });
+        }
 
         // Sirpanuvchi yangilanish: muddati tugashiga TOKEN_RENEW_THRESHOLD_SEC dan kam
         // qolgan bo'lsa, yangi token generatsiya qilib javob sarlavhasida qaytaramiz.
@@ -346,17 +453,56 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
             const secondsLeft = (user?.exp ?? 0) - Math.floor(Date.now() / 1000);
             if (secondsLeft > 0 && secondsLeft < TOKEN_RENEW_THRESHOLD_SEC) {
                 const { iat, exp, nbf, ...payload } = user;
-                res.setHeader('X-Refreshed-Token', jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_TTL }));
+                // `typ` ataylab majburan qo'yiladi: eski (typ'siz) sessiya
+                // shu yerda jimgina yangi shaklga o'tadi.
+                res.setHeader('X-Refreshed-Token',
+                    jwt.sign({ ...payload, typ: 'access' }, JWT_SECRET, { expiresIn: TOKEN_TTL }));
             }
         } catch (renewError) {
             console.warn('Token yangilashda xatolik (so\'rov davom etadi):', renewError);
         }
 
         // Multi-tenant himoya: oddiy rol uchun body'dagi clinicId majburan o'z klinikasiga tenglashtiriladi.
-        // Bu boshqa klinika nomidan yozuv yaratish/o'zgartirishni bloklaydi. SUPER_ADMIN bundan mustasno.
-        if (user?.role !== 'SUPER_ADMIN' && user?.clinicId && req.body && typeof req.body === 'object' && 'clinicId' in req.body) {
+        // Bu boshqa klinika nomidan yozuv yaratish/o'zgartirishni bloklaydi.
+        if (user?.clinicId && req.body && typeof req.body === 'object' && 'clinicId' in req.body) {
             (req.body as any).clinicId = user.clinicId;
         }
+
+        /* AVTORIZATSIYA — kim ekani aniqlandi, endi shu amalga haqqi bormi.
+
+           Tekshiruv shu yerda turibdi, chunki `authenticateToken` 144 ta
+           marshrutda ishlaydi: qoida bitta joyda yozilsa, hamma marshrut
+           avtomatik qamrab olinadi va yangi marshrut qo'shilganda uni
+           himoyalash ESDAN CHIQMAYDI — jadvalda qoidasi yo'q yozuv amali
+           rad etiladi (`backend/permissions.ts`).
+
+           Marshrutlardagi mavjud `requireRole` middleware'lari o'z o'rnida
+           qoldirildi: ular endi ikkinchi qatlam, va bir-biriga zid emas —
+           jadval ularning ruxsatini takrorlaydi. */
+        const decision = checkPermission(req.method, req.path, user?.role);
+        if (!decision.allow) {
+            if (decision.reason === 'unlisted') {
+                /* Bu dasturchining xatosi, foydalanuvchiniki emas: marshrut
+                   qo'shilgan, lekin ruxsatlar jadvaliga yozilmagan. */
+                console.error(
+                    `[RUXSAT] ${req.method} ${req.path} — permissions.ts da qoida yo'q, amal rad etildi`,
+                );
+                return res.status(403).json({
+                    error: "Bu amal uchun ruxsat sozlanmagan",
+                    code: 'PERMISSION_UNLISTED',
+                });
+            }
+            if (isDev) {
+                console.log(`[RUXSAT] ${req.method} ${req.path} — rol ${user?.role}, kerak: ${decision.allowed.join(', ')}`);
+            }
+            return res.status(403).json({ error: "Bu amal uchun ruxsatingiz yo'q", code: 'FORBIDDEN' });
+        }
+
+        /* O'chirish jurnali. Ruxsat tekshiruvidan KEYIN: rad etilgan
+           urinish o'chirish emas. Yozuvning o'zi javob yuborilgach,
+           status ma'lum bo'lganda amalga oshadi. */
+        auditDeletion(prisma, req, res);
+
         next();
     });
 };
@@ -364,13 +510,15 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
 // ─── Xavfsizlik yordamchilari (multi-tenant izolyatsiya) ──────────────────────
 // Klinikaga bog'liq endpointlar uchun "samarali clinicId"ni aniqlaydi.
 // Oddiy rollar: clinicId tokendan olinadi (mijoz yuborgan qiymat e'tiborga olinmaydi).
-// SUPER_ADMIN: mijoz yuborgan clinicId'ga ishonadi (u barcha klinikalarni boshqaradi).
 const getScopedClinicId = (req: any): string | null => {
-    const u = (req as any).user;
-    if (u?.role === 'SUPER_ADMIN') {
-        return (req.query?.clinicId || req.body?.clinicId || null) as string | null;
-    }
-    return (u?.clinicId || null) as string | null;
+    /* Klinika HAR DOIM tokendan olinadi.
+
+       Ilgari bu yerda butun klinikalar ustidagi rol uchun istisno bor edi: u mijoz yuborgan
+       `clinicId` ga ishonardi. XClinic esa bitta o'rnatma = bitta klinika
+       (SaaS emas), ya'ni bu istisno hech narsa bermas, faqat ishonchli
+       manbani (token) mijoz yuborgan qiymat bilan almashtiradigan yo'l
+       ochib turardi. Rol olib tashlandi, istisno ham. */
+    return ((req as any).user?.clinicId || null) as string | null;
 };
 
 // Faqat ko'rsatilgan rollar uchun ruxsat beruvchi middleware.
@@ -391,14 +539,68 @@ const requireRole = (...roles: string[]) => {
 
    O'QISH cheklanmaydi: registrator navbat yozish uchun shifokorlar
    ro'yxatini ko'rishi kerak. */
-const STAFF = requireRole('CLINIC_ADMIN', 'SUPER_ADMIN');
+const STAFF = requireRole('CLINIC_ADMIN');
+
+/* ─── Qabul vaqtining to'qnashuvi (S2.4) ─────────────────────────────────────
+
+   Audit topgani (B-19): band vaqtga yozishga urinish hech qanday
+   ogohlantirish bermasdi. Frontda tekshiruv bor edi, lekin u ikki sababdan
+   ishlamasdi:
+
+   1. Faqat AYNAN bir xil boshlanish vaqti taqqoslanardi
+      (`appt.time === formData.time`). Ya'ni 08:30 dagi 60 daqiqalik qabul
+      ustiga 09:00 ni yozib bo'laverardi.
+   2. Brauzerdagi ro'yxat to'liq emas — u faqat yuklangan oynani ko'radi.
+
+   Shuning uchun tekshiruv SERVERDA va DAVOMIYLIK bilan. */
+
+/** "08:30" → 510. Noto'g'ri format bo'lsa `null`. */
+const minutesOfDay = (t?: string | null): number | null => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+    if (!m) return null;
+    const h = Number(m[1]), min = Number(m[2]);
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
+};
+
+/** Shu shifokorda shu vaqt oralig'ida boshqa qabul bormi. */
+async function findOverlappingAppointment(
+    clinicId: string,
+    doctorId: string | null | undefined,
+    date: string,
+    time: string,
+    duration: number | null | undefined,
+    excludeId?: string,
+): Promise<any | null> {
+    if (!doctorId || !date) return null;
+    const start = minutesOfDay(time);
+    if (start === null) return null;
+    const end = start + (Number(duration) > 0 ? Number(duration) : 30);
+
+    const sameDay = await prisma.appointment.findMany({
+        where: {
+            clinicId, doctorId, date,
+            status: { not: 'Cancelled' },
+            ...(excludeId ? { id: { not: excludeId } } : {}),
+        },
+        select: { id: true, time: true, duration: true, patientName: true, type: true },
+    });
+
+    for (const a of sameDay) {
+        const s = minutesOfDay(a.time);
+        if (s === null) continue;
+        const e = s + (Number(a.duration) > 0 ? Number(a.duration) : 30);
+        // Oraliqlar kesishadimi: [start,end) va [s,e)
+        if (start < e && s < end) return a;
+    }
+    return null;
+}
 
 // :id bo'yicha mutatsiyadan oldin yozuv egaligini tekshiradi.
-// SUPER_ADMIN o'tib ketadi; aks holda record.clinicId === user.clinicId bo'lishi shart.
+// Shart: record.clinicId === user.clinicId. Istisno YO'Q.
 // Bazaviy modellar uchun (Patient, Appointment, ... — clinicId to'g'ridan-to'g'ri saqlanadi).
 const assertOwnership = async (req: any, res: any, model: string, id: string): Promise<boolean> => {
     const u = (req as any).user;
-    if (u?.role === 'SUPER_ADMIN') return true;
     try {
         const rec = await (prisma as any)[model].findUnique({ where: { id } });
         if (!rec) {
@@ -419,7 +621,6 @@ const assertOwnership = async (req: any, res: any, model: string, id: string): P
 // Bemorga bog'liq resurslar uchun (photo, teeth, diagnosis) — bemor orqali clinicId tekshiriladi.
 const assertPatientOwnership = async (req: any, res: any, patientId: string): Promise<boolean> => {
     const u = (req as any).user;
-    if (u?.role === 'SUPER_ADMIN') return true;
     try {
         const patient = await prisma.patient.findUnique({ where: { id: patientId } });
         if (!patient) {
@@ -437,10 +638,9 @@ const assertPatientOwnership = async (req: any, res: any, patientId: string): Pr
     }
 };
 
-// Klinika sozlamasi endpointlari uchun: SUPER_ADMIN yoki o'z klinikasi bo'lishi shart.
+// Klinika sozlamasi endpointlari uchun: faqat o'z klinikasi.
 const canAccessClinic = (req: any, clinicId: string): boolean => {
     const u = (req as any).user;
-    if (u?.role === 'SUPER_ADMIN') return true;
     return u?.clinicId === clinicId;
 };
 
@@ -1414,7 +1614,7 @@ app.get('/api/clinics/:id/reviews', authenticateToken, async (req, res) => {
 });
 
 // ─── AI (1-bosqich: bilim yordamchisi) ───────────────────────────────────────
-// Bu bosqichda AI klinika bazasiga UMUMAN kirmaydi — faqat umumiy stomatologik
+// Bu bosqichda AI klinika bazasiga UMUMAN kirmaydi — faqat umumiy tibbiy
 // va marketing bilimi. Shuning uchun bemor ma'lumoti hech qachon modelga
 // yuborilmaydi va tenant izolyatsiyasi bu yerda muammo emas.
 const aiService = require('./aiService');
@@ -1444,18 +1644,32 @@ setInterval(() => {
     }
 }, 10 * 60 * 1000).unref?.();
 
-const DENTAL_ADVISOR_PROMPTS: Record<string, string> = {
-    treatment_plan:
-        'Sen tajribali stomatolog-maslahatchisan. Berilgan klinik holat asosida ' +
-        'bosqichma-bosqich davolash rejasini tuz: tashxis taxmini, bosqichlar, ' +
-        'taxminiy seanslar soni va profilaktika. Qisqa va aniq yoz.',
-    sms_generator:
-        'Sen stomatologiya klinikasining marketing mutaxassisisan. Bemorga ' +
-        'yuboriladigan qisqa, samimiy va bosim o\'tkazmaydigan SMS matnini yoz. ' +
-        '160 belgidan oshmasin, spam ohangidan qoch.',
-    staff_optimization:
-        'Sen klinika boshqaruvi bo\'yicha maslahatchisan. Berilgan muammo uchun ' +
-        'amaliy, bugundan qo\'llasa bo\'ladigan 3-5 ta yechim taklif qil.',
+/* ─── AI MASLAHATCHI PROMPTLARI ────────────────────────────────────────────
+   Bu promptlar denta7 dan o'zgarmasdan ko'chgan edi va "Sen tajribali
+   STOMATOLOG-maslahatchisan" deb boshlanardi. Ko'p profilli klinikada bu
+   shunday ko'rinardi: kardiolog AI yordamchini ochsa, unga tish davolash
+   rejasi tuzib berilardi.
+
+   Endi mutaxassislik SO'ROVDA keladi (`specialty`) — u bo'lim yoki
+   shifokorning yo'nalishidan olinadi. Berilmasa umumiy amaliyot. */
+const advisorSpecialty = (raw: unknown): string => {
+    const s = String(raw || '').trim().slice(0, 60);
+    return s || 'umumiy amaliyot';
+};
+
+const ADVISOR_PROMPTS: Record<string, (spec: string) => string> = {
+    treatment_plan: (spec) =>
+        `Sen ${spec} sohasidagi tajribali maslahatchisan. Berilgan klinik holat ` +
+        'asosida bosqichma-bosqich davolash rejasini tuz: tashxis taxmini, ' +
+        'bosqichlar, taxminiy muddat va profilaktika. Qisqa va aniq yoz. ' +
+        'Aniq bolmagan joyda taxmin qilma, qoshimcha tekshiruv taklif qil.',
+    sms_generator: () =>
+        'Sen klinikaning marketing mutaxassisisan. Bemorga yuboriladigan qisqa, ' +
+        'samimiy va bosim otkazmaydigan SMS matnini yoz. 160 belgidan ' +
+        'oshmasin, spam ohangidan qoch.',
+    staff_optimization: () =>
+        'Sen klinika boshqaruvi boyicha maslahatchisan. Berilgan muammo uchun ' +
+        'amaliy, bugundan qollasa boladigan 3-5 ta yechim taklif qil.',
 };
 
 // Landing sahifasidagi demo. Autentifikatsiyasiz — shuning uchun IP bo'yicha
@@ -1472,8 +1686,9 @@ app.post('/api/ai/dental-advisor', async (req: any, res: any) => {
             });
         }
 
-        const { topic, inputData } = req.body || {};
-        const systemPrompt = DENTAL_ADVISOR_PROMPTS[topic];
+        const { topic, inputData, specialty } = req.body || {};
+        const build = ADVISOR_PROMPTS[topic];
+        const systemPrompt = build ? build(advisorSpecialty(specialty)) : undefined;
         if (!systemPrompt) {
             return res.status(400).json({ success: false, message: 'Noto\'g\'ri mavzu tanlandi.' });
         }
@@ -1514,6 +1729,71 @@ app.post('/api/ai/dental-advisor', async (req: any, res: any) => {
     }
 });
 
+/* ═══ LOGIN URINISHLARINI CHEKLASH ════════════════════════════════════════
+
+   Ilgari cheklov UMUMAN yo'q edi: parolni cheksiz terib ko'rish mumkin edi.
+   LAN ichida xavf past, lekin Cloudflare tunnel yoqilishi bilan server
+   internetga chiqadi va `admin` / `admin` standart logini bilan birga bu
+   ochiq eshik bo'lardi.
+
+   NIMA UCHUN `X-Forwarded-For` ISHLATILMAYDI. Bu sarlavhani mijozning O'ZI
+   yozadi. `app.set('trust proxy', ...)` loyihada hech qayerda yo'q
+   (tekshirilgan), ya'ni Express uni tasdiqlamaydi. Agar cheklov shu sarlavha
+   bo'yicha kalit qursa, hujumchi har so'rovda boshqa qiymat yuborib CHEKSIZ
+   yangi hisoblagich oladi — ya'ni cheklov nol himoya beradi.
+
+   Shuning uchun IP faqat `socket.remoteAddress` dan olinadi: uni soxtalashtirib
+   bo'lmaydi. Tunnel ortida hamma so'rov 127.0.0.1 dan ko'rinadi va IP cheklovi
+   ma'nosini yo'qotadi — aynan shu sababli ASOSIY himoya LOGIN bo'yicha, IP
+   bo'yicha emas.                                                            */
+type Bucket = { count: number; resetAt: number };
+const loginFailByUser = new Map<string, Bucket>();
+const loginFailByIp = new Map<string, Bucket>();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_PER_USER = 5;
+const LOGIN_MAX_PER_IP = 30;
+
+const socketIp = (req: any): string =>
+    String(req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown');
+
+const bump = (map: Map<string, Bucket>, key: string): number => {
+    const now = Date.now();
+    const b = map.get(key);
+    if (!b || now > b.resetAt) {
+        map.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+        return 1;
+    }
+    b.count++;
+    return b.count;
+};
+
+const blockedFor = (map: Map<string, Bucket>, key: string, max: number): number => {
+    const b = map.get(key);
+    if (!b || Date.now() > b.resetAt) return 0;
+    return b.count >= max ? Math.ceil((b.resetAt - Date.now()) / 60000) : 0;
+};
+
+// Xotira o'sib ketmasligi uchun muddati o'tganlarini tozalaymiz
+setInterval(() => {
+    const now = Date.now();
+    for (const m of [loginFailByUser, loginFailByIp]) {
+        for (const [k, v] of m) if (now > v.resetAt) m.delete(k);
+    }
+}, 10 * 60 * 1000).unref?.();
+
+/** Standart parol hali turibdimi. Migratsiya talab qilmaydi va parol
+ *  almashtirilishi bilan o'zi to'xtaydi. */
+const DEFAULT_ADMIN_PASSWORD = 'admin';
+async function isDefaultPassword(hash?: string | null): Promise<boolean> {
+    if (!hash) return false;
+    try {
+        if (hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$')) {
+            return await bcrypt.compare(DEFAULT_ADMIN_PASSWORD, hash);
+        }
+        return hash === DEFAULT_ADMIN_PASSWORD;   // eski, hashlanmagan
+    } catch { return false; }
+}
+
 // --- Authentication ---
 app.post('/api/auth/login', async (req, res) => {
     try {
@@ -1525,25 +1805,36 @@ app.post('/api/auth/login', async (req, res) => {
 
         const cleanUsername = String(username).trim();
         const cleanPassword = String(password).trim();
+        const ip = socketIp(req);
+
+        // Bloklangan bo'lsa — parolni umuman tekshirmaymiz
+        const userBlock = blockedFor(loginFailByUser, cleanUsername.toLowerCase(), LOGIN_MAX_PER_USER);
+        const ipBlock = blockedFor(loginFailByIp, ip, LOGIN_MAX_PER_IP);
+        if (userBlock || ipBlock) {
+            const mins = Math.max(userBlock, ipBlock);
+            return res.status(429).json({
+                success: false,
+                error: `Juda ko'p muvaffaqiyatsiz urinish. ${mins} daqiqadan so'ng qayta urinib ko'ring.`,
+                retryAfterMinutes: mins,
+            });
+        }
 
         let userPayload = null;
         let responseData = null;
 
-        // Check for super admin (uses env variables with fallback)
-        const superAdminUsername = process.env.SUPERADMIN_USERNAME;
-        const superAdminPassword = process.env.SUPERADMIN_PASSWORD;
+        /* SUPER_ADMIN OLIB TASHLANDI.
 
-        if (superAdminUsername && superAdminPassword && cleanUsername === superAdminUsername && cleanPassword === superAdminPassword) {
-            userPayload = { role: 'SUPER_ADMIN', name: 'Ulugbek (Super Admin)' };
-            responseData = {
-                success: true,
-                role: 'SUPER_ADMIN',
-                name: 'Ulugbek (Super Admin)'
-            };
-        } else {
-            if (!superAdminUsername || !superAdminPassword) {
-                console.warn('⚠️ WARNING: Superadmin credentials are not configured in .env file!');
-            }
+           XClinic bitta o'rnatma = bitta klinika (SaaS emas), ya'ni butun
+           klinikalar ustidan turadigan rol tushunchasi keraksiz meros edi.
+           U hech qachon ishlatilmagan ham: kirish uchun `SUPERADMIN_USERNAME`
+           va `SUPERADMIN_PASSWORD` env o'zgaruvchilari kerak bo'lgan va ular
+           hech qayerda sozlanmagan.
+
+           Olib tashlash XAVFSIZLIKNI OSHIRDI: egalik tekshiruvlarida
+           `role !== 'SUPER_ADMIN' &&` istisnosi bor edi, endi tekshiruv
+           HAR DOIM ishlaydi, va `getScopedClinicId` mijoz yuborgan
+           `clinicId` ga umuman ishonmaydi. */
+        {
             // Helper function to verify and seamlessly upgrade passwords
             const verifyAndUpgradePassword = async (user: any, modelName: string, idField: string = 'id') => {
                 let isValid = false;
@@ -1576,7 +1867,6 @@ app.post('/api/auth/login', async (req, res) => {
             // Check for clinic admin in database
             const clinic = await prisma.clinic.findUnique({
                 where: { username: cleanUsername },
-                include: { plan: true }
             });
 
             if (clinic && await verifyAndUpgradePassword(clinic, 'clinic')) {
@@ -1697,38 +1987,78 @@ app.post('/api/auth/login', async (req, res) => {
                         }
                     }
 
-                    if (!userPayload) {
-                        // Check for sales agent
-                        const salesAgent = await prisma.salesAgent.findUnique({
-                            where: { username: cleanUsername.toLowerCase() }
-                        });
+                    /* SOTUVCHI AGENT KIRISHI OLIB TASHLANDI.
 
-                        if (salesAgent && await verifyAndUpgradePassword(salesAgent, 'salesAgent')) {
-                            if (salesAgent.status !== 'Active') {
-                                return res.status(403).json({ success: false, error: 'Sotuvchi akkaunti faol emas' });
-                            }
-                            userPayload = { role: 'SALES_AGENT', name: salesAgent.name, salesAgentId: salesAgent.id };
-                            responseData = {
-                                success: true,
-                                role: 'SALES_AGENT',
-                                name: salesAgent.name,
-                                salesAgentId: salesAgent.id
-                            };
-                        }
-                    }
+                       `SALES_AGENT` — ko'p klinikali obuna sotish konturidan
+                       qolgan rol. XClinic bitta o'rnatma = bitta klinika, ya'ni
+                       u bu yerda ma'nosiz. Lekin u TIRIK kirish yo'li edi:
+                       yana bitta parol, yana bitta hujum yuzasi. Bazada 0 qator
+                       (o'lchandi), ya'ni hech kim yo'qotmaydi. */
                 }
             }
         }
 
         if (userPayload && responseData) {
-            const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: TOKEN_TTL });
-            return res.json({ ...responseData, token });
+            // Muvaffaqiyat — login bo'yicha hisoblagich tozalanadi.
+            // IP hisoblagichi ATAYLAB tozalanmaydi: aks holda bitta ishlaydigan
+            // hisobni bilgan odam IP cheklovini xohlagancha nolga tushirib,
+            // loginlarni aylantirib tanlashda davom etardi.
+            loginFailByUser.delete(cleanUsername.toLowerCase());
+
+            /* STANDART PAROL — CHEKLANGAN TOKEN.
+
+               Ilgari bu faqat interfeys bezagi bo'lardi: server to'liq huquqli
+               30 kunlik token berar, ya'ni `admin` / `admin` ni bilgan odam
+               `curl` bilan hamma joyga kiraverardi va ekrandagi "parolni
+               almashtiring" oynasi hech narsani to'smasdi.
+
+               Endi cheklov TOKENDA: `scope: 'password-change'` bilan token
+               faqat parol almashtirish endpointiga yaraydi. */
+            const stillDefault = userPayload.role === 'CLINIC_ADMIN'
+                && await isDefaultPassword(
+                    (await prisma.clinic.findUnique({
+                        where: { id: userPayload.clinicId }, select: { password: true },
+                    }))?.password,
+                );
+
+            if (stillDefault) {
+                /* Cheklangan token: faqat parol almashtirishga yaraydi va
+                   YANGILASH tokeni berilmaydi — aks holda standart parolli
+                   sessiya 30 kun yashab qolardi. */
+                const token = jwt.sign(
+                    { ...userPayload, scope: 'password-change', typ: 'access' },
+                    JWT_SECRET, { expiresIn: '30m' },
+                );
+                console.warn(`⚠️ "${cleanUsername}" standart parol bilan kirdi — parol almashtirilmaguncha kirish cheklangan`);
+                clearRefreshCookie(req, res);
+                return res.json({ ...responseData, token, mustChangePassword: true });
+            }
+
+            /* Kirish tokeni javob TANASIDA qaytadi — front uni xotirada
+               ushlaydi. Yangilash tokeni faqat `httpOnly` cookie'da: u
+               javobda ham, JavaScript uchun ham ko'rinmaydi. */
+            const { access, refresh } = issueTokens(userPayload);
+            setRefreshCookie(req, res, refresh);
+            return res.json({ ...responseData, token: access, mustChangePassword: false });
+        }
+
+        /* Muvaffaqiyatsiz urinish. Jurnalga FAQAT birinchi marta yoziladi:
+           loginlarni aylantirib hujum qilganda har urinish uchun yozuv
+           yaratilsa, baza fayli tashqaridan shishirilardi. */
+        const userFails = bump(loginFailByUser, cleanUsername.toLowerCase());
+        bump(loginFailByIp, ip);
+        if (userFails === 1) {
+            console.warn(`Muvaffaqiyatsiz kirish: "${cleanUsername}" (${ip})`);
+        }
+        if (userFails >= LOGIN_MAX_PER_USER) {
+            console.warn(`🔒 "${cleanUsername}" ${LOGIN_MAX_PER_USER} marta xato — ${LOGIN_WINDOW_MS / 60000} daqiqaga bloklandi`);
         }
 
         // Invalid credentials
         return res.status(401).json({
             success: false,
-            error: 'Login yoki parol noto\'g\'ri'
+            error: 'Login yoki parol noto\'g\'ri',
+            attemptsLeft: Math.max(0, LOGIN_MAX_PER_USER - userFails),
         });
     } catch (error: any) {
         console.error('Login error:', error);
@@ -1739,6 +2069,228 @@ app.post('/api/auth/login', async (req, res) => {
         });
     }
 });
+
+/* ═══ MASOFAVIY KIRISH ════════════════════════════════════════════════════
+   Sukut bo'yicha O'CHIQ. Yoqilganda Electron `cloudflared` quick tunnel ni
+   ko'taradi va klinika serveri internetdan ochiladi.
+
+   Yoqish uchun standart parol almashtirilgan bo'lishi SHART: `admin`/`admin`
+   turgan serverni internetga chiqarish — eshikni ochiq qoldirish. */
+const REMOTE_ACCESS_FILE = 'remote-access.json';
+const remoteAccessPath = () => path.join(USER_DATA_PATH, REMOTE_ACCESS_FILE);
+
+const readRemoteAccess = (): boolean => {
+    try {
+        return JSON.parse(fs.readFileSync(remoteAccessPath(), 'utf8'))?.enabled === true;
+    } catch { return false; }
+};
+
+app.get('/api/admin/remote-access', authenticateToken, requireRole('CLINIC_ADMIN'), async (req: any, res) => {
+    const clinic = await prisma.clinic.findUnique({
+        where: { id: (req as any).user?.clinicId }, select: { password: true },
+    });
+    res.json({
+        enabled: readRemoteAccess(),
+        defaultPasswordInUse: await isDefaultPassword(clinic?.password),
+        note: "O'zgarish dastur qayta ishga tushganda kuchga kiradi.",
+    });
+});
+
+app.put('/api/admin/remote-access', authenticateToken, requireRole('CLINIC_ADMIN'), async (req: any, res) => {
+    try {
+        const enabled = req.body?.enabled === true;
+
+        if (enabled) {
+            const clinic = await prisma.clinic.findUnique({
+                where: { id: (req as any).user?.clinicId }, select: { password: true },
+            });
+            if (await isDefaultPassword(clinic?.password)) {
+                return res.status(409).json({
+                    error: "Standart parol turganda masofaviy kirishni yoqib bo'lmaydi. "
+                        + "Avval parolni almashtiring.",
+                    code: 'DEFAULT_PASSWORD',
+                });
+            }
+        }
+
+        fs.writeFileSync(remoteAccessPath(), JSON.stringify({ enabled }, null, 2), 'utf8');
+
+        /* O'chirilganda manzil fayllari ham o'chiriladi. Bunsiz `/api/network-info`
+           faylni o'qib eski manzilni qaytaraverardi va Sozlamalar "internetdan
+           ochiq" degan YOLG'ON ogohlantirishni abadiy ko'rsatardi. */
+        if (!enabled) {
+            for (const f of ['cf-quick-tunnel.json', 'cf-tunnel.json']) {
+                try {
+                    const p = path.join(USER_DATA_PATH, f);
+                    if (fs.existsSync(p)) fs.unlinkSync(p);
+                } catch { /* ixtiyoriy */ }
+            }
+        }
+
+        console.log(`🌐 Masofaviy kirish: ${enabled ? 'YOQILDI' : "O'CHIRILDI"}`);
+        res.json({ enabled, restartRequired: true });
+    } catch (e: any) {
+        console.error('[PUT /api/admin/remote-access]', e?.message || e);
+        res.status(500).json({ error: "Sozlamani saqlab bo'lmadi" });
+    }
+});
+
+/**
+ * Parolni almashtirish. Cheklangan token bilan ham ishlaydi — bu yagona
+ * endpoint bo'lib, standart paroldan chiqish yo'lini beradi.
+ *
+ * Hozircha faqat klinika admini uchun: standart parol muammosi aynan shu
+ * hisobda (`admin` / `admin` birinchi ishga tushishda yaratiladi).
+ */
+/**
+ * Kirish tokenini yangilash (S1.3).
+ *
+ * NIMA UCHUN KERAK. Kirish tokeni faqat brauzer xotirasida yashaydi — sahifa
+ * yangilanganda u yo'qoladi. Bu endpoint `httpOnly` cookie'dagi yangilash
+ * tokeni orqali yangisini beradi, ya'ni foydalanuvchi har F5 da qaytadan
+ * parol kiritmaydi.
+ *
+ * Token cookie'dan olinadi, so'rov tanasidan EMAS: tanadan olinsa, uni
+ * JavaScript yubora olishi kerak bo'lardi va butun `httpOnly` ning ma'nosi
+ * qolmasdi.
+ *
+ * `authenticateToken` bu yerda ATAYLAB yo'q — kirish tokeni allaqachon
+ * eskirgan bo'lishi mumkin, aynan shuning uchun bu endpointga kelinadi.
+ */
+app.post('/api/auth/refresh', (req, res) => {
+    const token = readCookie(req, REFRESH_COOKIE);
+    if (!token) return res.status(401).json({ error: 'Sessiya topilmadi' });
+
+    jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
+        if (err || decoded?.typ !== 'refresh') {
+            clearRefreshCookie(req, res);
+            return res.status(401).json({ error: 'Sessiya muddati tugagan' });
+        }
+
+        const { iat, exp, nbf, typ, ...payload } = decoded;
+        const { access, refresh } = issueTokens(payload);
+        // Cookie ham yangilanadi — faol foydalanuvchining sessiyasi surilib boradi.
+        setRefreshCookie(req, res, refresh);
+        res.json({ success: true, token: access, ...payload });
+    });
+});
+
+/**
+ * Chiqish. Cookie serverda bekor qilinadi — frontda `localStorage.clear()`
+ * bilan cheklanish yetarli emas edi: `httpOnly` cookie'ni JavaScript
+ * o'chira olmaydi.
+ */
+app.post('/api/auth/logout', (req, res) => {
+    clearRefreshCookie(req, res);
+    res.json({ success: true });
+});
+
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+    try {
+        const user = (req as any).user;
+        const { currentPassword, newPassword } = req.body || {};
+
+        if (user?.role !== 'CLINIC_ADMIN') {
+            return res.status(403).json({ error: "Bu endpoint klinika admini uchun" });
+        }
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Joriy va yangi parol kiritilishi shart' });
+        }
+
+        const next = String(newPassword).trim();
+        if (next.length < 8) {
+            return res.status(400).json({ error: "Yangi parol kamida 8 belgidan iborat bo'lsin" });
+        }
+        if (next.toLowerCase() === DEFAULT_ADMIN_PASSWORD) {
+            return res.status(400).json({ error: "Standart parolni qayta qo'yib bo'lmaydi" });
+        }
+
+        const clinic = await prisma.clinic.findUnique({
+            where: { id: user.clinicId }, select: { id: true, password: true, username: true },
+        });
+        if (!clinic) return res.status(404).json({ error: 'Klinika topilmadi' });
+
+        const cur = String(currentPassword).trim();
+        const valid = clinic.password?.startsWith('$2')
+            ? await bcrypt.compare(cur, clinic.password)
+            : clinic.password === cur;
+        if (!valid) return res.status(401).json({ error: "Joriy parol noto'g'ri" });
+
+        const salt = await bcrypt.genSalt(10);
+        await prisma.clinic.update({
+            where: { id: clinic.id },
+            data: { password: await bcrypt.hash(next, salt) },
+        });
+        console.log(`🔑 "${clinic.username}" paroli almashtirildi`);
+
+        /* Yangi TO'LIQ token darhol beriladi: aks holda foydalanuvchi parolni
+           almashtirgach yana login qilishga majbur bo'lardi. */
+        const { scope, iat, exp, typ, ...payload } = user;
+        const { access, refresh } = issueTokens(payload);
+        // Endi sessiya to'liq — yangilash cookie'si ham shu yerda beriladi
+        // (login paytida standart parol tufayli berilmagan edi).
+        setRefreshCookie(req, res, refresh);
+        res.json({ success: true, token: access });
+    } catch (error: any) {
+        console.error('Change password error:', error);
+        res.status(500).json({ error: "Parolni almashtirib bo'lmadi" });
+    }
+});
+
+/* ─── RO'YXAT CHEGARASI (FIX-PLAN 10.2) ────────────────────────────────────
+   Ilgari bu endpointlar BUTUN jadvalni qaytarardi va `App.tsx` ularni kirishda
+   birdan yuklardi. O'lchov (`tests/bench/scale.ts`, 3 yillik ma'lumot):
+   110 510 qator, 41 MB. Localhost'da 1.3 s, LAN orqali esa 7-16 soniya —
+   va bu har kirishda va har yangilashda takrorlanadi.
+
+   ORQAGA MOSLIK: parametrsiz chaqiruv ILGARIGIDEK butun massiv qaytaradi.
+   Yangi xatti-harakat faqat `from`/`to`/`limit` berilganda. Shunda ekranlarni
+   bittalab ko'chirish mumkin, hammasini bir kunda emas.                     */
+const listRange = (req: any) => {
+    const from = req.query?.from ? String(req.query.from) : null;
+    const to = req.query?.to ? String(req.query.to) : null;
+    const rawLimit = req.query?.limit ? parseInt(String(req.query.limit), 10) : null;
+    const limit = rawLimit && rawLimit > 0 ? Math.min(rawLimit, 5000) : null;
+
+    /* SAHIFALASH (S5.5, audit B-38 / T07).
+
+       Audit: «Bemorlar (67 ta) va to'lovlar (286 ta) hozir bir sahifada.
+       DOM'da 67 qator birdaniga render bo'lyapti; 5 000 bemorda bu sahifa
+       ochilmay qoladi».
+
+       `page` 1 dan boshlanadi. U BERILMASA hech narsa o'zgarmaydi —
+       javob ilgarigidek oddiy massiv bo'lib qoladi va mavjud ekranlar
+       buzilmaydi. Berilsa — `{ items, total, page, limit, pages }`. */
+    const rawPage = req.query?.page ? parseInt(String(req.query.page), 10) : null;
+    const page = rawPage && rawPage > 0 ? rawPage : null;
+    const pageSize = page ? (limit || 50) : null;
+    const skip = page && pageSize ? (page - 1) * pageSize : null;
+
+    return { from, to, limit, page, pageSize, skip, bounded: !!(from || to || limit) };
+};
+
+/** `date` ustuni MATN (YYYY-MM-DD) — shuning uchun oddiy solishtirish ishlaydi */
+const dateWhere = (from: string | null, to: string | null) =>
+    (from || to) ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {};
+
+/* Kesim bo'yicha filtr — BITTA bemor yoki BITTA shifokor tarixi uchun.
+
+   Nima uchun kerak. Kirishda faqat 45 kunlik oyna yuklanadi (10.3), va bu
+   to'g'ri: butun jadvalni tortish 41 MB edi. Lekin bemor kartasi va shifokor
+   kartasi aynan ESKI tarix uchun ochiladi. Ularga butun jadvalni qaytarish
+   ham mumkin emas — shuning uchun kesim serverda qisqartiriladi: bitta
+   bemorning yoki bitta shifokorning yozuvlari sanalar bilan chegaralanmasdan
+   qaytadi, hajmi esa tabiiy ravishda kichik.
+
+   Parametrsiz chaqiruv ILGARIGIDEK ishlaydi. */
+const scopeWhere = (req: any) => {
+    const patientId = req.query?.patientId ? String(req.query.patientId) : null;
+    const doctorId = req.query?.doctorId ? String(req.query.doctorId) : null;
+    return {
+        ...(patientId ? { patientId } : {}),
+        ...(doctorId ? { doctorId } : {}),
+    };
+};
 
 // --- Patients ---
 app.get('/api/patients', authenticateToken, async (req, res) => {
@@ -1764,16 +2316,47 @@ app.get('/api/patients', authenticateToken, async (req, res) => {
             whereClause.doctorId = user.doctorId;
         }
 
-        const patients = await prisma.patient.findMany({
-            where: whereClause,
-            orderBy: { createdAt: 'desc' }, // Eng yangi bemorlar birinchi (id UUID bo'lgani uchun vaqt tartibini bermaydi)
-            include: { doctor: { select: { firstName: true, lastName: true } } }
-        });
+        /* Shifokor kartasi shu kesimni so'raydi: «bu shifokorning bemorlari».
+           `limit` siz — kesim tabiiy ravishda kichik, va karta aynan TO'LIQ
+           ro'yxat uchun ochiladi. Shifokorning o'z cheklovi yuqorida
+           qo'yiladi, ya'ni bu parametr ruxsatni KENGAYTIRMAYDI. */
+        if (req.query.doctorId && !whereClause.doctorId) {
+            whereClause.doctorId = String(req.query.doctorId);
+        }
+
+        /* `limit` — kirishda butun bazani tortmaslik uchun (FIX-PLAN 10.2).
+           Parametrsiz chaqiruv ILGARIGIDEK hammasini qaytaradi. Qidiruv esa
+           alohida endpointda va u allaqachon 50 ta bilan chegaralangan. */
+        const { limit, page, pageSize, skip } = listRange(req);
+
+        /* `?page=` berilganda umumiy son ham kerak — «67 tadan 1-50»
+           deb ko'rsatish uchun. Ikkala so'rov parallel. */
+        const [patients, total] = await Promise.all([
+            prisma.patient.findMany({
+                where: whereClause,
+                orderBy: { createdAt: 'desc' }, // Eng yangi bemorlar birinchi (id UUID bo'lgani uchun vaqt tartibini bermaydi)
+                include: { doctor: { select: { firstName: true, lastName: true } } },
+                ...(page ? { take: pageSize as number, skip: skip as number } : (limit ? { take: limit } : {})),
+            }),
+            page ? prisma.patient.count({ where: whereClause }) : Promise.resolve(0),
+        ]);
         // doctorName frontend uchun hisoblab beriladi (bazada bunday maydon yo'q)
-        res.json(patients.map(({ doctor, ...p }: any) => ({
+        const items = patients.map(({ doctor, ...p }: any) => ({
             ...p,
             doctorName: doctor ? `${doctor.lastName} ${doctor.firstName}` : null
-        })));
+        }));
+
+        /* `?page=` BERILMASA javob shakli o'zgarmaydi — oddiy massiv.
+           Mavjud ekranlar buzilmasin. */
+        if (!page) return res.json(items);
+
+        res.json({
+            items,
+            total,
+            page,
+            limit: pageSize,
+            pages: pageSize ? Math.max(1, Math.ceil(total / pageSize)) : 1,
+        });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch patients' });
     }
@@ -1788,17 +2371,72 @@ app.post('/api/patients', authenticateToken, async (req, res) => {
         // turardi — himoya ishlash joyidan 1400 qator naridagi satrga bog'liq edi.
         const clinicId = getScopedClinicId(req);
 
-        // 1. Validate required fields
-        if (!firstName || !lastName || !phone) {
-            return res.status(400).json({ error: 'Ism, familiya va telefon raqam kiritilishi shart.' });
+        /* 1. TEKSHIRUV — `shared/validation.ts` orqali (S3.1, S3.5).
+
+           Ilgari bu yerda faqat «bo'shmi» tekshirilardi, ya'ni
+           «abcdefg!!!» telefon sifatida saqlanardi (audit B-13). Front
+           ogohlantirish ko'rsatardi, lekin saqlashni to'xtatmasdi va
+           bazada `+99890000000M` kabi yozuvlar paydo bo'lgan.
+
+           Front ham shu faylni ishlatadi — ya'ni ikkalasi bir xil qoidani
+           qo'llaydi va endi ajralib keta olmaydi. */
+        const checked = validatePatient({ firstName, lastName, gender, phone, dob, pinfl });
+        if (!checked.ok) {
+            return res.status(400).json({
+                error: checked.error,
+                code: 'VALIDATION_FAILED',
+                fields: (checked as any).errors || {},
+            });
         }
+        // Telefon NORMALLASHTIRILGAN holda saqlanadi: qidiruv va dublikat
+        // tekshiruvi bir xil ko'rinishga tayanadi.
+        const cleanPhone = checked.value.phone;
 
         if (!clinicId) {
             return res.status(400).json({ error: 'Klinika aniqlanmadi (Tizim xatoligi). Iltimos, sahifani yangilab qayta urining.' });
         }
 
-        // 2. Validate format (optional but recommended)
-        // Basic phone validation could go here
+        /* ── TAKROR BEMOR TEKSHIRUVI ────────────────────────────────────────
+           Ilgari tekshiruv YO'Q edi (lid uchun bor edi, bemor uchun yo'q).
+           Bir yildan keyin bazada "Karimov Aziz" ning uch nusxasi bo'ladi va
+           har birida tarixning bir bo'lagi turadi — bu noqulaylik emas,
+           TIBBIY XAVF: shifokor allergiyani boshqa kartada ko'rmaydi.
+
+           BLOKLAMAYDI, TANLOV BERADI. Bir xil ismli ikki bemor bo'lishi
+           mumkin, shuning uchun 409 va topilganlar ro'yxati qaytadi;
+           `force: true` bilan baribir yaratish mumkin.
+
+           Telefon NORMALLASHTIRIB solishtiriladi: "+998 90 123 45 67" va
+           "901234567" — bitta raqam. */
+        if (req.body?.force !== true) {
+            const digits = normalizeUzPhone(phone);
+            const orClauses: any[] = [];
+            if (digits) {
+                // Oxirgi 9 raqam — operator kodi bilan birga, prefiksdan mustaqil
+                orClauses.push({ phone: { contains: digits.slice(-9) } });
+            }
+            if (dob) {
+                orClauses.push({ firstName, lastName, dob });
+            }
+
+            if (orClauses.length) {
+                const existing = await prisma.patient.findMany({
+                    where: { clinicId, status: { not: 'Archived' }, OR: orClauses },
+                    select: {
+                        id: true, firstName: true, lastName: true, phone: true,
+                        dob: true, cardNumber: true, lastVisit: true,
+                    },
+                    take: 5,
+                });
+                if (existing.length) {
+                    return res.status(409).json({
+                        error: 'Bunday bemor allaqachon bor',
+                        code: 'DUPLICATE_PATIENT',
+                        matches: existing,
+                    });
+                }
+            }
+        }
 
         // 3. Create Patient
         const user = (req as any).user;
@@ -1817,17 +2455,22 @@ app.post('/api/patients', authenticateToken, async (req, res) => {
 
         const patient = await prisma.patient.create({
             data: {
-                firstName,
-                lastName,
-                phone,
+                firstName: checked.value.firstName,
+                lastName: checked.value.lastName,
+                // Normallashtirilgan telefon — `998901234567`
+                phone: cleanPhone || '',
                 clinicId,
-                dob: dob || '',
-                gender: gender || 'Male',
+                dob: checked.value.dob || '',
+                /* `|| 'Male'` OLIB TASHLANDI: standart «Erkak» tufayli
+                   «Lola Karimov» lidi bemorga aylantirilganda erkak bo'lib
+                   qolgan edi (audit B-34). Jins endi majburiy va yuqorida
+                   tekshiriladi. */
+                gender: checked.value.gender,
                 medicalHistory: medicalHistory || '',
                 status: 'Active',
                 lastVisit: 'Never',
                 doctorId: assignedDoctorId,
-                pinfl: pinfl || '',
+                pinfl: checked.value.pinfl || '',
                 address: address || null,
                 secondaryPhone: secondaryPhone || null,
                 // Migratsiya 0003. Bo'sh satr emas, NULL: unique indeks bo'sh
@@ -1911,7 +2554,7 @@ app.get('/api/patients/:id', authenticateToken, async (req, res) => {
         });
         if (!patient) return res.status(404).json({ error: 'Patient not found' });
         // Egalik: boshqa klinika bemorini ko'rishni bloklash
-        if ((req as any).user?.role !== 'SUPER_ADMIN' && patient.clinicId !== (req as any).user?.clinicId) {
+        if (patient.clinicId !== (req as any).user?.clinicId) {
             return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         }
         res.json(patient);
@@ -1931,7 +2574,13 @@ app.put('/api/patients/:id', authenticateToken, async (req, res) => {
         const updateData: any = {};
         if (firstName !== undefined) updateData.firstName = firstName;
         if (lastName !== undefined) updateData.lastName = lastName;
-        if (phone !== undefined) updateData.phone = phone;
+        /* Tahrirlashda ham tekshiriladi (S3.5): yaratishda to'silgan
+           yaroqsiz raqamni keyin tahrirlab kiritib qo'yish mumkin edi. */
+        if (phone !== undefined) {
+            const p = validatePhone(phone, false);
+            if (!p.ok) return res.status(400).json({ error: p.error, code: 'VALIDATION_FAILED', fields: { phone: p.error } });
+            updateData.phone = p.value || '';
+        }
         if (dob !== undefined) updateData.dob = dob;
         if (lastVisit !== undefined) updateData.lastVisit = lastVisit;
         if (status !== undefined) updateData.status = status;
@@ -1970,6 +2619,7 @@ app.delete('/api/patients/:id', authenticateToken, async (req, res) => {
 });
 
 // --- Appointments ---
+
 app.get('/api/appointments', authenticateToken, async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
@@ -1977,10 +2627,12 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'clinicId is required' });
         }
 
+        const { from, to, limit } = listRange(req);
         const appointments = await prisma.appointment.findMany({
-            where: { clinicId: clinicId as string },
+            where: { clinicId: clinicId as string, ...dateWhere(from, to), ...scopeWhere(req) },
             include: { review: true },
-            orderBy: { date: 'asc' }
+            orderBy: { date: 'asc' },
+            ...(limit ? { take: limit } : {}),
         });
         res.json(appointments);
     } catch (error) {
@@ -2051,6 +2703,22 @@ app.post('/api/appointments', authenticateToken, async (req, res) => {
 
         // 2. If no existing appointment, create a new one
         const { patientName, doctorId, doctorName, type, duration, status, reminderSent } = req.body;
+
+        /* Shifokorning vaqti bandmi (S2.4). `force: true` bilan baribir
+           yozish mumkin — bu loyihadagi mavjud naqsh (bemor dublikatida
+           ham shunday): server TO'SMAYDI, TANLOV beradi. Shoshilinch
+           holatda registrator ustiga yozishi kerak bo'lishi mumkin. */
+        if (!req.body.force) {
+            const clash = await findOverlappingAppointment(clinicId, doctorId, date, time, duration);
+            if (clash) {
+                return res.status(409).json({
+                    error: `Bu vaqtda shifokor band: ${clash.time} — ${clash.patientName || 'bemor'}`,
+                    code: 'DOCTOR_BUSY',
+                    conflict: clash,
+                });
+            }
+        }
+
         const appointment = await prisma.appointment.create({
             data: {
                 patientId: patientId,
@@ -2090,6 +2758,30 @@ app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
             const doc = await prisma.doctor.findUnique({ where: { id: doctorId } });
             if (!doc || (scoped && doc.clinicId !== scoped)) {
                 return res.status(400).json({ error: 'Shifokor topilmadi yoki boshqa klinikaga tegishli' });
+            }
+        }
+
+        /* Ko'chirishda ham to'qnashuv tekshiriladi (S2.4): qabulni band
+           vaqtga surib qo'yish yozishdan farq qilmaydi. O'ZINI hisobga
+           olmaslik uchun `id` chiqarib tashlanadi. */
+        if (!req.body.force && (time !== undefined || date !== undefined || doctorId !== undefined || duration !== undefined)) {
+            const current = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+            if (current) {
+                const clash = await findOverlappingAppointment(
+                    current.clinicId,
+                    doctorId !== undefined ? doctorId : current.doctorId,
+                    date !== undefined ? date : current.date,
+                    time !== undefined ? time : current.time,
+                    duration !== undefined ? duration : current.duration,
+                    req.params.id,
+                );
+                if (clash) {
+                    return res.status(409).json({
+                        error: `Bu vaqtda shifokor band: ${clash.time} — ${clash.patientName || 'bemor'}`,
+                        code: 'DOCTOR_BUSY',
+                        conflict: clash,
+                    });
+                }
             }
         }
 
@@ -2281,11 +2973,22 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'clinicId is required' });
         }
 
+        const { from, to, limit } = listRange(req);
         const transactions = await prisma.transaction.findMany({
-            where: { clinicId: clinicId as string },
-            orderBy: { date: 'desc' }
+            where: { clinicId: clinicId as string, ...dateWhere(from, to), ...scopeWhere(req) },
+            orderBy: { date: 'desc' },
+            ...(limit ? { take: limit } : {}),
+            /* `linkedToCharges` — chek xizmat qatorlariga bog'langanmi.
+               Kassa ekrani shu bayroq bo'yicha «Tuzatish»/«O'chirish» tugmalarini
+               o'chiradi: server ularni 409 bilan rad etadi (FIX-PLAN 7.7-A), va
+               foydalanuvchi tugmani bosib xato ko'rgandan ko'ra uni o'chiq
+               ko'rgani ma'qul. */
+            include: { _count: { select: { chargePayments: true } } },
         });
-        res.json(transactions);
+        res.json(transactions.map(({ _count, ...t }: any) => ({
+            ...t,
+            linkedToCharges: (_count?.chargePayments || 0) > 0,
+        })));
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch transactions' });
     }
@@ -2384,37 +3087,64 @@ app.put('/api/transactions/:id', authenticateToken, async (req, res) => {
 
         // createdAt va "kim qabul qildi" — tashqaridan o'zgartirilmaydi.
         const { createdAt: _ignored, receivedById: _rid, receivedByName: _rn, ...updateData } = req.body || {};
+
+        /* HISOB QATORLARIGA BOG'LANGAN CHEK — cheklangan tahrir (FIX-PLAN 7.7-A).
+
+           Bunday chekning summasi `VisitCharge.paidAmount` bilan bog'langan:
+           summani shu yerdan o'zgartirish qatorni chekdan ajratib yuboradi va
+           yaxlitlik buziladi. Ammo SANANI tuzatish qonuniy ehtiyoj (qarz
+           kechagi kun bilan yozilib qolgan bo'lishi mumkin), shuning uchun
+           butun tahrirni bloklamaymiz — faqat pulga tegadigan maydonlarni. */
+        const linkedCharges = await prisma.chargePayment.count({
+            where: { transactionId: oldTx.id },
+        });
+        if (linkedCharges > 0) {
+            const money = ['amount', 'type', 'status', 'patientId'] as const;
+            const blocked = money.filter(
+                (k) => updateData[k] !== undefined && String(updateData[k]) !== String((oldTx as any)[k]),
+            );
+            if (blocked.length) {
+                return res.status(409).json({
+                    error: "Bu chek xizmat qatorlariga bog'langan: "
+                        + `${blocked.join(', ')} ni bu yerdan o'zgartirib bo'lmaydi. `
+                        + "Summani tuzatish uchun «Qaytarish» dan foydalaning.",
+                    code: 'LINKED_TO_CHARGES',
+                    blocked,
+                });
+            }
+        }
+
         // Sana ko'chirilsa (masalan, qarz bugun to'landi) vaqt ham yangilanadi —
         // aks holda kassa kitobida bugungi kunda eski vaqt turib qolardi.
         if (updateData.date && updateData.date !== oldTx.date) {
             updateData.createdAt = new Date();
         }
 
-        const transaction = await prisma.transaction.update({
-            where: { id: req.params.id },
-            data: updateData
-        });
+        /* Chekni yangilash va balansni tuzatish — BITTA tranzaksiyada.
+           Ilgari balans alohida yozilardi va xatosi `.catch` bilan yutilardi. */
+        const transaction = await prisma.$transaction(async (tx: any) => {
+            const updated = await tx.transaction.update({
+                where: { id: oldTx.id },
+                data: updateData,
+            });
 
-        // Update patient balance if patientId is linked
-        // Only Avans deposits and Balance-type payments affect the advance balance
-        if (transaction.patientId) {
-            const calculateBalanceContribution = (tx: any) => {
-                if (tx.service === 'Avans' && tx.status === 'Paid') return tx.amount;
-                if (tx.type === 'Balance' && tx.status === 'Paid') return -tx.amount;
-                return 0; // Regular payments don't affect balance
-            };
-
-            const oldContribution = calculateBalanceContribution(oldTx);
-            const newContribution = calculateBalanceContribution(transaction);
-            const adjustment = newContribution - oldContribution;
-
-            if (adjustment !== 0) {
-                await prisma.patient.update({
-                    where: { id: transaction.patientId },
-                    data: { balance: { increment: adjustment } }
-                }).catch((err: any) => console.error('Failed to adjust patient balance:', err));
+            // Faqat 'Avans' kirimi va 'Balance' turidagi to'lov avans hisobiga tegadi
+            if (updated.patientId) {
+                const contribution = (t: any) => {
+                    if (t.service === 'Avans' && t.status === 'Paid') return t.amount;
+                    if (t.type === 'Balance' && t.status === 'Paid') return -t.amount;
+                    return 0;
+                };
+                const adjustment = contribution(updated) - contribution(oldTx);
+                if (adjustment !== 0) {
+                    await tx.patient.update({
+                        where: { id: updated.patientId },
+                        data: { balance: { increment: adjustment } },
+                    });
+                }
             }
-        }
+            return updated;
+        });
 
         // Summa/usul/holat/sana o'zgarsa kassa raqami o'zgaradi — iz qoldiramiz
         const watched = ['amount', 'type', 'status', 'date'];
@@ -2446,22 +3176,48 @@ app.delete('/api/transactions/:id', authenticateToken, async (req, res) => {
         const transaction = await prisma.transaction.findUnique({ where: { id: req.params.id } });
         if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
 
-        // Reverse balance contribution
-        // Reverse balance: only for Avans deposits and Balance-type payments
-        if (transaction.patientId) {
-            let contribution = 0;
-            if (transaction.service === 'Avans' && transaction.status === 'Paid') contribution = transaction.amount;
-            else if (transaction.type === 'Balance' && transaction.status === 'Paid') contribution = -transaction.amount;
+        /* HISOB QATORLARIGA BOG'LANGAN CHEKNI BU YO'L BILAN O'CHIRIB BO'LMAYDI.
 
-            if (contribution !== 0) {
-                await prisma.patient.update({
-                    where: { id: transaction.patientId },
-                    data: { balance: { increment: -contribution } }
-                }).catch((err: any) => console.error('Failed to reverse patient balance on delete:', err));
-            }
+           Topilgan xato (FIX-PLAN 7.7-A). `ChargePayment.transactionId` —
+           majburiy FK, ya'ni `POST /api/payments` yaratgan chek uchun quyidagi
+           `transaction.delete` FK xatosi bilan YIQILADI. Lekin balans undan
+           OLDIN o'zgartirilardi va xatosi `.catch` bilan yutilardi. Natijada
+           «O'chirish» tugmasi bosilgan sari bemor balansi OSHIB borardi, chek
+           esa o'chmasdi — Kassa ekranida har kuni bosiladigan tugma.
+
+           To'g'ri yo'l — «Qaytarish» (`POST /api/charges/:id/refund`): u
+           qatorning `paidAmount` ini ham tuzatadi, chekni esa izda qoldiradi. */
+        const linkedCharges = await prisma.chargePayment.count({
+            where: { transactionId: transaction.id },
+        });
+        if (linkedCharges > 0) {
+            return res.status(409).json({
+                error: "Bu chek xizmat qatorlariga bog'langan va o'chirib bo'lmaydi — "
+                    + "qator to'lanmagan holatga qaytmay qolardi. "
+                    + "Buning o'rniga «Qaytarish» dan foydalaning.",
+                code: 'LINKED_TO_CHARGES',
+                linkedCharges,
+            });
         }
 
-        await prisma.transaction.delete({ where: { id: req.params.id } });
+        /* Balansni qaytarish va chekni o'chirish — BITTA tranzaksiyada.
+           Ilgari ikkisi alohida edi va balans yangilanishining xatosi
+           yutilardi, ya'ni yarim bajarilgan holat jimgina qolib ketardi. */
+        await prisma.$transaction(async (tx: any) => {
+            if (transaction.patientId) {
+                let contribution = 0;
+                if (transaction.service === 'Avans' && transaction.status === 'Paid') contribution = transaction.amount;
+                else if (transaction.type === 'Balance' && transaction.status === 'Paid') contribution = -transaction.amount;
+
+                if (contribution !== 0) {
+                    await tx.patient.update({
+                        where: { id: transaction.patientId },
+                        data: { balance: { increment: -contribution } },
+                    });
+                }
+            }
+            await tx.transaction.delete({ where: { id: transaction.id } });
+        });
 
         // O'chirilgan to'lov kassadan yo'qoladi — nima o'chirilgani izda qolishi shart
         await writeCashAudit({
@@ -2669,7 +3425,9 @@ async function computeExpectedCash(prisma: any, clinicId: string, date: string) 
         }),
     ]);
 
-    const r = (n: number) => Math.round(n * 100) / 100;
+    /* Kassa hisobida ham pul BUTUN so'm. Bu `round()` ning YETTINCHI nusxasi
+       edi va aynan shu yerda farq "kassa 1 so'm mos kelmadi" bo'lib chiqardi. */
+    const r = som;
     let cash = 0, card = 0, click = 0, fromBalance = 0;
 
     for (const t of txs) {
@@ -2802,7 +3560,7 @@ app.get('/api/cash-register/expected', authenticateToken, async (req, res) => {
 /** Smenani ochish. Ilgari faqat yopilish bor edi: "kim kassada turgan edi"
  *  degan savolga javob yo'q edi, boshlang'ich qoldiq ham kimning so'zi ekani
  *  noma'lum edi. */
-app.post('/api/cash-register/open', authenticateToken, requireRole('RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN'), async (req, res) => {
+app.post('/api/cash-register/open', authenticateToken, requireRole('RECEPTIONIST', 'CLINIC_ADMIN'), async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
         if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
@@ -2810,40 +3568,60 @@ app.post('/api/cash-register/open', authenticateToken, requireRole('RECEPTIONIST
         const date = String(req.body?.date || tashkentDateStr());
         const shiftNo = Number(req.body?.shift) > 0 ? Math.floor(Number(req.body.shift)) : 1;
 
-        const existing = await prisma.cashRegisterDay.findUnique({
-            where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
-        });
-        if (existing?.openedAt) {
-            return res.status(409).json({ error: 'Smena allaqachon ochilgan' });
-        }
-        // Yopilgan kunni "ochish" tugmasi bilan jimgina ochib yuborish mumkin
-        // emas — buning uchun alohida "qayta ochish" amali bor (faqat admin).
-        if (existing && existing.isClosed !== false) {
-            return res.status(409).json({ error: 'Bu kun yopilgan — qayta ochish kerak' });
-        }
-
         // Boshlang'ich qoldiqni ham server taklif qiladi — oldingi yopilishdan
         const computed = await computeExpectedCash(prisma, clinicId as string, date);
         const openingCash = req.body?.openingCash !== undefined
             ? Number(req.body.openingCash) || 0
             : computed.openingCash;
 
-        const data = {
-            openedAt: new Date(),
-            openedByName: user?.name || null,
-            openedByRole: user?.role || null,
-            openingCash,
-        };
-        const shift = await prisma.cashRegisterDay.upsert({
-            where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
-            update: data,
-            create: {
-                clinicId, date, shift: shiftNo,
-                countedCash: 0, expectedCash: 0, difference: 0,
-                isClosed: false,
-                ...data,
-            },
-        });
+        /* TEKSHIRUV VA YOZUV — BITTA TRANZAKSIYADA (FIX-PLAN 9.3).
+
+           Ilgari holat tashqarida o'qilib, keyin `upsert` bajarilardi. Ikki
+           kassir bir vaqtda "Smenani ochish" bosса, ikkalasi ham smenani
+           yopiq deb ko'rardi va ikkalasining `upsert` i o'tardi: jurnalda
+           ikkita "ochildi" yozuvi qolar, `openedByName` da esa ikkinchisining
+           ismi turar edi — ya'ni smenani kim ochgani noto'g'ri yozilardi.
+
+           Endi holat tranzaksiya ICHIDA qayta o'qiladi. */
+        const outcome = await prisma.$transaction(async (tx: any) => {
+            const existing = await tx.cashRegisterDay.findUnique({
+                where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
+            });
+            if (existing?.openedAt) {
+                return { conflict: 'Smena allaqachon ochilgan', by: existing.openedByName };
+            }
+            // Yopilgan kunni "ochish" tugmasi bilan jimgina ochib yuborish mumkin
+            // emas — buning uchun alohida "qayta ochish" amali bor (faqat admin).
+            if (existing && existing.isClosed !== false) {
+                return { conflict: 'Bu kun yopilgan — qayta ochish kerak' };
+            }
+
+            const data = {
+                openedAt: new Date(),
+                openedByName: user?.name || null,
+                openedByRole: user?.role || null,
+                openingCash,
+            };
+            const shift = await tx.cashRegisterDay.upsert({
+                where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
+                update: data,
+                create: {
+                    clinicId, date, shift: shiftNo,
+                    countedCash: 0, expectedCash: 0, difference: 0,
+                    isClosed: false,
+                    ...data,
+                },
+            });
+            return { shift };
+        }, { timeout: 15000, maxWait: 10000 });
+
+        if (outcome.conflict) {
+            return res.status(409).json({
+                error: outcome.by ? `${outcome.conflict} (${outcome.by})` : outcome.conflict,
+                code: 'SHIFT_CONFLICT',
+            });
+        }
+        const shift = outcome.shift;
 
         await writeCashAudit({
             clinicId, date, action: 'Open', entityType: 'CashRegisterDay', entityId: shift.id,
@@ -2921,7 +3699,7 @@ app.post('/api/cash-register/close', authenticateToken, async (req, res) => {
 });
 
 // Qayta ochish — faqat klinika admini (registrator o'z xatosini yashira olmasin)
-app.delete('/api/cash-register/:date', authenticateToken, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (req, res) => {
+app.delete('/api/cash-register/:date', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
         if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
@@ -3119,46 +3897,87 @@ app.post('/api/installments/:id/pay', authenticateToken, async (req, res) => {
         const item = await prisma.installmentItem.findUnique({ where: { id: itemId }, include: { plan: { include: { patient: true, doctor: true } } } });
         if (!item) return res.status(404).json({ error: 'Installment item not found' });
         // Egalik: bo'lib to'lash rejasi klinikasi tekshiriladi
-        if ((req as any).user?.role !== 'SUPER_ADMIN' && item.plan?.clinicId !== (req as any).user?.clinicId) {
+        if (item.plan?.clinicId !== (req as any).user?.clinicId) {
             return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         }
         if (item.status === 'Paid') return res.status(400).json({ error: 'Already paid' });
-        
-        const updatedItem = await prisma.installmentItem.update({
-            where: { id: itemId },
-            data: { status: 'Paid', paidDate: date }
-        });
-        
-        const updatedPlan = await prisma.installmentPlan.update({
-            where: { id: item.planId },
-            data: { totalPaid: { increment: item.amount } }
-        });
-        
-        const remainingItems = await prisma.installmentItem.count({ where: { planId: item.planId, status: 'Pending' } });
-        if (remainingItems === 0) {
-            await prisma.installmentPlan.update({ where: { id: item.planId }, data: { status: 'Completed' } });
-        }
-        
-        const transaction = await prisma.transaction.create({
-            data: {
-                patientId: item.plan.patientId,
-                patientName: `${item.plan.patient.lastName} ${item.plan.patient.firstName}`,
-                clinicId: item.plan.clinicId,
-                doctorId: item.plan.doctorId,
-                doctorName: item.plan.doctor ? `${item.plan.doctor.lastName} ${item.plan.doctor.firstName}` : '',
-                amount: item.amount,
-                date: date,
-                service: `Bo'lib to'lash (${item.plan.service})`,
-                type: paymentMethod || 'Cash',
-                status: 'Paid',
+
+        /* AVANSDAN TO'LASH (FIX-PLAN 7.7-C).
+
+           Topilgan xato: bu endpoint chekni `type: paymentMethod` bilan
+           yozardi, ya'ni kassir «avansdan» tanlasa chek `type: 'Balance'`
+           bo'lardi — LEKIN bemor balansi kamaymasdi. Keyin balanslarni qayta
+           hisoblash o'sha chekni ko'rib balansni kamaytirardi, ya'ni ikki
+           endpoint bir xil ma'lumotni qarama-qarshi talqin qilardi.
+
+           Endi avansdan to'lash haqiqatan balansdan yechadi. Tekshiruv
+           to'lovdan OLDIN: yetmagan avansni yozib qo'yib, keyin minusga
+           tushirish — eng yomon variant (billing.ts dagi qaror bilan bir xil). */
+        const method = String(paymentMethod || 'Cash');
+        const fromBalance = method === 'Balance';
+        if (fromBalance) {
+            const have = item.plan.patient?.balance || 0;
+            if (item.amount > have + 0.001) {
+                return res.status(400).json({
+                    error: `Avans yetarli emas: hisobda ${Math.round(have)}, kerak ${Math.round(item.amount)}`,
+                });
             }
+        }
+
+        /* Beshta yozuv — bitta tranzaksiyada. Ilgari ular alohida edi va
+           o'rtada uzilish "qism to'landi" holatini qoldirardi: reja summasi
+           oshgan, chek esa yozilmagan. */
+        const { updatedItem, transaction } = await prisma.$transaction(async (tx: any) => {
+            const updatedItem = await tx.installmentItem.update({
+                where: { id: itemId },
+                data: { status: 'Paid', paidDate: date },
+            });
+
+            await tx.installmentPlan.update({
+                where: { id: item.planId },
+                data: { totalPaid: { increment: item.amount } },
+            });
+
+            const remainingItems = await tx.installmentItem.count({
+                where: { planId: item.planId, status: 'Pending' },
+            });
+            if (remainingItems === 0) {
+                await tx.installmentPlan.update({
+                    where: { id: item.planId },
+                    data: { status: 'Completed' },
+                });
+            }
+
+            const transaction = await tx.transaction.create({
+                data: {
+                    patientId: item.plan.patientId,
+                    patientName: `${item.plan.patient.lastName} ${item.plan.patient.firstName}`,
+                    clinicId: item.plan.clinicId,
+                    doctorId: item.plan.doctorId,
+                    doctorName: item.plan.doctor ? `${item.plan.doctor.lastName} ${item.plan.doctor.firstName}` : '',
+                    amount: item.amount,
+                    date: date,
+                    service: `Bo'lib to'lash (${item.plan.service})`,
+                    type: method,
+                    status: 'Paid',
+                },
+            });
+
+            await tx.installmentItem.update({
+                where: { id: itemId },
+                data: { transactionId: transaction.id },
+            });
+
+            if (fromBalance && item.plan.patientId) {
+                await tx.patient.update({
+                    where: { id: item.plan.patientId },
+                    data: { balance: { decrement: item.amount } },
+                });
+            }
+
+            return { updatedItem, transaction };
         });
-        
-        await prisma.installmentItem.update({
-            where: { id: itemId },
-            data: { transactionId: transaction.id }
-        });
-        
+
         res.json({ success: true, item: updatedItem, transaction });
     } catch (error) {
         console.error('Pay installment error:', error);
@@ -3178,36 +3997,52 @@ app.delete('/api/installments/:id', authenticateToken, async (req, res) => {
 });
 
 // --- Recalculate all patient balances (one-time fix) ---
-app.post('/api/admin/recalculate-balances', authenticateToken, async (req, res) => {
+/* Faqat klinika egasi: bu endpoint hamma bemorning balansini qayta yozadi.
+   Ilgari istalgan autentifikatsiyalangan foydalanuvchi chaqira olardi. */
+app.post('/api/admin/recalculate-balances', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
-        // Oddiy rol faqat o'z klinikasi bemorlarini qayta hisoblaydi; SUPER_ADMIN — barchasini
+        // Faqat o'z klinikasi bemorlari qayta hisoblanadi
         const u = (req as any).user;
-        const patientWhere = u?.role === 'SUPER_ADMIN' ? {} : { clinicId: u?.clinicId };
-        const patients = await prisma.patient.findMany({ where: patientWhere, select: { id: true } });
-        let fixed = 0;
+        const patientWhere = { clinicId: u?.clinicId };
+        /* TOPILGAN XATO (FIX-PLAN 7.7-B): bu endpoint qaytarilgan avanslarni
+           O'CHIRIB TASHLARDI, chunki formulasi faqat ikki qoidani bilardi.
 
-        for (const patient of patients) {
-            const transactions = await prisma.transaction.findMany({
-                where: { patientId: patient.id }
+           Formula endi `billing.ts` dagi `findBalanceMismatches` da — yagona
+           manba. Yaxlitlik tekshiruvi (7.5) ham o'shani ishlatadi, ya'ni
+           ikkalasi ayri ketib qololmaydi.
+
+           QURUQ YURITISH sukut bo'yicha: bu endpoint balanslarni BUTUNLAY
+           qayta yozadi, ya'ni noto'g'ri formula bilan bir marta chaqirilsa
+           ma'lumot qaytarib bo'lmas darajada yo'qoladi (yuqoridagi xato aynan
+           shunday ishlagan). Avval farq ko'rsatiladi, yozish `confirm: true`
+           bilan bo'ladi. */
+        const confirm = req.body?.confirm === true;
+        const { checked, diffs } = await findBalanceMismatches(prisma, patientWhere);
+        const patients = { length: checked };
+
+        if (!confirm) {
+            return res.json({
+                success: true,
+                dryRun: true,
+                patientsChecked: patients.length,
+                mismatches: diffs.length,
+                // Ro'yxat cheklanadi: 10 000 bemorli bazada javob ulkan bo'lib ketmasin
+                sample: diffs.slice(0, 100),
+                message: diffs.length
+                    ? `${diffs.length} ta bemorda farq bor. Yozish uchun confirm: true yuboring.`
+                    : 'Hamma balans to\'g\'ri — o\'zgartirish kerak emas.',
             });
-
-            let correctBalance = 0;
-            for (const tx of transactions) {
-                if (tx.service === 'Avans' && tx.status === 'Paid') {
-                    correctBalance += tx.amount;
-                } else if (tx.type === 'Balance' && tx.status === 'Paid') {
-                    correctBalance -= tx.amount;
-                }
-            }
-
-            await prisma.patient.update({
-                where: { id: patient.id },
-                data: { balance: correctBalance }
-            });
-            fixed++;
         }
 
-        res.json({ success: true, patientsFixed: fixed });
+        for (const d of diffs) {
+            await prisma.patient.update({
+                where: { id: d.patientId },
+                data: { balance: d.correct },
+            });
+        }
+
+        console.log(`⚖️ Balanslar qayta hisoblandi: ${diffs.length} ta bemor tuzatildi`);
+        res.json({ success: true, dryRun: false, patientsChecked: patients.length, patientsFixed: diffs.length });
     } catch (error) {
         console.error('Recalculate balances error:', error);
         res.status(500).json({ error: 'Failed to recalculate balances' });
@@ -3245,31 +4080,18 @@ app.post('/api/doctors', authenticateToken, STAFF, async (req, res) => {
             return res.status(400).json({ error: 'clinicId is required' });
         }
 
-        // Check subscription limit
-        const clinic = await prisma.clinic.findUnique({
-            where: { id: clinicId },
-            include: { plan: true }
-        });
-
+        const clinic = await prisma.clinic.findUnique({ where: { id: clinicId } });
         if (!clinic) {
             return res.status(404).json({ error: 'Klinika topilmadi' });
         }
 
-        const currentDoctorCount = await prisma.doctor.count({
-            where: {
-                clinicId,
-                status: { not: 'Deleted' }
-            }
-        });
+        /* TARIF BO'YICHA SHIFOKOR CHEGARASI OLIB TASHLANDI.
 
-        const planMaxDoctors = clinic.plan?.maxDoctors || 10;
-        const planName = clinic.plan?.name || 'Standart';
-
-        if (currentDoctorCount >= planMaxDoctors) {
-            return res.status(403).json({
-                error: `Sizning "${planName}" tarifingizda maksimal ${planMaxDoctors} ta shifokor qo'shish mumkin. Limitga yetdingiz. Tarifni o'zgartirish uchun biz bilan bog'laning.`
-            });
-        }
+           U obuna modelidan qolgan edi: "tarifingizda 10 tagacha shifokor".
+           XClinic bitta klinikaga o'rnatiladi va sotilmaydi — klinika o'z
+           dasturida nechta shifokor ochishini o'zi hal qiladi. Amalda chegara
+           allaqachon ishlamasdi ham: tarif ma'lumoti so'rovga qo'shilmagani
+           uchun har doim standart 10 ga tushardi. */
 
         if (username) {
             const existing = await prisma.doctor.findUnique({ where: { username } });
@@ -3636,7 +4458,7 @@ app.get('/api/lab-orders', authenticateToken, async (req: any, res: any) => {
  * Faktni yozmaslik — yomonroq. Javobda `unpaidWarning` qaytadi.
  */
 app.post('/api/lab-orders/:id/collect', authenticateToken,
-    requireRole('LAB_TECHNICIAN', 'RECEPTIONIST', 'CLINIC_ADMIN', 'SUPER_ADMIN'), async (req: any, res: any) => {
+    requireRole('LAB_TECHNICIAN', 'RECEPTIONIST', 'CLINIC_ADMIN'), async (req: any, res: any) => {
         try {
             const clinicId = getScopedClinicId(req);
             if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
@@ -3805,30 +4627,14 @@ app.delete('/api/lab-orders/:id', authenticateToken, async (req: any, res: any) 
     }
 });
 
-// --- Inventory Log Delete ---
-app.delete('/api/inventory/logs/:id', authenticateToken, async (req, res) => {
-    try {
-        const log = await (prisma as any).inventoryLog.findUnique({
-            where: { id: req.params.id }
-        });
-        if (!log) {
-            return res.status(404).json({ error: 'Log not found' });
-        }
-        // Egalik: log tegishli ombor mahsuloti orqali klinikaga tekshiriladi
-        if (!(await assertOwnership(req, res, 'inventoryItem', log.itemId))) return;
-        // Reverse the stock change: if log.change was negative (OUT), adding it back restores stock
-        await (prisma as any).inventoryItem.update({
-            where: { id: log.itemId },
-            data: { quantity: { increment: -log.change } }
-        });
-        await (prisma as any).inventoryLog.delete({
-            where: { id: req.params.id }
-        });
-        res.json({ success: true });
-    } catch (error: any) {
-        console.error('Delete inventory log error:', error);
-        res.status(500).json({ error: error.message || 'Failed to delete inventory log' });
-    }
+/* ─── YOPILDI (0028) ───────────────────────────────────────────────────────
+   Jurnal qatorini o'chirish qoldiqni tiklardi, lekin "kim, qachon, nega"
+   degan izni ham o'chirardi. O'rniga teskari harakat yoziladi. */
+app.delete('/api/inventory/logs/:id', authenticateToken, async (_req, res) => {
+    res.status(410).json({
+        error: "Bu yo'l yopilgan. Chiqimni bekor qilish uchun "
+             + 'POST /api/stock-movements/:id/reverse ishlating.',
+    });
 });
 
 // --- Service Categories ---
@@ -3892,8 +4698,37 @@ app.get('/api/services', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'clinicId is required' });
         }
 
+        /* `?doctorId=` — shifokor BAJARADIGAN xizmatlar (S2.4).
+         *
+         * Audit topgani (B-19): kardiologga «Ginekolog konsultatsiyasi» ni
+         * yozib qo'yish mumkin edi va hech qanday ogohlantirish yo'q edi.
+         * Natijada bazada xirurgning eng ko'p xizmati «Pediatr
+         * konsultatsiyasi» bo'lib qolgan — hisobotlar shu sababdan
+         * ishonchsiz.
+         *
+         * Bog'liqlik BO'LIM orqali: `Doctor.departmentId` → shu bo'limning
+         * xizmatlari. `DoctorServiceRate` ATAYLAB ishlatilmadi — u pul
+         * ulushi uchun, qobiliyat ro'yxati emas: stavkasi yozilmagan
+         * shifokor hech qanday xizmat ko'rsatmaydigan bo'lib qolardi.
+         *
+         * Bo'limi ko'rsatilmagan shifokorda filtr QO'LLANMAYDI — hamma
+         * xizmat ko'rinadi. Bo'sh ro'yxat ishni to'xtatib qo'yardi. */
+        const doctorId = req.query.doctorId ? String(req.query.doctorId) : null;
+        let departmentFilter: any = {};
+        if (doctorId) {
+            const doc = await prisma.doctor.findFirst({
+                where: { id: doctorId, clinicId: clinicId as string },
+                select: { departmentId: true },
+            });
+            if (doc?.departmentId) {
+                /* Bo'limsiz xizmatlar ham qoladi: ular umumiy (masalan
+                   «Qayta ko'rik») va hech bir bo'limga biriktirilmagan. */
+                departmentFilter = { OR: [{ departmentId: doc.departmentId }, { departmentId: null }] };
+            }
+        }
+
         const services = await prisma.service.findMany({
-            where: { clinicId: clinicId as string },
+            where: { clinicId: clinicId as string, ...departmentFilter },
             include: { category: true }
         });
         res.json(services);
@@ -3902,7 +4737,7 @@ app.get('/api/services', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/services', authenticateToken, requireRole('CLINIC_ADMIN', 'RECEPTIONIST', 'SUPER_ADMIN'), async (req, res) => {
+app.post('/api/services', authenticateToken, requireRole('CLINIC_ADMIN', 'RECEPTIONIST'), async (req, res) => {
     try {
         /* Ilgari bu yerda `data: req.body` turardi. Ya'ni:
              - `clinicId` TANADAN kelardi va boshqa klinikaning narxnomasiga
@@ -3948,11 +4783,9 @@ app.put('/api/services/:id', authenticateToken, async (req, res) => {
     try {
         // Egalik tekshiruvi (Service id butun son)
         const u = (req as any).user;
-        if (u?.role !== 'SUPER_ADMIN') {
-            const existing = await prisma.service.findUnique({ where: { id: parseInt(req.params.id) } });
-            if (!existing) return res.status(404).json({ error: 'Topilmadi' });
-            if (existing.clinicId !== u?.clinicId) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
-        }
+        const existing = await prisma.service.findUnique({ where: { id: parseInt(req.params.id) } });
+        if (!existing) return res.status(404).json({ error: 'Topilmadi' });
+        if (existing.clinicId !== u?.clinicId) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         /* `clinicId` oq ro'yxatda YO'Q: xizmatni boshqa klinikaga
            ko'chirish mumkin bo'lmasligi kerak. */
         const { name, price, duration, cost, categoryId, departmentId } = req.body || {};
@@ -3977,11 +4810,9 @@ app.put('/api/services/:id', authenticateToken, async (req, res) => {
 app.delete('/api/services/:id', authenticateToken, async (req, res) => {
     try {
         const u = (req as any).user;
-        if (u?.role !== 'SUPER_ADMIN') {
-            const existing = await prisma.service.findUnique({ where: { id: parseInt(req.params.id) } });
-            if (!existing) return res.status(404).json({ error: 'Topilmadi' });
-            if (existing.clinicId !== u?.clinicId) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
-        }
+        const existing = await prisma.service.findUnique({ where: { id: parseInt(req.params.id) } });
+        if (!existing) return res.status(404).json({ error: 'Topilmadi' });
+        if (existing.clinicId !== u?.clinicId) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         await prisma.service.delete({ where: { id: parseInt(req.params.id) } });
         res.json({ success: true });
     } catch (error) {
@@ -4009,75 +4840,10 @@ app.post('/api/public/demo-request', async (req, res) => {
     }
 });
 
-app.get('/api/admin/demo-requests', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        const rows = await prisma.$queryRawUnsafe(`SELECT * FROM "DemoRequest" ORDER BY "createdAt" DESC`);
-        res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch demo requests' });
-    }
-});
-
-app.put('/api/admin/demo-requests/:id', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        const { status, notes } = req.body;
-        await prisma.$executeRawUnsafe(
-            `UPDATE "DemoRequest" SET "status"=$1,"notes"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$3`,
-            status, notes ?? null, req.params.id
-        );
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to update demo request' });
-    }
-});
-
 // --- Platforma (SuperAdmin) uchun lid qabul qilish kaliti ---
 // Bu kalit bilan kelgan lidlar klinikaning doskasiga emas, XClinic sotuv
 // voronkasiga (DemoRequest -> SuperAdmin > Lidlar) tushadi.
 // Klinika kalitlaridan ajratish uchun boshqa prefiks ishlatiladi: dk_plat_
-app.get('/api/admin/lead-api-key', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        res.json({
-            apiKey: await getPlatformSetting('lead_api_key'),
-            createdAt: await getPlatformSetting('lead_api_key_created_at'),
-            endpoint: `${PUBLIC_API_BASE_URL}/api/public/leads`
-        });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch platform lead API key' });
-    }
-});
-
-app.post('/api/admin/lead-api-key', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        const apiKey = `dk_plat_${require('crypto').randomBytes(24).toString('hex')}`;
-        const createdAt = new Date().toISOString();
-        await setPlatformSetting('lead_api_key', apiKey);
-        await setPlatformSetting('lead_api_key_created_at', createdAt);
-        res.json({ apiKey, createdAt, endpoint: `${PUBLIC_API_BASE_URL}/api/public/leads` });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to create platform lead API key' });
-    }
-});
-
-app.delete('/api/admin/lead-api-key', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        await setPlatformSetting('lead_api_key', null);
-        await setPlatformSetting('lead_api_key_created_at', null);
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to revoke platform lead API key' });
-    }
-});
-
-app.delete('/api/admin/demo-requests/:id', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        await prisma.$executeRawUnsafe(`DELETE FROM "DemoRequest" WHERE "id"=$1`, req.params.id);
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to delete demo request' });
-    }
-});
-
 // --- Leads ---
 app.get('/api/leads', authenticateToken, async (req, res) => {
     try {
@@ -4103,9 +4869,9 @@ app.get('/api/leads', authenticateToken, async (req, res) => {
 const leadCrypto = require('crypto');
 const generateLeadApiKey = () => `dk_live_${leadCrypto.randomBytes(24).toString('hex')}`;
 
-// Kalitni ko'rish/yaratish faqat klinika egasiga (va SUPER_ADMIN'ga) ochiq:
+// Kalitni ko'rish/yaratish faqat klinika egasiga ochiq:
 // kalit qo'lga tushsa, istalgan odam klinikaga lid yoza oladi.
-const leadApiKeyGuard = [authenticateToken, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN')];
+const leadApiKeyGuard = [authenticateToken, requireRole('CLINIC_ADMIN')];
 
 app.get('/api/leads/api-key', ...leadApiKeyGuard, async (req, res) => {
     try {
@@ -4186,11 +4952,47 @@ app.post('/api/leads', authenticateToken, async (req, res) => {
         }
 
         const data = pickLeadFields(req.body);
-        if (!data.name || !data.phone) {
-            return res.status(400).json({ error: 'name va phone majburiy' });
+        if (!data.name) {
+            return res.status(400).json({ error: 'Ism kiritilishi shart' });
         }
 
-        // clinicId har doim tokendan olinadi (SUPER_ADMIN uchun so'rovdan) — body'dan emas.
+        /* TELEFON — yaroqli bo'lishi shart (S3.5). Lid telefonsiz ma'nosiz:
+           unga qayta qo'ng'iroq qilib bo'lmaydi. */
+        const phoneCheck = validatePhone(data.phone, true);
+        if (!phoneCheck.ok) {
+            return res.status(400).json({ error: phoneCheck.error, code: 'VALIDATION_FAILED', fields: { phone: phoneCheck.error } });
+        }
+        data.phone = phoneCheck.value as string;
+
+        /* TAKROR LID (S3.4, audit B-14).
+
+           Audit: «Bir xil ism va telefon bilan ikkinchi lid ogohlantirishsiz
+           yaratildi». Bemorlarda tekshiruv bor edi, lidlarda yo'q.
+
+           Bemordagi bilan BIR XIL naqsh: bloklamaydi, TANLOV beradi.
+           Reklama bir odamni ikki marta yuborishi mumkin, lekin operator
+           buni bilishi kerak — aks holda bitta odamga ikki marta
+           qo'ng'iroq qilinadi.
+
+           Telefon NORMALLASHTIRIB solishtiriladi: «+998 90 123 45 67» va
+           «901234567» — bitta raqam. */
+        if (req.body?.force !== true) {
+            const tail = String(data.phone).slice(-9);
+            const existing = await prisma.lead.findMany({
+                where: { clinicId, phone: { contains: tail }, status: { not: 'Lost' } },
+                select: { id: true, name: true, phone: true, status: true, source: true, createdAt: true },
+                take: 5,
+            });
+            if (existing.length) {
+                return res.status(409).json({
+                    error: `Bu raqam bilan lid allaqachon bor: ${existing[0].name}`,
+                    code: 'DUPLICATE_LEAD',
+                    matches: existing,
+                });
+            }
+        }
+
+        // clinicId har doim TOKENDAN olinadi — body'dan emas.
         const lead = await prisma.lead.create({
             data: { ...data, status: data.status || 'New', clinicId }
         });
@@ -4512,17 +5314,22 @@ app.post('/api/public/leads', async (req, res) => {
     }
 });
 
-app.get('/api/clinics', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
+/* Bitta o'rnatma = bitta klinika, shuning uchun bu ro'yxatda har doim BITTA
+   element bo'ladi — tokendagi klinika.
+
+   Ilgari bu endpoint butun klinikalar ustidagi rolga yopilgan edi, ya'ni hech kim chaqira
+   olmasdi: `App.tsx` dagi "saqlangan clinicId yo'q bo'lsa ro'yxatdan olamiz"
+   zaxira yo'li HAR DOIM 403 bilan yiqilardi. Endi u ishlaydi va boshqa
+   klinikaning ma'lumotini qaytarishi mumkin emas. */
+app.get('/api/clinics', authenticateToken, async (req, res) => {
     try {
-        const clinics = await prisma.clinic.findMany({
-            where: {
-                status: { not: 'Deleted' }
-            },
-            include: { plan: true }
-        });
-        // Parol hashlarini javobdan olib tashlaymiz
-        const clinicsSafe = clinics.map((c: any) => { const { password, ...rest } = c; return rest; });
-        res.json(clinicsSafe);
+        const clinicId = getScopedClinicId(req);
+        if (!clinicId) return res.json([]);
+        const clinic = await prisma.clinic.findUnique({ where: { id: clinicId } });
+        if (!clinic || clinic.status === 'Deleted') return res.json([]);
+        // Parol hashi javobga tushmaydi
+        const { password, ...safe } = clinic as any;
+        res.json([safe]);
     } catch (error: any) {
         console.error('Failed to fetch clinics:', error);
         res.status(500).json({ error: 'Failed to fetch clinics', details: error.message });
@@ -4532,13 +5339,12 @@ app.get('/api/clinics', authenticateToken, requireRole('SUPER_ADMIN'), async (re
 app.get('/api/clinics/:id', authenticateToken, async (req, res) => {
     try {
         const clinicId = req.params.id;
-        // Faqat SUPER_ADMIN yoki o'z klinikasini so'ragan foydalanuvchi ko'ra oladi
+        // Faqat o'z klinikasini so'ragan foydalanuvchi ko'ra oladi
         if (!canAccessClinic(req, clinicId)) {
             return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         }
         const clinic = await prisma.clinic.findUnique({
             where: { id: clinicId },
-            include: { plan: true }
         });
         if (!clinic) {
             return res.status(404).json({ error: 'Klinika topilmadi' });
@@ -4549,154 +5355,6 @@ app.get('/api/clinics/:id', authenticateToken, async (req, res) => {
     } catch (error: any) {
         console.error('Failed to fetch clinic by ID:', error);
         res.status(500).json({ error: 'Failed to fetch clinic details', details: error.message });
-    }
-});
-
-app.post('/api/clinics', authenticateToken, requireRole('SUPER_ADMIN', 'SALES_AGENT'), async (req, res) => {
-    try {
-        const { name, adminName, username, password, phone, planId, status, subscriptionStartDate, expiryDate, monthlyRevenue, customPrice } = req.body;
-
-        let passwordData = password ? password.trim() : '';
-        if (passwordData) {
-            const salt = await bcrypt.genSalt(10);
-            passwordData = await bcrypt.hash(passwordData, salt);
-        }
-
-        const user = (req as any).user;
-        let salesAgentId = null;
-        if (user && user.role === 'SALES_AGENT') {
-            salesAgentId = user.salesAgentId;
-        }
-
-        const clinic = await prisma.clinic.create({
-            data: {
-                name,
-                adminName,
-                username: username.trim(),
-                password: passwordData,
-                phone,
-                planId,
-                status,
-                subscriptionStartDate,
-                expiryDate,
-                monthlyRevenue,
-                customPrice: customPrice !== undefined ? Number(customPrice) : null,
-                subscriptionType: req.body.subscriptionType || 'Paid',
-                salesAgentId: salesAgentId
-            }
-        });
-        res.json(clinic);
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to create clinic' });
-    }
-});
-
-app.put('/api/clinics/:id', authenticateToken, requireRole('SUPER_ADMIN', 'SALES_AGENT'), async (req, res) => {
-    try {
-        const user = (req as any).user;
-        let updateData = { ...req.body };
-
-        if (user.role === 'SALES_AGENT') {
-            const clinic = await prisma.clinic.findUnique({ where: { id: req.params.id } });
-            if (!clinic) return res.status(404).json({ error: 'Klinika topilmadi' });
-            if (clinic.salesAgentId !== user.salesAgentId) {
-                return res.status(403).json({ error: 'Bu klinika sizga biriktirilmagan' });
-            }
-            // Sotuvchi faqat obuna bilan bog'liq maydonlarni o'zgartira oladi
-            const { status, expiryDate, planId, subscriptionType, customPrice } = updateData;
-            updateData = { status, expiryDate, planId, subscriptionType, customPrice };
-        }
-
-        if (updateData.password !== undefined) {
-            // Login paytida parol trim qilinadi, shuning uchun saqlashda ham trim qilamiz
-            const cleanPassword = String(updateData.password).trim();
-            if (cleanPassword) {
-                const salt = await bcrypt.genSalt(10);
-                updateData.password = await bcrypt.hash(cleanPassword, salt);
-            } else {
-                // Bo'sh parol yuborilsa — mavjud parolni o'chirib yubormaymiz
-                delete updateData.password;
-            }
-        }
-        if (updateData.customPrice !== undefined) {
-            updateData.customPrice = updateData.customPrice !== null ? Number(updateData.customPrice) : null;
-        }
-        const clinic = await prisma.clinic.update({
-            where: { id: req.params.id },
-            data: updateData
-        });
-        res.json(clinic);
-    } catch (error: any) {
-        console.error('Clinic update error:', error);
-        res.status(500).json({ error: error.message || 'Failed to update clinic' });
-    }
-});
-
-app.delete('/api/clinics/:id', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        const clinicId = req.params.id;
-
-        // Soft Delete: Just mark the clinic as Deleted without losing any related data
-        await prisma.clinic.update({
-            where: { id: clinicId },
-            data: { status: 'Deleted' }
-        });
-
-        // Stop the bot if it was running
-        try {
-            botManager.removeBot(clinicId);
-        } catch (botError) {
-            console.warn('Failed to stop bot during clinic deletion:', botError);
-        }
-
-        res.json({ success: true });
-    } catch (error: any) {
-        console.error('Clinic delete error:', error);
-        res.status(500).json({ error: error.message || 'Failed to delete clinic' });
-    }
-});
-
-app.get('/api/plans', authenticateToken, async (req, res) => {
-    try {
-        const plans = await prisma.subscriptionPlan.findMany();
-        const parsedPlans = plans.map((p: any) => {
-            // ...
-            try {
-                return {
-                    ...p,
-                    features: typeof p.features === 'string' ? JSON.parse(p.features) : p.features
-                };
-            } catch (parseError) {
-                console.error(`❌ Failed to parse features for plan ${p.id} (${p.name}):`, parseError);
-                return {
-                    ...p,
-                    features: [] // Return empty features on error instead of crashing
-                };
-            }
-        });
-        res.json(parsedPlans);
-    } catch (error: any) {
-        console.error('❌ Failed to fetch plans:', error);
-        res.status(500).json({
-            error: 'Failed to fetch plans',
-            details: error.message
-        });
-    }
-});
-
-app.put('/api/plans/:id', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        const data = { ...req.body };
-        if (data.features) {
-            data.features = JSON.stringify(data.features);
-        }
-        const plan = await prisma.subscriptionPlan.update({
-            where: { id: req.params.id },
-            data: data
-        });
-        res.json({ ...plan, features: JSON.parse(plan.features) });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to update plan' });
     }
 });
 
@@ -4767,8 +5425,8 @@ app.post('/api/visits/:id/dmed-sync', authenticateToken, async (req, res) => {
 });
 
 // --- Umumiy sozlamalar (klinika admini o'z klinikasini yangilaydi) ---
-// PUT /api/clinics/:id faqat SUPER_ADMIN/SALES_AGENT uchun, shuning uchun
-// klinika admini uchun xavfsiz maydonlargina ruxsat etilgan alohida endpoint.
+// Obuna maydonlariga (status, muddat, tarif) tegib bo'lmaydi — bu yerda faqat
+// klinika o'zining kundalik sozlamalari.
 app.put('/api/clinics/:id/general', authenticateToken, async (req, res) => {
     try {
         if (!canAccessClinic(req, req.params.id)) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
@@ -4913,23 +5571,83 @@ app.get('/api/clinics/:id/bot-username', authenticateToken, async (req, res) => 
 });
 
 // --- ICD-10 & Diagnoses ---
+/**
+ * MKB-10 qidiruvi (S2.2).
+ *
+ * Endpoint ilgari ham shunday ishlagan — muammo jadval BO'SH bo'lganida edi
+ * (bitta qator). Migratsiya 0030 uni 345 ta kod bilan to'ldirdi.
+ *
+ * Uch narsa qo'shildi:
+ *   1. Ruscha nom bo'yicha ham qidiriladi (`nameRu`).
+ *   2. Natija TARTIBLANADI: avval kod bilan boshlanadiganlar, keyin nomi
+ *      shu so'z bilan boshlanadiganlar, keyin qolganlari. Ilgari tartib
+ *      tasodifiy edi va "I10" yozganda kerakli kod ro'yxatning o'rtasida
+ *      qolib ketardi.
+ *   3. `query` bo'sh bo'lsa — bo'sh ro'yxat emas, eng ko'p ishlatiladigan
+ *      bo'limlardan namuna. Shifokor maydonni bosishi bilan nimadir
+ *      ko'rsin: bo'sh ro'yxat "ishlamayapti" degan taassurot beradi.
+ */
 app.get('/api/icd10', authenticateToken, async (req, res) => {
     try {
-        const { query } = req.query;
-        if (!query) {
-            return res.json([]);
+        const raw = String(req.query.query || '').trim();
+
+        /* NIMA UCHUN RAW SQL — TARTIB UCHUN.
+
+           Prisma `orderBy` da shartli ifoda yo'q, natijani esa tartiblash
+           SHART: ilgari u tasodifiy edi va «I10» yozganda kerakli kod
+           ro'yxatning o'rtasida qolib ketardi. Brauzerda tartiblash ham
+           yaramaydi — `LIMIT 50` dan keyin kerakli kod ro'yxatga umuman
+           tushmagan bo'lishi mumkin.
+
+           Parametrlar bog'lanadi (`?`), ya'ni inyeksiya yo'q. */
+        if (!raw) {
+            /* Bo'sh so'rov — bo'sh ro'yxat EMAS, namuna. Shifokor maydonni
+               bosishi bilan nimadir ko'rsin: bo'sh ro'yxat "ishlamayapti"
+               degan taassurot beradi, va aynan shu holat auditda B-02
+               bo'lib tushgan edi. */
+            const sample = await prisma.$queryRawUnsafe(
+                `SELECT "code", "name", "nameRu", "category"
+                   FROM "ICD10Code"
+                  WHERE "category" IN (?, ?, ?)
+                  ORDER BY "code" ASC
+                  LIMIT 20`,
+                'Alomatlar va noaniq holatlar', 'Pulmonologiya', 'Kardiologiya',
+            );
+            return res.json(sample);
         }
 
-        const codes = await prisma.iCD10Code.findMany({
-            where: {
-                OR: [
-                    { code: { contains: query as string } },
-                    { name: { contains: query as string } },
-                    { category: { contains: query as string } }
-                ]
-            },
-            take: 50
-        });
+        const like = `%${raw}%`;
+        const prefix = `${raw}%`;
+
+        /* Tartib SQL da: ilgari u tasodifiy edi va "I10" yozganda kerakli
+           kod ro'yxatning o'rtasida qolib ketardi.
+             0 — kod aynan mos
+             1 — kod shu bilan boshlanadi
+             2 — nomi shu bilan boshlanadi (uz yoki ru)
+             3 — qolganlari */
+        /* Tartib ustuni ATAYLAB tanlanmaydi, faqat `ORDER BY` da ishlatiladi.
+           SQLite butun sonni Prisma raw orqali `BigInt` qilib qaytaradi va
+           `JSON.stringify` unda yiqiladi — javob umuman ketmasdi. */
+        const codes = await prisma.$queryRawUnsafe(
+            `SELECT "code", "name", "nameRu", "category"
+               FROM "ICD10Code"
+              WHERE "code" LIKE ? COLLATE NOCASE
+                 OR "name" LIKE ? COLLATE NOCASE
+                 OR IFNULL("nameRu",'') LIKE ? COLLATE NOCASE
+                 OR IFNULL("category",'') LIKE ? COLLATE NOCASE
+              ORDER BY
+                CASE
+                  WHEN "code" = ? COLLATE NOCASE THEN 0
+                  WHEN "code" LIKE ? COLLATE NOCASE THEN 1
+                  WHEN "name" LIKE ? COLLATE NOCASE
+                    OR IFNULL("nameRu",'') LIKE ? COLLATE NOCASE THEN 2
+                  ELSE 3
+                END ASC,
+                "code" ASC
+              LIMIT 50`,
+            like, like, like, like, raw, prefix, prefix, prefix,
+        );
+
         res.json(codes);
     } catch (error) {
         console.error('ICD-10 search error:', error);
@@ -4939,7 +5657,7 @@ app.get('/api/icd10', authenticateToken, async (req, res) => {
 
 app.post('/api/diagnoses', authenticateToken, async (req, res) => {
     try {
-        const { patientId, code, date, notes, status } = req.body;
+        const { patientId, code, date, notes, status, visitId, isChronic } = req.body;
         if (!(await assertPatientOwnership(req, res, patientId))) return;
 
         // Klinika tokendan. Ilgari `clinicId` tanadan kelardi va tashxis
@@ -4949,10 +5667,22 @@ app.post('/api/diagnoses', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'clinicId is required' });
         }
 
+        /* QAYSI QABULDA QO'YILGANI SAQLANADI.
+
+           `PatientDiagnosis.visitId` sxemada bor va front uni yuboradi,
+           lekin bu yerda O'QILMASDI — ya'ni har tashxis qabuldan uzilgan
+           holda yozilardi. Buni S3.7 sinovi ochdi: qabulni yakunlashda
+           «tashxis qo'yilganmi?» degan tekshiruv `visitId` bo'yicha
+           qidiradi va hech qachon topmasdi.
+
+           Yon oqibati kattaroq: bemor kartasida «bu tashrifda qanday
+           tashxis qo'yildi?» degan savolga javob yo'q edi. */
         const diagnosis = await prisma.patientDiagnosis.create({
             data: {
                 patient: { connect: { id: patientId } },
                 clinic: { connect: { id: clinicId } },
+                ...(visitId ? { visit: { connect: { id: String(visitId) } } } : {}),
+                ...(isChronic !== undefined && { isChronic: !!isChronic }),
                 date,
                 notes,
                 status,
@@ -5024,6 +5754,8 @@ registerInpatientRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerMultiprofileRoutes(app, { prisma, authenticateToken, getScopedClinicId, upload, uploadsDir });
 registerBillingRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerInventoryRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerPatientMergeRoutes(app, { prisma, authenticateToken, requireRole, getScopedClinicId, normalizeUzPhone });
+registerEventRoutes(app, { authenticateToken, getScopedClinicId });
 registerReportRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerPayrollRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerComplianceRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
@@ -5195,11 +5927,12 @@ app.get('/api/facebook/config-check', authenticateToken, (req, res) => {
    `.env` faylini qayta yozadi (pastda). Ilgari u faqat `authenticateToken`
    bilan yopilgan edi — ya'ni shifokor, laborant yoki registrator ham
    platformaning Facebook kalitlarini almashtira va konfiguratsiya faylini
-   o'zgartira olardi. Bu klinika sozlamasi emas, shuning uchun SUPER_ADMIN.
+   o'zgartira olardi. Endi faqat klinika egasi.
 
-   Interfeysda chaqiruv yo'q (api.facebook.saveConfig hech qayerda
-   ishlatilmaydi), shuning uchun cheklov ishlayotgan oqimni buzmaydi. */
-app.post('/api/facebook/save-config', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
+   Ilgari u `SUPER_ADMIN` ga yopilgan edi — ya'ni HECH KIM chaqira olmasdi va
+   Facebook integratsiyasini umuman sozlab bo'lmasdi. Bitta o'rnatma = bitta
+   klinika, shuning uchun bu yerda eng yuqori rol — klinika egasi. */
+app.post('/api/facebook/save-config', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     const { appId, appSecret } = req.body;
     if (!appId || !appSecret) return res.status(400).json({ error: 'appId and appSecret are required' });
 
@@ -5242,7 +5975,20 @@ app.get('/api/facebook/auth-url', authenticateToken, (req, res) => {
     const redirectUri = process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:3001/api/facebook/callback';
 
     if (!appId) {
-        return res.status(500).json({ error: 'Facebook App ID topilmadi. Iltimos, .env faylida FACEBOOK_APP_ID ni kiriting.' });
+        /* MATN FOYDALANUVCHI UCHUN (S3.3, audit B-06).
+
+           Ilgari bu yerda «.env faylida FACEBOOK_APP_ID ni kiriting»
+           yozilardi va front uni `alert()` bilan ko'rsatardi. Registrator
+           `.env` nima ekanini bilmaydi — bu dasturchi uchun yozilgan matn.
+
+           Status ham to'g'rilandi: 500 emas, 501. Server buzilmagan —
+           funksiya sozlanmagan, va bu DOIMIY holat. 500 tufayli front uni
+           uch marta qayta urinib, yetti soniya kutardi; endi `api.ts`
+           501 ni qayta urinmaydi. */
+        return res.status(501).json({
+            error: 'Facebook integratsiyasi hali sozlanmagan — Sozlamalar → Lid integratsiyasi',
+            code: 'INTEGRATION_NOT_CONFIGURED',
+        });
     }
 
     // Updated scopes to include business management and profile for better visibility
@@ -5424,7 +6170,7 @@ const setPlatformSetting = async (key: string, value: string | null) => {
     }
 };
 
-app.get('/api/admin/facebook/status', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
+app.get('/api/admin/facebook/status', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
         const pageName = await getPlatformSetting('fb_page_name');
         const userToken = await getPlatformSetting('fb_user_token');
@@ -5434,7 +6180,7 @@ app.get('/api/admin/facebook/status', authenticateToken, requireRole('SUPER_ADMI
     }
 });
 
-app.get('/api/admin/facebook/auth-url', authenticateToken, requireRole('SUPER_ADMIN'), (req, res) => {
+app.get('/api/admin/facebook/auth-url', authenticateToken, requireRole('CLINIC_ADMIN'), (req, res) => {
     const appId = process.env.FACEBOOK_APP_ID;
     const redirectUri = process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:3001/api/facebook/callback';
 
@@ -5448,7 +6194,7 @@ app.get('/api/admin/facebook/auth-url', authenticateToken, requireRole('SUPER_AD
     res.json({ url });
 });
 
-app.get('/api/admin/facebook/pages', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
+app.get('/api/admin/facebook/pages', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
         const userToken = await getPlatformSetting('fb_user_token');
         if (!userToken) return res.status(404).json({ error: 'Facebook not connected' });
@@ -5463,7 +6209,7 @@ app.get('/api/admin/facebook/pages', authenticateToken, requireRole('SUPER_ADMIN
     }
 });
 
-app.post('/api/admin/facebook/select-page', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
+app.post('/api/admin/facebook/select-page', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     const { pageId, pageAccessToken, pageName } = req.body;
     if (!pageId || !pageAccessToken) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -5495,7 +6241,7 @@ app.post('/api/admin/facebook/select-page', authenticateToken, requireRole('SUPE
     }
 });
 
-app.post('/api/admin/facebook/disconnect', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
+app.post('/api/admin/facebook/disconnect', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
         await setPlatformSetting('fb_user_token', null);
         await setPlatformSetting('fb_page_id', null);
@@ -5509,7 +6255,10 @@ app.post('/api/admin/facebook/disconnect', authenticateToken, requireRole('SUPER
 });
 
 // --- Facebook Leads Webhook ---
-const FB_WEBHOOK_VERIFY_TOKEN = process.env.FB_WEBHOOK_VERIFY_TOKEN || 'denta_leads_secret';
+/* Standart qiymat OLIB TASHLANDI: `denta_leads_secret` denta7 dan qolgan va
+   u bilan sozlanmagan nusxa begona webhook'ni tasdiqlab yuborishi mumkin edi.
+   Token yo'q bo'lsa webhook umuman ishlamaydi — bu to'g'ri xatti-harakat. */
+const FB_WEBHOOK_VERIFY_TOKEN = process.env.FB_WEBHOOK_VERIFY_TOKEN || '';
 
 // 1. Webhook Verification (GET)
 app.get('/api/facebook/webhook', (req, res) => {
@@ -5684,7 +6433,41 @@ app.get('/api/inventory', authenticateToken, async (req, res) => {
             where: { clinicId: clinicId as string },
             orderBy: { name: 'asc' }
         });
-        res.json(items);
+
+        /* MUDDAT BELGISI (S2.5, audit B-25).
+
+           «Partiya va muddat» tabida 13 ta partiya «MUDDATI O'TGAN» deb
+           turardi, «Qoldiqlar» tabida esa shu mahsulotlarda hech qanday
+           belgi yo'q edi — ya'ni asosiy ro'yxatga qarab ishlayotgan odam
+           yaroqsiz dori borligini bilmasdi.
+
+           Bitta so'rov bilan hamma mahsulot uchun yig'iladi: har qatorga
+           alohida so'rov yuborish 200 ta mahsulotda 200 ta so'rov bo'lardi. */
+        const today = tashkentDateStr();
+        const batchStats: any[] = await prisma.$queryRawUnsafe(
+            `SELECT b."itemId"                                          AS itemId,
+                    SUM(CASE WHEN b."expiryDate" < ? THEN b."quantity" ELSE 0 END) AS expiredQty,
+                    MIN(CASE WHEN b."expiryDate" >= ? THEN b."expiryDate" END)     AS nextExpiry
+               FROM "InventoryBatch" b
+               JOIN "InventoryItem" i ON i."id" = b."itemId"
+              WHERE i."clinicId" = ? AND b."quantity" > 0 AND b."expiryDate" IS NOT NULL
+              GROUP BY b."itemId"`,
+            today, today, clinicId as string,
+        );
+
+        const byItem = new Map<string, { expiredQty: number; nextExpiry: string | null }>();
+        for (const r of batchStats) {
+            byItem.set(String(r.itemId), {
+                expiredQty: Number(r.expiredQty) || 0,
+                nextExpiry: r.nextExpiry ? String(r.nextExpiry) : null,
+            });
+        }
+
+        res.json(items.map((it: any) => ({
+            ...it,
+            expiredQuantity: byItem.get(it.id)?.expiredQty ?? 0,
+            nextExpiry: byItem.get(it.id)?.nextExpiry ?? null,
+        })));
     } catch (error) {
         console.error('Get inventory error:', error);
         res.status(500).json({ error: 'Failed to fetch inventory items' });
@@ -5700,27 +6483,27 @@ app.get('/api/inventory/analytics', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'clinicId is required' });
         }
 
-        // Build where clause
+        /* Manba — `StockMovement` (0028). Ilgari `InventoryLog` o'qilardi,
+           ya'ni sarf tahlili FAQAT eski yo'ldan o'tgan materialni ko'rardi:
+           xizmat retsepti va statsionar sarfi bu ro'yxatga umuman
+           tushmasdi. */
         const where: any = {
-            item: { clinicId: clinicId as string },
-            type: 'OUT' // Only count outgoing usage
+            clinicId: clinicId as string,
+            type: 'Out',
         };
 
         // Add date filtering if provided
         if (startDate && endDate) {
-            where.date = {
+            where.createdAt = {
                 gte: new Date(startDate as string),
                 lte: new Date(endDate as string)
             };
         }
 
-        // Get all OUT logs grouped by item
-        const logs = await prisma.inventoryLog.findMany({
+        const logs = await prisma.stockMovement.findMany({
             where,
-            include: {
-                item: true
-            },
-            orderBy: { date: 'desc' }
+            include: { item: true },
+            orderBy: { createdAt: 'desc' }
         });
 
         // Group by item and calculate totals
@@ -5735,7 +6518,7 @@ app.get('/api/inventory/analytics', authenticateToken, async (req, res) => {
                     usageCount: 0
                 };
             }
-            acc[itemId].totalUsed += Math.abs(log.change);
+            acc[itemId].totalUsed += Math.abs(log.quantity);
             acc[itemId].usageCount += 1;
             return acc;
         }, {});
@@ -5764,21 +6547,41 @@ app.post('/api/inventory', authenticateToken, async (req, res) => {
             }
         }
 
-        const item = await prisma.inventoryItem.create({
-            data: {
-                name,
-                unit,
-                quantity: parseFloat(quantity) || 0,
-                minQuantity: parseFloat(minQuantity) || 0,
-                clinicId,
-                // Tannarx: xizmat retsepti shu narxdan hisoblanadi
-                price: parseFloat(price) || 0,
-                isMedication: !!isMedication,
-                isConsumable: isConsumable !== undefined ? !!isConsumable : true,
-                form: form || null,
-                activeIngredient: activeIngredient || null,
-                departmentId: departmentId || null,
+        /* Boshlang'ich qoldiq HAM harakat bo'lib yoziladi (0028).
+
+           Ilgari `quantity` shunchaki yozilardi va bironta harakat qatori
+           qolmasdi — ya'ni "qoldiq = harakatlar yig'indisi" invarianti yangi
+           mahsulotda birinchi kunidanoq buzilgan holda tug'ilardi. Ikkalasi
+           bitta tranzaksiyada: yarim holat qolmasin. */
+        const openingQty = parseFloat(quantity) || 0;
+        const item = await prisma.$transaction(async (tx: any) => {
+            const created = await tx.inventoryItem.create({
+                data: {
+                    name,
+                    unit,
+                    quantity: openingQty,
+                    minQuantity: parseFloat(minQuantity) || 0,
+                    clinicId,
+                    // Tannarx: xizmat retsepti shu narxdan hisoblanadi
+                    price: parseFloat(price) || 0,
+                    isMedication: !!isMedication,
+                    isConsumable: isConsumable !== undefined ? !!isConsumable : true,
+                    form: form || null,
+                    activeIngredient: activeIngredient || null,
+                    departmentId: departmentId || null,
+                }
+            });
+            if (openingQty !== 0) {
+                await tx.stockMovement.create({
+                    data: {
+                        clinicId, itemId: created.id, type: 'Adjust',
+                        quantity: openingQty, reason: 'Inventory',
+                        note: "Boshlang'ich qoldiq",
+                        userName: (req as any).user?.username || 'tizim',
+                    }
+                });
             }
+            return created;
         });
 
         // Boshlang'ich zaxira narxi kiritilgan bo'lsa — Ombor xarajati yoziladi
@@ -5803,75 +6606,18 @@ app.post('/api/inventory', authenticateToken, async (req, res) => {
     }
 });
 
-app.put('/api/inventory/:id/stock', authenticateToken, async (req, res) => {
-    try {
-        const { change, type, note, userName, patientId, cost } = req.body;
-        const itemId = req.params.id;
+/* ─── YOPILDI (0028) ───────────────────────────────────────────────────────
+   Bu endpoint qoldiqni to'g'ridan-to'g'ri qayta yozardi va `InventoryLog` ga
+   tushardi: partiyalarga tegmasdi, `StockMovement` yozmasdi. Ya'ni omborda
+   ikkinchi, parallel hisob shu yerdan boshlanardi.
 
-        // Get current item
-        const currentItem = await prisma.inventoryItem.findUnique({
-            where: { id: itemId }
-        });
-
-        if (!currentItem) {
-            return res.status(404).json({ error: 'Item not found' });
-        }
-
-        // Egalik tekshiruvi
-        if ((req as any).user?.role !== 'SUPER_ADMIN' && currentItem.clinicId !== (req as any).user?.clinicId) {
-            return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
-        }
-
-        // Calculate new quantity
-        const changeAmount = parseFloat(change);
-        const actualChange = type === 'OUT' ? -Math.abs(changeAmount) : Math.abs(changeAmount);
-        const newQuantity = currentItem.quantity + actualChange;
-
-        if (newQuantity < 0) {
-            return res.status(400).json({ error: 'Insufficient stock' });
-        }
-
-        const parsedCost = parseFloat(cost) || 0;
-
-        // Update item and create log in a transaction
-        const [updatedItem] = await prisma.$transaction([
-            prisma.inventoryItem.update({
-                where: { id: itemId },
-                data: { quantity: newQuantity }
-            }),
-            prisma.inventoryLog.create({
-                data: {
-                    itemId,
-                    change: actualChange,
-                    type,
-                    note,
-                    userName,
-                    patientId: patientId || null,
-                    cost: parsedCost > 0 ? parsedCost : null
-                }
-            })
-        ]);
-
-        // Kirim (IN) narx bilan bo'lsa — Ombor xarajati yoziladi
-        if (type === 'IN' && parsedCost > 0) {
-            await prisma.expense.create({
-                data: {
-                    date: new Date().toISOString().split('T')[0],
-                    amount: parsedCost,
-                    category: 'Inventory',
-                    title: `Ombor: ${currentItem.name}`,
-                    note: note || null,
-                    clinicId: currentItem.clinicId,
-                    inventoryItemId: itemId,
-                }
-            }).catch((err: any) => console.error('Inventory expense error:', err));
-        }
-
-        res.json(updatedItem);
-    } catch (error: any) {
-        console.error('Update inventory stock error:', error);
-        res.status(500).json({ error: error.message || 'Failed to update stock' });
-    }
+   410 qaytariladi, 404 EMAS: chaqiruvchi "bunday manzil yo'q" degan xulosa
+   qilib qayta urinmasin — manzil bor edi va ATAYLAB olib tashlandi. */
+app.put('/api/inventory/:id/stock', authenticateToken, async (_req, res) => {
+    res.status(410).json({
+        error: "Bu yo'l yopilgan. Kirim uchun POST /api/stock-movements/in, "
+             + "chiqim uchun POST /api/stock-movements/out ishlating.",
+    });
 });
 
 app.get('/api/inventory/logs', authenticateToken, async (req, res) => {
@@ -5883,33 +6629,52 @@ app.get('/api/inventory/logs', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Clinic ID is required' });
         }
 
+        /* Manba — `StockMovement` (0028), eski `InventoryLog` emas.
+           Javob SHAKLI eskisicha qoldirilgan (`change`, `date`), chunki uni
+           o'qiydigan interfeys bor. Eski jadval endi faqat tarix. */
         const where: any = {
-            item: {
-                clinicId: clinicId as string
-            }
+            clinicId: clinicId as string,
+            type: 'Out',
         };
 
         if (patientId) {
             where.patientId = patientId as string;
         }
 
-        const logs = await prisma.inventoryLog.findMany({
+        const moves = await prisma.stockMovement.findMany({
             where,
             include: {
                 item: true,
-                patient: {
-                    select: {
-                        firstName: true,
-                        lastName: true
-                    }
-                }
+                patient: { select: { firstName: true, lastName: true } }
             },
-            orderBy: {
-                date: 'desc'
-            }
+            orderBy: { createdAt: 'desc' },
+            take: 500,
         });
 
-        res.json(logs);
+        /* Bekor qilinganlar ro'yxatdan CHIQARILMAYDI — ular ham bo'lgan ish.
+           Belgi qo'yiladi, shunda interfeys ikkinchi marta bekor qilishni
+           taklif qilmaydi va foydalanuvchi nima bo'lganini ko'radi. */
+        const reversals = moves.length
+            ? await prisma.stockMovement.findMany({
+                where: { reversalOfId: { in: moves.map((m: any) => m.id) } },
+                select: { reversalOfId: true },
+            })
+            : [];
+        const reversed = new Set(reversals.map((r: any) => r.reversalOfId));
+
+        res.json(moves.map((m: any) => ({
+            id: m.id,
+            itemId: m.itemId,
+            change: m.quantity,
+            type: 'OUT',
+            note: m.note,
+            date: m.createdAt,
+            userName: m.userName,
+            patientId: m.patientId,
+            reversed: reversed.has(m.id),
+            item: m.item,
+            patient: m.patient,
+        })));
     } catch (error) {
         console.error('Get inventory logs error:', error);
         res.status(500).json({ error: 'Failed to fetch inventory logs' });
@@ -5919,20 +6684,47 @@ app.get('/api/inventory/logs', authenticateToken, async (req, res) => {
 app.delete('/api/inventory/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'inventoryItem', req.params.id))) return;
-        // Delete logs first, then item (cascade should handle this but being explicit)
-        await prisma.inventoryLog.deleteMany({
-            where: { itemId: req.params.id }
-        });
 
-        await prisma.inventoryItem.delete({
-            where: { id: req.params.id }
-        });
+        /* Harakatlar HAM o'chiriladi. `StockMovement` da cascade yo'q, ya'ni
+           usiz mahsulotni o'chirish tashqi kalit xatosi bilan yiqilardi
+           (0028 gacha bunday harakatlar bo'lmasligi mumkin edi — endi har
+           mahsulotda kamida boshlang'ich qoldiq qatori bor).
+           Bitta tranzaksiyada: yarim o'chirilgan mahsulot qolmasin. */
+        await prisma.$transaction([
+            prisma.stockMovement.deleteMany({ where: { itemId: req.params.id } }),
+            prisma.inventoryLog.deleteMany({ where: { itemId: req.params.id } }),
+            prisma.inventoryItem.delete({ where: { id: req.params.id } }),
+        ]);
 
         res.json({ success: true });
     } catch (error) {
         console.error('Delete inventory item error:', error);
         res.status(500).json({ error: 'Failed to delete inventory item' });
     }
+});
+
+/* ─── SPA fallback ────────────────────────────────────────────────────────
+   Interfeys BrowserRouter ishlatadi: `/patients`, `/finance` kabi manzillar
+   FAQAT brauzer ichida mavjud, serverda bunday fayl yo'q.
+
+   Ilgari fallback faqat `/` uchun bor edi. Ya'ni klinikadagi ikkinchi
+   kompyuterdan `http://<ip>:3001/patients` ga kirilsa yoki xodim ichki
+   sahifada F5 bossa — 404 va oq ekran. Ishlaydigan dasturda bu "dastur
+   buzildi" bo'lib ko'rinadi.
+
+   API yo'llariga TEGILMAYDI: ular o'z 404 ini qaytarishi kerak, aks holda
+   noto'g'ri manzilga so'rov yuborgan mijoz JSON o'rniga HTML olib,
+   tushunarsiz xato bilan yiqilardi. Kengaytmasi bor so'rovlar ham chetda —
+   yo'q rasm o'rniga HTML qaytarish yordam bermaydi.
+
+   Global xato tutuvchidan OLDIN turadi: keyin qo'yilsa hech qachon
+   chaqirilmasdi. */
+app.get(/^(?!\/api\/|\/uploads\/|\/health$).*/, (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (path.extname(req.path)) return next();
+    if (!req.accepts('html')) return next();
+    const indexPath = path.join(frontendDist, 'index.html');
+    if (!fs.existsSync(indexPath)) return next();
+    res.sendFile(indexPath);
 });
 
 // Global error handler
@@ -6232,10 +7024,9 @@ async function sendDailyClinicReports() {
    ham yo'q edi — ya'ni shifokor yoki laborant o'z tokeni bilan butun bazaga
    SMS yuborib, klinikalarning Eskiz balansini sarflay olardi.
 
-   Endi klinika tokendan aniqlanadi, rol esa klinika administratoridan past
-   bo'lmasligi kerak. SUPER_ADMIN uchun `getScopedClinicId` query/body dan
-   o'qiydi — ya'ni u klinikani ATAYLAB ko'rsatadi, jimgina "hammasi" emas. */
-app.post('/api/batch/remind-appointments', authenticateToken, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (req, res) => {
+   Endi klinika TOKENDAN aniqlanadi va rol klinika administratoridan past
+   bo'lmasligi kerak. "Hammasi bo'yicha" degan yo'l umuman qolmadi. */
+app.post('/api/batch/remind-appointments', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
         if (!clinicId) {
@@ -6267,7 +7058,7 @@ app.post('/api/batch/remind-appointments', authenticateToken, requireRole('CLINI
    istalgan qarz summasini yozib yubora oladi. Buni tuzatish — qarzni serverda
    hisoblash, bu esa alohida ish (GAP-ANALYSIS, Б4). Shu qadamda faqat kim
    yuborishi mumkinligi va qaysi klinika bo'yicha — hal qilinadi. */
-app.post('/api/batch/remind-debts', authenticateToken, requireRole('CLINIC_ADMIN', 'SUPER_ADMIN'), async (req, res) => {
+app.post('/api/batch/remind-debts', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
         if (!clinicId) {
@@ -6362,7 +7153,7 @@ app.post('/api/batch/remind-debts', authenticateToken, requireRole('CLINIC_ADMIN
                     messageText = processTemplate(template, {
                         patientName: `${patient.lastName} ${patient.firstName}`,
                         amount: amount,
-                        clinicName: fullClinic?.name || 'Denta CRM'
+                        clinicName: fullClinic?.name || 'Klinika'
                     });
                 } else {
                     messageText = `💰 Hurmatli ${patient.firstName}, sizning klinikada ${amount.toLocaleString()} UZS miqdorida to'lanmagan qarzingiz mavjud.\n\nIltimos, to'lovni amalga oshiring.`;
@@ -6439,176 +7230,18 @@ app.get('/api/debug/transactions', authenticateToken, async (req, res) => {
     }
 });
 
-// ============================================
-// TEST ENDPOINTS (for manual testing)
-// ============================================
+/* ─── OLIB TASHLANDI: qo'lda yuborish tugmalari va sotuv konturi ──────────
 
-/* Ishlab chiqish uchun qo'lda ishga tushirish tugmalari.
+   `POST /api/test/send-*` (6 ta) — eslatma va hisobotlarni QO'LDA ishga
+   tushirardi. Ular BARCHA klinikalar bo'yicha ishlagan va shuning uchun
+   `SUPER_ADMIN` ga yopilgan edi. SUPER_ADMIN yo'q — ya'ni ular hech kimga
+   ochilmagan, o'lik kod bo'lib qolgan. Klinika adminiga ochish noto'g'ri
+   bo'lardi: bir bosishda hamma bemorga SMS ketardi va Eskiz balansidan pul
+   yechilardi. Avtomatik jadval (cron) o'z ishini qilaveradi.
 
-   MUHIM: bu funksiyalar BARCHA klinikalar bo'yicha ishlaydi — runTrigger
-   (5205-qator) faol qoidalarni klinikadan qat'i nazar yig'adi,
-   sendDailyClinicReports ham shunday. Ilgari ular faqat `authenticateToken`
-   bilan yopilgan edi, ya'ni shifokor yoki laborant o'z tokeni bilan butun
-   o'rnatilgan baza bo'ylab ommaviy SMS yubora olardi — bu klinikalarning
-   Eskiz balansidan pul va bemorlarga keraksiz xabar.
-
-   Interfeysda bu endpointlarga tugma YO'Q (tekshirilgan), shuning uchun
-   ularni faqat SUPER_ADMIN ga yopish hech qanday ishlayotgan oqimni buzmaydi.
-   Klinika admini uchun ochish noto'g'ri bo'lardi: u boshqa klinikalarning
-   bemorlariga xabar yuborish huquqiga ega emas. */
-app.post('/api/test/send-birthday-reminders', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        await runTrigger(getTrigger('birthday'), true);
-        res.json({ success: true, message: 'Birthday rules processed' });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/test/send-appointment-reminders', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        await sendAppointmentReminders();
-        res.json({ success: true, message: 'Appointment reminders sent' });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/test/process-before-appointment-rules', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        await runTrigger(getTrigger('before_appointment'), true);
-        res.json({ success: true, message: 'Before-appointment rules processed' });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/test/send-noshow-followups', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        await runTrigger(getTrigger('no_show'), true);
-        res.json({ success: true, message: 'No-show rules processed' });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/test/send-daily-reports', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        await sendDailyClinicReports();
-        res.json({ success: true, message: 'Daily reports triggered' });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/test/send-doctor-schedules', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res) => {
-    try {
-        await botManager.sendDoctorMorningSchedules();
-        res.json({ success: true, message: 'Doctor morning schedules sent' });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
-// ============================================
-// SALES AGENT & SUPER ADMIN ENDPOINTS
-// ============================================
-
-// Get own clinics (for sales agent)
-app.get('/api/sales/clinics', authenticateToken, async (req, res) => {
-    try {
-        const user = (req as any).user;
-        if (!user || user.role !== 'SALES_AGENT') {
-            return res.status(403).json({ error: 'Ruxsat berilmadi' });
-        }
-
-        const clinics = await prisma.clinic.findMany({
-            where: {
-                salesAgentId: user.salesAgentId,
-                status: { not: 'Deleted' }
-            },
-            include: { plan: true }
-        });
-        res.json(clinics);
-    } catch (error: any) {
-        res.status(500).json({ error: 'Klinikalarni yuklashda xatolik: ' + error.message });
-    }
-});
-
-// Create new sales agent (Super Admin only)
-app.post('/api/superadmin/sales', authenticateToken, async (req, res) => {
-    try {
-        const user = (req as any).user;
-        if (!user || user.role !== 'SUPER_ADMIN') {
-            return res.status(403).json({ error: 'Ruxsat berilmadi (Faqat Super Admin)' });
-        }
-
-        const { name, username, password, phone } = req.body;
-        if (!name || !username || !password || !phone) {
-            return res.status(400).json({ error: 'Barcha maydonlar to\'ldirilishi shart' });
-        }
-
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password.trim(), salt);
-
-        const agent = await prisma.salesAgent.create({
-            data: {
-                name,
-                username: username.trim().toLowerCase(),
-                password: hashedPassword,
-                phone,
-                status: 'Active'
-            }
-        });
-
-        res.json({
-            success: true,
-            agent: {
-                id: agent.id,
-                name: agent.name,
-                username: agent.username,
-                phone: agent.phone
-            }
-        });
-    } catch (error: any) {
-        if (error.code === 'P2002') {
-            return res.status(400).json({ error: 'Ushbu login band qilingan. Boshqasini tanlang.' });
-        }
-        res.status(500).json({ error: 'Sotuvchini yaratishda xatolik: ' + error.message });
-    }
-});
-
-// List all sales agents and their stats (Super Admin only)
-app.get('/api/superadmin/sales', authenticateToken, async (req, res) => {
-    try {
-        const user = (req as any).user;
-        if (!user || user.role !== 'SUPER_ADMIN') {
-            return res.status(403).json({ error: 'Ruxsat berilmadi' });
-        }
-
-        const agents = await prisma.salesAgent.findMany({
-            include: {
-                clinics: {
-                    where: { status: { not: 'Deleted' } }
-                }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
-
-        const formatted = agents.map((a: any) => ({
-            id: a.id,
-            name: a.name,
-            username: a.username,
-            phone: a.phone,
-            status: a.status,
-            clinicCount: a.clinics.length,
-            createdAt: a.createdAt
-        }));
-
-        res.json(formatted);
-    } catch (error: any) {
-        res.status(500).json({ error: 'Sotuvchilarni yuklashda xatolik: ' + error.message });
-    }
-});
+   `/api/sales/clinics`, `/api/superadmin/sales` — sotuvchi agentlar va
+   ko'p klinikali obuna konturi. XClinic bitta o'rnatma = bitta klinika,
+   ya'ni bu tushunchalar bu yerda ma'nosiz. */
 
 // ============================================
 // AI ENDPOINTS
@@ -6648,7 +7281,7 @@ app.post('/api/ai/ask', authenticateToken, async (req: any, res: any) => {
         }
         const user = req.user;
         const clinicId = getScopedClinicId(req);
-        if (!clinicId && user?.role !== 'SUPER_ADMIN') {
+        if (!clinicId) {
             return res.status(400).json({ success: false, message: 'clinicId aniqlanmadi.' });
         }
 
@@ -6694,7 +7327,7 @@ app.post('/api/ai/ask', authenticateToken, async (req: any, res: any) => {
 
 /**
  * POST /api/ai/chat
- * Tool'siz umumiy yordamchi (tizim bo'yicha savollar, stomatologiya maslahati).
+ * Tool'siz umumiy yordamchi (tizim bo'yicha savollar, tibbiy maslahat).
  */
 app.post('/api/ai/chat', authenticateToken, async (req: any, res: any) => {
     try {
@@ -6722,7 +7355,7 @@ app.post('/api/ai/chat', authenticateToken, async (req: any, res: any) => {
 /**
  * POST /api/ai/insights
  * Frontenddan klinika statistikasini qabul qilib, 3-5 ta tavsiya qaytaradi.
- * Faqat CLINIC_ADMIN va SUPER_ADMIN uchun.
+ * Faqat CLINIC_ADMIN uchun.
  */
 // ─── Tayyor hisobotlar ───────────────────────────────────────────────────────
 const { buildReport, reportsForRole } = require('./ai/reports');
@@ -6770,7 +7403,7 @@ app.post('/api/ai/insights', authenticateToken, async (req: any, res: any) => {
             return res.status(503).json({ success: false, message: 'AI sozlanmagan.' });
         }
         const user = req.user;
-        if (!['CLINIC_ADMIN', 'SUPER_ADMIN'].includes(user?.role)) {
+        if (user?.role !== 'CLINIC_ADMIN') {
             return res.status(403).json({ success: false, message: 'Ruxsat yo\'q.' });
         }
 
@@ -6778,7 +7411,7 @@ app.post('/api/ai/insights', authenticateToken, async (req: any, res: any) => {
         const today = new Date().toISOString().split('T')[0];
 
         const systemPrompt =
-            `Sen stomatologiya klinikasi boshqaruv tizimining tahlilchisisisan. ` +
+            `Sen ko'p profilli klinika boshqaruv tizimining tahlilchisisan. ` +
             `Bugungi sana: ${today}. ` +
             `Quyidagi klinika statistikasini tahlil qilib, 3-5 ta ANIQ va AMALIY tavsiya ber. ` +
             `Har bir tavsiyani quyidagi formatda yoz: ` +
@@ -6886,14 +7519,31 @@ async function verifyCriticalSchema(): Promise<boolean> {
 }
 
 console.log('🚀 Server is initializing...');
-runStartupMigrations()
+/* SQLite rejimi eng birinchi: migratsiyalar ham, zaxira ham, hamma so'rov ham
+   shu rejimda ishlashi kerak. WAL baza fayliga bir marta yoziladi. */
+applySqlitePragmas()
+    .then(() => runStartupMigrations())
     /* Yangi mexanizm: raqamlangan SQL fayllar (backend/migrations/).
        Eski COLUMN_MIGRATIONS ro'yxati ATAYLAB o'z joyida qoldirildi — u
        ishlayotgan klinikalarda allaqachon o'tgan bo'lishi mumkin, va uni
        olib tashlash hech narsa yutmaydi. Yangi o'zgarishlar faqat SQL
        fayllar orqali qo'shiladi. */
-    .then(() => runMigrations(prisma, migrationsDir))
-    .then((mig) => {
+    .then(() => runMigrations(prisma, migrationsDir, {
+        /* Sxema o'zgarishidan OLDIN nusxa. Migratsiya tranzaksiyada qaytariladi,
+           lekin muvaffaqiyatli qo'llangan o'zgarishdan qaytish yo'li faqat shu. */
+        beforeApply: async (pending) => {
+            const cfg = readBackupConfig(USER_DATA_PATH);
+            const r = await performBackup({
+                prisma,
+                backupDir: path.join(USER_DATA_PATH, 'backups'),
+                uploadsDir,
+                note: `migratsiyadan oldin: ${pending.join(', ')}`,
+                extraDir: cfg.extraDir,
+            });
+            console.log(`💾 Migratsiyadan oldingi nusxa: ${r.file}`);
+        },
+    }))
+    .then((mig: MigrationResult) => {
         if (mig.failed) {
             console.error(
                 `❌ KRITIK: migratsiya ${mig.failed.version} bajarilmadi — server ishga tushmaydi.
@@ -6906,7 +7556,7 @@ runStartupMigrations()
         }
     })
     .then(verifyCriticalSchema)
-    .then((ok) => {
+    .then((ok: boolean) => {
         if (!ok) {
             console.error(
                 '❌ KRITIK: baza sxemasi topilmadi yoki eskirgan.\n' +
@@ -6922,6 +7572,10 @@ runStartupMigrations()
         /* Kirish jurnalini tozalash (qaror В14: 24 oy). Shu yerda, chunki
            tunda ishlaydigan jadvalga ishonch yo'q — dastur o'chiq bo'ladi. */
         pruneAccessLog(prisma);
+        /* Avtomatik zaxira nusxa. Xuddi shu sabab bilan quvib yetadi:
+           belgilangan soatda kompyuter o'chiq bo'lsa, nusxa keyingi ishga
+           tushishda olinadi. */
+        startBackupScheduler({ prisma, userDataPath: USER_DATA_PATH, uploadsDir });
         app.listen(PORT, () => {
             console.log(`✅ XClinic server ${PORT}-portda ishga tushdi`);
         });

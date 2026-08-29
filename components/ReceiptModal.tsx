@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { formatMoney } from '../utils/format';
 import { Transaction, Clinic } from '../types';
 import { Modal, Button } from './Common';
 import { getPaymentMethodLabel } from '../utils/paymentMethods';
@@ -102,14 +103,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, tra
                      <div className="font-bold mb-1">Xizmat:</div>
                      <div className="flex justify-between mb-1">
                         <span style={{ maxWidth: '60%' }}>{transaction.service || 'Davolash'}</span>
-                        <span>{transaction.amount.toLocaleString()} UZS</span>
+                        <span>{formatMoney(transaction.amount)} UZS</span>
                      </div>
                   </div>
 
                   <div className="border-t my-2 py-2">
                      <div className="flex justify-between font-bold text-sm">
                         <span>JAMI TO'LOV:</span>
-                        <span>{transaction.amount.toLocaleString()} UZS</span>
+                        <span>{formatMoney(transaction.amount)} UZS</span>
                      </div>
                      <div className="flex justify-between mt-1 text-xs">
                         <span>To'lov usuli:</span>

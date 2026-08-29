@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { todayISO } from '../utils/dateUtils';
+import { SkeletonList } from '../components/Common';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
     LineChart, Line,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Department } from '../types';
 import { api } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import { exportReportToExcel } from '../utils/reportExport';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -25,6 +27,11 @@ import { exportReportToExcel } from '../utils/reportExport';
 
 interface Summary {
     period: { from: string; to: string };
+    /** Ayni damdagi umumiy qarz — davrga bog'liq EMAS.
+     *  `totals.due` esa shu DAVR ichida qolgan qarz. Ikkalasi turli narsa
+     *  va ilgari ikkalasi ham «Qarz» deb yozilardi — audit shu sababdan
+     *  «raqamlar mos kelmaydi» degan edi. Manba bitta: `snapshot.ts`. */
+    openDebt?: { amount: number; charges: number; patients: number };
     totals: {
         revenue: number; collected: number; due: number;
         materialCost: number; grossProfit: number;
@@ -78,6 +85,7 @@ const Row: React.FC<{
 );
 
 export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) => {
+    const { t } = useLanguage();
     const [from, setFrom] = useState(monthStart());
     const [to, setTo] = useState(today());
     const [data, setData] = useState<Summary | null>(null);
@@ -98,7 +106,10 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
     const colorOf = (name: string, i: number) =>
         departments.find(d => d.name === name)?.color || PALETTE[i % PALETTE.length];
 
-    const t = data?.totals;
+    /* `totals` deb nomlandi (S4.1). Ilgari u `t` edi va tarjima
+       funksiyasining odatiy nomi bilan to'qnashardi — avtomatik
+       ko'chirishda aynan shu joy jimgina buzilgan edi. */
+    const totals = data?.totals;
 
     const deptChart = useMemo(
         () => (data?.byDepartment || []).slice(0, 8).map(d => ({
@@ -223,23 +234,23 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
         <div className="space-y-5">
             {/* Davr */}
             <div className="flex flex-wrap items-end gap-3">
-                {!embedded && <h2 className="text-xl font-bold text-gray-900 dark:text-white mr-auto">Hisobot</h2>}
+                {!embedded && <h2 className="text-xl font-bold text-gray-900 dark:text-white mr-auto">{t('finance.report.report')}</h2>}
                 <div className={embedded ? 'mr-auto flex items-end gap-3' : 'flex items-end gap-3'}>
                     <div>
-                        <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Boshlanish</label>
+                        <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">{t('finance.report.from')}</label>
                         <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputCls} />
                     </div>
                     <div>
-                        <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Tugash</label>
+                        <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">{t('finance.report.to')}</label>
                         <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} />
                     </div>
                 </div>
-                <button onClick={exportAll} disabled={exporting}
+                <button aria-label={t('finance.report.exportHint')} onClick={exportAll} disabled={exporting}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:border-primary-400 disabled:opacity-50"
-                    title="Barcha kesimlar bitta faylda">
+                    title={t('finance.report.exportHint')}>
                     <Download className="w-4 h-4" /> {exporting ? '...' : 'Excel'}
                 </button>
-                <button onClick={load} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Yangilash">
+                <button aria-label={t('finance.report.refresh')} onClick={load} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={t('finance.report.refresh')}>
                     <RefreshCw className="w-5 h-5" />
                 </button>
             </div>
@@ -273,19 +284,19 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             {/* ── SHIFOKORLAR ───────────────────────────────────────────────── */}
             {view === 'doctors' && (
                 extraLoading || !extra.doctors ? (
-                    <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
+                    <SkeletonList rows={5} />
                 ) : (extra.doctors.doctors || []).length === 0 ? (
                     <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                         <Users className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                        <p className="text-gray-500 dark:text-gray-400">Bu davrda yozuv yo'q</p>
+                        <p className="text-gray-500 dark:text-gray-400">{t('finance.report.noRows')}</p>
                     </div>
                 ) : (
                     <>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                            <Tile label="Yozilgan" value={fmt(extra.doctors.totals.revenue)} unit="UZS" icon={TrendingUp} />
+                            <Tile label={t('finance.report.charged')} value={fmt(extra.doctors.totals.revenue)} unit="UZS" icon={TrendingUp} />
                             <Tile label="To'langan" value={fmt(extra.doctors.totals.paid)} unit="UZS" icon={Wallet} tone="ok" />
-                            <Tile label="Qarz" value={fmt(extra.doctors.totals.due)} unit="UZS" icon={AlertCircle} tone="bad" />
-                            <Tile label="Hisoblangan ulush" value={fmt(extra.doctors.totals.accrued)} unit="UZS"
+                            <Tile label={t('finance.report.debt')} value={fmt(extra.doctors.totals.due)} unit="UZS" icon={AlertCircle} tone="bad" />
+                            <Tile label={t('finance.report.accruedShare')} value={fmt(extra.doctors.totals.accrued)} unit="UZS"
                                 icon={Percent} hint="to'langan pul bo'yicha" />
                         </div>
 
@@ -294,13 +305,13 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                 <table className="w-full min-w-[720px]">
                                     <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
                                         <tr>
-                                            <Th>Shifokor</Th>
-                                            <Th right>Yozilgan</Th>
-                                            <Th right>To'langan</Th>
-                                            <Th right>Qarz</Th>
-                                            <Th right>Bemor</Th>
-                                            <Th right>O'rtacha chek</Th>
-                                            <Th right>Ulush</Th>
+                                            <Th>{t('finance.report.doctor')}</Th>
+                                            <Th right>{t('finance.report.charged')}</Th>
+                                            <Th right>{t('finance.report.paid')}</Th>
+                                            <Th right>{t('finance.report.debt')}</Th>
+                                            <Th right>{t('finance.report.patient')}</Th>
+                                            <Th right>{t('finance.report.avgCheck')}</Th>
+                                            <Th right>{t('finance.report.share')}</Th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -331,15 +342,15 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             {/* ── BO'LIMLAR ─────────────────────────────────────────────────── */}
             {view === 'departments' && (
                 extraLoading || !extra.departments ? (
-                    <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
+                    <p className="text-sm text-gray-400 py-16 text-center">{t('finance.report.calculating')}</p>
                 ) : (
                     <>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                            <Tile label="Daromad" value={fmt(extra.departments.totals.revenue)} unit="UZS" icon={TrendingUp} />
-                            <Tile label="Xarajat" value={fmt(extra.departments.totals.expense)} unit="UZS" icon={TrendingDown} tone="bad" />
-                            <Tile label="Foyda" value={fmt(extra.departments.totals.profit)} unit="UZS" icon={Wallet}
+                            <Tile label={t('finance.report.income')} value={fmt(extra.departments.totals.revenue)} unit="UZS" icon={TrendingUp} />
+                            <Tile label={t('finance.report.expense')} value={fmt(extra.departments.totals.expense)} unit="UZS" icon={TrendingDown} tone="bad" />
+                            <Tile label={t('finance.report.profit')} value={fmt(extra.departments.totals.profit)} unit="UZS" icon={Wallet}
                                 tone={extra.departments.totals.profit >= 0 ? 'ok' : 'bad'} />
-                            <Tile label="Koyka bandligi"
+                            <Tile label={t('finance.report.bedOccupancy')}
                                 value={extra.departments.totals.occupancy != null ? `${extra.departments.totals.occupancy}` : '—'}
                                 unit={extra.departments.totals.occupancy != null ? '%' : undefined}
                                 icon={Building2}
@@ -351,12 +362,12 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                 <table className="w-full min-w-[620px]">
                                     <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
                                         <tr>
-                                            <Th>Bo'lim</Th>
-                                            <Th right>Daromad</Th>
-                                            <Th right>To'langan</Th>
-                                            <Th right>Xarajat</Th>
-                                            <Th right>Foyda</Th>
-                                            <Th right>Koyka-kun</Th>
+                                            <Th>{t('finance.report.department')}</Th>
+                                            <Th right>{t('finance.report.income')}</Th>
+                                            <Th right>{t('finance.report.paid')}</Th>
+                                            <Th right>{t('finance.report.expense')}</Th>
+                                            <Th right>{t('finance.report.profit')}</Th>
+                                            <Th right>{t('finance.report.bedDays')}</Th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -392,29 +403,27 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             {/* ── CHIQIMLAR ─────────────────────────────────────────────────── */}
             {view === 'writeoffs' && (
                 extraLoading || !extra.writeoffs ? (
-                    <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
+                    <p className="text-sm text-gray-400 py-16 text-center">{t('finance.report.calculating')}</p>
                 ) : (
                     <>
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                            <Tile label="Behuda ketgan" value={fmt(extra.writeoffs.wasteCost)} unit="UZS"
+                            <Tile label={t('finance.report.wasted')} value={fmt(extra.writeoffs.wasteCost)} unit="UZS"
                                 icon={TrendingDown} tone="bad" hint="muddati o'tgan, buzilgan, kam chiqqan" />
-                            <Tile label="Xizmatga ishlatilgan" value={fmt(extra.writeoffs.serviceCost)} unit="UZS"
+                            <Tile label={t('finance.report.usedForService')} value={fmt(extra.writeoffs.serviceCost)} unit="UZS"
                                 icon={Package} hint="bu yo'qotish emas — daromad keltirgan" />
-                            <Tile label="Jami chiqim" value={fmt(extra.writeoffs.totalCost)} unit="UZS" icon={Package}
+                            <Tile label={t('finance.report.totalOut')} value={fmt(extra.writeoffs.totalCost)} unit="UZS" icon={Package}
                                 hint={`${extra.writeoffs.movementCount} harakat`} />
                         </div>
 
                         {(extra.writeoffs.byReason || []).length === 0 ? (
                             <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                                 <Package className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                                <p className="text-gray-500 dark:text-gray-400">Bu davrda chiqim yo'q</p>
+                                <p className="text-gray-500 dark:text-gray-400">{t('finance.report.noExpenses')}</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                                    <h3 className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700">
-                                        Sabab bo'yicha
-                                    </h3>
+                                    <h3 className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700">{t('finance.report.byReason')}</h3>
                                     <table className="w-full">
                                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                                             {extra.writeoffs.byReason.map((r: any) => (
@@ -431,9 +440,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                 </div>
 
                                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                                    <h3 className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700">
-                                        Pozitsiya bo'yicha
-                                    </h3>
+                                    <h3 className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700">{t('finance.report.byItem')}</h3>
                                     <div className="max-h-80 overflow-y-auto">
                                         <table className="w-full">
                                             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -464,7 +471,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 hech qayerda ko'rinmasdi. */}
             {view === 'labshift' && (
                 extraLoading || !extra.labshift ? (
-                    <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
+                    <p className="text-sm text-gray-400 py-16 text-center">{t('finance.report.calculating')}</p>
                 ) : (
                     <>
                         <p className="text-xs text-gray-400">
@@ -475,21 +482,20 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                             {/* Laboratoriya */}
                             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                                 <h3 className="px-4 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                                    <Package className="w-4 h-4 text-gray-400" /> Laboratoriya
-                                </h3>
+                                    <Package className="w-4 h-4 text-gray-400" />{t('finance.report.lab')}</h3>
                                 <div className="p-4 space-y-2">
-                                    <Row label="Buyurtma" value={extra.labshift.lab.total} />
-                                    <Row label="Proba olindi" value={extra.labshift.lab.collected} tone="ok" />
-                                    <Row label="Proba olinmadi" value={extra.labshift.lab.notCollected}
+                                    <Row label={t('finance.report.order')} value={extra.labshift.lab.total} />
+                                    <Row label={t('finance.report.sampleTaken')} value={extra.labshift.lab.collected} tone="ok" />
+                                    <Row label={t('finance.report.sampleNotTaken')} value={extra.labshift.lab.notCollected}
                                         tone={extra.labshift.lab.notCollected > 0 ? 'warn' : undefined}
                                         hint="bemor kelmagan yoki unutilgan" />
                                     {extra.labshift.lab.urgent > 0 && (
-                                        <Row label="Shoshilinch" value={extra.labshift.lab.urgent} />
+                                        <Row label={t('finance.report.urgent')} value={extra.labshift.lab.urgent} />
                                     )}
                                     <Row label="To'lanmagan" value={extra.labshift.lab.unpaidCount}
                                         tone={extra.labshift.lab.unpaidCount > 0 ? 'bad' : undefined}
                                         hint={extra.labshift.lab.unpaidSum > 0 ? `${fmt(extra.labshift.lab.unpaidSum)} UZS` : undefined} />
-                                    <Row label="Tushum" value={fmt(extra.labshift.lab.revenue)} unit="UZS" />
+                                    <Row label={t('finance.report.revenue')} value={fmt(extra.labshift.lab.revenue)} unit="UZS" />
                                     {extra.labshift.lab.avgTurnaroundHours != null && (
                                         <Row label="O'rtacha bajarish" value={extra.labshift.lab.avgTurnaroundHours} unit="soat"
                                             hint="probadan natijagacha" />
@@ -520,14 +526,13 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                             {/* Diagnostika */}
                             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                                 <h3 className="px-4 py-2.5 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                                    <Activity className="w-4 h-4 text-gray-400" /> Diagnostika
-                                </h3>
+                                    <Activity className="w-4 h-4 text-gray-400" />{t('finance.report.diagnostics')}</h3>
                                 <div className="p-4 space-y-2">
-                                    <Row label="Tekshiruv" value={extra.labshift.studies.total} />
+                                    <Row label={t('finance.report.study')} value={extra.labshift.studies.total} />
                                     <Row label="To'lanmagan" value={extra.labshift.studies.unpaidCount}
                                         tone={extra.labshift.studies.unpaidCount > 0 ? 'bad' : undefined}
                                         hint={extra.labshift.studies.unpaidSum > 0 ? `${fmt(extra.labshift.studies.unpaidSum)} UZS` : undefined} />
-                                    <Row label="Tushum" value={fmt(extra.labshift.studies.revenue)} unit="UZS" />
+                                    <Row label={t('finance.report.revenue')} value={fmt(extra.labshift.studies.revenue)} unit="UZS" />
 
                                     {Object.keys(extra.labshift.studies.byModality || {}).length > 0 && (
                                         <div className="pt-2 mt-2 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-2">
@@ -551,8 +556,8 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             )}
 
             {view === 'summary' && (loading ? (
-                <p className="text-sm text-gray-400 py-16 text-center">Hisoblanmoqda...</p>
-            ) : !t ? null : (
+                <p className="text-sm text-gray-400 py-16 text-center">{t('finance.report.calculating')}</p>
+            ) : !totals ? null : (
                 <>
                     {/* ── Oldingi davr bilan solishtirish ────────────────────
                         "Shu oy 40 mln" o'zi hech narsa aytmaydi: ko'pmi,
@@ -561,9 +566,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     {cmp && (
                         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                             <div className="flex flex-wrap items-baseline gap-2 mb-3">
-                                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                    Oldingi davrga nisbatan
-                                </p>
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{t('finance.report.vsPrev')}</p>
                                 <span className="text-[11px] text-gray-400">
                                     {cmp.previous.from} — {cmp.previous.to} ({cmp.previous.days} kun)
                                 </span>
@@ -609,27 +612,31 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
 
                     {/* Asosiy raqamlar */}
                     <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-                        <Tile label="Tushum" value={fmt(t.revenue)} unit="UZS" icon={TrendingUp}
-                            hint={`olindi: ${fmt(t.collected)}`} />
-                        <Tile label="Qarz" value={fmt(t.due)} unit="UZS" icon={AlertCircle}
-                            tone={t.due > 0 ? 'warn' : undefined} hint="to'lanmagan" />
-                        <Tile label="Material" value={fmt(t.materialCost)} unit="UZS" icon={Package}
+                        <Tile label={t('finance.report.revenue')} value={fmt(totals.revenue)} unit="UZS" icon={TrendingUp}
+                            hint={`olindi: ${fmt(totals.collected)}`} />
+                        <Tile label={t('finance.report.periodDebt')} value={fmt(totals.due)} unit="UZS" icon={AlertCircle}
+                            tone={totals.due > 0 ? 'warn' : undefined} hint="shu davrda to'lanmagani" />
+                        {data.openDebt && (
+                            <Tile label={t('finance.report.openDebt')} value={fmt(data.openDebt.amount)} unit="UZS" icon={AlertCircle}
+                                tone={data.openDebt.amount > 0 ? 'bad' : undefined}
+                                hint={`${data.openDebt.patients} bemor · hozirgi holat`} />
+                        )}
+                        <Tile label={t('finance.report.material')} value={fmt(totals.materialCost)} unit="UZS" icon={Package}
                             hint="retsept bo'yicha" />
-                        <Tile label="Yalpi foyda" value={fmt(t.grossProfit)} unit="UZS" icon={Percent}
+                        <Tile label={t('finance.report.grossProfit')} value={fmt(totals.grossProfit)} unit="UZS" icon={Percent}
                             hint="tushum − material" />
-                        <Tile label="Shifokor ulushi" value={fmt(t.doctorShare)} unit="UZS" icon={Users} />
-                        <Tile label="Sof foyda" value={fmt(t.netProfit)} unit="UZS"
-                            icon={t.netProfit >= 0 ? TrendingUp : TrendingDown}
-                            tone={t.netProfit >= 0 ? 'ok' : 'bad'}
+                        <Tile label={t('finance.report.doctorShare')} value={fmt(totals.doctorShare)} unit="UZS" icon={Users} />
+                        <Tile label={t('finance.report.netProfit')} value={fmt(totals.netProfit)} unit="UZS"
+                            icon={totals.netProfit >= 0 ? TrendingUp : TrendingDown}
+                            tone={totals.netProfit >= 0 ? 'ok' : 'bad'}
                             hint="barcha xarajatlardan keyin" />
                     </div>
 
                     {/* Eski stomatologik laboratoriya xarajati qolgan bo'lsa */}
-                    {t.legacyLabExpense > 0 && (
+                    {totals.legacyLabExpense > 0 && (
                         <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                             <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                            <p className="text-sm text-amber-800 dark:text-amber-200">
-                                Eski <b>«Laboratoriya» xarajatlari: {fmt(t.legacyLabExpense)} UZS</b> topildi.
+                            <p className="text-sm text-amber-800 dark:text-amber-200">{t('finance.report.old')}<b>«Laboratoriya» xarajatlari: {fmt(totals.legacyLabExpense)} UZS</b> topildi.
                                 Bular stomatologiya davridan qolgan — o'sha paytda protez tashqi laboratoriyaga
                                 buyurtma qilinardi. Endi laboratoriya o'z bo'limimiz va daromad keltiradi,
                                 shuning uchun bu summa sof foydadan <b>chegirilmadi</b>.
@@ -640,11 +647,10 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     {/* Bo'limlar — asosiy kesim */}
                     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                         <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-4">
-                            <Building2 className="w-4 h-4 text-gray-400" /> Bo'limlar bo'yicha
-                        </h3>
+                            <Building2 className="w-4 h-4 text-gray-400" />{t('finance.report.byDepartment')}</h3>
 
                         {data.byDepartment.length === 0 ? (
-                            <p className="text-sm text-gray-400 py-8 text-center">Bu davrda tushum yo'q</p>
+                            <p className="text-sm text-gray-400 py-8 text-center">{t('finance.report.noRevenue')}</p>
                         ) : (
                             <>
                                 <div className="h-64 w-full">
@@ -669,13 +675,13 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     <table className="w-full text-sm min-w-[620px]">
                                         <thead>
                                             <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                                                <th className="pb-2 pr-3 font-semibold">Bo'lim</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">Tushum</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">Olindi</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">Qarz</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">Material</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">Marja</th>
-                                                <th className="pb-2 font-semibold text-right">Xizmat</th>
+                                                <th className="pb-2 pr-3 font-semibold">{t('finance.report.department')}</th>
+                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.revenue')}</th>
+                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.collected')}</th>
+                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.debt')}</th>
+                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.material')}</th>
+                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.margin')}</th>
+                                                <th className="pb-2 font-semibold text-right">{t('finance.report.service')}</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -712,13 +718,13 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     {/* Manba va kunlik oqim */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Tushum manbasi</h3>
+                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('finance.report.revenueSource')}</h3>
                             {data.bySource.length === 0 ? (
-                                <p className="text-sm text-gray-400 py-6 text-center">Ma'lumot yo'q</p>
+                                <p className="text-sm text-gray-400 py-6 text-center">{t('finance.report.noData')}</p>
                             ) : (
                                 <div className="space-y-2.5">
                                     {data.bySource.map((s, i) => {
-                                        const pct = t.revenue > 0 ? (s.revenue / t.revenue) * 100 : 0;
+                                        const pct = totals.revenue > 0 ? (s.revenue / totals.revenue) * 100 : 0;
                                         return (
                                             <div key={s.source}>
                                                 <div className="flex items-baseline gap-2 text-sm">
@@ -738,9 +744,9 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                         </div>
 
                         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Kunlik oqim</h3>
+                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('finance.report.dailyFlow')}</h3>
                             {data.daily.length === 0 ? (
-                                <p className="text-sm text-gray-400 py-6 text-center">Ma'lumot yo'q</p>
+                                <p className="text-sm text-gray-400 py-6 text-center">{t('finance.report.noData')}</p>
                             ) : (
                                 <div className="h-52 w-full">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -765,10 +771,9 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                                <Users className="w-4 h-4 text-gray-400" /> Shifokorlar bo'yicha
-                            </h3>
+                                <Users className="w-4 h-4 text-gray-400" />{t('finance.report.byDoctor')}</h3>
                             {data.byDoctor.length === 0 ? (
-                                <p className="text-sm text-gray-400 py-6 text-center">Ma'lumot yo'q</p>
+                                <p className="text-sm text-gray-400 py-6 text-center">{t('finance.report.noData')}</p>
                             ) : (
                                 <div className="space-y-2">
                                     {data.byDoctor.slice(0, 10).map(d => (
@@ -784,10 +789,9 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
 
                         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                                <Wallet className="w-4 h-4 text-gray-400" /> Xarajatlar
-                            </h3>
+                                <Wallet className="w-4 h-4 text-gray-400" />{t('finance.report.expenses')}</h3>
                             {data.expenseByCategory.length === 0 ? (
-                                <p className="text-sm text-gray-400 py-6 text-center">Xarajat yo'q</p>
+                                <p className="text-sm text-gray-400 py-6 text-center">{t('finance.report.noExpense')}</p>
                             ) : (
                                 <div className="space-y-2">
                                     {data.expenseByCategory.map(e => (

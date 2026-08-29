@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatDate } from '../utils/format';
 import { TrendingUp, TrendingDown, Minus, FlaskConical, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -22,7 +23,7 @@ interface Props {
 
 const fmtDate = (v?: string | null) => {
     if (!v) return '—';
-    try { return new Date(v).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: '2-digit' }); }
+    try { return formatDate(v); }
     catch { return String(v).slice(0, 10); }
 };
 

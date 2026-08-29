@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { confirmAction } from '../services/confirm';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, FlaskConical, Scan, Pill, Plus, Trash2, CheckCircle,
@@ -9,6 +10,7 @@ import {
     Modality, MODALITY_LABELS, ICD10Code, VisitCharge, ChargeSummary,
 } from '../types';
 import { api } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import { EncounterForm } from '../components/EncounterForm';
 import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 import { printReferral } from '../utils/printForms';
@@ -41,6 +43,7 @@ const calcAge = (dob?: string) => {
 };
 
 export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors, currentUserName, addToast }) => {
+    const { t } = useLanguage();
     const { visitId } = useParams<{ visitId: string }>();
     const navigate = useNavigate();
 
@@ -199,10 +202,53 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
         notes: '', status: 'Active', clinicId: visit!.clinicId, visitId: visit!.id,
     } as any), 'Tashxis qo\'shildi');
 
-    const complete = () => guard(
-        () => api.visits.update(visit!.id, { status: 'Completed' }),
-        'Qabul yakunlandi',
-    );
+    /* QABULNI YAKUNLASH — NAZORAT BILAN (S3.7, audit B-12).
+
+       Server yopishdan oldin tekshiradi: tashxis bormi, to'lov
+       qolganmi, tahlil natijasi kelganmi. Kamchilik bo'lsa 409 va
+       sabablar ro'yxati qaytadi.
+
+       TAQIQ EMAS, TANLOV: bemor qarzga qolishi mumkin, natija ertaga
+       kelishi mumkin. Lekin shifokor buni BILIB yopishi kerak, va sabab
+       yozib qolishi kerak — «nega tashxissiz yopilgan?» degan savol
+       keyin ham javobsiz qolmasin. */
+    const complete = async () => {
+        setBusy(true);
+        try {
+            await api.visits.update(visit!.id, { status: 'Completed' });
+            await reload();
+            addToast('success', 'Qabul yakunlandi');
+            setPanel(null);
+        } catch (e: any) {
+            if (e?.data?.code === 'VISIT_INCOMPLETE') {
+                const reasons: { text: string }[] = e.data.reasons || [];
+                const list = reasons.map(r => '• ' + r.text).join(String.fromCharCode(10));
+                const proceed = await confirmAction({
+                    title: "Qabul to'liq emas",
+                    body: `${list}${String.fromCharCode(10)}${String.fromCharCode(10)}Baribir yakunlansinmi? Sabab qabul izohiga yoziladi.`,
+                    confirmLabel: 'Baribir yakunlash',
+                });
+                if (proceed) {
+                    try {
+                        await api.visits.update(visit!.id, {
+                            status: 'Completed',
+                            force: true,
+                            closeReason: 'Yakunlandi: ' + reasons.map(r => r.text).join('; '),
+                        } as any);
+                        await reload();
+                        addToast('success', 'Qabul yakunlandi');
+                        setPanel(null);
+                    } catch (e2: any) {
+                        addToast('error', e2.message || 'Xatolik');
+                    }
+                }
+            } else {
+                addToast('error', e.message || 'Xatolik');
+            }
+        } finally {
+            setBusy(false);
+        }
+    };
 
     const searchIcd = async (q: string) => {
         setIcdQuery(q);
@@ -221,7 +267,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
     if (!visit) return (
         <div className="text-center py-20">
             <p className="text-gray-500 dark:text-gray-400">{error || 'Qabul topilmadi'}</p>
-            <button onClick={() => navigate('/reception')} className="mt-3 text-primary-600 hover:underline">Registraturaga qaytish</button>
+            <button onClick={() => navigate('/reception')} className="mt-3 text-primary-600 hover:underline">{t('visit.backToReception')}</button>
         </div>
     );
 
@@ -241,8 +287,25 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                         {visit.queueNumber ?? '—'}
                     </span>
                     <div className="min-w-0">
+                        {/* BEMOR KARTASIGA O'TISH.
+
+                            Bu havola YO'Q edi. Qabul ekraniga navbatdan
+                            kirilgan bo'lsa, undan bemor kartasiga qaytish
+                            yo'li umuman yo'q edi: orqaga qaytib, Bemorlar
+                            ro'yxatini ochib, ismni qidirish kerak edi.
+
+                            Karta esa aynan «bu bemorda nima bo'lgan?»
+                            degan savolga javob beradi — qabullar tarixi,
+                            tahlillar, to'lovlar, materiallar. */}
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white truncate">
-                            {visit.patient?.lastName} {visit.patient?.firstName}
+                            <button
+                                type="button"
+                                onClick={() => navigate(`/patients/${visit.patientId}`)}
+                                title="Bemor kartasini ochish — butun tarixi"
+                                className="hover:text-primary-600 dark:hover:text-primary-400 hover:underline text-left"
+                            >
+                                {visit.patient?.lastName} {visit.patient?.firstName}
+                            </button>
                         </h2>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                             {age != null ? `${age} yosh · ` : ''}
@@ -274,7 +337,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                 </div>
                 {visit.complaints && (
                     <p className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300">
-                        <span className="font-medium">Shikoyat:</span> {visit.complaints}
+                        <span className="font-medium">{t('visit.complaint')}</span> {visit.complaints}
                     </p>
                 )}
             </div>
@@ -341,9 +404,9 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
             {/* ── Panellar ──────────────────────────────────────────────────── */}
             {panel === 'lab' && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Qaysi tahlillar?</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.whichTests')}</h3>
                     {labTests.filter(t => t.isActive).length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Tahlillar katalogi bo'sh.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('visit.labCatalogEmpty')}</p>
                     ) : (
                         <>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
@@ -382,7 +445,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
 
             {panel === 'study' && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Qaysi tekshiruv?</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.whichStudy')}</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <select value={studyForm.modality} onChange={e => setStudyForm(f => ({ ...f, modality: e.target.value as Modality }))} className={inputCls}>
                             {MODALITIES.map(m => <option key={m} value={m}>{MODALITY_LABELS[m]}</option>)}
@@ -403,16 +466,16 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
 
             {panel === 'rx' && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Retsept</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.prescription')}</h3>
                     <div className="space-y-2">
                         {rxItems.map((it, i) => (
                             <div key={i} className="grid grid-cols-12 gap-2">
                                 <input value={it.name} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
-                                    className={`${inputCls} col-span-4`} placeholder="Dori nomi" />
+                                    className={`${inputCls} col-span-4`} placeholder={t('visit.medName')} />
                                 <input value={it.dosage} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, dosage: e.target.value } : x))}
-                                    className={`${inputCls} col-span-3`} placeholder="Doza" />
+                                    className={`${inputCls} col-span-3`} placeholder={t('visit.dose')} />
                                 <input value={it.frequency} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, frequency: e.target.value } : x))}
-                                    className={`${inputCls} col-span-3`} placeholder="Kuniga 2 mahal" />
+                                    className={`${inputCls} col-span-3`} placeholder={t('visit.frequencyPh')} />
                                 <input type="number" value={it.durationDays} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, durationDays: e.target.value } : x))}
                                     className={`${inputCls} col-span-2`} placeholder="kun" />
                             </div>
@@ -431,10 +494,10 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
 
             {panel === 'service' && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Xizmat qo'shish</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.addService')}</h3>
                     <div className="flex flex-wrap gap-3">
                         <select value={svcPick} onChange={e => setSvcPick(e.target.value ? Number(e.target.value) : '')} className={`${inputCls} max-w-md`}>
-                            <option value="">Tanlang...</option>
+                            <option value="">{t('common.choose')}</option>
                             {deptServices.map(s => <option key={s.id} value={s.id}>{s.name} — {fmt(s.price)}</option>)}
                         </select>
                         <button onClick={addService} disabled={busy || !svcPick}
@@ -471,7 +534,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                 {!isDone && (
                     <>
                         <input value={icdQuery} onChange={e => searchIcd(e.target.value)} className={inputCls}
-                            placeholder="Kod yoki kasallik nomi bo'yicha qidiring..." />
+                            placeholder={t('visit.icdSearchPh')} />
                         {icdResults.length > 0 && (
                             <div className="mt-2 border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 max-h-48 overflow-y-auto">
                                 {icdResults.slice(0, 12).map(c => (
@@ -489,7 +552,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
 
             {/* ── Qabulga biriktirilganlar ──────────────────────────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Section title="Xizmatlar" icon={Stethoscope} empty="Xizmat qo'shilmagan">
+                <Section title={t('visit.tabServices')} icon={Stethoscope} empty="Xizmat qo'shilmagan">
                     {(visit.procedures || []).map(p => (
                         <Row key={p.id} main={p.procedureName} right={`${fmt(p.finalPrice)} so'm`}
                             charge={chargeOf('Service', p.id)}
@@ -499,7 +562,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                     ))}
                 </Section>
 
-                <Section title="Tahlillar" icon={FlaskConical} empty="Tahlil yuborilmagan">
+                <Section title={t('visit.tabLab')} icon={FlaskConical} empty="Tahlil yuborilmagan">
                     {(visit.labOrders || []).map(o => (
                         <Row key={o.id} main={(o.items || []).map(i => i.testName).join(', ') || 'Tahlil'}
                             sub={o.status === 'Completed'
@@ -517,7 +580,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                     ))}
                 </Section>
 
-                <Section title="Diagnostika" icon={Scan} empty="Tekshiruv yuborilmagan">
+                <Section title={t('visit.tabDiag')} icon={Scan} empty="Tekshiruv yuborilmagan">
                     {(visit.studies || []).map(s => (
                         <Row key={s.id} main={`${MODALITY_LABELS[s.modality] || s.modality} — ${s.name}`}
                             sub={s.conclusion || (s.status === 'Completed'
@@ -535,7 +598,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                     ))}
                 </Section>
 
-                <Section title="Retseptlar" icon={Pill} empty="Retsept yozilmagan">
+                <Section title={t('visit.tabRx')} icon={Pill} empty="Retsept yozilmagan">
                     {(visit.prescriptions || []).map(rx => (
                         <Row key={rx.id} main={(rx.items || []).map(i => i.name).join(', ') || 'Retsept'} sub={rx.date} />
                     ))}
@@ -594,7 +657,7 @@ const Row: React.FC<{
         <PaidBadge charge={charge} />
         {right && <span className="tabular-nums text-gray-600 dark:text-gray-300 shrink-0">{right}</span>}
         {onDelete && (
-            <button onClick={onDelete} className="p-1 text-gray-300 hover:text-red-500 shrink-0" title="O'chirish">
+            <button aria-label="O'chirish" onClick={onDelete} className="p-1 text-gray-300 hover:text-red-500 shrink-0" title="O'chirish">
                 <Trash2 className="w-3.5 h-3.5" />
             </button>
         )}

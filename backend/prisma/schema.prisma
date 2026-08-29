@@ -82,7 +82,9 @@ model Patient {
   cardNumber       String?
   appointments     Appointment[]
   installmentPlans InstallmentPlan[]
+  /// ESKI jurnal — 0028 dan keyin unga yozilmaydi, faqat tarix uchun turibdi
   inventoryLogs    InventoryLog[]
+  stockMovements   StockMovement[]
   clinic           Clinic             @relation(fields: [clinicId], references: [id])
   doctor           Doctor?            @relation(fields: [doctorId], references: [id])
   diagnoses        PatientDiagnosis[]
@@ -106,6 +108,9 @@ model Patient {
   /// bir nechta NULL ruxsat etiladi, shuning uchun bo'sh qiymatlar to'siq emas.
   @@unique([clinicId, cardNumber])
   @@index([phone])
+  /// Migratsiya 0029. Kirishdagi ro'yxat `createdAt DESC LIMIT 500` bilan
+  /// o'qiydi — indekssiz saralash uchun vaqtinchalik B-daraxt qurilardi.
+  @@index([clinicId, createdAt])
 }
 
 model PatientPhoto {
@@ -148,6 +153,10 @@ model Appointment {
   // tushgan yozuvni topsa, izohlarni birlashtiradi (server.ts).
   @@index([date])
   @@index([patientId])
+  /// Migratsiya 0029. `clinicId` bo'yicha indeks yo'q edi: shifokor kesimidagi
+  /// so'rov butun jadvalni sana indeksi bo'ylab skan qilardi.
+  @@index([clinicId, date])
+  @@index([doctorId])
 }
 
 /// Qabul — butun tizimning markaziy tuguni. Har bir modul (tahlil, diagnostika,
@@ -266,6 +275,14 @@ model Transaction {
   patient         Patient?  @relation(fields: [patientId], references: [id])
   visit           Visit?    @relation(fields: [visitId], references: [id])
   chargePayments  ChargePayment[]
+
+  /// Migratsiya 0029. Bu jadvalda ilgari BIRONTA indeks yo'q edi, holbuki u
+  /// eng katta jadval (10.1 o'lchovi: 110 010 qator) va kassa, bosh sahifa,
+  /// hisobotlar hammasi undan o'qiydi.
+  @@index([clinicId, date])
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([visitId])
 }
 
 model Expense {
@@ -315,6 +332,18 @@ model Service {
   rates        DoctorServiceRate[]
 }
 
+/// O'LIK MEROS — obuna tarifi. Ilova darajasida BUTUNLAY olib tashlangan:
+/// endpointlari yo'q (`GET/PUT /api/plans` o'chirilgan), interfeysda ko'rinmaydi,
+/// shifokor soni chegarasi ham shu bilan ketdi.
+///
+/// Nima uchun jadval BAZADA qoldi. `Clinic.planId` — majburiy tashqi kalit.
+/// Uni yo'qotish uchun `Clinic` jadvalini QAYTA QURISH kerak (SQLite da ustun
+/// turini/nullability'ni o'zgartirishning boshqa yo'li yo'q), bu esa
+/// `migrations/README.md` da ataylab taqiqlangan — aynan 11.1-B rad etilgan
+/// sabab bilan bir xil: ishlayotgan klinika bazasida 20+ jadvalni qayta qurish
+/// narxi foydasidan yuqori.
+///
+/// Ya'ni bu yerda bitta o'qilmaydigan qator turibdi. Unga hech kim yozmaydi.
 model SubscriptionPlan {
   id         String   @id
   name       String
@@ -565,10 +594,16 @@ model PlatformSetting {
 
 model ICD10Code {
   code        String             @id
+  /// O'zbekcha nom — interfeysning asosiy tili
   name        String
+  /// Ruscha nom. Migratsiya 0030: qidiruv ikkala tilda ham ishlashi kerak —
+  /// shifokor "gipert" yozsa ham, "гиперт" yozsa ham topsin.
+  nameRu      String?
   description String?
   category    String?
   diagnoses   PatientDiagnosis[]
+
+  @@index([category])
 }
 
 model PatientDiagnosis {
@@ -850,6 +885,12 @@ model EncounterTemplate {
   /// [{ key, label, type: text|number|select|textarea|checkbox, unit?, options?, group? }]
   fields       String
   isDefault    Boolean  @default(false)
+  /// Shablon kimga mos: 'Male' | 'Female' | null (hammaga). Migratsiya 0031.
+  /// Erkak bemorda ginekologiya shabloni ochilib qolgan edi (audit B-09).
+  gender       String?
+  /// Yosh chegarasi, to'liq yil. null — chegara yo'q. Migratsiya 0031.
+  minAge       Int?
+  maxAge       Int?
   createdAt    DateTime @default(now())
 
   clinic     Clinic     @relation(fields: [clinicId], references: [id])
@@ -857,6 +898,7 @@ model EncounterTemplate {
   visits     Visit[]
 
   @@index([departmentId])
+  @@index([gender])
 }
 
 // ─── Laboratoriya ──────────────────────────────────────────────────────────
@@ -1250,7 +1292,9 @@ model StockMovement {
   type      String
   /// Musbat — kirim, manfiy — chiqim
   quantity  Float
-  /// Purchase | Service | Expired | Damaged | Inventory | Manual
+  /// Purchase | Service | Expired | Damaged | Inventory | Manual | Legacy
+  /// `Legacy` — 0028 da eski `InventoryLog` dan ko'chirilgan qatorlar.
+  /// Ular xizmat tannarxiga qo'shilmaydi (reports.ts faqat `Service` ni sanaydi).
   reason    String   @default("Manual")
   visitId   String?
   serviceId Int?
@@ -1260,16 +1304,25 @@ model StockMovement {
   /// Bo'limlar orasida ko'chirish (type = 'Transfer'). Migratsiya 0005.
   fromDepartmentId String?
   toDepartmentId   String?
+  /// Bemor kartasidan sarflangan material. Migratsiya 0028 — ilgari bu
+  /// ma'lumot faqat eski `InventoryLog` da bor edi.
+  patientId String?
+  /// Bekor qilingan chiqimning teskarisi. Harakat hech qachon o'chirilmaydi:
+  /// uning o'rniga qarama-qarshi qator yoziladi va shu yerda bog'lanadi.
+  reversalOfId String?
 
   clinic Clinic          @relation(fields: [clinicId], references: [id])
   item   InventoryItem   @relation(fields: [itemId], references: [id])
   batch  InventoryBatch? @relation(fields: [batchId], references: [id])
+  patient Patient?       @relation(fields: [patientId], references: [id])
   fromDepartment Department? @relation("StockMovementFrom", fields: [fromDepartmentId], references: [id])
   toDepartment   Department? @relation("StockMovementTo", fields: [toDepartmentId], references: [id])
 
   @@index([clinicId, createdAt])
   @@index([itemId])
   @@index([visitId])
+  @@index([patientId])
+  @@index([reversalOfId])
 }
 
 /// Xizmat retsepti (нормы списания / технологическая карта).

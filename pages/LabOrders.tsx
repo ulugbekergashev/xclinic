@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatDate, formatFullName } from '../utils/format';
+import { confirmAction } from '../services/confirm';
 import {
     FlaskConical, Plus, Search, Clock, CheckCircle, X, Trash2,
     AlertCircle, Beaker, Printer, ArrowUp, ArrowDown, Minus, Settings2,
 } from 'lucide-react';
 import { LabOrder, LabTest, LabOrderItem, LabResultRow, Patient, Department, Clinic } from '../types';
 import { api } from '../services/api';
+import { EmptyState } from '../components/Common';
+import { useLanguage } from '../context/LanguageContext';
 import { printLabResult } from '../utils/printForms';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +51,7 @@ interface Props {
 }
 
 const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
-const fmtDate = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('uz-UZ') : '—';
+const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
 /** Norma matni: "120–150" yoki matnli norma */
 const refText = (p: LabResultRow) => {
@@ -62,6 +66,7 @@ export const LabOrders: React.FC<Props> = ({
     clinicId, labOrders, setLabOrders, doctors, patients = [],
     onExpensesChanged, defaultDoctorName, currentUserName, currentClinic,
 }) => {
+    const { t } = useLanguage();
     const [tests, setTests] = useState<LabTest[]>([]);
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
@@ -151,7 +156,7 @@ export const LabOrders: React.FC<Props> = ({
     };
 
     const removeOrder = async (id: string) => {
-        if (!confirm("Yo'llanma va uning natijalari o'chiriladi. Davom etasizmi?")) return;
+        if (!await confirmAction({ title: "Yo'llanma va uning natijalari o'chiriladi. Davom etasizmi?", danger: true, confirmLabel: "O'chirish" })) return;
         try { await api.labOrders.delete(id); await reload(); onExpensesChanged?.(); }
         catch (e: any) { setError(e.message || 'O\'chirilmadi'); }
     };
@@ -190,7 +195,7 @@ export const LabOrders: React.FC<Props> = ({
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <FlaskConical className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">Laboratoriya</h2>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('lab.title')}</h2>
                     <span className="text-sm text-gray-500 dark:text-gray-400">{filtered.length} ta yo'llanma</span>
                 </div>
                 {/* Yo'llanmalar odatda shifokordan keladi (Qabul → Tahlilga yuborish).
@@ -213,7 +218,7 @@ export const LabOrders: React.FC<Props> = ({
                 <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                     <Settings2 className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     <div className="text-sm text-amber-800 dark:text-amber-200">
-                        <p className="font-medium">Tahlillar katalogi bo'sh</p>
+                        <p className="font-medium">{t('lab.catalogEmpty')}</p>
                         <p className="mt-0.5 opacity-90">Yo'llanma yaratishdan oldin tahlillarni qo'shing (Sozlamalar → Laboratoriya).</p>
                     </div>
                 </div>
@@ -224,20 +229,21 @@ export const LabOrders: React.FC<Props> = ({
                 <div className="relative flex-1 min-w-[220px]">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input value={search} onChange={e => setSearch(e.target.value)}
-                        placeholder="Bemor yoki shifokor..." className={`${inputCls} pl-9`} />
+                        placeholder={t('lab.searchPh')} className={`${inputCls} pl-9`} />
                 </div>
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${inputCls} max-w-[200px]`}>
-                    <option value="all">Barcha holatlar</option>
+                    <option value="all">{t('lab.allStatuses')}</option>
                     {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                 </select>
             </div>
 
             {/* Yo'llanmalar */}
             {filtered.length === 0 ? (
-                <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                    <FlaskConical className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400">Yo'llanmalar yo'q</p>
-                </div>
+                <EmptyState
+                    icon={<FlaskConical className="w-12 h-12" />}
+                    title={t('lab.noOrders')}
+                    hint={t('lab.noOrdersHint')}
+                />
             ) : (
                 <div className="grid gap-3">
                     {filtered.map(order => {
@@ -253,7 +259,7 @@ export const LabOrders: React.FC<Props> = ({
                                                 <StIcon className="w-3 h-3" /> {st.label}
                                             </span>
                                             {order.priority === 'Urgent' && (
-                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Shoshilinch</span>
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">{t('lab.urgent')}</span>
                                             )}
                                             {/* TO'LANDIMI — laborant uchun asosiy savol: to'lovsiz
                                                 natija berilmaydi. Ilgari buni ro'yxatda ko'rish
@@ -298,7 +304,7 @@ export const LabOrders: React.FC<Props> = ({
                                                 Natijalar
                                             </button>
                                             <button onClick={() => removeOrder(order.id)}
-                                                className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg" title="O'chirish">
+                                                className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg" title={t('common.delete')}>
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
@@ -315,24 +321,24 @@ export const LabOrders: React.FC<Props> = ({
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowNew(false)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">Yangi yo'llanma</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('lab.newOrder')}</h3>
                             <button onClick={() => setShowNew(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                         </div>
 
                         <div className="p-5 space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Bemor</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('common.patient')}</label>
                                     <select
                                         value={form.patientId}
                                         onChange={e => {
                                             const p = patients.find(x => x.id === e.target.value);
-                                            setForm(f => ({ ...f, patientId: e.target.value, patientName: p ? `${p.firstName} ${p.lastName}` : f.patientName }));
+                                            setForm(f => ({ ...f, patientId: e.target.value, patientName: p ? `${formatFullName(p)}` : f.patientName }));
                                         }}
                                         className={inputCls}
                                     >
-                                        <option value="">Ro'yxatdan tanlang...</option>
-                                        {patients.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+                                        <option value="">{t('common.selectFromList')}</option>
+                                        {patients.map(p => <option key={p.id} value={p.id}>{formatFullName(p)}</option>)}
                                     </select>
                                     {/* Normani jins/yoshga qarab tanlash uchun bemor bog'lanishi muhim */}
                                     {!form.patientId && (
@@ -342,18 +348,18 @@ export const LabOrders: React.FC<Props> = ({
                                     )}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Shifokor</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('common.doctor')}</label>
                                     <select value={form.doctorName} onChange={e => setForm(f => ({ ...f, doctorName: e.target.value }))} className={inputCls}>
                                         <option value="">—</option>
                                         {doctors.map((d: any) => (
-                                            <option key={d.id} value={`${d.firstName} ${d.lastName}`}>{d.firstName} {d.lastName}</option>
+                                            <option key={d.id} value={`${formatFullName(d)}`}>{formatFullName(d)}</option>
                                         ))}
                                     </select>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tahlillar</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('lab.tests')}</label>
                                 <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 max-h-64 overflow-y-auto">
                                     {activeTests.map(t => {
                                         const checked = form.testIds.includes(t.id);
@@ -380,11 +386,11 @@ export const LabOrders: React.FC<Props> = ({
 
                             <div className="flex items-center gap-4">
                                 <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className={`${inputCls} max-w-[180px]`}>
-                                    <option value="Normal">Oddiy</option>
-                                    <option value="Urgent">Shoshilinch</option>
+                                    <option value="Normal">{t('lab.normal')}</option>
+                                    <option value="Urgent">{t('lab.urgent')}</option>
                                 </select>
                                 <div className="ml-auto text-right">
-                                    <span className="text-sm text-gray-500 dark:text-gray-400">Jami: </span>
+                                    <span className="text-sm text-gray-500 dark:text-gray-400">{t('common.totalLabel')}</span>
                                     <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{fmt(selectedTotal)} so'm</span>
                                 </div>
                             </div>
@@ -417,7 +423,7 @@ export const LabOrders: React.FC<Props> = ({
                                 </p>
                             </div>
                             <div className="ml-auto flex items-center gap-2">
-                                <button onClick={printResults} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Chop etish">
+                                <button aria-label={t('common.print')} onClick={printResults} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={t('common.print')}>
                                     <Printer className="w-5 h-5" />
                                 </button>
                                 <button onClick={() => setResultsOrder(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
@@ -432,11 +438,11 @@ export const LabOrders: React.FC<Props> = ({
                                         <table className="w-full text-sm">
                                             <thead>
                                                 <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                                                    <th className="pb-2 pr-3 font-medium">Ko'rsatkich</th>
-                                                    <th className="pb-2 pr-3 font-medium w-32">Natija</th>
-                                                    <th className="pb-2 pr-3 font-medium w-20">Birlik</th>
-                                                    <th className="pb-2 pr-3 font-medium w-28">Norma</th>
-                                                    <th className="pb-2 font-medium w-24">Baho</th>
+                                                    <th className="pb-2 pr-3 font-medium">{t('lab.parameter')}</th>
+                                                    <th className="pb-2 pr-3 font-medium w-32">{t('lab.result')}</th>
+                                                    <th className="pb-2 pr-3 font-medium w-20">{t('lab.unit')}</th>
+                                                    <th className="pb-2 pr-3 font-medium w-28">{t('lab.reference')}</th>
+                                                    <th className="pb-2 font-medium w-24">{t('lab.flag')}</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">

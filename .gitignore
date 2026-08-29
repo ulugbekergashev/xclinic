@@ -28,3 +28,13 @@ Thumbs.db
 # Vaqtinchalik ish fayllari (test tokenlari, id lar)
 backend/_*
 _*
+
+# SQLite ning ish fayllari (WAL rejimi). `*.db` chetlab o'tilgan, lekin
+# yonidagi `-wal` va `-shm` emas edi — ular baza bilan birga o'zgaradi
+# va har kommitga tushib, tarixni ma'nosiz shovqinga to'ldirardi.
+*.db-wal
+*.db-shm
+
+# Playwright sinovlarining chiqishi (suratlar, izlar)
+test-results/
+playwright-report/
