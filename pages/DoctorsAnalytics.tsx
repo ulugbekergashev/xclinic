@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { formatUzPhone } from '../shared/validation';
 import { formatMoney, formatNumber, formatFullName } from '../utils/format';
 import { Doctor, Appointment, Service, Transaction, Review } from '../types';
 import { Card, Input } from '../components/Common';
@@ -271,7 +272,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                                                 <Link to={`/doctors/${doc.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 hover:underline">
                                                     Dr. {formatFullName(doc)}
                                                 </Link>
-                                                <p className="text-xs text-gray-500">{doc.phone}</p>
+                                                <p className="text-xs text-gray-500">{formatUzPhone(doc.phone)}</p>
                                             </div>
                                         </div>
                                     </td>
@@ -288,13 +289,18 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
                                         <div className="text-sm text-gray-900 dark:text-white">{doc.topService}</div>
                                         <div className="text-xs text-gray-500">{doc.topServiceCount} {t('common.times')}</div>
                                     </td>
-                                    <td className="p-4 text-right font-bold text-gray-900 dark:text-white">
+                                    {/* `whitespace-nowrap` SHART: raqamlarda guruh
+                                        ajratgichi oddiy bo'shliq (`10 803 337`), va
+                                        ustun torayganda brauzer aynan shu bo'shliqlardan
+                                        qator ko'chiradi — summa uch qatorga bo'linib,
+                                        «10 803 / 337 / UZS» bo'lib qolardi. */}
+                                    <td className="p-4 text-right font-bold text-gray-900 dark:text-white whitespace-nowrap tabular-nums">
                                         {formatMoney(doc.revenue)} UZS
                                     </td>
-                                    <td className="p-4 text-right font-bold text-green-600 dark:text-green-400">
+                                    <td className="p-4 text-right font-bold text-green-600 dark:text-green-400 whitespace-nowrap tabular-nums">
                                         {formatNumber(doc.salary)} UZS
                                     </td>
-                                    <td className="p-4 text-right text-sm text-gray-700 dark:text-gray-300">
+                                    <td className="p-4 text-right text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap tabular-nums">
                                         {formatMoney(Math.round(doc.avgRevenue))} UZS
                                     </td>
                                     <td className="p-4 text-center">

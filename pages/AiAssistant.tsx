@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { formatNumber } from '../utils/format';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, ArrowUp, Loader2, AlertTriangle, Database, Inbox,
@@ -104,7 +105,7 @@ const TONE: Record<string, string> = {
 const CARD = 'bg-white dark:bg-gray-800/40 ring-1 ring-gray-200/80 dark:ring-white/[0.06]';
 
 const fmtValue = (v: number | string): string =>
-  typeof v === 'number' ? v.toLocaleString('ru-RU') : v;
+  typeof v === 'number' ? formatNumber(v) : v;
 
 // "get_revenue" hech kimga hech narsa demaydi — "moliya" javob qayerdan
 // kelganini tushuntiradi.

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatUzPhone } from '../shared/validation';
+import { formatNumber } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -32,7 +34,11 @@ interface Props {
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
-const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
+/* Raqam formati BITTA joydan — `utils/format.ts`. Ilgari bu yerda
+   `Intl.NumberFormat('uz-UZ')` turardi: Chrome da `uz` lokali to'liq
+   emas va u vergul qo'yadi («160,000»), Moliya bo'limi esa bo'shliq
+   qo'yardi («160 000») — bitta ilovada ikki xil ko'rinish. */
+const fmt = (n: number) => formatNumber(n);
 const MODALITIES: Modality[] = ['UZI', 'EKG', 'RENTGEN', 'ENDOSKOPIYA', 'MRT', 'KT'];
 
 const calcAge = (dob?: string) => {
@@ -310,7 +316,7 @@ export const VisitWorkspace: React.FC<Props> = ({ departments, services, doctors
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                             {age != null ? `${age} yosh · ` : ''}
                             {visit.patient?.gender === 'Male' ? 'Erkak' : visit.patient?.gender === 'Female' ? 'Ayol' : ''}
-                            {visit.patient?.phone ? ` · ${visit.patient.phone}` : ''}
+                            {visit.patient?.phone ? ` · ${formatUzPhone(visit.patient.phone)}` : ''}
                         </p>
                     </div>
                     <div className="ml-auto flex items-center gap-3">

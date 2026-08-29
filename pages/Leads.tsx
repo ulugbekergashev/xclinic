@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatUzPhone } from '../shared/validation';
 import { formatFullName } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
@@ -497,7 +498,7 @@ export const Leads: React.FC<LeadsProps> = ({
                                             <div className="flex flex-col gap-1.5 mb-3">
                                                 <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
                                                     <Phone className="w-3.5 h-3.5 mr-1.5 text-primary-500" />
-                                                    {lead.phone}
+                                                    {formatUzPhone(lead.phone)}
                                                 </div>
                                                 {(() => {
                                                     const qaPairs = parseQAPairs(lead.notes);
@@ -873,7 +874,7 @@ export const Leads: React.FC<LeadsProps> = ({
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">{t('leads.addLeadModal.phone')}</p>
-                                    <p className="text-sm font-bold text-gray-900 dark:text-white">{selectedLeadForDetail.phone}</p>
+                                    <p className="text-sm font-bold text-gray-900 dark:text-white">{formatUzPhone(selectedLeadForDetail.phone)}</p>
                                 </div>
                                 {parseNotesField(selectedLeadForDetail.notes, 'Klinika nomi') && (
                                     <div className="space-y-1">

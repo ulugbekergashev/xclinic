@@ -177,7 +177,7 @@ export const AddPatientModal: React.FC<AddPatientModalProps> = ({
                                     {formatFullName(d)}
                                 </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                                    {d.phone}
+                                    {formatUzPhone(d.phone)}
                                     {d.dob ? ` · ${d.dob}` : ''}
                                     {d.cardNumber ? ` · karta ${d.cardNumber}` : ''}
                                     {d.lastVisit && d.lastVisit !== 'Never' ? ` · oxirgi tashrif ${d.lastVisit}` : ''}

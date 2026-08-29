@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { formatUzPhone } from '../shared/validation';
 import { formatMoney, formatNumber, formatDate, formatFullName } from '../utils/format';
 import { useParams } from 'react-router-dom';
 import { Doctor, Appointment, Transaction, Patient, Service } from '../types';
@@ -175,7 +176,7 @@ export const DoctorDetails: React.FC<DoctorDetailsProps> = ({
                             </div>
                             <div>
                                 <p className="text-gray-500 dark:text-gray-400 text-xs">{t('doctors.details.primaryPhone')}</p>
-                                <p className="font-medium text-gray-900 dark:text-white">{doctor.phone}</p>
+                                <p className="font-medium text-gray-900 dark:text-white">{formatUzPhone(doctor.phone)}</p>
                             </div>
                         </div>
                         {doctor.secondaryPhone && (

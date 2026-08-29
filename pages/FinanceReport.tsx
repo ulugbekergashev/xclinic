@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatNumber } from '../utils/format';
 import { todayISO } from '../utils/dateUtils';
 import { SkeletonList } from '../components/Common';
 import {
@@ -54,7 +55,11 @@ interface Props {
     embedded?: boolean;
 }
 
-const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(Math.round(n || 0));
+/* Raqam formati BITTA joydan — `utils/format.ts`. Ilgari bu yerda
+   `Intl.NumberFormat('uz-UZ')` turardi: Chrome da `uz` lokali to'liq
+   emas va u vergul qo'yadi («160,000»), Moliya bo'limi esa bo'shliq
+   qo'yardi («160 000») — bitta ilovada ikki xil ko'rinish. */
+const fmt = (n: number) => formatNumber(n);
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]; };
 const today = () => todayISO();
 

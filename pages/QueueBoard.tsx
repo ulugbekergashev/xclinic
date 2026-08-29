@@ -172,21 +172,38 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                     <div className="py-16 text-center text-gray-600 text-xl">Hozircha chaqirilgan navbat yo'q</div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-                        {called.map((e, i) => (
+                        {called.map((e, i) => {
+                            /* TALON UZUNLIGIGA QARAB O'LCHAM.
+
+                               O'lcham qat'iy `text-8xl` (96px) edi. Talon
+                               bo'lim kodi bilan keladi («KARD-02», 7 belgi)
+                               va u shu o'lchamda kartadan CHIQIB ketardi:
+                               oxirgi karta o'ng chetdan kesilib, yonidagiga
+                               tegib turardi. Koridordagi ekranda bu darhol
+                               ko'zga tashlanadi.
+
+                               Bo'lim kodlari turli uzunlikda («PED», «KARD»,
+                               «NEVR»), shuning uchun o'lcham hisoblanadi. */
+                            const ticket = String(e.ticket ?? e.queueNumber ?? '—');
+                            const size = ticket.length <= 3 ? 'text-7xl lg:text-8xl'
+                                : ticket.length <= 5 ? 'text-6xl lg:text-7xl'
+                                : 'text-4xl lg:text-6xl';
+                            return (
                             <div key={`${e.queueNumber}-${e.calledAt}-${i}`}
-                                className="rounded-2xl p-6 border-2 animate-in"
+                                className="rounded-2xl p-6 border-2 animate-in overflow-hidden"
                                 style={{
                                     borderColor: e.color || '#2563EB',
                                     background: `linear-gradient(160deg, ${(e.color || '#2563EB')}22, transparent)`,
                                 }}>
-                                <p className="text-7xl lg:text-8xl font-black leading-none tabular-nums">
-                                    {e.ticket ?? e.queueNumber ?? '—'}
+                                <p className={`${size} font-black leading-none tabular-nums break-words`}>
+                                    {ticket}
                                 </p>
                                 <p className="mt-3 text-xl font-medium text-gray-200 truncate">
                                     {e.department || '—'}
                                 </p>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>

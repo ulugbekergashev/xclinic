@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { formatDate, formatFullName } from '../utils/format';
+import { formatDate, formatFullName, formatNumber } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import {
     Activity, Plus, Search, X, Trash2, AlertCircle, CheckCircle,
@@ -40,7 +40,11 @@ interface Props {
     currentClinic?: Clinic | null;
 }
 
-const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
+/* Raqam formati BITTA joydan — `utils/format.ts`. Ilgari bu yerda
+   `Intl.NumberFormat('uz-UZ')` turardi: Chrome da `uz` lokali to'liq
+   emas va u vergul qo'yadi («160,000»), Moliya bo'limi esa bo'shliq
+   qo'yardi («160 000») — bitta ilovada ikki xil ko'rinish. */
+const fmt = (n: number) => formatNumber(n);
 const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
 export const Diagnostics: React.FC<Props> = ({

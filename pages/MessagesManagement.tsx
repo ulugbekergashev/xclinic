@@ -33,6 +33,25 @@ const TEMPLATE_VARS: { token: string; label: string }[] = [
     { token: '{qarz}', label: '+ Qarz miqdori' },
 ];
 
+/* NOMA'LUM TOKENLARNI TOPISH.
+
+   Bazadagi HAMMA shablon `{ism}` va `{summa}` bilan yaratilgan edi —
+   ular qo'llab-quvvatlanadigan ro'yxatda yo'q, ya'ni almashtirilmaydi
+   va bemor «Hurmatli {ism}» degan SMS oladi. Buni hech narsa
+   ushlamagan: na saqlashda, na yuborishda.
+
+   Endi muharrir yozayotgan paytda ogohlantiradi. Bu xatoni yagona
+   ishonchli tutish joyi — SMS ketib bo'lgandan keyin kech. */
+const KNOWN_TOKENS = TEMPLATE_VARS.map(v => v.token.slice(1, -1));
+
+function unknownTokens(text: string): string[] {
+    const found = new Set<string>();
+    for (const m of String(text || '').matchAll(/\{([^{}]+)\}/g)) {
+        if (!KNOWN_TOKENS.includes(m[1])) found.add(m[1]);
+    }
+    return Array.from(found);
+}
+
 // Trigger ro'yxati backenddan keladi (backend/triggers.ts) — bu yerda faqat
 // belgichalar. Yangi trigger qo'shilsa, forma o'zi yangilanadi.
 const TRIGGER_ICONS: Record<string, string> = {
@@ -716,6 +735,19 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 className={inputCls}
                             />
                             <VarButtons onInsert={token => setTemplateForm(f => ({ ...f, text: f.text + token }))} />
+                            {unknownTokens(templateForm.text).length > 0 && (
+                                <div role="alert" className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-900 dark:text-amber-200">
+                                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                    <span>
+                                        Noma'lum o'zgaruvchi:{' '}
+                                        {unknownTokens(templateForm.text).map(t => (
+                                            <code key={t} className="font-mono font-semibold">{'{' + t + '}'}</code>
+                                        )).reduce((a: any, b: any) => a === null ? b : <>{a}, {b}</>, null)}
+                                        {' '}— u almashtirilmaydi va bemorga xuddi shu ko'rinishda ketadi.
+                                        Yuqoridagi tugmalardan foydalaning.
+                                    </span>
+                                </div>
+                            )}
                             <div className="flex justify-end gap-2 pt-2">
                                 <Button variant="secondary" onClick={() => { setIsTemplateFormOpen(false); setEditingTemplate(null); }}>Bekor</Button>
                                 <Button onClick={handleSaveTemplate} disabled={templateSaving || !templateForm.name.trim() || !templateForm.text.trim()}>

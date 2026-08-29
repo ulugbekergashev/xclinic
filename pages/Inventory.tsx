@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { formatNumber } from '../utils/format';
 import { useLanguage } from '../context/LanguageContext';
 import { confirmAction } from '../services/confirm';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
@@ -44,7 +45,17 @@ interface InventoryProps {
     onRefreshItems?: () => void;
 }
 
-const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(Math.round((n ?? 0) * 1000) / 1000);
+/* Raqam formati BITTA joydan — `utils/format.ts`. Ilgari bu yerda
+   `Intl.NumberFormat('uz-UZ')` turardi: Chrome da `uz` lokali to'liq
+   emas va u vergul qo'yadi («160,000»), Moliya bo'limi esa bo'shliq
+   qo'yardi («160 000») — bitta ilovada ikki xil ko'rinish. */
+/* Omborda kasr qism bo'ladi (0.5 dona, 2.25 ml), shuning uchun
+   butun son bo'lsa kasrsiz, bo'lmasa uchtagacha xona bilan. */
+const fmt = (n: number) => {
+    const r = Math.round((n ?? 0) * 1000) / 1000;
+    if (Number.isInteger(r)) return formatNumber(r);
+    return formatNumber(r, 3).replace(/0+$/, '').replace(/,$/, '');
+};
 const fmtWhen = (iso: string) => {
     try { return new Date(iso).toLocaleString('uz-UZ'); } catch { return iso; }
 };

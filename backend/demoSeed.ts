@@ -214,6 +214,33 @@ async function main() {
 
     console.log(`Spravochnik: ${departments.length} bo'lim, ${services.length} xizmat, ${labTests.length} tahlil, ${wards.length} palata\n`);
 
+    /* XIZMAT SHIFOKORNING BO'LIMIGA MOS TANLANADI.
+
+       Ilgari `pick(paidServices)` butun ro'yxatdan TASODIFIY tanlardi.
+       Natijada «Shifokorlar statistikasi» ekranida xirurgning eng ko'p
+       bajargan xizmati «Pediatr konsultatsiyasi» bo'lib chiqardi —
+       audit aynan shu holatni topgan edi va u namoyishni yolg'on
+       qiladi: raqamlar bor, lekin ular hech narsani anglatmaydi.
+
+       Bazadagi 15 ta xizmatning HAMMASIDA `departmentId` bor, ya'ni
+       to'g'ri tanlash uchun hamma narsa mavjud edi.
+
+       Bo'limida xizmat topilmasa umumiy ro'yxatga qaytiladi — aks holda
+       yangi bo'lim qo'shilganda seed yiqilardi. */
+    const svcByDep = new Map<string, any[]>();
+    for (const sv of services) {
+        if (!sv.departmentId) continue;
+        const list = svcByDep.get(sv.departmentId) || [];
+        list.push(sv);
+        svcByDep.set(sv.departmentId, list);
+    }
+    const pickServiceFor = (doc: any) => {
+        const depId = doc?.departmentId;
+        const own = depId ? svcByDep.get(depId) : null;
+        if (own && own.length) return pick(own);
+        return pick(paidServices.length ? paidServices : services);
+    };
+
     // ── 1. XODIMLAR ─────────────────────────────────────────────────────────
     console.log('1. Xodimlar');
 
@@ -351,7 +378,7 @@ async function main() {
             const daysAgo = 1 + Math.floor(rnd() * rnd() * 74);
             const date = dayStr(daysAgo);
             const doc = pick(doctors);
-            const svc = pick(paidServices.length ? paidServices : services);
+            const svc = pickServiceFor(doc);
 
             /* Yozuv va tashrif — ikkalasi ham yaratiladi: kalendar yozuvni
                ko'rsatadi, navbat va kassa esa tashrifni. */
@@ -388,7 +415,7 @@ async function main() {
                bo'lsa material AVTOMATIK ombordan chiqadi. */
             const lines = int(1, 3);
             for (let c = 0; c < lines; c++) {
-                const s2 = pick(paidServices.length ? paidServices : services);
+                const s2 = pickServiceFor(doc);
                 await api('POST', `/visits/${visit.id}/procedures`, {
                     serviceId: s2.id,
                     procedureName: s2.name,
@@ -462,7 +489,7 @@ async function main() {
             const p = patients[(qi * 3 + 7) % patients.length];
             qi++;
             const doc = doctors[qi % doctors.length];
-            const svc = pick(paidServices.length ? paidServices : services);
+            const svc = pickServiceFor(doc);
 
             await api('POST', '/appointments', {
                 patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
@@ -527,7 +554,7 @@ async function main() {
             const r = await api('POST', '/appointments', {
                 patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
                 doctorId: doc.id, doctorName: `Dr. ${doc.firstName} ${doc.lastName}`,
-                type: pick(paidServices.length ? paidServices : services)?.name || 'Konsultatsiya',
+                type: pickServiceFor(doc)?.name || 'Konsultatsiya',
                 date: new Date(today.getTime() + d * DAY).toISOString().slice(0, 10),
                 time: `${String(int(9, 17)).padStart(2, '0')}:${pick(['00', '30'])}`,
                 duration: 30, status: 'Pending', notes: '',
@@ -677,8 +704,26 @@ async function main() {
 
     // ── 7. OMBOR ────────────────────────────────────────────────────────────
     console.log('\n7. Ombor');
+    /* QAYTA ISHGA TUSHIRISH. Mahsulot nomi bo'yicha mavjudi izlanadi.
+
+       Ilgari har yurishda YANGI yozuv yaratilardi va ikkinchi marta
+       ishga tushirilganda ombor «Analgin 50% amp.» ni ikki alohida
+       qator qilib ko'rsatardi — 42 mahsulotning 20 tasi shunday
+       ikkilangan edi. Partiyalar uchun alohida bo'lim bor, ya'ni
+       bir mahsulotni ikki qator qilishning hech qanday sababi yo'q.
+
+       Bu shifokor va bemorlarda allaqachon tuzatilgan edi, omborda
+       esa qolib ketgan. */
+    const existingItems: any[] = (await api('GET', `/inventory?clinicId=${clinic.id}`)) || [];
+    const itemByName = new Map<string, any>(
+        (Array.isArray(existingItems) ? existingItems : []).map((x: any) => [String(x.name).trim().toLowerCase(), x]),
+    );
+
     const items: any[] = [];
+    let reusedItems = 0;
     for (const [name, unit, isMed, price, minQty] of INVENTORY) {
+        const found = itemByName.get(String(name).trim().toLowerCase());
+        if (found) { items.push(found); reusedItems++; continue; }
         const it = await api('POST', '/inventory', {
             name, unit, quantity: 0, minQuantity: minQty, price,
             isMedication: isMed, isConsumable: true,
@@ -686,6 +731,7 @@ async function main() {
         });
         if (it?.id) items.push(it);
     }
+    if (reusedItems) console.log(`   ${reusedItems} ta mahsulot mavjud edi — qaytadan yaratilmadi`);
 
     let batches = 0;
     for (const it of items) {
@@ -912,13 +958,22 @@ async function main() {
         if (r) leads++;
     }
 
+    /* TOKENLAR `processTemplate` BILAN MOS BO'LISHI SHART.
+
+       Ilgari bu yerda `{bemor_ismi}` va `{qarz}` yozilgan edi — ular
+       qo'llab-quvvatlanadigan tokenlar ro'yxatida YO'Q. Ya'ni shablon
+       o'zgarishsiz ketardi va bemor «Hurmatli {bemor_ismi}» degan SMS olardi.
+
+       Haqiqiy ro'yxat (backend/server.ts, `processTemplate`):
+       {bemor_ismi} {bemor_familyasi} {sana} {vaqt} {klinika_nomi}
+       {shifokor_ismi} {qarz} */
     const templates: any[] = [];
     for (const [name, text] of [
-        ['Qabul eslatmasi', 'Hurmatli {ism}! Sizning qabulingiz {sana} kuni soat {vaqt} da. XClinic'],
-        ['Tug\'ilgan kun', 'Hurmatli {ism}, tug\'ilgan kuningiz bilan! XClinic jamoasi'],
-        ['Natija tayyor', 'Hurmatli {ism}, tahlil natijangiz tayyor. Klinikaga murojaat qiling.'],
-        ['Qarz eslatmasi', 'Hurmatli {ism}, {summa} so\'m qarzdorlik mavjud. XClinic'],
-        ['Kelmagan bemor', 'Hurmatli {ism}, sizni kutdik. Qulay vaqtga yozilishingiz mumkin.'],
+        ['Qabul eslatmasi', 'Hurmatli {bemor_ismi}! Sizning qabulingiz {sana} kuni soat {vaqt} da. XClinic'],
+        ['Tug\'ilgan kun', 'Hurmatli {bemor_ismi}, tug\'ilgan kuningiz bilan! XClinic jamoasi'],
+        ['Natija tayyor', 'Hurmatli {bemor_ismi}, tahlil natijangiz tayyor. Klinikaga murojaat qiling.'],
+        ['Qarz eslatmasi', 'Hurmatli {bemor_ismi}, {qarz} so\'m qarzdorlik mavjud. XClinic'],
+        ['Kelmagan bemor', 'Hurmatli {bemor_ismi}, sizni kutdik. Qulay vaqtga yozilishingiz mumkin.'],
     ]) {
         const t = await api('POST', '/message-templates', { name, text });
         if (t?.id) templates.push(t);

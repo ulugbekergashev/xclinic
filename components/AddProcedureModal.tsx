@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { formatNumber } from '../utils/format';
 import { toast } from '../services/toast';
 import { Plus, Trash2 } from 'lucide-react';
 import { Modal, Button, Select, Input } from './Common';
@@ -31,7 +32,11 @@ interface AddProcedureModalProps {
     onAddProcedures?: (procedures: ProcedureItem[]) => void;
 }
 
-const fmt = (n: number) => new Intl.NumberFormat('uz-UZ').format(n);
+/* Raqam formati BITTA joydan — `utils/format.ts`. Ilgari bu yerda
+   `Intl.NumberFormat('uz-UZ')` turardi: Chrome da `uz` lokali to'liq
+   emas va u vergul qo'yadi («160,000»), Moliya bo'limi esa bo'shliq
+   qo'yardi («160 000») — bitta ilovada ikki xil ko'rinish. */
+const fmt = (n: number) => formatNumber(n);
 
 export const AddProcedureModal: React.FC<AddProcedureModalProps> = ({
     isOpen, onClose, services = [], categories = [], departments = [],
