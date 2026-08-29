@@ -5,7 +5,7 @@ import { todayISO } from '../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import {
     UserPlus, Search, ArrowRight, Printer, Clock, Stethoscope,
-    CheckCircle, AlertCircle, X, Phone, RefreshCw,
+    CheckCircle, AlertCircle, X, Phone, RefreshCw, Calendar as CalendarIcon,
 } from 'lucide-react';
 import { Patient, Doctor, Department, Service, Visit, Clinic } from '../types';
 import { api } from '../services/api';
@@ -188,6 +188,110 @@ export const Reception: React.FC<Props> = ({
         finally { setSaving(false); }
     };
 
+    /* ─────────────────────────────────────────────────────────────
+       BUGUN YOZILGANLAR — Registratura bilan Kalendar orasidagi ko'prik.
+
+       Bu bo'g'in YO'Q edi. `Reception.tsx` da `appointment` so'zi
+       umuman uchramasdi, ya'ni:
+
+         · registrator ertalab ochsa, bugunga kim yozilganini ko'rmasdi
+         · yozilgan bemor kelganda uni NOLDAN qidirib, bo'lim, shifokor
+           va xizmatni qaytadan tanlashi kerak edi — holbuki bularning
+           hammasi yozilish paytida allaqachon tanlangan
+         · kalendardagi yozuv hech qachon yopilmasdi va «Confirmed»
+           holatida abadiy qolib ketardi, ya'ni «kim kelmadi?» degan
+           savolga javob berib bo'lmasdi
+
+       Baza va API buni ALLAQACHON qo'llab-quvvatlardi: `Visit`
+       modelida `appointmentId` bor va qabul yaratish marshruti uni
+       qabul qilib saqlaydi. Faqat ekranda tugmasi yo'q edi. */
+    const [todayAppts, setTodayAppts] = useState<any[]>([]);
+    const [arriving, setArriving] = useState<string | null>(null);
+
+    const loadTodayAppts = React.useCallback(async () => {
+        try {
+            const d = today();
+            const list = await api.appointments.getAll(clinicId, { from: d, to: d });
+            setTodayAppts(Array.isArray(list) ? list : []);
+        } catch {
+            /* Panel qo'shimcha — u yuklanmasa ham registratura ishlayveradi. */
+            setTodayAppts([]);
+        }
+    }, [clinicId]);
+
+    useEffect(() => { loadTodayAppts(); }, [loadTodayAppts]);
+
+    /* Hali kelmaganlar. Yakunlangan va bekor qilinganlar ko'rsatilmaydi —
+       ular bilan qiladigan ish qolmagan. */
+    const waitingAppts = useMemo(
+        () => todayAppts
+            .filter(a => !['Completed', 'Cancelled', 'No-Show', 'Checked-In'].includes(a.status))
+            .sort((a, b) => String(a.time || '').localeCompare(String(b.time || ''))),
+        [todayAppts],
+    );
+
+    /* «Keldi» — bitta bosishda uch ish:
+         1. tashrif yaratiladi va yozuvga BOG'LANADI (`appointmentId`)
+         2. yozilish paytida tanlangan xizmat qabulga qo'shiladi
+         3. kalendardagi yozuv «Checked-In» ga o'tadi va ro'yxatdan chiqadi */
+    const markArrived = async (appt: any) => {
+        setArriving(appt.id);
+        setError('');
+        try {
+            const doc = doctors.find(d => d.id === appt.doctorId);
+            const dep = appt.departmentId
+                || doc?.departmentId
+                || departments.find(x => x.id === doc?.departmentId)?.id
+                || '';
+            if (!dep) {
+                setError("Bu yozuvda bo'lim aniqlanmadi — qabulni qo'lda oching");
+                return;
+            }
+
+            const visit = await api.visits.create({
+                patientId: appt.patientId,
+                appointmentId: appt.id,
+                departmentId: dep,
+                doctorId: appt.doctorId || undefined,
+                doctorName: appt.doctorName || (doc ? `${formatFullName(doc)}` : undefined),
+                complaints: appt.notes || undefined,
+                date: today(),
+                status: 'Waiting',
+            } as any);
+
+            /* Yozuvdagi xizmat nomiga ko'ra narxni topamiz. Topilmasa
+               qabul baribir ochiladi — xizmatni kassada qo'shish mumkin. */
+            const svc = services.find(x => x.name === appt.type);
+            if (svc) {
+                try { await api.visits.addProcedure(visit.id, { serviceId: Number(svc.id) }); }
+                catch (e) { console.error('Xizmat qo\'shilmadi', e); }
+            }
+
+            try { await api.appointments.update(appt.id, { status: 'Checked-In' } as any); }
+            catch (e) {
+                /* Tashrif yaratildi, lekin yozuv yopilmadi. Bu jimgina
+                   o'tkazib yuboriladigan holat emas: kalendar «hali
+                   kelmagan» deb ko'rsatib turaveradi. */
+                console.error('Yozuv holati yangilanmadi', e);
+                addToast('info', 'Qabul ochildi, lekin kalendardagi yozuv holati yangilanmadi');
+            }
+
+            setLastTicket({ ...visit, patient: appt.patient || null });
+            addToast('success', `${appt.patientName} — navbat №${visit.queueNumber ?? '—'}`);
+            loadToday();
+            loadTodayAppts();
+        } catch (e: any) {
+            if (e?.status === 409 && e?.data?.visitId) {
+                addToast('info', 'Bu bemorga bugun shu bo\'limda qabul allaqachon ochilgan');
+                navigate(`/visit/${e.data.visitId}`);
+                return;
+            }
+            setError(e?.message || 'Qabulni ochib bo\'lmadi');
+        } finally {
+            setArriving(null);
+        }
+    };
+
     const openVisit = async () => {
         if (!patient) { setError('Bemorni tanlang'); return; }
         if (!departmentId) { setError("Bo'limni tanlang"); return; }
@@ -349,6 +453,54 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                         <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
                         <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                    </div>
+                )}
+
+                {/* ── Bugun yozilganlar ──────────────────────────────────
+                    Kalendardan kelgan ro'yxat. Pastdagi qo'lda ochish
+                    yo'li yo'qolmaydi — kim yozilmasdan kelsa, o'sha
+                    orqali kiritiladi. */}
+                {waitingAppts.length > 0 && (
+                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                <CalendarIcon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                                Bugunga yozilganlar
+                                <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                    {waitingAppts.length}
+                                </span>
+                            </h3>
+                            <button type="button" onClick={() => navigate('/calendar')}
+                                className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
+                                Kalendar →
+                            </button>
+                        </div>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {waitingAppts.map(a => (
+                                <div key={a.id}
+                                    className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+                                    <span className="text-sm font-semibold tabular-nums text-gray-500 dark:text-gray-400 w-12 shrink-0">
+                                        {a.time || '—'}
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{a.patientName}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                            {a.type || 'Qabul'}{a.doctorName ? ` · ${a.doctorName}` : ''}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => markArrived(a)}
+                                        disabled={arriving === a.id}
+                                        title="Qabulni ochish — bo'lim, shifokor va xizmat yozuvdan olinadi"
+                                        className="shrink-0 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center gap-1.5"
+                                    >
+                                        <CheckCircle className="w-3.5 h-3.5" />
+                                        {arriving === a.id ? 'Ochilmoqda...' : 'Keldi'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
 
