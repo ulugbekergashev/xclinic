@@ -13,6 +13,10 @@ interface SignInProps {
             receptionistId?: string, mustChangePassword?: boolean) => void;
 }
 
+/* Demo nusxada avtomatik kirish BIR MARTA bajariladi — pastdagi
+   izohga qarang. */
+let autoEntered = false;
+
 export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
   const { t } = useLanguage();
   /* Shu bazadagi loginlar — kirish sahifasidagi eslatma.
@@ -83,6 +87,27 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
     onLogin(UserRole.CLINIC_ADMIN, 'Demo Admin', 'demo-clinic-1');
     setIsLoading(false);
   };
+
+  /* ── DEMO: KIRISH SAHIFASI KO'RSATILMAYDI ────────────────────────────
+     Namoyish nusxasida bitta hisob bor va boshqasi bo'lishi ham mumkin
+     emas: backend yo'q, ya'ni haqiqiy login tekshiriladigan joy yo'q.
+     Shunday ekan kirish formasi foydalanuvchini ortiqcha qadamga
+     majburlaydi va yozilgan har qanday login «bu namoyish nusxasi»
+     degan xato bilan qaytadi.
+
+     Shuning uchun demo havolasini ochgan odam to'g'ridan-to'g'ri
+     ichkariga tushadi.
+
+     `autoEntered` MODUL darajasida: chiqish tugmasi bosilganda
+     komponent qayta chiziladi va shart yana bajarilardi — foydalanuvchi
+     tizimdan chiqa olmay qolardi. Modul o'zgaruvchisi sahifa
+     yangilangunga qadar saqlanadi, ya'ni chiqqandan keyin sahifa
+     ko'rinadi, sahifa yangilansa yana avtomatik kiradi. */
+  React.useEffect(() => {
+    if (!IS_DEMO_BUILD || autoEntered) return;
+    autoEntered = true;
+    enterDemo();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,6 +183,9 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
         </div>
 
         <Card className="p-8 shadow-xl border-t-4 border-t-primary-600">
+          {/* Demo nusxada login/parol maydonlari CHIZILMAYDI: ular
+              ishlamaydi (server yo'q) va faqat chalkashtiradi. */}
+          {!IS_DEMO_BUILD && (
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg flex items-center gap-3 text-red-600 dark:text-red-400 text-sm animate-fade-in">
@@ -224,6 +252,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
               {isLoading ? t('auth.checking') : t('auth.signIn')}
             </Button>
           </form>
+          )}
 
           <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700 text-center">
             {/* NAMOYISH NUSXASI. Faqat `VITE_DEMO_BUILD=true` bilan qurilgan
