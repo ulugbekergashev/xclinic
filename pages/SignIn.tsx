@@ -5,6 +5,7 @@ import { UserRole } from '../types';
 import { AlertCircle, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { api, API_BASE_URL } from '../services/api';
 import * as auth from '../services/authStore';
+import { IS_DEMO_BUILD, DEMO_USERNAME, DEMO_PASSWORD } from '../services/demoBuild';
 import { useLanguage } from '../context/LanguageContext';
 
 interface SignInProps {
@@ -67,32 +68,46 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  /* Demo sessiyasini ochish. Alohida funksiya, chunki ikki joydan
+     chaqiriladi: forma orqali (login+parol yozilganda) va demo build'dagi
+     «Demoga kirish» tugmasidan. */
+  const enterDemo = () => {
+    auth.setSession({
+      role: UserRole.CLINIC_ADMIN,
+      name: 'Demo Admin',
+      clinicId: 'demo-clinic-1',
+      username: DEMO_USERNAME,
+      token: 'demo-token',
+      isDemo: true,
+    });
+    onLogin(UserRole.CLINIC_ADMIN, 'Demo Admin', 'demo-clinic-1');
+    setIsLoading(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
-      // Check if on localhost
+      /* Demo hisobiga kirish IKKI holatda ochiq:
+           • localhost — ishlab chiqish va sinov (avvaldan shunday edi);
+           • `VITE_DEMO_BUILD=true` bilan qurilgan bundle — Vercel'dagi
+             ommaviy demo, u yerda backend UMUMAN yo'q.
+         Klinikaga tarqatiladigan build ikkalasiga ham tushmaydi, ya'ni
+         demo hisobi u yerda avvalgidek yopiq qoladi. */
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-      // Demo mode credentials (localhost only)
-      // Demo mode credentials (localhost only)
-      if (isLocalhost && username === 'demoklinikaadmin' && password === 'demoklinikaparol') {
-        const demoAuthData = {
-          role: UserRole.CLINIC_ADMIN,
-          name: 'Demo Admin',
-          clinicId: 'demo-clinic-1',
-          username: username,
-          token: 'demo-token',
-          isDemo: true,
-        };
+      if ((isLocalhost || IS_DEMO_BUILD) && username === DEMO_USERNAME && password === DEMO_PASSWORD) {
+        enterDemo();
+        return;
+      }
 
-        // Demo rejim soxta token bilan ishlaydi va serverga bormaydi —
-        // shuning uchun u yagona holat, tokeni saqlanadigan (authStore).
-        auth.setSession(demoAuthData);
-
-        onLogin(UserRole.CLINIC_ADMIN, 'Demo Admin', 'demo-clinic-1');
+      /* Demo bundle'da backend YO'Q — boshqa login bilan tarmoqqa chiqish
+         ma'nosiz va foydalanuvchiga «tizim xatosi» deb ko'rinadi. Shuning
+         uchun so'rov yubormasdan, nima qilish kerakligini aytamiz. */
+      if (IS_DEMO_BUILD) {
+        setError('Bu — namoyish nusxasi. Pastdagi «Demoga kirish» tugmasini bosing.');
         setIsLoading(false);
         return;
       }
@@ -211,6 +226,30 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
           </form>
 
           <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700 text-center">
+            {/* NAMOYISH NUSXASI. Faqat `VITE_DEMO_BUILD=true` bilan qurilgan
+                bundle'da ko'rinadi — klinikaning o'rnatmasida bu blok
+                umuman chizilmaydi.
+
+                Nima uchun tugma: demo linkini ochgan odam login va parolni
+                bilmaydi va bilishi ham shart emas. Yuqoridagi izohda
+                ogohlantirilgan xavf (demo hisobiga TASODIFAN tushib qolish)
+                bu yerda yo'q — bu bundle'da boshqa ma'lumot yo'q, demo
+                yagona mumkin bo'lgan holat. */}
+            {IS_DEMO_BUILD && (
+              <div className="mb-4">
+                <button
+                  type="button"
+                  onClick={enterDemo}
+                  className="w-full py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-base font-medium shadow-lg shadow-primary-500/30 transition-all"
+                >
+                  Demoga kirish
+                </button>
+                <p className="text-xs text-gray-400 mt-2">
+                  Namoyish ma'lumotlari brauzeringizda saqlanadi. Bemor qo'shsangiz ham,
+                  o'chirsangiz ham — faqat sizda ko'rinadi.
+                </p>
+              </div>
+            )}
             {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
               <>
                 {/* Shu bazadagi HAQIQIY loginlar. Parol ko'rsatilmaydi —

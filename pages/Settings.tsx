@@ -6,7 +6,7 @@ import { Card, Button, Input, Modal, Select } from '../components/Common';
 
 import { UserRole, Doctor, Receptionist, Clinic, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
 import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History } from 'lucide-react';
-import { api, API_URL, getAuthToken } from '../services/api';
+import { api, API_URL, getAuthToken, isDemoMode } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
 import { ACCESS_MODULES, SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
@@ -393,6 +393,9 @@ export const Settings: React.FC<SettingsProps> = ({
                   console.error('No token found in auth data');
                   return;
                }
+
+               // Demoda Telegram boti yo'q — so'rov yubormaymiz.
+               if (isDemoMode()) return;
 
                const response = await fetch(`${API_URL}/clinics/${currentClinic.id}/bot-username`, {
                   headers: {

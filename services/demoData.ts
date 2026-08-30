@@ -1,5 +1,27 @@
 import { Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Service, Clinic, SubscriptionPlan, InventoryItem, InventoryLog, ServiceCategory, PatientDiagnosis, Lead, InstallmentPlan, LabTechnician, LabOrder, MessageTemplate, AutomationRule, MessageLog, TriggerDescriptor, SegmentFieldDescriptor } from '../types';
 
+/* --- SANALAR NISBIY (demo har doim "tirik" ko'rinishi uchun) ---
+ *
+ * Bu yerda sanalar 2026-yanvarga QOTIRILGAN edi. Ma'lumot o'sha paytda
+ * to'g'ri ko'rinardi, lekin demo linki oylar davomida ochiq turadi: klient
+ * uni avgustda ochsa, kalendar bo'sh, «bugungi qabullar» nol, oylik tushum
+ * nol bo'lib chiqadi. Ya'ni dastur buzuq emas — ma'lumot eskirgan; ammo
+ * ko'rgan odam buni farqlamaydi.
+ *
+ * Shuning uchun har bir sana BUGUNDAN nisbiy hisoblanadi. Asos sifatida
+ * eski to'plamning "bugun"i olingan (2026-01-28) va qolgan sanalar undan
+ * qancha uzoq bo'lsa, o'shancha siljish bilan yoziladi — o'zaro nisbatlar
+ * saqlanadi (kecha kelgan bemor baribir kecha kelgan bo'lib qoladi). */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** `YYYY-MM-DD` — bugundan `offset` kun narida. */
+const dayISO = (offset: number) =>
+    new Date(Date.now() + offset * DAY_MS).toISOString().split('T')[0];
+
+/** To'liq ISO vaqt tamg'asi — bugundan `offset` kun narida. */
+const dayFull = (offset: number) =>
+    new Date(Date.now() + offset * DAY_MS).toISOString();
+
 // --- PERSISTENCE HELPERS ---
 const STORAGE_KEY = 'xclinic_demo_data';
 
@@ -146,7 +168,7 @@ export let DEMO_PATIENTS: Patient[] = savedData?.patients || [
         address: 'Yunusobod tumani, 12-mavze',
         medicalHistory: 'Yuqori qon bosimi',
         clinicId: 'demo-clinic-1',
-        lastVisit: '2026-01-27',
+        lastVisit: dayISO(-1),
         status: 'Active',
         gender: 'Female',
         telegramChatId: '123456'
@@ -160,7 +182,7 @@ export let DEMO_PATIENTS: Patient[] = savedData?.patients || [
         address: 'Chilonzor tumani, 5-kvartal',
         medicalHistory: 'Allergiya (penitsiliinga)',
         clinicId: 'demo-clinic-1',
-        lastVisit: '2026-01-20',
+        lastVisit: dayISO(-8),
         status: 'Active',
         gender: 'Male',
         telegramChatId: '123457'
@@ -174,7 +196,7 @@ export let DEMO_PATIENTS: Patient[] = savedData?.patients || [
         address: 'Mirzo Ulug\'bek tumani, Ziyolilar ko\'chasi',
         medicalHistory: '',
         clinicId: 'demo-clinic-1',
-        lastVisit: '2026-01-25',
+        lastVisit: dayISO(-3),
         status: 'Active',
         gender: 'Female'
     },
@@ -187,7 +209,7 @@ export let DEMO_PATIENTS: Patient[] = savedData?.patients || [
         address: 'Yashnobod tumani, Abdulla Qodiriy ko\'chasi',
         medicalHistory: 'Qandli diabet (2-tur)',
         clinicId: 'demo-clinic-1',
-        lastVisit: '2026-01-15',
+        lastVisit: dayISO(-13),
         status: 'Active',
         gender: 'Male'
     },
@@ -215,7 +237,7 @@ export let DEMO_APPOINTMENTS: Appointment[] = savedData?.appointments || [
         doctorId: 'demo-doctor-1',
         doctorName: 'Dr. Kamola Ahmedova',
         type: 'Konsultatsiya',
-        date: new Date('2026-01-28').toISOString().split('T')[0],
+        date: dayISO(0),
         time: '10:00',
         duration: 30,
         status: 'Confirmed',
@@ -229,7 +251,7 @@ export let DEMO_APPOINTMENTS: Appointment[] = savedData?.appointments || [
         doctorId: 'demo-doctor-2',
         doctorName: 'Dr. Jamshid Karimov',
         type: 'Breket tizimi',
-        date: new Date('2026-01-28').toISOString().split('T')[0],
+        date: dayISO(0),
         time: '14:00',
         duration: 90,
         status: 'Confirmed',
@@ -243,7 +265,7 @@ export let DEMO_APPOINTMENTS: Appointment[] = savedData?.appointments || [
         doctorId: 'demo-doctor-1',
         doctorName: 'Dr. Kamola Ahmedova',
         type: 'Tish tozalash',
-        date: new Date('2026-01-29').toISOString().split('T')[0],
+        date: dayISO(1),
         time: '11:00',
         duration: 45,
         status: 'Confirmed',
@@ -257,7 +279,7 @@ export let DEMO_APPOINTMENTS: Appointment[] = savedData?.appointments || [
         doctorId: 'demo-doctor-1',
         doctorName: 'Dr. Kamola Ahmedova',
         type: 'Tish plombalash',
-        date: new Date('2026-01-27').toISOString().split('T')[0],
+        date: dayISO(-1),
         time: '15:00',
         duration: 60,
         status: 'Completed',
@@ -271,7 +293,7 @@ export let DEMO_APPOINTMENTS: Appointment[] = savedData?.appointments || [
         doctorId: 'demo-doctor-2',
         doctorName: 'Dr. Jamshid Karimov',
         type: 'Konsultatsiya',
-        date: new Date('2026-01-30').toISOString().split('T')[0],
+        date: dayISO(2),
         time: '09:00',
         duration: 30,
         status: 'Confirmed',
@@ -286,7 +308,7 @@ export let DEMO_TRANSACTIONS: Transaction[] = savedData?.transactions || [
         id: 'demo-tx-1',
         patientId: 'demo-patient-1',
         patientName: 'Aziza Rahimova',
-        date: new Date('2026-01-27').toISOString(),
+        date: dayFull(-1),
         amount: 300000,
         type: 'Cash',
         service: 'Tish plombalash',
@@ -301,7 +323,7 @@ export let DEMO_TRANSACTIONS: Transaction[] = savedData?.transactions || [
         id: 'demo-tx-2',
         patientId: 'demo-patient-2',
         patientName: 'Bobur Aliyev',
-        date: new Date('2026-01-20').toISOString(),
+        date: dayFull(-8),
         amount: 1500000,
         type: 'Card',
         service: 'Breket tizimi',
@@ -316,7 +338,7 @@ export let DEMO_TRANSACTIONS: Transaction[] = savedData?.transactions || [
         id: 'demo-tx-3',
         patientId: 'demo-patient-3',
         patientName: 'Dilnoza Karimova',
-        date: new Date('2026-01-25').toISOString(),
+        date: dayFull(-3),
         amount: 200000,
         type: 'Cash',
         service: 'Tish tozalash',
@@ -331,7 +353,7 @@ export let DEMO_TRANSACTIONS: Transaction[] = savedData?.transactions || [
         id: 'demo-tx-4',
         patientId: 'demo-patient-4',
         patientName: 'Eldor Toshmatov',
-        date: new Date('2026-01-15').toISOString(),
+        date: dayFull(-13),
         amount: 50000,
         type: 'Cash',
         service: 'Konsultatsiya',
@@ -348,7 +370,7 @@ export let DEMO_TRANSACTIONS: Transaction[] = savedData?.transactions || [
 export let DEMO_EXPENSES: Expense[] = savedData?.expenses || [
     {
         id: 'demo-exp-1',
-        date: new Date('2026-01-05').toISOString().split('T')[0],
+        date: dayISO(-23),
         amount: 2000000,
         category: 'Rent',
         title: 'Ijara (yanvar)',
@@ -357,7 +379,7 @@ export let DEMO_EXPENSES: Expense[] = savedData?.expenses || [
     },
     {
         id: 'demo-exp-2',
-        date: new Date('2026-01-10').toISOString().split('T')[0],
+        date: dayISO(-18),
         amount: 350000,
         category: 'Utilities',
         title: 'Kommunal to\'lovlar',
@@ -366,7 +388,7 @@ export let DEMO_EXPENSES: Expense[] = savedData?.expenses || [
     },
     {
         id: 'demo-exp-3',
-        date: new Date('2026-01-28').toISOString().split('T')[0],
+        date: dayISO(0),
         amount: 150000,
         category: 'DoctorShare',
         title: 'Shifokor ulushi',
@@ -383,7 +405,7 @@ export let DEMO_MESSAGE_TEMPLATES: MessageTemplate[] = savedData?.messageTemplat
         clinicId: 'demo-clinic-1',
         name: 'Qabul eslatmasi',
         text: "Hurmatli {bemor_ismi}, qabulingiz {sana} kuni {vaqt} da. {klinika_nomi}",
-        createdAt: new Date('2026-01-10').toISOString(),
+        createdAt: dayFull(-18),
     },
 ];
 
@@ -398,7 +420,7 @@ export let DEMO_AUTOMATION_RULES: AutomationRule[] = savedData?.automationRules 
         channel: 'telegram',
         doctorId: null,
         active: true,
-        createdAt: new Date('2026-01-10').toISOString(),
+        createdAt: dayFull(-18),
     },
 ];
 
@@ -453,7 +475,7 @@ export let DEMO_MESSAGE_LOGS: MessageLog[] = savedData?.messageLogs || [
         type: 'Manual',
         status: 'Sent',
         message: 'Hurmatli Aziza, qabulingiz eslatmasi.',
-        sentAt: new Date('2026-01-27T10:00:00').toISOString(),
+        sentAt: dayFull(-1),
         channel: 'telegram',
         source: 'manual',
         recipient: '123456789',
@@ -518,7 +540,7 @@ export let DEMO_INVENTORY_LOGS: InventoryLog[] = savedData?.logs || [
         change: 50,
         type: 'IN',
         note: 'Boshlang\'ich qoldiq',
-        date: new Date('2026-01-01').toISOString(),
+        date: dayFull(-27),
         userName: 'Demo Admin',
     },
     {
@@ -527,7 +549,7 @@ export let DEMO_INVENTORY_LOGS: InventoryLog[] = savedData?.logs || [
         change: 5,
         type: 'IN',
         note: 'Xarid',
-        date: new Date('2026-01-05').toISOString(),
+        date: dayFull(-23),
         userName: 'Demo Admin',
     }
 ];
@@ -558,16 +580,20 @@ export let DEMO_INSTALLMENTS: InstallmentPlan[] = savedData?.installments || [
         service: 'Breket tizimi',
         totalAmount: 5000000,
         totalPaid: 2000000,
-        startDate: '2026-01-01',
-        endDate: '2026-06-01',
+        /* Bo'lib to'lash rejasi ham bugundan hisoblanadi. To'langan ikkita
+           ulush O'TMISHDA, kutilayotgan uchtasi KELAJAKDA turishi shart —
+           aks holda «to'langan, lekin muddati hali kelmagan» degan mantiqsiz
+           qator chiqadi va reja buzuq ko'rinadi. */
+        startDate: dayISO(-90),
+        endDate: dayISO(60),
         status: 'Active',
         createdAt: new Date().toISOString(),
         items: [
-            { id: 'item-1', planId: 'demo-ins-1', expectedDate: '2026-02-01', amount: 600000, status: 'Paid', paidDate: '2026-02-01' },
-            { id: 'item-2', planId: 'demo-ins-1', expectedDate: '2026-03-01', amount: 600000, status: 'Paid', paidDate: '2026-03-01' },
-            { id: 'item-3', planId: 'demo-ins-1', expectedDate: '2026-04-15', amount: 600000, status: 'Pending' },
-            { id: 'item-4', planId: 'demo-ins-1', expectedDate: '2026-05-15', amount: 600000, status: 'Pending' },
-            { id: 'item-5', planId: 'demo-ins-1', expectedDate: '2026-06-15', amount: 600000, status: 'Pending' },
+            { id: 'item-1', planId: 'demo-ins-1', expectedDate: dayISO(-60), amount: 600000, status: 'Paid', paidDate: dayISO(-60) },
+            { id: 'item-2', planId: 'demo-ins-1', expectedDate: dayISO(-30), amount: 600000, status: 'Paid', paidDate: dayISO(-29) },
+            { id: 'item-3', planId: 'demo-ins-1', expectedDate: dayISO(0), amount: 600000, status: 'Pending' },
+            { id: 'item-4', planId: 'demo-ins-1', expectedDate: dayISO(30), amount: 600000, status: 'Pending' },
+            { id: 'item-5', planId: 'demo-ins-1', expectedDate: dayISO(60), amount: 600000, status: 'Pending' },
         ]
     }
 ];

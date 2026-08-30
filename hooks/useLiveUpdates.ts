@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { API_URL, getAuthToken } from '../services/api';
+import { API_URL, getAuthToken, isDemoMode } from '../services/api';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Real vaqtda yangilanish — mijoz tomoni.
@@ -56,6 +56,19 @@ function dispatch(type: string, payload: any) {
 
 async function connect() {
     if (connected || stopped) return;
+
+    /* DEMO REJIMI. `getAuthToken()` demo tokenini QAYTARADI (u sessiyada
+       haqiqiy token o'rnida turadi), ya'ni tekshiruvsiz bu yerda oqim
+       ochilishga urinardi. Demoda esa server umuman yo'q: so'rov yiqiladi,
+       qayta ulanish uni 1s → 2s → ... bilan cheksiz takrorlaydi va
+       konsolni xato bilan to'ldiradi.
+
+       To'xtatamiz. Yo'qotiladigan narsa yo'q: oqim ishlamaganda ekranlar
+       allaqachon 30 soniyalik so'rovga qaytadi (4-qarorga qarang), demo
+       ma'lumoti esa brauzerning o'zida — u yerda "boshqa foydalanuvchi
+       o'zgartirdi" degan holat bo'lmaydi. */
+    if (isDemoMode()) { setHealthy(false); return; }
+
     const token = getAuthToken();
     if (!token) return;
 

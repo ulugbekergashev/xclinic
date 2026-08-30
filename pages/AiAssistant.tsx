@@ -62,13 +62,18 @@ interface Turn {
 }
 
 // ─── API ─────────────────────────────────────────────────────────────────────
-import { getAuthToken } from '../services/api';
+import { getAuthToken, isDemoMode } from '../services/api';
 
 /* Token XOTIRADA yashaydi, diskda emas (S1.3) — `services/authStore.ts`.
    Ilgari bu yerda `localStorage` o'qilardi va u endi bo'sh qaytaradi. */
 const authToken = (): string | null => getAuthToken();
 
 async function api<T>(path: string, body?: object): Promise<T> {
+  /* AI javobi SERVERDA hosil bo'ladi (kalitlar bundle'ga tushmasligi
+     uchun). Namoyish nusxasida server yo'q, shuning uchun so'rov yubormay
+     nima uchunligini aytamiz — "tizim xatosi" degan tushunarsiz xabar
+     o'rniga. */
+  if (isDemoMode()) throw new Error('AI yordamchisi namoyish nusxasida ishlamaydi — u klinikadagi serverda hisoblanadi.');
   const token = authToken();
   const res = await fetch(`${API_URL}${path}`, {
     method: body ? 'POST' : 'GET',

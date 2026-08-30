@@ -6,7 +6,7 @@ import {
     Clock, Printer, Image as ImageIcon, Upload,
 } from 'lucide-react';
 import { DiagnosticStudy, Modality, MODALITY_LABELS, Patient, Department, Service, Clinic } from '../types';
-import { api, getFileUrl, API_URL } from '../services/api';
+import { api, getFileUrl, API_URL, isDemoMode } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { EmptyState } from '../components/Common';
 import { printStudyConclusion } from '../utils/printForms';
@@ -159,6 +159,13 @@ export const Diagnostics: React.FC<Props> = ({
     const uploadFile = async (file: File) => {
         if (!editing) return;
         setUploading(true); setError('');
+        /* Demoda fayl serverga bormaydi — server yo'q. Foydalanuvchiga
+           nima bo'lganini aytamiz, jimgina yiqilmaymiz. */
+        if (isDemoMode()) {
+            setError("Namoyish nusxasida fayl yuklab bo'lmaydi — u klinikadagi serverda saqlanadi.");
+            setUploading(false);
+            return;
+        }
         try {
             const fd = new FormData();
             fd.append('photo', file);

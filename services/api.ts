@@ -1,4 +1,4 @@
-import { Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
+import { Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
 import { todayISO } from '../utils/dateUtils';
 import * as auth from './authStore';
 
@@ -121,6 +121,95 @@ export const isDemoMode = () => auth.getSession()?.isDemo === true;
    o'qish bo'sh ro'yxat qaytaradi, yozish esa tushunarli xato beradi.          */
 /** O'QISH uchun: serverga bormaydi, bo'sh/neytral qiymat qaytaradi */
 const demoRead = <T,>(value: T): Promise<T> => Promise.resolve(value);
+
+/* ── DEMO RAQAMLARI ──────────────────────────────────────────────────────
+   Bosh sahifa va «Yagona hisoblash qatlami» ilgari demoda QAT'IY NOL
+   qaytarardi ("Demo rejimda hisobot bo'sh ko'rinadi — xato emas"). Bu
+   ishlab chiqishda to'g'ri edi, lekin namoyish nusxasida birinchi ochilgan
+   ekran butunlay nollardan iborat bo'lib qoladi — ko'rgan odam dasturni
+   emas, bo'sh jadvalni ko'radi.
+
+   Shuning uchun raqamlar demo ma'lumotining O'ZIDAN sanaladi. Natijada
+   klient yangi bemor qo'shsa yoki to'lov kiritsa, bosh sahifadagi son ham
+   o'zgaradi — ya'ni demo tirik ko'rinadi va haqiqiy dastur qanday
+   ishlashini ko'rsatadi. */
+
+/** Sana `from..to` oralig'idami? Chegaralar berilmasa — hamma narsa mos. */
+const inRange = (iso: string | undefined, from?: string, to?: string): boolean => {
+    if (!iso) return false;
+    const day = iso.slice(0, 10);
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    return true;
+};
+
+/* Demoda allergiya ro'yxati SESSIYA davomida saqlanadi (kassa yopilishlari
+   kabi). Bemor kartasida allergiya qo'shish — ko'rsatishga arziydigan
+   qadam, shuning uchun qo'shilgani darhol ro'yxatda paydo bo'lishi kerak. */
+const DEMO_ALLERGIES: { id: string; patientId: string; substance: string; reaction: string; severity: string }[] = [
+    { id: 'demo-allergy-1', patientId: 'demo-patient-2', substance: 'Penitsillin', reaction: 'Toshma', severity: 'Severe' },
+];
+
+/** Bemor kartasidagi klinik xulosa — demo ma'lumotidan yig'iladi. */
+const demoClinicalSummary = (patientId: string) => {
+    const pending = DEMO_TRANSACTIONS.filter(
+        t => (t as any).patientId === patientId && t.status !== 'Paid'
+    );
+    const recentVisits = DEMO_APPOINTMENTS
+        .filter(a => a.patientId === patientId && a.status === 'Completed')
+        .slice(0, 5)
+        .map(a => ({
+            id: a.id,
+            date: a.date,
+            doctorName: a.doctorName,
+            complaint: a.type,
+            diagnosis: (a as any).notes || '',
+        }));
+
+    return {
+        allergies: DEMO_ALLERGIES.filter(a => a.patientId === patientId),
+        chronic: DEMO_DIAGNOSES.filter((d: any) => d.patientId === patientId),
+        recentVisits,
+        abnormalResults: [],
+        due: pending.reduce((s, t) => s + (t.amount || 0), 0),
+    };
+};
+
+const demoSnapshot = (from?: string, to?: string): Snapshot => {
+    const tx = DEMO_TRANSACTIONS.filter(t => inRange(t.date as any, from, to));
+    const paid = tx.filter(t => t.status === 'Paid');
+    const pending = tx.filter(t => t.status !== 'Paid');
+
+    const charged = tx.reduce((s, t) => s + (t.amount || 0), 0);
+    const collected = paid.reduce((s, t) => s + (t.amount || 0), 0);
+
+    // Qarz — davrga bog'liq EMAS, ayni damdagi holat (Snapshot shartnomasi)
+    const allPending = DEMO_TRANSACTIONS.filter(t => t.status !== 'Paid');
+    const debtAmount = allPending.reduce((s, t) => s + (t.amount || 0), 0);
+    const debtPatients = new Set(allPending.map(t => (t as any).patientId || t.patientName)).size;
+
+    const appts = DEMO_APPOINTMENTS.filter(a => inRange(a.date, from, to));
+    const visits = appts.filter(a => a.status === 'Completed').length;
+
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    return {
+        range: { from: from || '', to: to || '' },
+        debt: { amount: debtAmount, charges: allPending.length, patients: debtPatients },
+        period: {
+            charged, collected,
+            due: charged - collected,
+            visits,
+            appointments: appts.length,
+            avgCheck: visits > 0 ? Math.round(collected / visits) : 0,
+        },
+        patients: {
+            total: DEMO_PATIENTS.length,
+            active: DEMO_PATIENTS.filter(p => p.status === 'Active').length,
+            newLast7Days: DEMO_PATIENTS.filter(p => (p.lastVisit || '') >= weekAgo).length,
+        },
+    };
+};
 /** YOZISH uchun: tushunarli xato beradi. O'qish amalida ISHLATMANG —
  *  aks holda oddiy ko'rish sahifasida "saqlab bo'lmaydi" degan mantiqsiz
  *  xabar chiqadi. */
@@ -135,7 +224,172 @@ const DEMO_DEPARTMENTS: Department[] = [
     { id: 'demo-ter', clinicId: 'demo-clinic-1', name: 'Terapiya', code: 'TER', type: 'CLINICAL', color: '#2563EB', sortOrder: 1, isActive: true },
     { id: 'demo-lab', clinicId: 'demo-clinic-1', name: 'Laboratoriya', code: 'LAB', type: 'LAB', color: '#0D9488', sortOrder: 2, isActive: true },
     { id: 'demo-diag', clinicId: 'demo-clinic-1', name: 'Diagnostika', code: 'DIAG', type: 'DIAGNOSTIC', color: '#4F46E5', sortOrder: 3, isActive: true },
+    /* Statsionar bo'limi — `Inpatient.tsx` yangi bemorni yotqizishda
+       `departments.find(d => d.type === 'INPATIENT')` ni qidiradi. Busiz
+       demoda yotqizish oynasi bo'limsiz qolardi. */
+    { id: 'demo-inp', clinicId: 'demo-clinic-1', name: 'Statsionar', code: 'INP', type: 'INPATIENT', color: '#DB2777', sortOrder: 4, isActive: true },
 ];
+
+/* ── DEMO: STATSIONAR ────────────────────────────────────────────────────
+   Palatalar, koykalar va yotqizilgan bemorlar. Ilgari bu yerda bo'sh
+   massiv turardi (`wards.getAll` → []), ya'ni demoda Statsionar ochilsa
+   «palata yo'q» degan bo'sh ekran chiqardi — modul buzuq emas, lekin
+   ko'rsatishga hech narsa yo'q edi.
+
+   Ma'lumot SESSIYA davomida o'zgaradi: bemor yotqizilsa koyka band
+   bo'ladi, chiqarilsa bo'shaydi. Ya'ni namoyishda haqiqiy oqimni
+   boshidan oxirigacha ko'rsatish mumkin. */
+const DEMO_BEDS: Bed[] = [
+    { id: 'demo-bed-1', wardId: 'demo-ward-1', label: '1-koyka', status: 'Occupied' },
+    { id: 'demo-bed-2', wardId: 'demo-ward-1', label: '2-koyka', status: 'Occupied' },
+    { id: 'demo-bed-3', wardId: 'demo-ward-1', label: '3-koyka', status: 'Free' },
+    { id: 'demo-bed-4', wardId: 'demo-ward-1', label: '4-koyka', status: 'Free' },
+    { id: 'demo-bed-5', wardId: 'demo-ward-2', label: '1-koyka', status: 'Occupied' },
+    { id: 'demo-bed-6', wardId: 'demo-ward-2', label: '2-koyka', status: 'Cleaning' },
+];
+
+const DEMO_WARDS: Ward[] = [
+    {
+        id: 'demo-ward-1', clinicId: 'demo-clinic-1', departmentId: 'demo-inp',
+        name: '1-palata (umumiy)', floor: '2', kind: 'Umumiy',
+        dailyRate: 150000, isActive: true,
+        get beds() { return DEMO_BEDS.filter(b => b.wardId === 'demo-ward-1'); },
+    },
+    {
+        id: 'demo-ward-2', clinicId: 'demo-clinic-1', departmentId: 'demo-inp',
+        name: '2-palata (lyuks)', floor: '3', kind: 'Lyuks',
+        dailyRate: 400000, isActive: true,
+        get beds() { return DEMO_BEDS.filter(b => b.wardId === 'demo-ward-2'); },
+    },
+];
+
+const dayShift = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString();
+
+const DEMO_ADMISSIONS: Admission[] = [
+    {
+        id: 'demo-adm-1', clinicId: 'demo-clinic-1',
+        patientId: 'demo-patient-1', patientName: 'Aziza Rahimova',
+        departmentId: 'demo-inp', doctorId: 'demo-doctor-1', doctorName: 'Dr. Kamola Ahmedova',
+        bedId: 'demo-bed-1', admittedAt: dayShift(-3), dischargedAt: null, status: 'Active',
+        reason: 'Yuqori harorat, holsizlik', diagnosis: 'O\'tkir respirator infeksiya',
+        dailyRate: 150000, totalCharges: 450000,
+    },
+    {
+        id: 'demo-adm-2', clinicId: 'demo-clinic-1',
+        patientId: 'demo-patient-2', patientName: 'Bobur Aliyev',
+        departmentId: 'demo-inp', doctorId: 'demo-doctor-2', doctorName: 'Dr. Jamshid Karimov',
+        bedId: 'demo-bed-2', admittedAt: dayShift(-1), dischargedAt: null, status: 'Active',
+        reason: 'Operatsiyadan keyingi kuzatuv', diagnosis: 'Tish implantatsiyasidan keyin',
+        dailyRate: 150000, totalCharges: 150000,
+    },
+    {
+        id: 'demo-adm-3', clinicId: 'demo-clinic-1',
+        patientId: 'demo-patient-3', patientName: 'Dilnoza Karimova',
+        departmentId: 'demo-inp', doctorId: 'demo-doctor-1', doctorName: 'Dr. Kamola Ahmedova',
+        bedId: 'demo-bed-5', admittedAt: dayShift(-6), dischargedAt: null, status: 'Active',
+        reason: 'Rejali davolash', diagnosis: 'Surunkali periodontit',
+        dailyRate: 400000, totalCharges: 2400000,
+    },
+    {
+        id: 'demo-adm-4', clinicId: 'demo-clinic-1',
+        patientId: 'demo-patient-4', patientName: 'Eldor Toshmatov',
+        departmentId: 'demo-inp', doctorId: 'demo-doctor-2', doctorName: 'Dr. Jamshid Karimov',
+        bedId: null, admittedAt: dayShift(-14), dischargedAt: dayShift(-9), status: 'Discharged',
+        reason: 'Jarrohlik amaliyoti', diagnosis: 'Aql tishi retensiyasi',
+        dischargeSummary: 'Holati qoniqarli, ambulator kuzatuvga o\'tkazildi.',
+        dailyRate: 150000, totalCharges: 750000,
+    },
+];
+
+const DEMO_MED_ORDERS: MedicationOrder[] = [
+    { id: 'demo-med-1', admissionId: 'demo-adm-1', name: 'Paratsetamol', dosage: '500 mg', route: 'Ichga', frequency: 'Kuniga 3 marta', startDate: dayShift(-3), status: 'Active' },
+    { id: 'demo-med-2', admissionId: 'demo-adm-1', name: 'Amoksitsillin', dosage: '875 mg', route: 'Ichga', frequency: 'Kuniga 2 marta', startDate: dayShift(-2), status: 'Active' },
+    { id: 'demo-med-3', admissionId: 'demo-adm-3', name: 'Ketorol', dosage: '10 mg', route: 'Mushak ichiga', frequency: "Og'riqda", startDate: dayShift(-5), status: 'Active' },
+];
+
+const DEMO_ROUNDS: InpatientRound[] = [
+    { id: 'demo-round-1', admissionId: 'demo-adm-1', date: dayShift(-2), doctorId: 'demo-doctor-1', doctorName: 'Dr. Kamola Ahmedova', vitalSigns: 'T 37.8, AB 120/80, P 84', notes: 'Harorat pasaymoqda', plan: 'Davolashni davom ettirish' },
+    { id: 'demo-round-2', admissionId: 'demo-adm-1', date: dayShift(-1), doctorId: 'demo-doctor-1', doctorName: 'Dr. Kamola Ahmedova', vitalSigns: 'T 36.9, AB 118/75, P 76', notes: 'Ahvoli yaxshilandi', plan: 'Ertaga chiqarishni ko\'rib chiqish' },
+];
+
+/** Dori berilgani (hamshira belgisi) va palatadan palataga o'tkazishlar. */
+const DEMO_ADMINISTRATIONS: { id: string; orderId: string; at: string; note: string }[] = [
+    { id: 'demo-adm-give-1', orderId: 'demo-med-1', at: dayShift(-1), note: 'Berildi' },
+];
+const DEMO_TRANSFERS: any[] = [];
+
+/** Hamshiralar — Sozlamalardagi «Xodimlar» bo'limi bo'sh qolmasligi uchun. */
+/** Bemor hujjatlari (rozilik, shartnoma) — sessiya davomida saqlanadi. */
+const DEMO_DOCUMENTS: any[] = [];
+
+/** Yo'llanmalar (laboratoriya, diagnostika, kassa). */
+const DEMO_REFERRALS: any[] = [];
+
+/* Zaxira nusxa holati. Demoda HAQIQIY nusxa yo'q — bulutda baza ham yo'q.
+   Shuning uchun raqamlar o'ylab topilmaydi: ekran «nusxa hali olinmagan»
+   holatini ko'rsatadi. Bu yolg'on emas va interfeys qanday ishlashini
+   baribir ko'rsatadi. */
+const DEMO_BACKUP_STATUS = {
+    config: { enabled: false, intervalHours: 24, keepCount: 7, includeUploads: true } as any,
+    lastBackup: null,
+    ageDays: null,
+    stale: false,
+    count: 0,
+    totalBytes: 0,
+    scheduler: { running: false, lastRunAt: null, lastFile: null, lastError: null, lastDeleted: 0 },
+};
+
+/** Tasdiqlangan oylik vedomostlari — sessiya davomida. */
+const DEMO_PAYROLL_RUNS: any[] = [];
+
+/* Oylik hisobi: shifokorning ULUSHI davr ichida to'langan summadan
+   foizi bo'yicha. Demoda ham xuddi shu mantiq — raqam o'ylab topilmaydi,
+   demo tranzaksiyalaridan sanaladi. */
+const demoPayroll = (from: string, to: string) => {
+    const paid = DEMO_TRANSACTIONS.filter(t => t.status === 'Paid' && inRange(t.date as any, from, to));
+    const lines = DEMO_DOCTORS.map(d => {
+        const own = paid.filter(t => (t as any).doctorId === d.id);
+        const revenue = own.reduce((s, t) => s + (t.amount || 0), 0);
+        const percent = d.percentage || 0;
+        const total = Math.round(revenue * percent / 100);
+        return {
+            id: `demo-line-${d.id}`, doctorId: d.id,
+            doctorName: `${d.firstName} ${d.lastName}`,
+            revenue, percent, total, paid: 0, status: 'Pending',
+        };
+    });
+    return {
+        periodFrom: from, periodTo: to,
+        lines,
+        totals: {
+            revenue: lines.reduce((s, l) => s + l.revenue, 0),
+            payout: lines.reduce((s, l) => s + l.total, 0),
+        },
+    };
+};
+
+const DEMO_NURSES: any[] = [
+    { id: 'demo-nurse-1', clinicId: 'demo-clinic-1', firstName: 'Nilufar', lastName: 'Yo\'ldosheva', phone: '+998 90 555 66 77', departmentId: 'demo-inp', username: 'nilufar', status: 'Active' },
+    { id: 'demo-nurse-2', clinicId: 'demo-clinic-1', firstName: 'Zuhra', lastName: 'Ismoilova', phone: '+998 91 222 33 44', departmentId: 'demo-inp', username: 'zuhra', status: 'Active' },
+];
+
+/** Harorat varag'i — ko'rsatkichlar vaqt qatori. */
+const DEMO_VITALS: any[] = [
+    { id: 'demo-vital-1', patientId: 'demo-patient-1', admissionId: 'demo-adm-1', kind: 'Temperature', value: 38.4, unit: '°C', measuredAt: dayShift(-3) },
+    { id: 'demo-vital-2', patientId: 'demo-patient-1', admissionId: 'demo-adm-1', kind: 'Temperature', value: 37.8, unit: '°C', measuredAt: dayShift(-2) },
+    { id: 'demo-vital-3', patientId: 'demo-patient-1', admissionId: 'demo-adm-1', kind: 'Temperature', value: 36.9, unit: '°C', measuredAt: dayShift(-1) },
+    { id: 'demo-vital-4', patientId: 'demo-patient-1', admissionId: 'demo-adm-1', kind: 'Pulse', value: 84, unit: "zarb/daq", measuredAt: dayShift(-2) },
+    { id: 'demo-vital-5', patientId: 'demo-patient-1', admissionId: 'demo-adm-1', kind: 'Pulse', value: 76, unit: "zarb/daq", measuredAt: dayShift(-1) },
+];
+
+/** Koyka holatini yotqizilganlar ro'yxatiga qarab qayta hisoblaydi. */
+const demoSyncBeds = () => {
+    const busy = new Set(DEMO_ADMISSIONS.filter(a => a.status === 'Active').map(a => a.bedId));
+    DEMO_BEDS.forEach(b => {
+        if (busy.has(b.id)) b.status = 'Occupied';
+        else if (b.status === 'Occupied') b.status = 'Free';
+    });
+};
 
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF = 1000; // 1 second
@@ -376,7 +630,11 @@ export const api = {
                 body: JSON.stringify({ message }),
             });
         },
+        /* Rasm yuklash demoda BRAUZER ICHIDA qoladi: server yo'q, shuning
+           uchun fayl `blob:` manzil sifatida ko'rsatiladi. Sahifa
+           yangilanguncha ishlaydi — namoyish uchun yetarli. */
         uploadAvatar: (id: string, file: File) => {
+            if (isDemoMode()) return demoRead<{ success: true, url: string }>({ success: true, url: URL.createObjectURL(file) });
             const formData = new FormData();
             formData.append('photo', file);
             return fetchJson<{ success: true, url: string }>(`/patients/${id}/avatar`, {
@@ -385,6 +643,7 @@ export const api = {
             });
         },
         uploadPortrait: (id: string, file: File) => {
+            if (isDemoMode()) return demoRead<{ success: true, url: string }>({ success: true, url: URL.createObjectURL(file) });
             const formData = new FormData();
             formData.append('photo', file);
             return fetchJson<{ success: true, url: string }>(`/patients/${id}/portrait`, {
@@ -1308,23 +1567,63 @@ export const api = {
     /* ─── Klinik kontur: bemor tarixi, allergiya, natija belgisi ────────────
        `summary` — shifokorning ish stolidagi "avval nima bo'lgan" paneli.
        Bitta so'rov: allergiya, surunkali, oldingi qabullar, tahlillar, dorilar. */
+    /* Bemor kartasidagi klinik qatlam. Demo qoplamasi ALOHIDA muhim:
+       `PatientHistoryPanel` bemor kartasining ICHIDA turadi, ya'ni bu
+       yerdagi xato namoyishning eng asosiy oqimida — «bemor qo'shdim,
+       kartasini ochdim» — ko'rinib qoladi. */
     clinical: {
-        summary: (patientId: string) => fetchJson<any>(`/patients/${patientId}/summary`),
-        allergies: (patientId: string) => fetchJson<any[]>(`/patients/${patientId}/allergies`),
-        addAllergy: (patientId: string, data: { substance: string; reaction?: string; severity?: string }) =>
-            fetchJson<any>(`/patients/${patientId}/allergies`, { method: 'POST', body: JSON.stringify(data) }),
-        removeAllergy: (patientId: string, allergyId: string) =>
-            fetchJson<{ success: true }>(`/patients/${patientId}/allergies/${allergyId}`, { method: 'DELETE' }),
-        markLabSeen: (orderId: string) =>
-            fetchJson<{ success: true }>(`/lab-orders/${orderId}/seen`, { method: 'POST' }),
-        markStudySeen: (studyId: string) =>
-            fetchJson<{ success: true }>(`/studies/${studyId}/seen`, { method: 'POST' }),
+        summary: (patientId: string) => {
+            if (isDemoMode()) return demoRead<any>(demoClinicalSummary(patientId));
+            return fetchJson<any>(`/patients/${patientId}/summary`);
+        },
+        allergies: (patientId: string) => {
+            if (isDemoMode()) return demoRead<any[]>(DEMO_ALLERGIES.filter(a => a.patientId === patientId));
+            return fetchJson<any[]>(`/patients/${patientId}/allergies`);
+        },
+        addAllergy: (patientId: string, data: { substance: string; reaction?: string; severity?: string }) => {
+            if (isDemoMode()) {
+                const created = {
+                    id: `demo-allergy-${Date.now()}`,
+                    patientId,
+                    substance: data.substance,
+                    reaction: data.reaction || '',
+                    severity: data.severity || 'Unknown',
+                };
+                DEMO_ALLERGIES.push(created);
+                return demoRead<any>(created);
+            }
+            return fetchJson<any>(`/patients/${patientId}/allergies`, { method: 'POST', body: JSON.stringify(data) });
+        },
+        removeAllergy: (patientId: string, allergyId: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_ALLERGIES.findIndex(a => a.id === allergyId);
+                if (i > -1) DEMO_ALLERGIES.splice(i, 1);
+                return demoRead<{ success: true }>({ success: true });
+            }
+            return fetchJson<{ success: true }>(`/patients/${patientId}/allergies/${allergyId}`, { method: 'DELETE' });
+        },
+        markLabSeen: (orderId: string) => {
+            if (isDemoMode()) return demoRead<{ success: true }>({ success: true });
+            return fetchJson<{ success: true }>(`/lab-orders/${orderId}/seen`, { method: 'POST' });
+        },
+        markStudySeen: (studyId: string) => {
+            if (isDemoMode()) return demoRead<{ success: true }>({ success: true });
+            return fetchJson<{ success: true }>(`/studies/${studyId}/seen`, { method: 'POST' });
+        },
         /** Natijasi tayyor, lekin ko'rilmagan qabullar — SANA bilan cheklanmagan */
-        pendingResults: () => fetchJson<any[]>('/visits/pending-results'),
+        pendingResults: () => {
+            if (isDemoMode()) return demoRead<any[]>([]);
+            return fetchJson<any[]>('/visits/pending-results');
+        },
         /** Ko'rsatkich bo'yicha vaqt qatori: bitta qiymat emas, O'ZGARISH muhim */
-        labDynamics: (patientId: string) => fetchJson<any[]>(`/patients/${patientId}/lab-dynamics`),
-        lockVisit: (visitId: string, disposition?: string) =>
-            fetchJson<any>(`/visits/${visitId}/lock`, { method: 'POST', body: JSON.stringify({ disposition }) }),
+        labDynamics: (patientId: string) => {
+            if (isDemoMode()) return demoRead<any[]>([]);
+            return fetchJson<any[]>(`/patients/${patientId}/lab-dynamics`);
+        },
+        lockVisit: (visitId: string, disposition?: string) => {
+            if (isDemoMode()) return demoRead<any>({ id: visitId, locked: true, disposition });
+            return fetchJson<any>(`/visits/${visitId}/lock`, { method: 'POST', body: JSON.stringify({ disposition }) });
+        },
     },
 
     // ─── Pul: hisob qatorlari va kassa ──────────────────────────────────────
@@ -1372,23 +1671,39 @@ export const api = {
 
     cashShift: {
         /** Kutilayotgan naqd — SERVER hisobi, tahrirlanmaydi */
-        expected: (date: string) => fetchJson<{
-            date: string; openingCash: number; expectedCash: number;
-            expectedCard: number; expectedClick: number;
-            /** Kunning YOPILMAGAN xizmat qatorlari — kassa sog' bo'lsa ham
-             *  bemorlarning yarmi to'lamasdan ketgan bo'lishi mumkin. */
-            openCharges?: { count: number; patients: number; due: number };
-            sources: Record<string, any>;
-        }>(`/cash-register/expected?date=${date}`),
-        open: (data: { date: string; shift?: number; openingCash?: number }) =>
-            fetchJson<any>('/cash-register/open', { method: 'POST', body: JSON.stringify(data) }),
+        expected: (date: string) => {
+            if (isDemoMode()) {
+                /* Demoda «kutilayotgan» summa shu kundagi to'lovlardan
+                   yig'iladi — kassa ekrani tirik raqam bilan ochiladi. */
+                const day = demoSnapshot(date, date);
+                return demoRead({
+                    date, openingCash: 0,
+                    expectedCash: day.period.collected,
+                    expectedCard: 0, expectedClick: 0,
+                    openCharges: { count: 0, patients: 0, due: day.period.due },
+                    sources: {} as Record<string, any>,
+                });
+            }
+            return fetchJson<{
+                date: string; openingCash: number; expectedCash: number;
+                expectedCard: number; expectedClick: number;
+                /** Kunning YOPILMAGAN xizmat qatorlari — kassa sog' bo'lsa ham
+                 *  bemorlarning yarmi to'lamasdan ketgan bo'lishi mumkin. */
+                openCharges?: { count: number; patients: number; due: number };
+                sources: Record<string, any>;
+            }>(`/cash-register/expected?date=${date}`);
+        },
+        open: (data: { date: string; shift?: number; openingCash?: number }) => {
+            if (isDemoMode()) return demoRead<any>({ ...data, id: `demo-shift-${Date.now()}`, status: 'Open' });
+            return fetchJson<any>('/cash-register/open', { method: 'POST', body: JSON.stringify(data) });
+        },
     },
 
     // ─── Moliyaviy hisobot ──────────────────────────────────────────────────
     // ─── Ekspluatatsiya: sxema versiyasi va zaxira nusxa ────────────────────
     // Faqat klinika administratori uchun — backend ham shu rolni talab qiladi.
     maintenance: {
-        schemaStatus: () => fetchJson<{
+        schemaStatus: () => isDemoMode() ? demoRead<any>({ current: null, baseline: true, appliedCount: 0, applied: [], pending: [], pendingCount: 0 }) : fetchJson<{
             current: string | null;
             baseline: boolean;
             appliedCount: number;
@@ -1397,7 +1712,7 @@ export const api = {
             pendingCount: number;
         }>('/admin/schema-status'),
 
-        backups: () => fetchJson<{
+        backups: () => isDemoMode() ? demoRead<any>([]) : fetchJson<{
             file: string; sizeBytes: number; createdAt: string;
             hasUploads: boolean; note: string | null;
         }[]>('/admin/backups'),
@@ -1412,7 +1727,7 @@ export const api = {
         stageRestore: (file: string) => fetchJson<{ staged: true; restartRequired: true; file: string }>(
             '/admin/backup/restore', { method: 'POST', body: JSON.stringify({ file, confirm: true }) }),
 
-        restoreState: () => fetchJson<{
+        restoreState: () => isDemoMode() ? demoRead<any>({ staged: false }) : fetchJson<{
             staged: boolean; file?: string; stagedAt?: string; byName?: string | null;
         }>('/admin/backup/restore'),
 
@@ -1420,7 +1735,7 @@ export const api = {
 
         /* Avtomatik nusxa holati. `stale` — 3 kundan beri nusxa yo'q degani;
            interfeys shu bayroq bo'yicha qizil ogohlantirish ko'rsatadi. */
-        backupStatus: () => fetchJson<{
+        backupStatus: () => isDemoMode() ? demoRead<any>(DEMO_BACKUP_STATUS) : fetchJson<{
             config: BackupConfig;
             lastBackup: { file: string; createdAt: string; sizeBytes: number } | null;
             ageDays: number | null;
@@ -1438,7 +1753,7 @@ export const api = {
 
         /* Yaxlitlik tekshiruvi. `severity`: 'error' — shubhasiz buzilish,
            'warn' — qarash kerak, 'info' — ma'lumot uchun (buzilish emas). */
-        integrity: () => fetchJson<{
+        integrity: () => isDemoMode() ? demoRead<any>({ checkedAt: new Date().toISOString(), ok: true, errorCount: 0, warnCount: 0, checks: [] }) : fetchJson<{
             checkedAt: string;
             ok: boolean;
             errorCount: number;
@@ -1487,12 +1802,7 @@ export const api = {
            boshqa ekrandagi son bilan farq qilib qoladi: audit shunday
            to'rtta har xil qarz raqamini topgan edi. */
         snapshot: (from?: string, to?: string) => {
-            if (isDemoMode()) return demoRead<Snapshot>({
-                range: { from: from || '', to: to || '' },
-                debt: { amount: 0, charges: 0, patients: 0 },
-                period: { charged: 0, collected: 0, due: 0, visits: 0, appointments: 0, avgCheck: 0 },
-                patients: { total: 0, active: 0, newLast7Days: 0 },
-            });
+            if (isDemoMode()) return demoRead<Snapshot>(demoSnapshot(from, to));
             const q = new URLSearchParams();
             if (from) q.set('from', from);
             if (to) q.set('to', to);
@@ -1502,60 +1812,139 @@ export const api = {
 
         /* Bosh sahifa raqamlari — serverda sanaladi. Ilgari brauzer butun
            tranzaksiyalar ro'yxatini olib o'zi sanardi. */
-        dashboard: () => fetchJson<{
-            date: string;
-            patients: { total: number; active: number; newLast7Days: number };
-            today: { appointments: number; visits: number; revenue: number; payments: number };
-            month: { revenue: number };
-            debt: Snapshot['debt'];
-            period: Snapshot['period'];
-        }>('/reports/dashboard'),
+        dashboard: () => {
+            if (isDemoMode()) {
+                const today = todayISO();
+                const monthStart = today.slice(0, 8) + '01';
+                const day = demoSnapshot(today, today);
+                const month = demoSnapshot(monthStart, today);
+                const all = demoSnapshot();
+                return demoRead({
+                    date: today,
+                    patients: all.patients,
+                    today: {
+                        appointments: day.period.appointments,
+                        visits: day.period.visits,
+                        revenue: day.period.charged,
+                        payments: day.period.collected,
+                    },
+                    month: { revenue: month.period.collected },
+                    debt: all.debt,
+                    period: month.period,
+                });
+            }
+            return fetchJson<{
+                date: string;
+                patients: { total: number; active: number; newLast7Days: number };
+                today: { appointments: number; visits: number; revenue: number; payments: number };
+                month: { revenue: number };
+                debt: Snapshot['debt'];
+                period: Snapshot['period'];
+            }>('/reports/dashboard');
+        },
 
         debtors: () => isDemoMode() ? demoRead<any>({ total: 0, patients: [] }) : fetchJson<any>('/reports/debtors'),
 
         /* Reliz 5: uch hisobot. Hammasi faqat klinika egasiga — server ham
            shu rolni talab qiladi. */
-        writeoffs: (from: string, to: string) =>
-            fetchJson<any>(`/reports/writeoffs?from=${from}&to=${to}`),
-        doctors: (from: string, to: string) =>
-            fetchJson<any>(`/reports/doctors?from=${from}&to=${to}`),
-        departmentsReport: (from: string, to: string) =>
-            fetchJson<any>(`/reports/departments?from=${from}&to=${to}`),
+        writeoffs: (from: string, to: string) => {
+            if (isDemoMode()) return demoRead<any>({ items: [], total: 0 });
+            return fetchJson<any>(`/reports/writeoffs?from=${from}&to=${to}`);
+        },
+        doctors: (from: string, to: string) => {
+            if (isDemoMode()) return demoRead<any>(demoPayroll(from, to));
+            return fetchJson<any>(`/reports/doctors?from=${from}&to=${to}`);
+        },
+        departmentsReport: (from: string, to: string) => {
+            if (isDemoMode()) return demoRead<any>({ items: [], total: 0 });
+            return fetchJson<any>(`/reports/departments?from=${from}&to=${to}`);
+        },
 
         /** Oldingi SHU UZUNLIKDAGI davr bilan solishtirish */
-        compare: (from: string, to: string) =>
-            fetchJson<{ current: any; previous: any; delta: Record<string, { abs: number; pct: number | null }> }>(
-                `/reports/compare?from=${from}&to=${to}`),
+        compare: (from: string, to: string) => {
+            if (isDemoMode()) {
+                /* Oldingi davr — xuddi shu uzunlikda, shu qadar orqada.
+                   Demoda ham haqiqiy mantiq: ikkala oraliq ham demo
+                   tranzaksiyalaridan sanaladi. */
+                const len = Math.max(1, Math.round(
+                    (new Date(to).getTime() - new Date(from).getTime()) / 86400000
+                ) + 1);
+                const prevTo = new Date(new Date(from).getTime() - 86400000).toISOString().slice(0, 10);
+                const prevFrom = new Date(new Date(from).getTime() - len * 86400000).toISOString().slice(0, 10);
+                const cur = demoSnapshot(from, to);
+                const prev = demoSnapshot(prevFrom, prevTo);
+                const delta: Record<string, { abs: number; pct: number | null }> = {};
+                (['charged', 'collected', 'visits', 'appointments'] as const).forEach(k => {
+                    const a = cur.period[k], b = prev.period[k];
+                    delta[k] = { abs: a - b, pct: b ? Math.round(((a - b) / b) * 100) : null };
+                });
+                return demoRead({ current: cur, previous: prev, delta });
+            }
+            return fetchJson<{ current: any; previous: any; delta: Record<string, { abs: number; pct: number | null }> }>(
+                `/reports/compare?from=${from}&to=${to}`);
+        },
 
         /** Smena svodi: laboratoriya va diagnostika bo'yicha kunlik ish */
-        labShift: (date: string) => fetchJson<any>(`/reports/lab-shift?date=${date}`),
+        labShift: (date: string) => {
+            if (isDemoMode()) return demoRead<any>({ date, lab: [], studies: [], totals: { orders: 0, done: 0 } });
+            return fetchJson<any>(`/reports/lab-shift?date=${date}`);
+        },
 
         /** Davomat: qaysi kunlarda va soatlarda bemor ko'p keladi */
-        attendance: (from: string, to: string) =>
-            fetchJson<any>(`/reports/attendance?from=${from}&to=${to}`),
+        attendance: (from: string, to: string) => {
+            if (isDemoMode()) return demoRead<any>({ byWeekday: [], byHour: [], total: 0 });
+            return fetchJson<any>(`/reports/attendance?from=${from}&to=${to}`);
+        },
     },
 
     /* Huquqiy kontur (reliz 6): bemor hujjatlari va kirish jurnali.
        Jurnalga YOZISH endpointi yo'q — u serverda avtomatik yoziladi. */
     compliance: {
         documents: (params?: { patientId?: string; kind?: string }) => {
+            if (isDemoMode()) return demoRead<any[]>(DEMO_DOCUMENTS.filter(d =>
+                (!params?.patientId || d.patientId === params.patientId)
+                && (!params?.kind || d.kind === params.kind)
+            ));
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
             return fetchJson<any[]>(`/patient-documents${qs ? `?${qs}` : ''}`);
         },
         /** Bosma varaq uchun: klinika shapkasi, bemor ma'lumoti va sarlavha bilan */
-        document: (id: string) => fetchJson<any>(`/patient-documents/${id}`),
+        document: (id: string) => {
+            if (isDemoMode()) {
+                const d = DEMO_DOCUMENTS.find(x => x.id === id);
+                return d ? demoRead<any>(d) : demoMissing<any>('bu hujjat');
+            }
+            return fetchJson<any>(`/patient-documents/${id}`);
+        },
         createDocument: (data: {
             patientId: string; visitId?: string | null;
             kind: 'Consent' | 'Contract' | 'DataConsent' | 'Discharge' | 'Other';
             textSnapshot?: string;
-        }) => fetchJson<any>('/patient-documents', { method: 'POST', body: JSON.stringify(data) }),
-        sign: (id: string, data?: { patientSigned?: boolean }) =>
-            fetchJson<any>(`/patient-documents/${id}/sign`, { method: 'POST', body: JSON.stringify(data || {}) }),
+        }) => {
+            if (isDemoMode()) {
+                const doc = {
+                    id: `demo-doc-${Date.now()}`, ...data,
+                    createdAt: new Date().toISOString(), patientSigned: false,
+                };
+                DEMO_DOCUMENTS.push(doc);
+                return demoRead<any>(doc);
+            }
+            return fetchJson<any>('/patient-documents', { method: 'POST', body: JSON.stringify(data) });
+        },
+        sign: (id: string, data?: { patientSigned?: boolean }) => {
+            if (isDemoMode()) {
+                const d = DEMO_DOCUMENTS.find(x => x.id === id);
+                if (d) d.patientSigned = data?.patientSigned !== false;
+                return demoRead<any>(d);
+            }
+            return fetchJson<any>(`/patient-documents/${id}/sign`, { method: 'POST', body: JSON.stringify(data || {}) });
+        },
 
         /** Faqat klinika egasi — server ham shu rolni talab qiladi */
         accessLog: (params?: { patientId?: string; from?: string; to?: string; action?: string; entityType?: string }) => {
+            if (isDemoMode()) return demoRead({ items: [], total: 0, truncated: false, retentionMonths: 24 });
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
@@ -1568,25 +1957,76 @@ export const api = {
     /* Shifokor ulushi: stavkalar va vedomost (reliz 5).
        Stavka tanlash tartibi serverda: xizmat > bo'lim > umumiy > Doctor.percentage. */
     payroll: {
-        rates: (doctorId?: string) =>
-            fetchJson<any[]>(`/doctor-rates${doctorId ? `?doctorId=${doctorId}` : ''}`),
+        rates: (doctorId?: string) => {
+            if (isDemoMode()) return demoRead<any[]>(
+                DEMO_DOCTORS.filter(d => !doctorId || d.id === doctorId)
+                    .map(d => ({ id: `demo-rate-${d.id}`, doctorId: d.id, serviceId: null, departmentId: null, percent: d.percentage || 0, role: 'Asosiy' }))
+            );
+            return fetchJson<any[]>(`/doctor-rates${doctorId ? `?doctorId=${doctorId}` : ''}`);
+        },
         /** Shifokorning BARCHA stavkalarini almashtiradi (qo'shmaydi) */
-        saveRates: (doctorId: string, rates: { serviceId?: number | null; departmentId?: string | null; percent: number; role?: string }[]) =>
-            fetchJson<any[]>(`/doctor-rates/${doctorId}`, { method: 'PUT', body: JSON.stringify({ rates }) }),
+        saveRates: (doctorId: string, rates: { serviceId?: number | null; departmentId?: string | null; percent: number; role?: string }[]) => {
+            if (isDemoMode()) {
+                const d = DEMO_DOCTORS.find(x => x.id === doctorId);
+                if (d && rates[0]) d.percentage = rates[0].percent;
+                return demoRead<any[]>(rates as any[]);
+            }
+            return fetchJson<any[]>(`/doctor-rates/${doctorId}`, { method: 'PUT', body: JSON.stringify({ rates }) });
+        },
 
         /** Vedomost yaratmasdan raqamni ko'rish */
-        preview: (from: string, to: string) =>
-            fetchJson<any>(`/payroll/preview?from=${from}&to=${to}`),
-        runs: () => fetchJson<any[]>('/payroll/runs'),
-        run: (id: string) => fetchJson<any>(`/payroll/runs/${id}`),
-        createRun: (periodFrom: string, periodTo: string, note?: string) =>
-            fetchJson<any>('/payroll/runs', { method: 'POST', body: JSON.stringify({ periodFrom, periodTo, note }) }),
-        approve: (id: string) =>
-            fetchJson<any>(`/payroll/runs/${id}/approve`, { method: 'POST' }),
-        deleteRun: (id: string) =>
-            fetchJson<{ success: true }>(`/payroll/runs/${id}`, { method: 'DELETE' }),
-        payLine: (lineId: string, data?: { amount?: number; method?: string }) =>
-            fetchJson<any>(`/payroll/lines/${lineId}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
+        preview: (from: string, to: string) => {
+            if (isDemoMode()) return demoRead<any>(demoPayroll(from, to));
+            return fetchJson<any>(`/payroll/preview?from=${from}&to=${to}`);
+        },
+        runs: () => {
+            if (isDemoMode()) return demoRead<any[]>(DEMO_PAYROLL_RUNS);
+            return fetchJson<any[]>('/payroll/runs');
+        },
+        run: (id: string) => {
+            if (isDemoMode()) {
+                const r = DEMO_PAYROLL_RUNS.find(x => x.id === id);
+                return r ? demoRead<any>(r) : demoMissing<any>('bu vedomost');
+            }
+            return fetchJson<any>(`/payroll/runs/${id}`);
+        },
+        createRun: (periodFrom: string, periodTo: string, note?: string) => {
+            if (isDemoMode()) {
+                const run = {
+                    id: `demo-run-${Date.now()}`, note: note || '',
+                    status: 'Draft', createdAt: new Date().toISOString(),
+                    ...demoPayroll(periodFrom, periodTo),
+                };
+                DEMO_PAYROLL_RUNS.unshift(run);
+                return demoRead<any>(run);
+            }
+            return fetchJson<any>('/payroll/runs', { method: 'POST', body: JSON.stringify({ periodFrom, periodTo, note }) });
+        },
+        approve: (id: string) => {
+            if (isDemoMode()) {
+                const r = DEMO_PAYROLL_RUNS.find(x => x.id === id);
+                if (r) r.status = 'Approved';
+                return demoRead<any>(r);
+            }
+            return fetchJson<any>(`/payroll/runs/${id}/approve`, { method: 'POST' });
+        },
+        deleteRun: (id: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_PAYROLL_RUNS.findIndex(x => x.id === id);
+                if (i > -1) DEMO_PAYROLL_RUNS.splice(i, 1);
+                return demoRead<{ success: true }>({ success: true });
+            }
+            return fetchJson<{ success: true }>(`/payroll/runs/${id}`, { method: 'DELETE' });
+        },
+        payLine: (lineId: string, data?: { amount?: number; method?: string }) => {
+            if (isDemoMode()) {
+                DEMO_PAYROLL_RUNS.forEach(r => (r.lines || []).forEach((l: any) => {
+                    if (l.id === lineId) { l.paid = data?.amount ?? l.total; l.status = 'Paid'; }
+                }));
+                return demoRead<any>({ success: true });
+            }
+            return fetchJson<any>(`/payroll/lines/${lineId}/pay`, { method: 'POST', body: JSON.stringify(data || {}) });
+        },
     },
 
     // ─── Bo'limlar ──────────────────────────────────────────────────────────
@@ -1669,25 +2109,98 @@ export const api = {
 
     // ─── Statsionar ─────────────────────────────────────────────────────────
     wards: {
-        getAll: () => isDemoMode() ? demoRead<Ward[]>([]) : fetchJson<Ward[]>('/wards'),
-        create: (data: Partial<Ward> & { bedCount?: number }) =>
-            isDemoMode() ? demoWrite<Ward>() : fetchJson<Ward>('/wards', { method: 'POST', body: JSON.stringify(data) }),
-        update: (id: string, data: Partial<Ward>) =>
-            isDemoMode() ? demoWrite<Ward>() : fetchJson<Ward>(`/wards/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+        getAll: () => {
+            if (isDemoMode()) { demoSyncBeds(); return demoRead<Ward[]>(DEMO_WARDS); }
+            return fetchJson<Ward[]>('/wards');
+        },
+        create: (data: Partial<Ward> & { bedCount?: number }) => {
+            if (isDemoMode()) {
+                const id = `demo-ward-${Date.now()}`;
+                const count = Number(data.bedCount) || 4;
+                for (let i = 1; i <= count; i++) {
+                    DEMO_BEDS.push({ id: `${id}-bed-${i}`, wardId: id, label: `${i}-koyka`, status: 'Free' });
+                }
+                const ward: Ward = {
+                    id, clinicId: 'demo-clinic-1',
+                    departmentId: data.departmentId ?? 'demo-inp',
+                    name: data.name || 'Yangi palata',
+                    floor: data.floor ?? null,
+                    kind: data.kind || 'Umumiy',
+                    dailyRate: Number(data.dailyRate) || 0,
+                    isActive: true,
+                    get beds() { return DEMO_BEDS.filter(b => b.wardId === id); },
+                };
+                DEMO_WARDS.push(ward);
+                return demoRead<Ward>(ward);
+            }
+            return fetchJson<Ward>('/wards', { method: 'POST', body: JSON.stringify(data) });
+        },
+        update: (id: string, data: Partial<Ward>) => {
+            if (isDemoMode()) {
+                const w = DEMO_WARDS.find(x => x.id === id);
+                /* `beds` — getter, unga yozib bo'lmaydi (qat'iy rejimda
+                   TypeError). Kelgan ma'lumotdan uni ajratib tashlaymiz. */
+                if (w) { const { beds, ...rest } = data; Object.assign(w, rest); }
+                return demoRead<Ward>(w as Ward);
+            }
+            return fetchJson<Ward>(`/wards/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
     },
     admissions: {
         getAll: (params?: { status?: string; patientId?: string }) => {
-            if (isDemoMode()) return demoRead<Admission[]>([]);
+            if (isDemoMode()) {
+                demoSyncBeds();
+                return demoRead<Admission[]>(DEMO_ADMISSIONS.filter(a =>
+                    (!params?.status || a.status === params.status)
+                    && (!params?.patientId || a.patientId === params.patientId)
+                ).map(a => ({
+                    ...a,
+                    bed: DEMO_BEDS.find(b => b.id === a.bedId),
+                    rounds: DEMO_ROUNDS.filter(r => r.admissionId === a.id),
+                    medicationOrders: DEMO_MED_ORDERS.filter(m => m.admissionId === a.id),
+                })));
+            }
             const q = new URLSearchParams();
             if (params?.status) q.set('status', params.status);
             if (params?.patientId) q.set('patientId', params.patientId);
             const qs = q.toString();
             return fetchJson<Admission[]>(`/admissions${qs ? `?${qs}` : ''}`);
         },
-        create: (data: Partial<Admission>) =>
-            isDemoMode() ? demoWrite<Admission>() : fetchJson<Admission>('/admissions', { method: 'POST', body: JSON.stringify(data) }),
-        update: (id: string, data: Partial<Admission>) =>
-            isDemoMode() ? demoWrite<Admission>() : fetchJson<Admission>(`/admissions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+        create: (data: Partial<Admission>) => {
+            if (isDemoMode()) {
+                const ward = DEMO_WARDS.find(w => DEMO_BEDS.some(b => b.wardId === w.id && b.id === data.bedId));
+                const adm: Admission = {
+                    id: `demo-adm-${Date.now()}`,
+                    clinicId: 'demo-clinic-1',
+                    patientId: data.patientId || '',
+                    patientName: data.patientName || '',
+                    departmentId: data.departmentId ?? 'demo-inp',
+                    doctorId: data.doctorId ?? null,
+                    doctorName: data.doctorName ?? null,
+                    bedId: data.bedId ?? null,
+                    admittedAt: new Date().toISOString(),
+                    dischargedAt: null,
+                    status: 'Active',
+                    reason: data.reason ?? null,
+                    diagnosis: data.diagnosis ?? null,
+                    dailyRate: data.dailyRate ?? ward?.dailyRate ?? 0,
+                    totalCharges: 0,
+                };
+                DEMO_ADMISSIONS.unshift(adm);
+                demoSyncBeds();
+                return demoRead<Admission>(adm);
+            }
+            return fetchJson<Admission>('/admissions', { method: 'POST', body: JSON.stringify(data) });
+        },
+        update: (id: string, data: Partial<Admission>) => {
+            if (isDemoMode()) {
+                const a = DEMO_ADMISSIONS.find(x => x.id === id);
+                if (a) Object.assign(a, data);
+                demoSyncBeds();
+                return demoRead<Admission>(a as Admission);
+            }
+            return fetchJson<Admission>(`/admissions/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
         /** Epikrizning to'rt qismi (reliz 4). Eski shakl — bitta matn — ham ishlaydi. */
         /** `confirmDebt` — qarz bo'lsa ham chiqarish. Busiz server 409 va
          *  qarz summasini qaytaradi: bemorni ushlab turmaydi, lekin
@@ -1700,43 +2213,153 @@ export const api = {
             recommendations?: string;
             confirmDebt?: boolean;
         }) =>
-            isDemoMode() ? demoWrite<Admission>() : fetchJson<Admission>(`/admissions/${id}/discharge`, {
+            isDemoMode() ? (() => {
+                const a = DEMO_ADMISSIONS.find(x => x.id === id);
+                if (a) {
+                    a.status = 'Discharged';
+                    a.dischargedAt = new Date().toISOString();
+                    a.dischargeSummary = typeof data === 'string' ? data : (data?.dischargeSummary ?? null);
+                    a.bedId = null;
+                }
+                demoSyncBeds();
+                return demoRead<Admission>(a as Admission);
+            })() : fetchJson<Admission>(`/admissions/${id}/discharge`, {
                 method: 'POST',
                 body: JSON.stringify(typeof data === 'string' ? { dischargeSummary: data } : (data || {})),
             }),
-        addRound: (id: string, data: Omit<Partial<InpatientRound>, 'vitalSigns'> & { vitalSigns?: any }) =>
-            isDemoMode() ? demoWrite<InpatientRound>() : fetchJson<InpatientRound>(`/admissions/${id}/rounds`, { method: 'POST', body: JSON.stringify(data) }),
-        addMedication: (id: string, data: Partial<MedicationOrder>) =>
-            isDemoMode() ? demoWrite<MedicationOrder>() : fetchJson<MedicationOrder>(`/admissions/${id}/medications`, { method: 'POST', body: JSON.stringify(data) }),
+        addRound: (id: string, data: Omit<Partial<InpatientRound>, 'vitalSigns'> & { vitalSigns?: any }) => {
+            if (isDemoMode()) {
+                const round: InpatientRound = {
+                    id: `demo-round-${Date.now()}`,
+                    admissionId: id,
+                    date: new Date().toISOString(),
+                    doctorId: data.doctorId ?? null,
+                    doctorName: data.doctorName ?? null,
+                    vitalSigns: typeof data.vitalSigns === 'string' ? data.vitalSigns : (data.vitalSigns ? JSON.stringify(data.vitalSigns) : null),
+                    notes: data.notes ?? null,
+                    plan: data.plan ?? null,
+                };
+                DEMO_ROUNDS.push(round);
+                return demoRead<InpatientRound>(round);
+            }
+            return fetchJson<InpatientRound>(`/admissions/${id}/rounds`, { method: 'POST', body: JSON.stringify(data) });
+        },
+        addMedication: (id: string, data: Partial<MedicationOrder>) => {
+            if (isDemoMode()) {
+                const order: MedicationOrder = {
+                    id: `demo-med-${Date.now()}`,
+                    admissionId: id,
+                    name: data.name || '',
+                    dosage: data.dosage ?? null,
+                    route: data.route ?? null,
+                    frequency: data.frequency ?? null,
+                    startDate: new Date().toISOString(),
+                    status: 'Active',
+                };
+                DEMO_MED_ORDERS.push(order);
+                return demoRead<MedicationOrder>(order);
+            }
+            return fetchJson<MedicationOrder>(`/admissions/${id}/medications`, { method: 'POST', body: JSON.stringify(data) });
+        },
 
         /* ─── Reliz 4: statsionar ─────────────────────────────────────────
            Koyka haqi QUVIB YETUVCHI: har chaqiriqda yotgan kunlarni oxirigacha
            hisoblaydi va takroriy qator yaratmaydi. Shuning uchun uni ekran
            ochilganda chaqirish xavfsiz. */
-        chargeBedDays: (id: string) => fetchJson<{
-            charged: number; from: string | null; to: string | null; total: number; skipped?: string;
-        }>(`/admissions/${id}/charge-bed-days`, { method: 'POST' }),
+        chargeBedDays: (id: string) => {
+            if (isDemoMode()) {
+                const a = DEMO_ADMISSIONS.find(x => x.id === id);
+                const days = a ? Math.max(1, Math.round((Date.now() - new Date(a.admittedAt).getTime()) / 86400000)) : 0;
+                const total = days * (a?.dailyRate || 0);
+                if (a) a.totalCharges = total;
+                return demoRead({
+                    charged: total, from: a?.admittedAt ?? null,
+                    to: new Date().toISOString(), total,
+                });
+            }
+            return fetchJson<{
+                charged: number; from: string | null; to: string | null; total: number; skipped?: string;
+            }>(`/admissions/${id}/charge-bed-days`, { method: 'POST' });
+        },
 
         /** Yotish hisobi: yozilgan, to'langan, qarz, avans (depozit) */
-        billing: (id: string) => fetchJson<{
-            accrued: number; paid: number; due: number; advance: number;
-            bySource: Record<string, { count: number; total: number; paid: number }>;
-            charges: any[];
-        }>(`/admissions/${id}/billing`),
+        billing: (id: string) => {
+            if (isDemoMode()) {
+                const a = DEMO_ADMISSIONS.find(x => x.id === id);
+                const accrued = a?.totalCharges || 0;
+                const paid = Math.round(accrued * 0.6);
+                return demoRead({
+                    accrued, paid, due: accrued - paid, advance: 0,
+                    bySource: { 'Koyka haqi': { count: 1, total: accrued, paid } },
+                    charges: accrued > 0 ? [{
+                        id: `demo-charge-${id}`, name: 'Koyka haqi',
+                        date: a?.admittedAt, total: accrued, paid, source: 'Koyka haqi',
+                    }] : [],
+                });
+            }
+            return fetchJson<{
+                accrued: number; paid: number; due: number; advance: number;
+                bySource: Record<string, { count: number; total: number; paid: number }>;
+                charges: any[];
+            }>(`/admissions/${id}/billing`);
+        },
 
         /** Kunlik dori varag'i: tayinlovlar + shu kundagi belgilar */
-        mar: (id: string, date?: string) =>
-            fetchJson<any>(`/admissions/${id}/mar${date ? `?date=${date}` : ''}`),
+        mar: (id: string, date?: string) => {
+            if (isDemoMode()) {
+                const orders = DEMO_MED_ORDERS.filter(m => m.admissionId === id);
+                return demoRead<any>({
+                    date: date || todayISO(),
+                    orders: orders.map(o => ({ ...o, administrations: DEMO_ADMINISTRATIONS.filter(x => x.orderId === o.id) })),
+                    administrations: DEMO_ADMINISTRATIONS.filter(x => orders.some(o => o.id === x.orderId)),
+                });
+            }
+            return fetchJson<any>(`/admissions/${id}/mar${date ? `?date=${date}` : ''}`);
+        },
 
-        transfer: (id: string, data: { toBedId?: string | null; toDepartmentId?: string | null; reason?: string }) =>
-            fetchJson<any>(`/admissions/${id}/transfer`, { method: 'POST', body: JSON.stringify(data) }),
+        transfer: (id: string, data: { toBedId?: string | null; toDepartmentId?: string | null; reason?: string }) => {
+            if (isDemoMode()) {
+                const a = DEMO_ADMISSIONS.find(x => x.id === id);
+                const from = a?.bedId ?? null;
+                if (a && data.toBedId !== undefined) a.bedId = data.toBedId;
+                if (a && data.toDepartmentId !== undefined) a.departmentId = data.toDepartmentId;
+                const rec = {
+                    id: `demo-transfer-${Date.now()}`, admissionId: id,
+                    fromBedId: from, toBedId: data.toBedId ?? null,
+                    reason: data.reason || '', at: new Date().toISOString(),
+                };
+                DEMO_TRANSFERS.push(rec);
+                demoSyncBeds();
+                return demoRead<any>(rec);
+            }
+            return fetchJson<any>(`/admissions/${id}/transfer`, { method: 'POST', body: JSON.stringify(data) });
+        },
 
-        transfers: (id: string) => fetchJson<any[]>(`/admissions/${id}/transfers`),
+        transfers: (id: string) => {
+            if (isDemoMode()) return demoRead<any[]>(DEMO_TRANSFERS.filter(t => t.admissionId === id));
+            return fetchJson<any[]>(`/admissions/${id}/transfers`);
+        },
     },
 
     /* Statsionar: bo'lim bo'yicha kunlik ro'yxat, dori berilishi, o'lchovlar */
     inpatient: {
         medSchedule: (params?: { date?: string; departmentId?: string }) => {
+            if (isDemoMode()) {
+                const activeIds = new Set(DEMO_ADMISSIONS.filter(a => a.status === 'Active').map(a => a.id));
+                return demoRead<any>({
+                    date: params?.date || todayISO(),
+                    items: DEMO_MED_ORDERS.filter(m => activeIds.has(m.admissionId)).map(m => {
+                        const adm = DEMO_ADMISSIONS.find(a => a.id === m.admissionId);
+                        return {
+                            orderId: m.id, admissionId: m.admissionId,
+                            patientId: adm?.patientId, patientName: adm?.patientName,
+                            bedLabel: DEMO_BEDS.find(b => b.id === adm?.bedId)?.label,
+                            name: m.name, dosage: m.dosage, route: m.route, frequency: m.frequency,
+                            administrations: DEMO_ADMINISTRATIONS.filter(x => x.orderId === m.id),
+                        };
+                    }),
+                });
+            }
             const q = new URLSearchParams();
             if (params?.date) q.set('date', params.date);
             if (params?.departmentId) q.set('departmentId', params.departmentId);
@@ -1748,9 +2371,25 @@ export const api = {
             dose?: string; quantity?: number;
             status?: 'Given' | 'Skipped' | 'Refused';
             skipReason?: string; note?: string;
-        }) => fetchJson<any>(`/medication-orders/${orderId}/administer`, { method: 'POST', body: JSON.stringify(data) }),
+        }) => {
+            if (isDemoMode()) {
+                const rec = {
+                    id: `demo-adm-give-${Date.now()}`, orderId,
+                    at: new Date().toISOString(),
+                    note: data.note || data.skipReason || (data.status === 'Given' ? 'Berildi' : data.status || 'Berildi'),
+                };
+                DEMO_ADMINISTRATIONS.push(rec);
+                return demoRead<any>(rec);
+            }
+            return fetchJson<any>(`/medication-orders/${orderId}/administer`, { method: 'POST', body: JSON.stringify(data) });
+        },
 
         vitals: (patientId: string, params?: { kind?: string; from?: string; to?: string; admissionId?: string }) => {
+            if (isDemoMode()) {
+                return demoRead<any[]>(DEMO_VITALS.filter(v =>
+                    v.patientId === patientId && (!params?.kind || v.kind === params.kind)
+                ));
+            }
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
@@ -1760,10 +2399,29 @@ export const api = {
             patientId: string; admissionId?: string | null; visitId?: string | null;
             measuredAt?: string;
             measurements: { kind: string; value: number; unit?: string }[];
-        }) => fetchJson<any[]>('/vitals', { method: 'POST', body: JSON.stringify(data) }),
+        }) => {
+            if (isDemoMode()) {
+                const at = data.measuredAt || new Date().toISOString();
+                const added = data.measurements.map((m, i) => ({
+                    id: `demo-vital-${Date.now()}-${i}`,
+                    patientId: data.patientId, admissionId: data.admissionId ?? null,
+                    kind: m.kind, value: m.value, unit: m.unit || '', measuredAt: at,
+                }));
+                DEMO_VITALS.push(...added);
+                return demoRead<any[]>(added);
+            }
+            return fetchJson<any[]>('/vitals', { method: 'POST', body: JSON.stringify(data) });
+        },
 
         /** Koyka tozalandi: Cleaning -> Free. Ilgari koyka abadiy tozalashda qolardi. */
-        bedReady: (bedId: string) => fetchJson<any>(`/beds/${bedId}/ready`, { method: 'POST' }),
+        bedReady: (bedId: string) => {
+            if (isDemoMode()) {
+                const b = DEMO_BEDS.find(x => x.id === bedId);
+                if (b && b.status === 'Cleaning') b.status = 'Free';
+                return demoRead<any>(b);
+            }
+            return fetchJson<any>(`/beds/${bedId}/ready`, { method: 'POST' });
+        },
     },
 
     // ─── Retsept ────────────────────────────────────────────────────────────
@@ -2235,33 +2893,89 @@ export const api = {
        bemor qo'lidagi qog'oz bilan tizim bir xil bo'lishi kerak. */
     referrals: {
         getAll: (params?: { patientId?: string; status?: string; visitId?: string }) => {
+            if (isDemoMode()) return demoRead<any[]>(DEMO_REFERRALS.filter(r =>
+                (!params?.patientId || r.patientId === params.patientId)
+                && (!params?.status || r.status === params.status)
+                && (!params?.visitId || r.visitId === params.visitId)
+            ));
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
             return fetchJson<any[]>(`/referrals${qs ? `?${qs}` : ''}`);
         },
         /** Bosma varaq uchun: klinika shapkasi va yoyilgan payload bilan */
-        get: (id: string) => fetchJson<any>(`/referrals/${id}`),
+        get: (id: string) => {
+            if (isDemoMode()) {
+                const r = DEMO_REFERRALS.find(x => x.id === id);
+                return r ? demoRead<any>(r) : demoMissing<any>('bu yo\'llanma');
+            }
+            return fetchJson<any>(`/referrals/${id}`);
+        },
         create: (data: {
             patientId: string; visitId?: string | null;
             kind: 'Lab' | 'Study' | 'Consult' | 'Cashier';
             targetDepartmentId?: string | null;
             items?: { name: string; price: number; quantity?: number }[];
-        }) => fetchJson<any>('/referrals', { method: 'POST', body: JSON.stringify(data) }),
-        use: (id: string) => fetchJson<any>(`/referrals/${id}/use`, { method: 'POST' }),
-        cancel: (id: string) => fetchJson<any>(`/referrals/${id}/cancel`, { method: 'POST' }),
+        }) => {
+            if (isDemoMode()) {
+                const r = {
+                    id: `demo-ref-${Date.now()}`, ...data,
+                    status: 'Active', createdAt: new Date().toISOString(),
+                };
+                DEMO_REFERRALS.push(r);
+                return demoRead<any>(r);
+            }
+            return fetchJson<any>('/referrals', { method: 'POST', body: JSON.stringify(data) });
+        },
+        use: (id: string) => {
+            if (isDemoMode()) {
+                const r = DEMO_REFERRALS.find(x => x.id === id);
+                if (r) r.status = 'Used';
+                return demoRead<any>(r);
+            }
+            return fetchJson<any>(`/referrals/${id}/use`, { method: 'POST' });
+        },
+        cancel: (id: string) => {
+            if (isDemoMode()) {
+                const r = DEMO_REFERRALS.find(x => x.id === id);
+                if (r) r.status = 'Cancelled';
+                return demoRead<any>(r);
+            }
+            return fetchJson<any>(`/referrals/${id}/cancel`, { method: 'POST' });
+        },
     },
 
     /* Hamshiralar (reliz 4, qaror В17). Boshqarish faqat klinika egasida —
        server ham shu rolni talab qiladi. */
     nurses: {
-        getAll: () => fetchJson<any[]>('/nurses'),
-        create: (data: { firstName: string; lastName: string; phone?: string; departmentId?: string | null; username?: string; password?: string }) =>
-            fetchJson<any>('/nurses', { method: 'POST', body: JSON.stringify(data) }),
-        update: (id: string, data: Record<string, any>) =>
-            fetchJson<any>(`/nurses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-        remove: (id: string) =>
-            fetchJson<any>(`/nurses/${id}`, { method: 'DELETE' }),
+        getAll: () => {
+            if (isDemoMode()) return demoRead<any[]>(DEMO_NURSES);
+            return fetchJson<any[]>('/nurses');
+        },
+        create: (data: { firstName: string; lastName: string; phone?: string; departmentId?: string | null; username?: string; password?: string }) => {
+            if (isDemoMode()) {
+                const n = { id: `demo-nurse-${Date.now()}`, clinicId: 'demo-clinic-1', status: 'Active', ...data };
+                DEMO_NURSES.push(n);
+                return demoRead<any>(n);
+            }
+            return fetchJson<any>('/nurses', { method: 'POST', body: JSON.stringify(data) });
+        },
+        update: (id: string, data: Record<string, any>) => {
+            if (isDemoMode()) {
+                const n = DEMO_NURSES.find(x => x.id === id);
+                if (n) Object.assign(n, data);
+                return demoRead<any>(n);
+            }
+            return fetchJson<any>(`/nurses/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
+        remove: (id: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_NURSES.findIndex(x => x.id === id);
+                if (i > -1) DEMO_NURSES.splice(i, 1);
+                return demoRead<any>({ success: true });
+            }
+            return fetchJson<any>(`/nurses/${id}`, { method: 'DELETE' });
+        },
     },
 
     labTechnicians: {

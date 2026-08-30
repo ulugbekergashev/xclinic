@@ -63,6 +63,8 @@ const DEMO_INSIGHTS = [
 const getAuthToken = (): string | null => readAuthToken();
 
 async function apiPost<T>(path: string, body: object): Promise<T> {
+  /* AI javobi SERVERDA hisoblanadi — namoyish nusxasida server yo'q. */
+  if (isDemoMode()) throw new Error('AI tahlili namoyish nusxasida ishlamaydi — u klinikadagi serverda hisoblanadi.');
   const token = getAuthToken();
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',

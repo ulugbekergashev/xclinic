@@ -5,13 +5,16 @@ import { toast } from '../services/toast';
 import { Camera, Upload, Trash2, X, ZoomIn } from 'lucide-react';
 import { Button, Card, Modal, Input, Select, Badge } from './Common';
 import { PatientPhoto } from '../types';
-import { API_URL, getFileUrl } from '../services/api';
+import { API_URL, getFileUrl, isDemoMode } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
 // Fayl manzilini yig'ish endi BITTA joyda — services/api.ts dagi getFileUrl.
 // Ilgari loyihada uch xil usul bor edi (bu yerdagi BASE_URL, getFileUrl va
 // yalang'och nisbiy yo'l), va himoyani yoqishda ulardan biri e'tibordan
 // qolib ketishi oson edi.
+
+/** Demo rasmlari — sessiya davomida saqlanadi (blob manzillar). */
+const DEMO_PHOTOS: PatientPhoto[] = [];
 
 interface PatientPhotosProps {
     patientId: string;
@@ -36,6 +39,10 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
     }, [patientId]);
 
     const fetchPhotos = async () => {
+        /* Demoda rasmlar BRAUZERDA turadi: server ham, `/uploads` papkasi
+           ham yo'q. Yuklangani `blob:` manzil bilan ko'rsatiladi va sahifa
+           yangilanguncha yashaydi — namoyish uchun aynan shu kerak. */
+        if (isDemoMode()) { setPhotos(DEMO_PHOTOS.filter(p => p.patientId === patientId)); setLoading(false); return; }
         try {
             const response = await fetch(`${API_URL}/patients/${patientId}/photos`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -71,6 +78,19 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
         if (!selectedFile) return;
 
         setUploading(true);
+        if (isDemoMode()) {
+            const photo: PatientPhoto = {
+                id: `demo-photo-${Date.now()}`, patientId,
+                url: URL.createObjectURL(selectedFile),
+                description, category,
+                date: new Date().toISOString(), createdAt: new Date().toISOString(),
+            };
+            DEMO_PHOTOS.push(photo);
+            setPhotos(DEMO_PHOTOS.filter(p => p.patientId === patientId));
+            handleCloseModal();
+            setUploading(false);
+            return;
+        }
         const formData = new FormData();
         formData.append('photo', selectedFile);
         formData.append('description', description);
@@ -107,6 +127,14 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
 
     const handleDelete = async (photoId: string) => {
         if (!await confirmAction({ title: t('patients.details.photos.deleteConfirm') })) return;
+
+        if (isDemoMode()) {
+            const i = DEMO_PHOTOS.findIndex(p => p.id === photoId);
+            if (i > -1) DEMO_PHOTOS.splice(i, 1);
+            setPhotos(photos.filter(p => p.id !== photoId));
+            if (viewPhoto?.id === photoId) setViewPhoto(null);
+            return;
+        }
 
         try {
             const response = await fetch(`${API_URL}/photos/${photoId}`, {
