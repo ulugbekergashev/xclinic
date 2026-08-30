@@ -1,5 +1,6 @@
 ﻿
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { IS_DEMO_BUILD } from './services/demoBuild';
 
 /* ─── MARSHRUT BO'YICHA BO'LISH (S5.5, T08) ─────────────────────────────────
 
@@ -1250,6 +1251,11 @@ const sinceDate = (n: number) =>
 
   useEffect(() => {
     if (isAuthenticated) return;
+    /* DEMO NUSXADA SERVER YO'Q. Vercelga chiqariladigan build backendsiz
+       ishlaydi, ya'ni bu so'rov har ochilishda behuda yiqiladi. Xatoni
+       `catch` yutadi va ekran buzilmaydi, lekin konsolda «500» ko'rinib
+       turadi — demo ko'rsatayotgan odam uni nosozlik deb o'ylaydi. */
+    if (IS_DEMO_BUILD) return;
     let alive = true;
     fetch(`${API_BASE_URL}/api/license/status`)
       .then(r => (r.ok ? r.json() : null))
