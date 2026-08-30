@@ -661,3 +661,274 @@ export let DEMO_LAB_ORDERS: LabOrder[] = savedData?.labOrders || [
         orderedAt: new Date().toISOString(),
     }
 ];
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   RO'YXATLAR TO'LDIRILADI
+
+   Yuqoridagi qo'lda yozilgan yozuvlar mantiqni ko'rsatish uchun yetarli edi,
+   lekin NAMOYISH uchun emas: klient «Mening navbatim» ni ochib «Navbat bo'sh»
+   ni ko'rsa, dastur ishlamayotgandek taassurot qoladi. Bo'sh ekran hech narsa
+   sotmaydi.
+
+   Shuning uchun har bir ro'yxat 5-15 yozuvgacha to'ldiriladi. Qo'lda yozilgan
+   dastlabki yozuvlar O'ZGARMAYDI — ularga statsionar, bo'lib to'lash va
+   laboratoriya yozuvlari id bo'yicha bog'langan. Qo'shimchalari shu yerda,
+   generatsiya bilan qo'shiladi.
+
+   `savedData` bo'lsa hech narsa qo'shilmaydi: klient demoda o'zi bemor
+   qo'shgan bo'lsa, keyingi ochilishda ro'yxat qayta to'lib ketmasligi kerak. */
+
+const UZ_NAMES: [string, string, 'Male' | 'Female'][] = [
+    ['Nodira', 'Saidova', 'Female'],
+    ['Rustam', 'Xolmatov', 'Male'],
+    ['Malika', 'Yusupova', 'Female'],
+    ['Sherzod', 'Ergashev', 'Male'],
+    ['Gulnora', 'Abdullayeva', 'Female'],
+    ['Otabek', 'Nazarov', 'Male'],
+    ['Zilola', 'Mirzayeva', 'Female'],
+    ['Doniyor', 'Qodirov', 'Male'],
+    ['Sabina', 'Rustamova', 'Female'],
+];
+
+if (!savedData?.patients) {
+    UZ_NAMES.forEach(([first, last, gender], i) => {
+        const n = i + 6;                 // 1..5 qo'lda yozilgan
+        DEMO_PATIENTS.push({
+            id: `demo-patient-${n}`,
+            firstName: first,
+            lastName: last,
+            phone: `+998 9${(i % 5) + 1} ${300 + n} ${10 + n} ${20 + n}`,
+            dob: `19${70 + ((i * 7) % 30)}-0${(i % 9) + 1}-1${i % 9}`,
+            address: ['Yunusobod', 'Chilonzor', 'Mirobod', 'Yakkasaroy', 'Sergeli'][i % 5] + ' tumani',
+            medicalHistory: i % 3 === 0 ? 'Surunkali gastrit' : '',
+            clinicId: 'demo-clinic-1',
+            lastVisit: dayISO(-(i + 2)),
+            status: 'Active',
+            gender,
+        } as Patient);
+    });
+}
+
+if (!savedData?.doctors) {
+    DEMO_DOCTORS.push(
+        {
+            id: 'demo-doctor-3', firstName: 'Nilufar', lastName: 'Tosheva',
+            specialty: 'Terapevt', phone: '+998 90 777 88 99', status: 'Active',
+            clinicId: 'demo-clinic-1', percentage: 35, username: 'nilufar_t', color: '#F59E0B',
+        } as Doctor,
+        {
+            id: 'demo-doctor-4', firstName: 'Sardor', lastName: 'Mahmudov',
+            specialty: 'Jarroh', phone: '+998 91 555 44 33', status: 'Active',
+            clinicId: 'demo-clinic-1', percentage: 45, username: 'sardor_m', color: '#8B5CF6',
+        } as Doctor,
+    );
+}
+
+/** Bemor va shifokorni id bo'yicha topish — generatsiyada nom yozish uchun. */
+const pName = (id: string) => {
+    const p = DEMO_PATIENTS.find(x => x.id === id);
+    return p ? `${p.firstName} ${p.lastName}` : '';
+};
+const dName = (id: string) => {
+    const d = DEMO_DOCTORS.find(x => x.id === id);
+    return d ? `Dr. ${d.firstName} ${d.lastName}` : '';
+};
+
+const SERVICE_NAMES = ['Konsultatsiya', 'Tish tozalash', 'Tish plombalash',
+    'Tish olib tashlash', 'Tish oqartirish', 'Metall-keramika toj'];
+const SERVICE_PRICES = [50000, 200000, 300000, 150000, 800000, 1200000];
+
+if (!savedData?.appointments) {
+    /* Qabullar bugundan -3 dan +4 kungacha tarqatiladi: kalendar ham,
+       «bugungi qabullar» ham bo'sh qolmasin. */
+    const offsets = [0, 0, 0, 0, 1, 1, 2, 3, 4, -1, -2, -3];
+    offsets.forEach((off, i) => {
+        const patientId = `demo-patient-${(i % 9) + 6}`;
+        const doctorId = `demo-doctor-${(i % 4) + 1}`;
+        DEMO_APPOINTMENTS.push({
+            id: `demo-appt-g${i + 1}`,
+            patientId,
+            patientName: pName(patientId),
+            doctorId,
+            doctorName: dName(doctorId),
+            type: SERVICE_NAMES[i % SERVICE_NAMES.length],
+            date: dayISO(off),
+            time: `${String(9 + (i % 8)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`,
+            duration: [30, 45, 60][i % 3],
+            status: off < 0 ? 'Completed' : (i % 3 === 0 ? 'Confirmed' : 'Pending'),
+            notes: '',
+            clinicId: 'demo-clinic-1',
+        } as Appointment);
+    });
+}
+
+if (!savedData?.transactions) {
+    /* To'lovlar oxirgi 25 kunga tarqatiladi — hisobot va ulush raqamlari
+       jonli chiqishi uchun. Uchdan biri qarzda qoladi. */
+    for (let i = 0; i < 12; i++) {
+        const patientId = `demo-patient-${(i % 9) + 6}`;
+        const doctorId = `demo-doctor-${(i % 4) + 1}`;
+        const svc = i % SERVICE_NAMES.length;
+        DEMO_TRANSACTIONS.push({
+            id: `demo-tx-g${i + 1}`,
+            patientId,
+            patientName: pName(patientId),
+            date: dayFull(-(i * 2)),
+            amount: SERVICE_PRICES[svc],
+            type: (['Cash', 'Card', 'Click'] as const)[i % 3],
+            service: SERVICE_NAMES[svc],
+            status: i % 3 === 2 ? 'Pending' : 'Paid',
+            clinicId: 'demo-clinic-1',
+            doctorId,
+            doctorName: dName(doctorId),
+            discountPercent: 0,
+            discountAmount: 0,
+        } as Transaction);
+    }
+}
+
+if (!savedData?.leads) {
+    const LEAD_ROWS: [string, string, string, Lead['status']][] = [
+        ['Aziz Tursunov', 'Instagram', 'Implantatsiya', 'Contacted'],
+        ['Mavluda Sattorova', 'Telegram', 'Breket tizimi', 'Thinking'],
+        ['Jasur Ibragimov', 'Tavsiya', 'Tish oqartirish', 'Booked'],
+        ['Kamola Nurmatova', 'Google', 'Konsultatsiya', 'New'],
+        ["Ulug'bek Rasulov", "Ko'chadan", 'Tish tozalash', 'Contacted'],
+        ['Diyora Ismoilova', 'Instagram', 'Metall-keramika toj', 'New'],
+        ['Bekzod Alimov', 'Telegram', 'Tish olib tashlash', 'Cancelled'],
+    ];
+    LEAD_ROWS.forEach(([name, source, service, status], i) => {
+        DEMO_LEADS.push({
+            id: `demo-lead-g${i + 1}`,
+            name, phone: `+998 9${i % 5} ${400 + i} ${11 + i} ${22 + i}`,
+            service, source,
+            notes: '',
+            status,
+            createdAt: dayFull(-(i + 1)),
+            updatedAt: dayFull(-i),
+            clinicId: 'demo-clinic-1',
+        } as Lead);
+    });
+}
+
+if (!savedData?.expenses) {
+    const EXP: [string, string, number][] = [
+        ['Rent', 'Ijara — avgust', 6000000],
+        ['Utilities', 'Elektr va suv', 850000],
+        ['Inventory', 'Anesteziya sotib olindi', 1200000],
+        ['Salary', 'Registratura oyligi', 3500000],
+        ['Lab', 'Laboratoriya ishlari', 950000],
+        ['Other', 'Reklama (Instagram)', 700000],
+    ];
+    EXP.forEach(([category, title, amount], i) => {
+        DEMO_EXPENSES.push({
+            id: `demo-exp-g${i + 1}`,
+            date: dayISO(-(i * 3 + 1)),
+            amount, category: category as any, title,
+            method: 'Cash' as any,
+            note: null,
+            clinicId: 'demo-clinic-1',
+            createdAt: dayFull(-(i * 3 + 1)),
+        } as Expense);
+    });
+}
+
+if (!savedData?.inventory) {
+    const ITEMS: [string, string, number, number][] = [
+        ['Bir martalik qo\'lqop', 'quti', 24, 5],
+        ['Steril bint', 'dona', 120, 30],
+        ['Kompozit plomba materiali', 'shprits', 18, 6],
+        ['Anestetik (artikain)', 'ampula', 40, 12],
+        ['Bir martalik shprits', 'dona', 200, 50],
+        ['Dezinfeksiya eritmasi', 'litr', 9, 3],
+        ['Ftorli lak', 'flakon', 7, 3],
+    ];
+    ITEMS.forEach(([name, unit, quantity, minQuantity], i) => {
+        DEMO_INVENTORY.push({
+            id: `demo-item-g${i + 1}`,
+            name, unit, quantity, minQuantity,
+            clinicId: 'demo-clinic-1',
+            createdAt: dayFull(-40),
+            updatedAt: dayFull(-i),
+        } as InventoryItem);
+    });
+}
+
+if (!savedData?.logs) {
+    for (let i = 0; i < 8; i++) {
+        const item = DEMO_INVENTORY[i % DEMO_INVENTORY.length];
+        const isIn = i % 3 === 0;
+        DEMO_INVENTORY_LOGS.push({
+            id: `demo-log-g${i + 1}`,
+            itemId: item.id,
+            change: isIn ? 25 : -(i % 4 + 1),
+            type: isIn ? 'IN' : 'OUT',
+            note: isIn ? 'Yetkazib berish' : 'Qabulda ishlatildi',
+            date: dayFull(-i),
+            userName: isIn ? 'Ombor' : 'Registratura',
+            item: { name: item.name, unit: item.unit },
+        } as InventoryLog);
+    }
+}
+
+if (!savedData?.messageLogs) {
+    for (let i = 0; i < 8; i++) {
+        const patientId = `demo-patient-${(i % 9) + 6}`;
+        DEMO_MESSAGE_LOGS.push({
+            id: `demo-msg-g${i + 1}`,
+            clinicId: 'demo-clinic-1',
+            patientId,
+            type: ['Reminder', 'Birthday', 'DebtReminder', 'Followup'][i % 4],
+            status: (i % 5 === 4 ? 'Failed' : 'Sent') as MessageLog['status'],
+            message: 'Hurmatli bemor, ertangi qabulingizni eslatamiz.',
+            error: i % 5 === 4 ? 'Telefon raqami mavjud emas' : null,
+            sentAt: dayFull(-(i / 2)),
+            channel: (i % 2 ? 'telegram' : 'sms') as MessageLog['channel'],
+        } as MessageLog);
+    }
+}
+
+if (!savedData?.labOrders) {
+    const ORDERS: [number, string, string, LabOrder['status']][] = [
+        [6, 'Koronka', 'Sirkoniy', 'InProgress'],
+        [7, 'Protez', 'Akril', 'Ordered'],
+        [8, 'Vinir', 'Keramika', 'Completed'],
+        [9, 'Koronka', 'Metallkeramika', 'Collected'],
+        [10, 'Kappa', 'Silikon', 'InProgress'],
+    ];
+    ORDERS.forEach(([pid, orderType, material, status], i) => {
+        const p = DEMO_PATIENTS.find(x => x.id === `demo-patient-${pid}`);
+        DEMO_LAB_ORDERS.push({
+            id: `demo-order-g${i + 1}`,
+            clinicId: 'demo-clinic-1',
+            patientId: `demo-patient-${pid}`,
+            patientName: p ? `${p.firstName} ${p.lastName}` : 'Bemor',
+            doctorName: 'Dr. Kamola Ahmedova',
+            technicianId: 'demo-tech-1',
+            technicianName: 'Karimov Farhod',
+            orderType, material,
+            toothNumbers: `${11 + i}, ${12 + i}`,
+            notes: '',
+            deadline: dayISO(i + 2),
+            price: 350000 + i * 120000,
+            totalPrice: 350000 + i * 120000,
+            priority: i === 1 ? 'Urgent' : 'Normal',
+            status,
+            orderedAt: dayFull(-(i + 1)),
+        } as LabOrder);
+    });
+}
+
+if (!savedData?.receptionists) {
+    ['Malika Norova', 'Sevara Qosimova', 'Dilshod Turayev'].forEach((full, i) => {
+        const [firstName, lastName] = full.split(' ');
+        DEMO_RECEPTIONISTS.push({
+            id: `demo-rec-${i + 1}`,
+            firstName, lastName,
+            phone: `+998 9${i} 111 22 3${i}`,
+            username: `rec${i + 1}`,
+            status: 'Active',
+            clinicId: 'demo-clinic-1',
+        } as Receptionist);
+    });
+}

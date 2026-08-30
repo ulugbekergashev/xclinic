@@ -318,6 +318,391 @@ const DEMO_ADMINISTRATIONS: { id: string; orderId: string; at: string; note: str
 ];
 const DEMO_TRANSFERS: any[] = [];
 
+/* ── DEMO: QABULLAR VA HISOB QATORLARI ───────────────────────────────────
+   Bu ikkalasi bo'sh qaytardi va natijada namoyishning yarmi bo'm-bo'sh
+   ko'rinardi: «Mening navbatim» — «Navbat bo'sh», registratura — hech kim,
+   kassada — to'lanmagan qator yo'q. Dastur ishlayotgani ko'rinmasdi.
+
+   Navbat BUGUNGI sanaga quriladi va holatlar aralash: kutayotgan,
+   chaqirilgan, qabulda, natija kutayotgan va yakunlangan. Shunda klient
+   bitta ekranda butun zanjirni ko'radi. */
+const demoName = (id: string) => {
+    const p = DEMO_PATIENTS.find(x => x.id === id);
+    return p ? `${p.firstName} ${p.lastName}` : 'Bemor';
+};
+
+const DEMO_VISIT_PLAN: { pid: number; status: Visit['status']; doc: number; waited: number; complaint: string }[] = [
+    { pid: 6, status: 'In Progress', doc: 1, waited: 35, complaint: "Tish og'rig'i, o'ng past tomonda" },
+    { pid: 7, status: 'Called', doc: 2, waited: 28, complaint: 'Breket sozlash' },
+    { pid: 8, status: 'Waiting', doc: 1, waited: 22, complaint: "Profilaktik ko'rik" },
+    { pid: 9, status: 'Waiting', doc: 3, waited: 17, complaint: 'Milk qonashi' },
+    { pid: 10, status: 'Waiting', doc: 4, waited: 12, complaint: "Aql tishi olib tashlash bo'yicha maslahat" },
+    { pid: 11, status: 'AwaitingResults', doc: 3, waited: 45, complaint: 'Umumiy holsizlik, tahlil topshirdi' },
+    { pid: 12, status: 'Completed', doc: 2, waited: 150, complaint: 'Plomba almashtirish' },
+    { pid: 13, status: 'Completed', doc: 1, waited: 190, complaint: 'Tish toshini olish' },
+    { pid: 14, status: 'Completed', doc: 4, waited: 95, complaint: "Jarrohlikdan keyingi ko'rik" },
+    { pid: 1,  status: 'Waiting', doc: 2, waited: 8, complaint: "Toj o'rnatish bosqichi" },
+];
+
+const DEMO_VISITS: Visit[] = DEMO_VISIT_PLAN.map((v, i) => {
+    const patientId = `demo-patient-${v.pid}`;
+    const doctorId = `demo-doctor-${v.doc}`;
+    const doc = DEMO_DOCTORS.find(d => d.id === doctorId);
+    /* Vaqtlar HOZIRGI paytdan orqaga hisoblanadi, qat'iy soatdan emas.
+       Ilgari `setHours(9)` turardi va demo kechqurun ochilsa navbatdagi
+       bemor «665 daqiqa kutmoqda» bo'lib chiqardi — ishonarli emas. */
+    const minsAgo = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+    return {
+        id: `demo-visit-${i + 1}`,
+        patientId,
+        date: todayISO(),
+        checkInTime: minsAgo(v.waited),
+        checkOutTime: v.status === 'Completed' ? minsAgo(Math.max(0, v.waited - 40)) : undefined,
+        status: v.status,
+        complaints: v.complaint,
+        clinicId: 'demo-clinic-1',
+        departmentId: 'demo-ter',
+        doctorId,
+        doctorName: doc ? `Dr. ${doc.firstName} ${doc.lastName}` : undefined,
+        queueNumber: i + 1,
+        calledAt: v.status === 'Waiting' ? null : minsAgo(Math.max(0, v.waited - 10)),
+        awaitingSince: v.status === 'AwaitingResults' ? minsAgo(Math.max(0, v.waited - 15)) : null,
+        patient: DEMO_PATIENTS.find(p => p.id === patientId),
+    } as Visit;
+});
+
+/* Hisob qatorlari qabullardan chiqadi: har bir qabulda 1-2 xizmat.
+   Uchdan biri to'lanmagan — kassada ish bo'lsin. */
+const DEMO_CHARGES: VisitCharge[] = DEMO_VISITS.flatMap((v, i) => {
+    const svc = DEMO_SERVICES[i % DEMO_SERVICES.length];
+    const unpaid = i % 3 !== 0;
+    const rows: VisitCharge[] = [{
+        id: `demo-charge-${i + 1}`,
+        clinicId: 'demo-clinic-1',
+        visitId: v.id,
+        patientId: v.patientId,
+        patientName: demoName(v.patientId),
+        source: 'Service',
+        sourceId: String(svc.id),
+        name: svc.name,
+        quantity: 1,
+        unitPrice: svc.price,
+        discount: 0,
+        total: svc.price,
+        status: unpaid ? 'Unpaid' : 'Paid',
+        paidAmount: unpaid ? 0 : svc.price,
+        paidAt: unpaid ? null : v.checkInTime,
+        createdAt: v.checkInTime,
+        createdByName: 'Registratura',
+        visit: { id: v.id, date: v.date, queueNumber: v.queueNumber, departmentId: v.departmentId },
+    }];
+    if (i % 4 === 1) {
+        const extra = DEMO_SERVICES[(i + 2) % DEMO_SERVICES.length];
+        rows.push({
+            ...rows[0],
+            id: `demo-charge-${i + 1}b`,
+            source: 'Lab',
+            sourceId: null,
+            name: `Tahlil: ${extra.name}`,
+            unitPrice: 90000, total: 90000,
+            status: 'Unpaid', paidAmount: 0, paidAt: null,
+        });
+    }
+    return rows;
+});
+
+/* ── DEMO: LABORATORIYA, DIAGNOSTIKA, DORIXONA, OMBOR ─────────────────────
+   Bularning hammasi bo'sh massiv qaytarardi. Turi aniq bo'lgani uchun
+   shakl xatosi bo'lishi mumkin emas — TypeScript tekshiradi. */
+
+const DEMO_LAB_TESTS: LabTest[] = [
+    { id: 'demo-lt-1', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Umumiy qon tahlili', code: 'UQT', sampleType: 'Qon', price: 45000, cost: 18000, turnaroundHours: 4, isActive: true, sortOrder: 1 },
+    { id: 'demo-lt-2', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Qandli diabet (glyukoza)', code: 'GLU', sampleType: 'Qon', price: 30000, cost: 11000, turnaroundHours: 2, isActive: true, sortOrder: 2 },
+    { id: 'demo-lt-3', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Umumiy siydik tahlili', code: 'UST', sampleType: 'Siydik', price: 35000, cost: 12000, turnaroundHours: 3, isActive: true, sortOrder: 3 },
+    { id: 'demo-lt-4', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Biokimyoviy tahlil', code: 'BIO', sampleType: 'Qon', price: 120000, cost: 55000, turnaroundHours: 24, isActive: true, sortOrder: 4 },
+    { id: 'demo-lt-5', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Qon ivishi (koagulogramma)', code: 'KOA', sampleType: 'Qon', price: 95000, cost: 40000, turnaroundHours: 8, isActive: true, sortOrder: 5 },
+    { id: 'demo-lt-6', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Gormonlar (TTG)', code: 'TTG', sampleType: 'Qon', price: 110000, cost: 48000, turnaroundHours: 48, isActive: true, sortOrder: 6 },
+    { id: 'demo-lt-7', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Gepatit B markerlari', code: 'HBS', sampleType: 'Qon', price: 85000, cost: 36000, turnaroundHours: 24, isActive: true, sortOrder: 7 },
+    { id: 'demo-lt-8', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Mikroreaksiya', code: 'RW', sampleType: 'Qon', price: 40000, cost: 15000, turnaroundHours: 6, isActive: false, sortOrder: 8 },
+];
+
+const MODALITIES = ['XRay', 'Ultrasound', 'CT', 'MRI'] as const;
+const STUDY_NAMES = ['Panoramik rentgen', "Qorin bo'shlig'i UZI", 'Bosh miya KT', 'Tizza MRT',
+    "Ko'krak qafasi rentgeni", 'Qalqonsimon bez UZI'];
+
+const DEMO_STUDIES: DiagnosticStudy[] = STUDY_NAMES.map((name, i) => {
+    const patientId = `demo-patient-${(i % 9) + 6}`;
+    const p = DEMO_PATIENTS.find(x => x.id === patientId);
+    const st = (['Completed', 'Completed', 'InProgress', 'Ordered'] as const)[i % 4];
+    return {
+        id: `demo-study-${i + 1}`,
+        clinicId: 'demo-clinic-1',
+        patientId,
+        patientName: p ? `${p.firstName} ${p.lastName}` : 'Bemor',
+        departmentId: 'demo-diag',
+        modality: MODALITIES[i % MODALITIES.length] as any,
+        name,
+        status: st,
+        orderedByName: 'Dr. Kamola Ahmedova',
+        performedByName: st === 'Ordered' ? null : 'Laborant Zuhra',
+        orderedAt: dayShift(-(i + 1)),
+        performedAt: st === 'Ordered' ? null : dayShift(-i),
+        price: [180000, 220000, 950000, 1400000, 150000, 240000][i % 6],
+    } as DiagnosticStudy;
+});
+
+const DEMO_PRESCRIPTIONS: Prescription[] = [0, 1, 2, 3, 4].map(i => {
+    const patientId = `demo-patient-${i + 6}`;
+    const p = DEMO_PATIENTS.find(x => x.id === patientId);
+    return {
+        id: `demo-rx-${i + 1}`,
+        clinicId: 'demo-clinic-1',
+        patientId,
+        patientName: p ? `${p.firstName} ${p.lastName}` : 'Bemor',
+        doctorId: 'demo-doctor-1',
+        doctorName: 'Dr. Kamola Ahmedova',
+        date: dayShift(-i),
+        status: i % 2 ? 'Issued' : 'Draft',
+        notes: i % 2 ? 'Ovqatdan keyin qabul qilinsin' : null,
+    } as Prescription;
+});
+
+const DEMO_STOCK_MOVES: StockMovement[] = Array.from({ length: 10 }, (_, i) => {
+    const item = DEMO_INVENTORY[i % DEMO_INVENTORY.length];
+    const type = (['In', 'Out', 'Out', 'Writeoff', 'Adjust'] as const)[i % 5];
+    return {
+        id: `demo-move-${i + 1}`,
+        clinicId: 'demo-clinic-1',
+        itemId: item?.id ?? 'demo-inv-1',
+        type,
+        quantity: type === 'In' ? 50 : -(i % 4 + 1),
+        reason: { In: 'Yetkazib berish', Out: 'Qabulda ishlatildi', Writeoff: "Muddati o'tgan", Adjust: 'Inventarizatsiya' }[type],
+        userName: 'Registratura',
+        createdAt: dayShift(-i),
+        item: item ? { name: item.name, unit: (item as any).unit || 'dona' } : undefined,
+    } as StockMovement;
+});
+
+const DEMO_BATCHES: InventoryBatch[] = Array.from({ length: 6 }, (_, i) => {
+    const item = DEMO_INVENTORY[i % DEMO_INVENTORY.length];
+    return {
+        id: `demo-batch-${i + 1}`,
+        itemId: item?.id ?? 'demo-inv-1',
+        batchNumber: `P-2026-${100 + i}`,
+        expiryDate: dayShift((i - 1) * 30).slice(0, 10),
+        quantity: 20 + i * 5,
+        cost: 12000 + i * 1500,
+        receivedAt: dayShift(-(30 + i)),
+        expired: i === 0,
+    } as InventoryBatch;
+});
+
+/* ── DEMO: HISOBOTLAR VA JURNALLAR ───────────────────────────────────────
+   Bularning turi `any`, ya'ni TypeScript shaklni tekshirmaydi — shuning
+   uchun har biri ekran KUTGAN maydonlar bo'yicha qo'lda yig'ildi.
+   («Ulush» vkladkasi aynan shu sababdan yiqilgan edi.) */
+
+/** Natijasi tayyor, lekin shifokor ko'rmagan qabullar. */
+const demoPendingResults = () => DEMO_VISITS
+    .filter(v => v.status === 'AwaitingResults' || v.status === 'In Progress')
+    .map((v, i) => ({
+        visitId: v.id,
+        patientName: demoName(v.patientId),
+        department: 'Terapiya',
+        date: v.date,
+        unseenCount: i === 0 ? 2 : 0,
+        stillPending: i === 0 ? 0 : 1,
+    }));
+
+/** Ko'rsatkich dinamikasi — bitta qiymat emas, o'zgarish muhim. */
+const demoLabDynamics = () => [
+    {
+        parameterId: 'demo-par-hgb', name: 'Gemoglobin', unit: 'g/L',
+        refLow: 120, refHigh: 160, count: 4,
+        last: 118, lastAt: dayShift(-2), lastFlag: 'low', delta: -9,
+        points: [
+            { at: dayShift(-90), value: 134, flag: 'normal' },
+            { at: dayShift(-60), value: 129, flag: 'normal' },
+            { at: dayShift(-30), value: 127, flag: 'normal' },
+            { at: dayShift(-2), value: 118, flag: 'low' },
+        ],
+    },
+    {
+        parameterId: 'demo-par-glu', name: 'Glyukoza', unit: 'mmol/L',
+        refLow: 3.9, refHigh: 6.1, count: 3,
+        last: 5.4, lastAt: dayShift(-2), lastFlag: 'normal', delta: -0.3,
+        points: [
+            { at: dayShift(-60), value: 6.0, flag: 'normal' },
+            { at: dayShift(-30), value: 5.7, flag: 'normal' },
+            { at: dayShift(-2), value: 5.4, flag: 'normal' },
+        ],
+    },
+];
+
+/** Davomat hisoboti — Kalendardagi «Hisobot» ko'rinishi. */
+const demoAttendance = () => {
+    const days = Array.from({ length: 14 }, (_, i) => ({
+        date: dayShift(-(13 - i)).slice(0, 10),
+        booked: 6 + ((i * 3) % 5),
+        arrived: 5 + ((i * 2) % 4),
+        revenue: 900000 + (i % 5) * 250000,
+    }));
+    const booked = days.reduce((a, d) => a + d.booked, 0);
+    const arrived = days.reduce((a, d) => a + d.arrived, 0);
+    const cancelled = 6;
+    const noShow = booked - arrived - cancelled;
+    const wd = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
+        .map((name, i) => ({ name, avgVisits: [9, 8, 10, 7, 11, 6, 3][i], booked: 0, arrived: 0 }));
+    return {
+        totals: {
+            booked, arrived, noShow: Math.max(0, noShow), cancelled,
+            revenue: days.reduce((a, d) => a + d.revenue, 0),
+            arrivalRate: Math.round((arrived / booked) * 100),
+            noShowRate: Math.round((Math.max(0, noShow) / booked) * 100),
+        },
+        byDay: days,
+        byWeekday: wd,
+        byHour: Array.from({ length: 10 }, (_, i) => ({
+            hour: 9 + i, booked: [7, 9, 11, 8, 4, 6, 10, 8, 5, 2][i], arrived: [6, 8, 9, 7, 3, 5, 9, 6, 4, 2][i],
+        })),
+        byDoctor: DEMO_DOCTORS.map((d, i) => ({
+            doctorId: d.id, name: `${d.firstName} ${d.lastName}`,
+            booked: 20 - i * 3, arrived: 17 - i * 3,
+        })),
+        best: wd[4], worst: wd[6],
+    };
+};
+
+/** Hisobot → Chiqim (ombor harakati bo'yicha). */
+const demoWriteoffs = () => ({
+    wasteCost: 340000,
+    serviceCost: 1860000,
+    totalCost: 2200000,
+    movementCount: DEMO_STOCK_MOVES.length,
+    byReason: [
+        { reason: 'Writeoff', label: "Muddati o'tgan", count: 3, cost: 340000 },
+        { reason: 'Out', label: 'Qabulda ishlatildi', count: 9, cost: 1860000 },
+    ],
+    byItem: DEMO_INVENTORY.map((it, i) => ({
+        itemId: it.id, name: it.name, unit: (it as any).unit || 'dona',
+        qty: 12 - i * 2, cost: 420000 - i * 90000,
+    })),
+});
+
+/** Hisobot → Bo'limlar. */
+const demoDepartmentsReport = () => {
+    const rows = DEMO_DEPARTMENTS.map((d, i) => {
+        const revenue = 4200000 - i * 850000;
+        const expense = 1300000 - i * 220000;
+        return {
+            departmentId: d.id, name: d.name, color: d.color,
+            revenue, paid: Math.round(revenue * 0.78), expense, profit: revenue - expense,
+        };
+    });
+    return {
+        departments: rows,
+        totals: {
+            revenue: rows.reduce((a, r) => a + r.revenue, 0),
+            expense: rows.reduce((a, r) => a + r.expense, 0),
+            profit: rows.reduce((a, r) => a + r.profit, 0),
+            occupancy: 62,
+            bedDays: 34,
+            bedCount: DEMO_BEDS.length,
+        },
+    };
+};
+
+/** Kirish jurnali — kim, qachon, nimaga qaradi. */
+const demoAccessLog = () => {
+    const actions = ['VIEW', 'CREATE', 'UPDATE', 'PRINT', 'EXPORT'];
+    const entities = ['Patient', 'Visit', 'Charge', 'LabOrder', 'Prescription'];
+    const users = [
+        { userName: 'Demo Admin', userRole: 'CLINIC_ADMIN' },
+        { userName: 'Kamola Ahmedova', userRole: 'DOCTOR' },
+        { userName: 'Registratura', userRole: 'RECEPTIONIST' },
+    ];
+    const items = Array.from({ length: 12 }, (_, i) => ({
+        id: `demo-log-${i + 1}`,
+        at: dayShift(-(i / 3)),
+        ...users[i % users.length],
+        action: actions[i % actions.length],
+        entityType: entities[i % entities.length],
+        patientName: demoName(`demo-patient-${(i % 9) + 6}`),
+    }));
+    return { items, total: items.length, truncated: false, retentionMonths: 24 };
+};
+
+/** Zaxira nusxalar ro'yxati — Sozlamalar → Ekspluatatsiya. */
+const DEMO_BACKUPS = Array.from({ length: 5 }, (_, i) => ({
+    file: `xclinic-${dayShift(-i).slice(0, 10).replace(/-/g, '')}-0300.db`,
+    sizeBytes: 1_100_000 + i * 45_000,
+    createdAt: dayShift(-i),
+    hasUploads: i % 2 === 0,
+    note: i === 0 ? 'Avtomatik (kunlik)' : null,
+}));
+
+/** Qabul bayoni shablonlari — bo'limga qarab tanlanadi. */
+const DEMO_ENCOUNTER_TEMPLATES: EncounterTemplate[] = [
+    {
+        id: 'demo-tpl-1', clinicId: 'demo-clinic-1', departmentId: 'demo-ter',
+        name: 'Terapevtik ko’rik', isDefault: true, gender: null, minAge: null, maxAge: null,
+        fields: [
+            { key: 'complaints', label: 'Shikoyatlar', type: 'text', group: 'Anamnez' },
+            { key: 'history', label: 'Kasallik tarixi', type: 'text', group: 'Anamnez' },
+            { key: 'temperature', label: 'Harorat', type: 'number', unit: '°C', group: 'Ko’rik' },
+            { key: 'bp', label: 'Qon bosimi', type: 'text', unit: 'mm sim.ust.', group: 'Ko’rik' },
+            { key: 'conclusion', label: 'Xulosa', type: 'text', group: 'Yakun' },
+        ],
+    },
+    {
+        id: 'demo-tpl-2', clinicId: 'demo-clinic-1', departmentId: 'demo-ter',
+        name: 'Stomatologik ko’rik', isDefault: false, gender: null, minAge: null, maxAge: null,
+        fields: [
+            { key: 'tooth', label: 'Tish raqami', type: 'text', group: 'Ko’rik' },
+            { key: 'caries', label: 'Karies darajasi', type: 'select', options: ['Yo’q', 'Boshlang’ich', 'O’rta', 'Chuqur'], group: 'Ko’rik' },
+            { key: 'plan', label: 'Davolash rejasi', type: 'text', group: 'Yakun' },
+        ],
+    },
+    {
+        id: 'demo-tpl-3', clinicId: 'demo-clinic-1', departmentId: 'demo-inp',
+        name: 'Statsionar kunlik ko’rik', isDefault: false, gender: null, minAge: null, maxAge: null,
+        fields: [
+            { key: 'state', label: 'Umumiy holati', type: 'select', options: ['Qoniqarli', 'O’rta og’ir', 'Og’ir'], group: 'Ko’rik' },
+            { key: 'temperature', label: 'Harorat', type: 'number', unit: '°C', group: 'Ko’rik' },
+            { key: 'plan', label: 'Tayinlov', type: 'text', group: 'Yakun' },
+        ],
+    },
+];
+
+/** Kassa ekrani: to'lanmagan qatorlar bemor bo'yicha guruhlanadi. */
+const demoPendingPatients = (): PendingPatient[] => {
+    const byPatient = new Map<string, PendingPatient>();
+    DEMO_CHARGES.filter(c => c.status === 'Unpaid').forEach(c => {
+        const key = c.patientId || c.patientName;
+        if (!byPatient.has(key)) {
+            byPatient.set(key, { patientId: c.patientId, patientName: c.patientName, due: 0, items: [] });
+        }
+        const g = byPatient.get(key)!;
+        g.due += c.total - c.paidAmount;
+        g.items.push(c);
+    });
+    return [...byPatient.values()];
+};
+
+/** Bitta qabulning hisob qatorlari va yakuni. */
+const demoVisitCharges = (visitId: string) => {
+    const charges = DEMO_CHARGES.filter(c => c.visitId === visitId);
+    const total = charges.reduce((s, c) => s + c.total, 0);
+    const paid = charges.reduce((s, c) => s + c.paidAmount, 0);
+    return {
+        charges,
+        summary: {
+            total, paid, due: total - paid,
+            unpaidCount: charges.filter(c => c.status === 'Unpaid').length,
+        } as ChargeSummary,
+    };
+};
+
 /** Hamshiralar — Sozlamalardagi «Xodimlar» bo'limi bo'sh qolmasligi uchun. */
 /** Bemor hujjatlari (rozilik, shartnoma) — sessiya davomida saqlanadi. */
 const DEMO_DOCUMENTS: any[] = [];
@@ -330,13 +715,13 @@ const DEMO_REFERRALS: any[] = [];
    holatini ko'rsatadi. Bu yolg'on emas va interfeys qanday ishlashini
    baribir ko'rsatadi. */
 const DEMO_BACKUP_STATUS = {
-    config: { enabled: false, intervalHours: 24, keepCount: 7, includeUploads: true } as any,
-    lastBackup: null,
-    ageDays: null,
+    config: { enabled: true, intervalHours: 24, keepCount: 7, includeUploads: true } as any,
+    lastBackup: DEMO_BACKUPS[0],
+    ageDays: 0,
     stale: false,
-    count: 0,
-    totalBytes: 0,
-    scheduler: { running: false, lastRunAt: null, lastFile: null, lastError: null, lastDeleted: 0 },
+    count: DEMO_BACKUPS.length,
+    totalBytes: DEMO_BACKUPS.reduce((s, b) => s + b.sizeBytes, 0),
+    scheduler: { running: true, lastRunAt: DEMO_BACKUPS[0].createdAt, lastFile: DEMO_BACKUPS[0].file, lastError: null, lastDeleted: 1 },
 };
 
 /** Tasdiqlangan oylik vedomostlari — sessiya davomida. */
@@ -1533,14 +1918,23 @@ export const api = {
     // ─── Qabul (Visit) — barcha modullar shunga bog'lanadi ──────────────────
     visits: {
         getAll: (params?: { patientId?: string; date?: string; departmentId?: string; status?: string }) => {
-            if (isDemoMode()) return demoRead<Visit[]>([]);
+            if (isDemoMode()) return demoRead<Visit[]>(DEMO_VISITS.filter(v =>
+                (!params?.patientId || v.patientId === params.patientId)
+                && (!params?.date || v.date === params.date)
+                && (!params?.departmentId || v.departmentId === params.departmentId)
+                && (!params?.status || v.status === params.status)
+            ));
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
             return fetchJson<Visit[]>(`/visits${qs ? `?${qs}` : ''}`);
         },
         getById: (id: string) =>
-            isDemoMode() ? demoMissing<Visit>('qabullar') : fetchJson<Visit>(`/visits/${id}`),
+            isDemoMode()
+                ? (DEMO_VISITS.find(v => v.id === id)
+                    ? demoRead<Visit>(DEMO_VISITS.find(v => v.id === id)!)
+                    : demoMissing<Visit>('bu qabul'))
+                : fetchJson<Visit>(`/visits/${id}`),
         /** `force` — bugun shu bo'limda qabul ochilgan bo'lsa ham ataylab
          *  yangisini ochish (ertalab va kechqurun alohida murojaat).
          *  Bo'lmasa server 409 va mavjud `visitId` ni qaytaradi. */
@@ -1563,7 +1957,7 @@ export const api = {
     // ─── Ombor: harakatlar, retsept, ogohlantirishlar ───────────────────────
     stock: {
         movements: (params?: { itemId?: string; visitId?: string; patientId?: string; from?: string; to?: string }) => {
-            if (isDemoMode()) return demoRead<StockMovement[]>([]);
+            if (isDemoMode()) return demoRead<StockMovement[]>(DEMO_STOCK_MOVES);
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
@@ -1655,12 +2049,12 @@ export const api = {
         },
         /** Natijasi tayyor, lekin ko'rilmagan qabullar — SANA bilan cheklanmagan */
         pendingResults: () => {
-            if (isDemoMode()) return demoRead<any[]>([]);
+            if (isDemoMode()) return demoRead<any[]>(demoPendingResults());
             return fetchJson<any[]>('/visits/pending-results');
         },
         /** Ko'rsatkich bo'yicha vaqt qatori: bitta qiymat emas, O'ZGARISH muhim */
         labDynamics: (patientId: string) => {
-            if (isDemoMode()) return demoRead<any[]>([]);
+            if (isDemoMode()) return demoRead<any[]>(demoLabDynamics());
             return fetchJson<any[]>(`/patients/${patientId}/lab-dynamics`);
         },
         lockVisit: (visitId: string, disposition?: string) => {
@@ -1672,7 +2066,11 @@ export const api = {
     // ─── Pul: hisob qatorlari va kassa ──────────────────────────────────────
     charges: {
         getAll: (params?: { status?: string; patientId?: string; visitId?: string; date?: string }) => {
-            if (isDemoMode()) return demoRead<VisitCharge[]>([]);
+            if (isDemoMode()) return demoRead<VisitCharge[]>(DEMO_CHARGES.filter(c =>
+                (!params?.status || c.status === params.status)
+                && (!params?.patientId || c.patientId === params.patientId)
+                && (!params?.visitId || c.visitId === params.visitId)
+            ));
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
@@ -1682,11 +2080,11 @@ export const api = {
         /** `now` — faqat hozir klinikada bo'lgan bemorlar (bugungi ochiq qabul).
          *  Kassir oynasidagi odamni umumiy qarz ro'yxatidan izlamasligi uchun. */
         pending: (now?: boolean) => isDemoMode()
-            ? demoRead<PendingPatient[]>([])
+            ? demoRead<PendingPatient[]>(demoPendingPatients())
             : fetchJson<PendingPatient[]>(`/charges/pending${now ? '?now=1' : ''}`),
         byVisit: (visitId: string) =>
             isDemoMode()
-                ? demoRead<{ charges: VisitCharge[]; summary: ChargeSummary }>({ charges: [], summary: { total: 0, paid: 0, due: 0, unpaidCount: 0 } })
+                ? demoRead<{ charges: VisitCharge[]; summary: ChargeSummary }>(demoVisitCharges(visitId))
                 : fetchJson<{ charges: VisitCharge[]; summary: ChargeSummary }>(`/visits/${visitId}/charges`),
         create: (data: Partial<VisitCharge>) =>
             isDemoMode() ? demoWrite<VisitCharge>() : fetchJson<VisitCharge>('/charges', { method: 'POST', body: JSON.stringify(data) }),
@@ -1755,7 +2153,7 @@ export const api = {
             pendingCount: number;
         }>('/admin/schema-status'),
 
-        backups: () => isDemoMode() ? demoRead<any>([]) : fetchJson<{
+        backups: () => isDemoMode() ? demoRead<any>(DEMO_BACKUPS) : fetchJson<{
             file: string; sizeBytes: number; createdAt: string;
             hasUploads: boolean; note: string | null;
         }[]>('/admin/backups'),
@@ -1891,7 +2289,7 @@ export const api = {
         /* Reliz 5: uch hisobot. Hammasi faqat klinika egasiga — server ham
            shu rolni talab qiladi. */
         writeoffs: (from: string, to: string) => {
-            if (isDemoMode()) return demoRead<any>({ items: [], total: 0 });
+            if (isDemoMode()) return demoRead<any>(demoWriteoffs());
             return fetchJson<any>(`/reports/writeoffs?from=${from}&to=${to}`);
         },
         doctors: (from: string, to: string) => {
@@ -1899,7 +2297,7 @@ export const api = {
             return fetchJson<any>(`/reports/doctors?from=${from}&to=${to}`);
         },
         departmentsReport: (from: string, to: string) => {
-            if (isDemoMode()) return demoRead<any>({ items: [], total: 0 });
+            if (isDemoMode()) return demoRead<any>(demoDepartmentsReport());
             return fetchJson<any>(`/reports/departments?from=${from}&to=${to}`);
         },
 
@@ -1935,7 +2333,7 @@ export const api = {
 
         /** Davomat: qaysi kunlarda va soatlarda bemor ko'p keladi */
         attendance: (from: string, to: string) => {
-            if (isDemoMode()) return demoRead<any>({ byWeekday: [], byHour: [], total: 0 });
+            if (isDemoMode()) return demoRead<any>(demoAttendance());
             return fetchJson<any>(`/reports/attendance?from=${from}&to=${to}`);
         },
     },
@@ -1987,7 +2385,7 @@ export const api = {
 
         /** Faqat klinika egasi — server ham shu rolni talab qiladi */
         accessLog: (params?: { patientId?: string; from?: string; to?: string; action?: string; entityType?: string }) => {
-            if (isDemoMode()) return demoRead({ items: [], total: 0, truncated: false, retentionMonths: 24 });
+            if (isDemoMode()) return demoRead(demoAccessLog());
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
@@ -2092,7 +2490,7 @@ export const api = {
            chiqarib tashlaydi (jins va yosh bo'yicha). Sozlamalarda esa
            hammasi kerak — shuning uchun ixtiyoriy. */
         getAll: (departmentId?: string, patientId?: string) => {
-            if (isDemoMode()) return demoRead<EncounterTemplate[]>([]);
+            if (isDemoMode()) return demoRead<EncounterTemplate[]>(DEMO_ENCOUNTER_TEMPLATES);
             const q = new URLSearchParams();
             if (departmentId) q.set('departmentId', departmentId);
             if (patientId) q.set('patientId', patientId);
@@ -2109,7 +2507,7 @@ export const api = {
 
     // ─── Laboratoriya: katalog ──────────────────────────────────────────────
     labTests: {
-        getAll: () => isDemoMode() ? demoRead<LabTest[]>([]) : fetchJson<LabTest[]>('/lab-tests'),
+        getAll: () => isDemoMode() ? demoRead<LabTest[]>(DEMO_LAB_TESTS) : fetchJson<LabTest[]>('/lab-tests'),
         create: (data: Partial<LabTest> & { parameters?: Partial<LabTestParameter>[] }) =>
             isDemoMode() ? demoWrite<LabTest>() : fetchJson<LabTest>('/lab-tests', { method: 'POST', body: JSON.stringify(data) }),
         update: (id: string, data: Partial<LabTest> & { parameters?: Partial<LabTestParameter>[] }) =>
@@ -2137,7 +2535,7 @@ export const api = {
     // ─── Diagnostika ────────────────────────────────────────────────────────
     studies: {
         getAll: (params?: { patientId?: string; status?: string }) => {
-            if (isDemoMode()) return demoRead<DiagnosticStudy[]>([]);
+            if (isDemoMode()) return demoRead<DiagnosticStudy[]>(DEMO_STUDIES);
             const q = new URLSearchParams();
             if (params?.patientId) q.set('patientId', params.patientId);
             if (params?.status) q.set('status', params.status);
@@ -2472,7 +2870,7 @@ export const api = {
     // ─── Retsept ────────────────────────────────────────────────────────────
     prescriptions: {
         getAll: (patientId?: string) =>
-            isDemoMode() ? demoRead<Prescription[]>([])
+            isDemoMode() ? demoRead<Prescription[]>(DEMO_PRESCRIPTIONS)
                 : fetchJson<Prescription[]>(`/prescriptions${patientId ? `?patientId=${patientId}` : ''}`),
         create: (data: Partial<Prescription> & { items: Partial<PrescriptionItem>[] }) =>
             isDemoMode() ? demoWrite<Prescription>() : fetchJson<Prescription>('/prescriptions', { method: 'POST', body: JSON.stringify(data) }),
@@ -2483,12 +2881,12 @@ export const api = {
     // ─── Ombor: partiya va muddat ───────────────────────────────────────────
     batches: {
         getAll: (itemId: string) =>
-            isDemoMode() ? demoRead<InventoryBatch[]>([]) : fetchJson<InventoryBatch[]>(`/inventory/${itemId}/batches`),
+            isDemoMode() ? demoRead<InventoryBatch[]>(DEMO_BATCHES.filter(b => b.itemId === itemId)) : fetchJson<InventoryBatch[]>(`/inventory/${itemId}/batches`),
         create: (itemId: string, data: Partial<InventoryBatch>) =>
             isDemoMode() ? demoWrite<InventoryBatch>() : fetchJson<InventoryBatch>(`/inventory/${itemId}/batches`, { method: 'POST', body: JSON.stringify(data) }),
         // Muddati o'tgan/yaqinlashgan partiyalar — Ombor sahifasidagi ogohlantirish
         expiring: (days = 60) =>
-            isDemoMode() ? demoRead<InventoryBatch[]>([]) : fetchJson<InventoryBatch[]>(`/inventory-expiring?days=${days}`),
+            isDemoMode() ? demoRead<InventoryBatch[]>(DEMO_BATCHES.slice(0, 3)) : fetchJson<InventoryBatch[]>(`/inventory-expiring?days=${days}`),
     },
     batch: {
         remindAppointments: (clinicId: string, message?: string) => {
