@@ -1,0 +1,32 @@
+# Vercelga FAQAT frontend chiqadi.
+#
+# Nima uchun kerak: Vercel repozitoriyani ko'rib, `backend/` ni alohida
+# Express xizmati deb aniqlaydi. Ikkita xizmat topilgach u `vercel.json`
+# da ko'p xizmatli sxemani talab qiladi va Deploy tugmasini o'chiradi.
+#
+# Backend u yerda PRINTSIPIAL ishlamaydi:
+#   · baza — lokal fayldagi SQLite, Vercel fayl tizimi vaqtinchalik
+#   · yuklangan fayllar diskda yashaydi
+#   · litsenziya mashina identifikatoriga bog'langan (`hwid.ts`)
+# Bunga ehtiyoj ham yo'q: namoyish nusxasi ataylab backendsiz ishlaydi.
+#
+# Backendni yashirsak, Vercel bitta Vite loyihasini ko'radi va odatdagi
+# sozlama yetarli bo'ladi.
+
+backend/
+
+# Ish stoli qobig'i va uning yig'indisi — brauzer versiyasiga aloqasi yo'q
+electron/
+electron-main/
+dist-electron/
+build/
+
+# Sinovlar va ularning chiqishi
+e2e/
+test-results/
+playwright-report/
+playwright.config.ts
+
+# Hujjatlar
+*.md
+!README.md
