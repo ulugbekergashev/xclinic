@@ -1938,20 +1938,88 @@ export const api = {
         /** `force` — bugun shu bo'limda qabul ochilgan bo'lsa ham ataylab
          *  yangisini ochish (ertalab va kechqurun alohida murojaat).
          *  Bo'lmasa server 409 va mavjud `visitId` ni qaytaradi. */
-        create: (data: Partial<Visit> & { force?: boolean }) =>
-            isDemoMode() ? demoWrite<Visit>() : fetchJson<Visit>('/visits', { method: 'POST', body: JSON.stringify(data) }),
+        create: (data: Partial<Visit> & { force?: boolean }) => {
+            /* Demoda ham HAQIQATAN ochiladi: registraturadagi «Keldi»
+               tugmasi namoyishning asosiy oqimi — bosilganda navbatda
+               yangi qator paydo bo'lishi kerak, xato emas. */
+            if (isDemoMode()) {
+                const visit: Visit = {
+                    id: `demo-visit-${Date.now()}`,
+                    patientId: data.patientId || '',
+                    appointmentId: data.appointmentId,
+                    date: data.date || todayISO(),
+                    checkInTime: new Date().toISOString(),
+                    status: 'Waiting',
+                    complaints: data.complaints,
+                    clinicId: 'demo-clinic-1',
+                    departmentId: data.departmentId || 'demo-ter',
+                    doctorId: data.doctorId,
+                    doctorName: data.doctorName,
+                    queueNumber: DEMO_VISITS.filter(v => v.date === todayISO()).length + 1,
+                    calledAt: null,
+                    patient: DEMO_PATIENTS.find(p => p.id === data.patientId),
+                };
+                DEMO_VISITS.push(visit);
+                return demoRead<Visit>(visit);
+            }
+            return fetchJson<Visit>('/visits', { method: 'POST', body: JSON.stringify(data) });
+        },
         // Qabulga xizmat qo'shish — narx shu orqali kassaga tushadi
         addProcedure: (visitId: string, data: { serviceId?: number; procedureName?: string; price?: number; discount?: number; notes?: string; doctorId?: string; doctorName?: string }) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>(`/visits/${visitId}/procedures`, { method: 'POST', body: JSON.stringify(data) }),
+            isDemoMode() ? (() => {
+                /* Qabulga xizmat qo'shilsa, hisob qatori ham paydo bo'ladi —
+                   registraturadagi «Keldi» dan keyin kassada ish ko'rinishi
+                   uchun. Aks holda zanjir yarim yo'lda uzilardi. */
+                const svc = DEMO_SERVICES.find(x => Number(x.id) === Number(data.serviceId));
+                const visit = DEMO_VISITS.find(v => v.id === visitId);
+                const price = data.price ?? svc?.price ?? 0;
+                const row: VisitCharge = {
+                    id: `demo-charge-${Date.now()}`,
+                    clinicId: 'demo-clinic-1',
+                    visitId,
+                    patientId: visit?.patientId ?? null,
+                    patientName: visit ? demoName(visit.patientId) : '',
+                    source: 'Service',
+                    sourceId: data.serviceId != null ? String(data.serviceId) : null,
+                    name: data.procedureName || svc?.name || 'Xizmat',
+                    quantity: 1,
+                    unitPrice: price,
+                    discount: data.discount ?? 0,
+                    total: price - (data.discount ?? 0),
+                    status: 'Unpaid',
+                    paidAmount: 0,
+                    paidAt: null,
+                    createdAt: new Date().toISOString(),
+                    createdByName: 'Registratura',
+                    visit: visit ? { id: visit.id, date: visit.date, queueNumber: visit.queueNumber, departmentId: visit.departmentId } : undefined,
+                };
+                DEMO_CHARGES.push(row);
+                return demoRead<any>(row);
+            })() : fetchJson<any>(`/visits/${visitId}/procedures`, { method: 'POST', body: JSON.stringify(data) }),
         removeProcedure: (procedureId: string) =>
             isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/visit-procedures/${procedureId}`, { method: 'DELETE' }),
-        update: (id: string, data: Partial<Visit>) =>
-            isDemoMode() ? demoWrite<Visit>() : fetchJson<Visit>(`/visits/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+        update: (id: string, data: Partial<Visit>) => {
+            if (isDemoMode()) {
+                const v = DEMO_VISITS.find(x => x.id === id);
+                if (v) {
+                    Object.assign(v, data);
+                    if (data.status === 'Completed' && !v.checkOutTime) v.checkOutTime = new Date().toISOString();
+                }
+                return demoRead<Visit>(v as Visit);
+            }
+            return fetchJson<Visit>(`/visits/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
         delete: (id: string) =>
             isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/visits/${id}`, { method: 'DELETE' }),
         // Navbatni chaqirish — tablo shu holatni ko'rsatadi
-        call: (id: string) =>
-            isDemoMode() ? demoWrite<Visit>() : fetchJson<Visit>(`/visits/${id}/call`, { method: 'POST' }),
+        call: (id: string) => {
+            if (isDemoMode()) {
+                const v = DEMO_VISITS.find(x => x.id === id);
+                if (v) { v.status = 'Called'; v.calledAt = new Date().toISOString(); }
+                return demoRead<Visit>(v as Visit);
+            }
+            return fetchJson<Visit>(`/visits/${id}/call`, { method: 'POST' });
+        },
     },
 
     // ─── Ombor: harakatlar, retsept, ogohlantirishlar ───────────────────────

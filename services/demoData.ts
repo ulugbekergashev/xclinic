@@ -25,8 +25,30 @@ const dayFull = (offset: number) =>
 // --- PERSISTENCE HELPERS ---
 const STORAGE_KEY = 'xclinic_demo_data';
 
+/* DEMO MA'LUMOTI VERSIYASI.
+
+   Demo ma'lumoti brauzerda saqlanadi — bu ataylab: klient bemor qo'shsa,
+   sahifani yangilaganda yo'qolmasligi kerak. Lekin shu sabab yangi demo
+   chiqarilganda ESKI nusxa qolib ketardi: bir marta kirgan odam keyin
+   qancha marta ochmasin, o'sha eskirgan besh yozuvni ko'raverardi.
+
+   Shuning uchun saqlangan nusxaga versiya qo'yiladi. Raqam o'zgarsa eski
+   nusxa e'tiborsiz qoldiriladi va ro'yxatlar yangisidan yig'iladi.
+
+   ⚠️ Demo to'plamiga yozuv qo'shsangiz yoki o'zgartirsangiz — SHU RAQAMNI
+   OSHIRING, aks holda o'zgarish avval demoni ochgan odamga yetib bormaydi. */
+const DEMO_DATA_VERSION = 3;
+const VERSION_KEY = 'xclinic_demo_version';
+
 export const loadDemoData = () => {
     try {
+        const storedVersion = Number(localStorage.getItem(VERSION_KEY) || 0);
+        if (storedVersion !== DEMO_DATA_VERSION) {
+            console.log(`📦 Demo ma'lumoti eskirgan (v${storedVersion} → v${DEMO_DATA_VERSION}) — qaytadan yig'iladi`);
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.setItem(VERSION_KEY, String(DEMO_DATA_VERSION));
+            return null;
+        }
         const stored = localStorage.getItem(STORAGE_KEY);
         console.log('📦 Loading Demo Data from LS:', stored ? 'Found' : 'Not Found');
         if (stored) {
@@ -73,6 +95,7 @@ export const saveDemoData = () => {
         };
         const stringified = JSON.stringify(data);
         localStorage.setItem(STORAGE_KEY, stringified);
+        localStorage.setItem(VERSION_KEY, String(DEMO_DATA_VERSION));
         console.log('💾 Demo Data Saved to LS. Size:', Math.round(stringified.length / 1024), 'KB');
     } catch (e) {
         console.error('❌ Failed to save demo data', e);
@@ -119,6 +142,9 @@ export let DEMO_DOCTORS: Doctor[] = savedData?.doctors || [
         status: 'Active',
         clinicId: 'demo-clinic-1',
         percentage: 40,
+        /* Bo'lim SHART: registraturadagi «Keldi» tugmasi qabulni shu
+           bo'limga ochadi. Busiz «bo'lim aniqlanmadi» xatosi chiqadi. */
+        departmentId: 'demo-ter',
         username: 'kamola',
         color: '#3B82F6', // Blue
     },
@@ -131,6 +157,7 @@ export let DEMO_DOCTORS: Doctor[] = savedData?.doctors || [
         status: 'Active',
         clinicId: 'demo-clinic-1',
         percentage: 50,
+        departmentId: 'demo-ter',
         username: 'jamshid',
         color: '#10B981', // Emerald
     },
@@ -714,12 +741,12 @@ if (!savedData?.doctors) {
         {
             id: 'demo-doctor-3', firstName: 'Nilufar', lastName: 'Tosheva',
             specialty: 'Terapevt', phone: '+998 90 777 88 99', status: 'Active',
-            clinicId: 'demo-clinic-1', percentage: 35, username: 'nilufar_t', color: '#F59E0B',
+            clinicId: 'demo-clinic-1', percentage: 35, departmentId: 'demo-ter', username: 'nilufar_t', color: '#F59E0B',
         } as Doctor,
         {
             id: 'demo-doctor-4', firstName: 'Sardor', lastName: 'Mahmudov',
             specialty: 'Jarroh', phone: '+998 91 555 44 33', status: 'Active',
-            clinicId: 'demo-clinic-1', percentage: 45, username: 'sardor_m', color: '#8B5CF6',
+            clinicId: 'demo-clinic-1', percentage: 45, departmentId: 'demo-inp', username: 'sardor_m', color: '#8B5CF6',
         } as Doctor,
     );
 }
@@ -757,6 +784,7 @@ if (!savedData?.appointments) {
             duration: [30, 45, 60][i % 3],
             status: off < 0 ? 'Completed' : (i % 3 === 0 ? 'Confirmed' : 'Pending'),
             notes: '',
+            departmentId: 'demo-ter',
             clinicId: 'demo-clinic-1',
         } as Appointment);
     });
