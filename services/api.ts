@@ -345,25 +345,84 @@ const DEMO_PAYROLL_RUNS: any[] = [];
 /* Oylik hisobi: shifokorning ULUSHI davr ichida to'langan summadan
    foizi bo'yicha. Demoda ham xuddi shu mantiq — raqam o'ylab topilmaydi,
    demo tranzaksiyalaridan sanaladi. */
-const demoPayroll = (from: string, to: string) => {
+/* Shifokor ulushi. Interfeys KUTGAN shakl aniq: `Payroll.tsx` har qatordan
+   `staffName`, `paidBase`, `items[]` va `accrued` ni o'qiydi, `FinanceReport`
+   esa boshqa — `{ doctors, totals }` — shaklni kutadi. Ilgari bu yerda bitta
+   umumiy javob qaytarardi va u ikkalasiga ham to'g'ri kelmasdi: «Ulush»
+   vkladkasi `l.items.length` da yiqilardi (items YO'Q edi).
+
+   Hisob mantiqi haqiqiysi bilan bir xil: ulush faqat TO'LANGAN xizmatdan
+   va faqat shifokor ko'rsatilgan qatordan hisoblanadi. */
+const demoDoctorLines = (from: string, to: string) => {
     const paid = DEMO_TRANSACTIONS.filter(t => t.status === 'Paid' && inRange(t.date as any, from, to));
-    const lines = DEMO_DOCTORS.map(d => {
+    return DEMO_DOCTORS.map(d => {
         const own = paid.filter(t => (t as any).doctorId === d.id);
-        const revenue = own.reduce((s, t) => s + (t.amount || 0), 0);
         const percent = d.percentage || 0;
-        const total = Math.round(revenue * percent / 100);
+        const items = own.map(t => ({
+            name: t.service || 'Xizmat',
+            paid: t.amount || 0,
+            percent,
+            basis: 'xizmat',
+            share: Math.round((t.amount || 0) * percent / 100),
+        }));
+        const paidBase = items.reduce((s, i) => s + i.paid, 0);
         return {
-            id: `demo-line-${d.id}`, doctorId: d.id,
-            doctorName: `${d.firstName} ${d.lastName}`,
-            revenue, percent, total, paid: 0, status: 'Pending',
+            doctorId: d.id,
+            staffName: `${d.firstName} ${d.lastName}`,
+            paidBase,
+            refunded: 0,
+            items,
+            accrued: items.reduce((s, i) => s + i.share, 0),
+            patientCount: new Set(own.map(t => (t as any).patientId)).size,
         };
-    });
+    }).filter(l => l.items.length > 0);
+};
+
+/** `payroll.preview` shakli. */
+const demoPayrollPreview = (from: string, to: string) => {
+    const lines = demoDoctorLines(from, to);
     return {
         periodFrom: from, periodTo: to,
         lines,
+        total: lines.reduce((s, l) => s + l.accrued, 0),
+    };
+};
+
+/** Vedomost qatorlari — `openRun.lines` shakli (`detail` ichida tafsilot). */
+const demoRunLines = (from: string, to: string) =>
+    demoDoctorLines(from, to).map(l => ({
+        id: `demo-line-${l.doctorId}`,
+        doctorId: l.doctorId,
+        staffName: l.staffName,
+        accrued: l.accrued,
+        paid: 0,
+        detail: { paidBase: l.paidBase, refunded: l.refunded, items: l.items },
+    }));
+
+/** `reports.doctors` shakli — `FinanceReport` uchun. */
+const demoDoctorsReport = (from: string, to: string) => {
+    const charged = DEMO_TRANSACTIONS.filter(t => inRange(t.date as any, from, to));
+    const doctors = demoDoctorLines(from, to).map(l => {
+        const all = charged.filter(t => (t as any).doctorId === l.doctorId);
+        const revenue = all.reduce((s, t) => s + (t.amount || 0), 0);
+        return {
+            doctorId: l.doctorId,
+            name: l.staffName,
+            revenue,
+            paid: l.paidBase,
+            due: revenue - l.paidBase,
+            patientCount: l.patientCount,
+            avgCheck: l.patientCount ? Math.round(l.paidBase / l.patientCount) : 0,
+            accrued: l.accrued,
+        };
+    });
+    return {
+        doctors,
         totals: {
-            revenue: lines.reduce((s, l) => s + l.revenue, 0),
-            payout: lines.reduce((s, l) => s + l.total, 0),
+            revenue: doctors.reduce((s, d) => s + d.revenue, 0),
+            paid: doctors.reduce((s, d) => s + d.paid, 0),
+            due: doctors.reduce((s, d) => s + d.due, 0),
+            accrued: doctors.reduce((s, d) => s + d.accrued, 0),
         },
     };
 };
@@ -1852,7 +1911,7 @@ export const api = {
             return fetchJson<any>(`/reports/writeoffs?from=${from}&to=${to}`);
         },
         doctors: (from: string, to: string) => {
-            if (isDemoMode()) return demoRead<any>(demoPayroll(from, to));
+            if (isDemoMode()) return demoRead<any>(demoDoctorsReport(from, to));
             return fetchJson<any>(`/reports/doctors?from=${from}&to=${to}`);
         },
         departmentsReport: (from: string, to: string) => {
@@ -1976,7 +2035,7 @@ export const api = {
 
         /** Vedomost yaratmasdan raqamni ko'rish */
         preview: (from: string, to: string) => {
-            if (isDemoMode()) return demoRead<any>(demoPayroll(from, to));
+            if (isDemoMode()) return demoRead<any>(demoPayrollPreview(from, to));
             return fetchJson<any>(`/payroll/preview?from=${from}&to=${to}`);
         },
         runs: () => {
@@ -1995,7 +2054,9 @@ export const api = {
                 const run = {
                     id: `demo-run-${Date.now()}`, note: note || '',
                     status: 'Draft', createdAt: new Date().toISOString(),
-                    ...demoPayroll(periodFrom, periodTo),
+                    createdByName: 'Demo Admin',
+                    periodFrom, periodTo,
+                    lines: demoRunLines(periodFrom, periodTo),
                 };
                 DEMO_PAYROLL_RUNS.unshift(run);
                 return demoRead<any>(run);
@@ -2005,7 +2066,7 @@ export const api = {
         approve: (id: string) => {
             if (isDemoMode()) {
                 const r = DEMO_PAYROLL_RUNS.find(x => x.id === id);
-                if (r) r.status = 'Approved';
+                if (r) { r.status = 'Approved'; r.approvedAt = new Date().toISOString(); r.approvedByName = 'Demo Admin'; }
                 return demoRead<any>(r);
             }
             return fetchJson<any>(`/payroll/runs/${id}/approve`, { method: 'POST' });
@@ -2021,7 +2082,7 @@ export const api = {
         payLine: (lineId: string, data?: { amount?: number; method?: string }) => {
             if (isDemoMode()) {
                 DEMO_PAYROLL_RUNS.forEach(r => (r.lines || []).forEach((l: any) => {
-                    if (l.id === lineId) { l.paid = data?.amount ?? l.total; l.status = 'Paid'; }
+                    if (l.id === lineId) { l.paid = data?.amount ?? l.accrued; l.status = 'Paid'; }
                 }));
                 return demoRead<any>({ success: true });
             }

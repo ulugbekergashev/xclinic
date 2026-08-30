@@ -530,7 +530,6 @@ export const Calendar: React.FC<CalendarProps> = ({
      chiziqqa aylanadi (kun qanchalik band ekani baribir ko'rinadi),
      ism esa sichqoncha ustiga kelganda chiqadi. Ismlarni ro'yxat
      bo'lib o'qish uchun shifokor tanlanadi — o'shanda ustun bo'linmaydi. */
-  const weekAll = view === 'week' && !doctorFilter && activeDoctors.length > 1;
 
   /* USTUNLAR — KLASS EMAS, INLINE STIL.
 
@@ -942,18 +941,6 @@ Baribir yozilsinmi?`
           </button>
         )}
       </div>
-
-      {weekAll && (
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 mb-1 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-900 dark:text-amber-200">
-          <span className="font-medium">Hafta ko'rinishida {activeDoctors.length} ta shifokor birga ko'rsatilyapti.</span>
-          <span className="opacity-80">Bir vaqtga to'g'ri kelganlaridan bittasi ko'rinadi, qolgani «+N» yorlig'iga yig'iladi — ustiga bosing.</span>
-          <span className="opacity-80">Bitta shifokorning jadvalini to'liq ko'rish uchun yuqoridan uni tanlang yoki</span>
-          <button type="button" onClick={() => setView('day')}
-            className="font-semibold underline underline-offset-2 hover:no-underline">
-            kunlik ko'rinishga o'ting
-          </button>
-        </div>
-      )}
 
       {view === 'report' ? (
         <AttendanceReport data={report} busy={reportBusy} days={reportDays} onDays={setReportDays} error={reportError} />
