@@ -4,7 +4,7 @@
    MUAMMO. Kod bazasida 88 ta `alert()` bor edi. `alert` brauzerning
    BLOKLOVCHI oynasi: u chiqqanda butun interfeys javob bermay qoladi,
    uni stillash mumkin emas, va u ko'pincha texnik matn ko'rsatardi —
-   «.env faylida FACEBOOK_APP_ID ni kiriting» (audit B-06). Registrator
+   «.env faylida API kalitini kiriting» (audit B-06). Registrator
    `.env` nima ekanini bilmaydi.
 
    Toast mexanizmi (`App.tsx` dagi `addToast`) allaqachon yozilgan va
@@ -60,7 +60,7 @@ export const toast = {
 
 /* ─── Xato matnini foydalanuvchi tiliga o'girish ─────────────────────────────
 
-   Audit B-06: «.env faylida FACEBOOK_APP_ID ni kiriting» — bu dasturchi
+   Audit B-06: «.env faylida API kalitini kiriting» — bu dasturchi
    uchun yozilgan matn, registrator uchun emas. Server matnlari sekin-asta
    tuzatiladi, lekin eskilari hali kelib turadi; shuning uchun eng
    ko'p uchraydiganlari shu yerda tarjima qilinadi.
@@ -68,10 +68,6 @@ export const toast = {
    Ro'yxatda topilmagan matn O'ZGARISHSIZ o'tadi: tanimagan xatoni
    «Xatolik yuz berdi» ga almashtirish sababni yo'qotadi. */
 const FRIENDLY: { match: RegExp; text: string }[] = [
-    {
-        match: /FACEBOOK_APP_ID|facebook.*\.env|\.env.*facebook/i,
-        text: 'Facebook integratsiyasi hali sozlanmagan — Sozlamalar → Lid integratsiyasi',
-    },
     {
         match: /API kalit|API key.*not (set|configured)|\.env.*API/i,
         text: 'AI yordamchi sozlanmagan — Sozlamalar → Integratsiyalar',

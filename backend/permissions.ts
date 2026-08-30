@@ -69,9 +69,6 @@ export const PUBLIC_PATHS: { method: string; path: string }[] = [
     { method: 'POST', path: '/api/auth/logout' },
     { method: 'POST', path: '/api/public/demo-request' },
     { method: 'POST', path: '/api/public/leads' },
-    // Facebook webhook'i Facebook serveridan keladi — token bo'lmaydi,
-    // o'rniga `X-Hub-Signature` tekshiriladi.
-    { method: 'POST', path: '/api/facebook/webhook' },
     // AI maslahatchi demo sahifasida ishlatiladi.
     { method: 'POST', path: '/api/ai/dental-advisor' },
 ];
@@ -301,12 +298,6 @@ export const RULES: Rule[] = [
     /* ─── Integratsiyalar va API kalitlari — faqat ega ─────────────────────── */
     { method: 'POST', path: '/api/leads/api-key', roles: owner() },
     { method: 'DELETE', path: '/api/leads/api-key', roles: owner() },
-    { method: 'POST', path: '/api/facebook/save-config', roles: owner() },
-    { method: 'POST', path: '/api/facebook/select-page', roles: owner() },
-    { method: 'POST', path: '/api/facebook/disconnect', roles: owner() },
-    { method: 'POST', path: '/api/admin/facebook/select-page', roles: owner() },
-    { method: 'POST', path: '/api/admin/facebook/disconnect', roles: owner() },
-    { method: 'GET', path: '/api/admin/facebook/auth-url', roles: owner() },
     { method: 'PUT', path: '/api/admin/remote-access', roles: owner() },
 
     /* ─── Zaxira nusxa va tiklash — faqat ega ──────────────────────────────

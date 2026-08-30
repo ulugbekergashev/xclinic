@@ -238,7 +238,6 @@ export const translations = {
     'settings.tabs.receptionists': 'Resepshnlar',
     'settings.tabs.labTechnicians': 'Texniklar',
     'settings.tabs.bot': 'Telegram Bot',
-    'settings.tabs.facebook': 'Facebook',
 
     // Settings General
     'settings.general.myProfile': 'Mening Profilim',
@@ -309,16 +308,6 @@ export const translations = {
     'settings.bot.activeDesc': 'Siz har kuni soat 22:00 da hisobotlarni qabul qilasiz.',
     'settings.bot.notConnected': 'Bot hali ulanmagan',
 
-    // Facebook
-    'settings.facebook.title': 'Facebook / Instagram Lids',
-    'settings.facebook.connect': 'Facebook-ni ulash',
-    'settings.facebook.disconnect': 'Facebook-ni uzish',
-    'settings.facebook.selectPage': 'Sahifani tanlang',
-    'settings.facebook.connected': 'Sahifa bog\'langan',
-    'settings.facebook.connecting': 'Bog\'lanmoqda...',
-    'settings.facebook.success': 'Sahifa muvaffaqiyatli bog\'landi!',
-    'settings.facebook.error': 'Facebook-ga bog\'lanishda xatolik yuz berdi',
-    'settings.facebook.confirmDisconnect': 'Facebook-ni uzmoqchimisiz?',
 
     // SuperAdmin
     'superAdmin.title': 'SaaS Boshqaruv Paneli (v2.0)',
@@ -795,7 +784,6 @@ export const translations = {
     // Leads
     'leads.title': 'Lidlar Voronkasi',
     'leads.subtitle': 'Potensial mijozlar bilan ishlash',
-    'leads.connectFb': 'Facebook-ni ulash',
     'leads.newLead': 'Yangi Lid',
     'leads.search': 'Qidiruv...',
     'leads.empty': 'Bo\'sh',
@@ -871,18 +859,7 @@ export const translations = {
     'leads.convertModal.duration': "Davomiylik (daq)",
     'leads.convertModal.cancel': "Bekor qilish",
     'leads.convertModal.convert': "Mijozga Aylantirish",
-    'leads.fbModal.title': "Facebook Sahifasini Tanlang",
-    'leads.fbModal.subtitle': "Lidlar tushadigan sahifani biriktiring",
-    'leads.fbModal.noPages': "Hech qanday sahifa topilmadi",
-    'leads.fbModal.close': "Yopish",
     'leads.alerts.selectDoctor': "Iltimos, shifokorni tanlang!",
-    'leads.alerts.fbFetchError': "Facebook sahifalarini yuklashda xatolik yuz berdi",
-    'leads.alerts.fbConnectError': "Facebook-ga ulanishda xatolik yuz berdi",
-    'leads.alerts.fbConfigError': "Klinika ID topilmadi. Tizimdan chiqib qaytadan kiring.",
-    'leads.alerts.fbSuccess': "Sahifa muvaffaqiyatli bog'landi!",
-    'leads.alerts.fbDisconnectConfirm': "Facebook bog'lanishini uzishni tasdiqlaysizmi?",
-    'leads.success.connectedTitle': "Muvaffaqiyatli ulandi!",
-    'leads.success.connectedDesc': "Facebook hisobingiz tizimga bog'landi. Ushbu oyna hozir yopiladi...",
     'leads.sources.instagram': 'Instagram',
     'leads.sources.telegram': 'Telegram',
     'leads.sources.recommendation': 'Tavsiya',
@@ -1318,7 +1295,6 @@ export const translations = {
     'settings.tabs.receptionists': 'Ресепшн',
     'settings.tabs.labTechnicians': 'Техники',
     'settings.tabs.bot': 'Telegram Bot',
-    'settings.tabs.facebook': 'Facebook',
 
     // Settings General
     'settings.general.myProfile': 'Мой профиль',
@@ -1389,16 +1365,6 @@ export const translations = {
     'settings.bot.activeDesc': 'Вы будете получать отчеты каждый день в 22:00.',
     'settings.bot.notConnected': 'Бот еще не подключен',
 
-    // Facebook
-    'settings.facebook.title': 'Facebook / Instagram Лиды',
-    'settings.facebook.connect': 'Подключить Facebook',
-    'settings.facebook.disconnect': 'Отключить Facebook',
-    'settings.facebook.selectPage': 'Выберите страницу',
-    'settings.facebook.connected': 'Страница подключена',
-    'settings.facebook.connecting': 'Подключение...',
-    'settings.facebook.success': 'Страница успешно подключена!',
-    'settings.facebook.error': 'Ошибка при подключении к Facebook',
-    'settings.facebook.confirmDisconnect': 'Вы уверены, что хотите отключить Facebook?',
 
     // SuperAdmin
     'superAdmin.title': 'Панель управления SaaS (v2.0)',
@@ -1819,7 +1785,6 @@ export const translations = {
     // Leads
     'leads.title': 'Воронка Лидов',
     'leads.subtitle': 'Работа с потенциальными клиентами',
-    'leads.connectFb': 'Подключить Facebook',
     'leads.newLead': 'Новый Лид',
     'leads.search': 'Поиск...',
     'leads.empty': 'Пусто',
@@ -1895,18 +1860,7 @@ export const translations = {
     'leads.convertModal.duration': 'Длительность (мин)',
     'leads.convertModal.cancel': 'Отмена',
     'leads.convertModal.convert': 'Превратить в пациента',
-    'leads.fbModal.title': 'Выберите страницу Facebook',
-    'leads.fbModal.subtitle': 'Привяжите страницу для получения лидов',
-    'leads.fbModal.noPages': 'Страницы не найдены',
-    'leads.fbModal.close': 'Закрыть',
     'leads.alerts.selectDoctor': 'Пожалуйста, выберите врача!',
-    'leads.alerts.fbFetchError': 'Ошибка при загрузке страниц Facebook',
-    'leads.alerts.fbConnectError': 'Ошибка при подключении к Facebook',
-    'leads.alerts.fbConfigError': 'ID клиники не найден. Пожалуйста, перезайдите в систему.',
-    'leads.alerts.fbSuccess': 'Страница успешно привязана!',
-    'leads.alerts.fbDisconnectConfirm': 'Вы уверены, что хотите отключить Facebook?',
-    'leads.success.connectedTitle': 'Успешно подключено!',
-    'leads.success.connectedDesc': 'Ваш аккаунт Facebook привязан. Это окно сейчас закроется...',
     'leads.sources.instagram': 'Instagram',
     'leads.sources.telegram': 'Telegram',
     'leads.sources.recommendation': 'Рекомендация',

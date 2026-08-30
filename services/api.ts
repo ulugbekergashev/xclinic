@@ -461,8 +461,9 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_R
 
            Ilgari shart `status >= 500` edi, ya'ni HAR QANDAY server
            xatosi uch marta qayta urinilardi. Audit shuni ko'rgan:
-           Facebook so'rovi 500 qaytarganda front uch marta urilib, ~7
-           soniya kutgan va shundan keyingina xabar chiqqan (B-06).
+           tashqi integratsiya so'rovi 500 qaytarganda front uch marta
+           urilib, ~7 soniya kutgan va shundan keyingina xabar chiqqan
+           (B-06).
 
            500 va 501 ni qayta urinishning ma'nosi yo'q:
              500 — dasturdagi xato yoki sozlanmagan holat; ikkinchi
@@ -1503,23 +1504,6 @@ export const api = {
             if (isDemoMode()) return Promise.resolve({ success: true as const });
             return fetchJson<{ success: true }>('/admin/lead-api-key', { method: 'DELETE' });
         },
-    },
-    // Platforma (SuperAdmin) Facebook integratsiyasi — lidlar DemoRequest'ga tushadi
-    adminFacebook: {
-        status: () =>
-            fetchJson<{ connected: boolean; pageName: string | null; hasUserToken: boolean }>('/admin/facebook/status'),
-        getAuthUrl: () =>
-            fetchJson<{ url: string }>('/admin/facebook/auth-url'),
-        getPages: () =>
-            fetchJson<any[]>('/admin/facebook/pages'),
-        selectPage: (data: { pageId: string; pageAccessToken: string; pageName: string }) =>
-            fetchJson<{ success: true }>('/admin/facebook/select-page', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            }),
-        disconnect: () =>
-            fetchJson<{ success: true }>('/admin/facebook/disconnect', { method: 'POST' }),
     },
     diagnoses: {
         searchCodes: (query: string) => fetchJson<ICD10Code[]>(`/icd10?query=${query}`),
@@ -2897,55 +2881,6 @@ export const api = {
             if (isDemoMode()) return Promise.resolve({ success: true as const });
             return fetchJson<{ success: true }>(`/leads/api-key?clinicId=${clinicId}`, {
                 method: 'DELETE',
-            });
-        }
-    },
-    facebook: {
-        checkConfig: () => {
-            return fetchJson<{ isConfigured: boolean, appId: string | null, redirectUri: string }>('/facebook/config-check');
-        },
-        saveConfig: (data: { appId: string, appSecret: string }) => {
-            return fetchJson<{ success: true }>('/facebook/save-config', {
-                method: 'POST',
-                body: JSON.stringify(data)
-            });
-        },
-        getAuthUrl: (clinicId: string) => {
-            return fetchJson<{ url: string }>(`/facebook/auth-url?clinicId=${clinicId}`);
-        },
-        getPages: (clinicId: string) => {
-            if (isDemoMode()) {
-                return Promise.resolve([
-                    { id: '1', name: 'Biznes Sahifa (Test)', access_token: 'dummy_token' },
-                    { id: '2', name: 'Klinika Sahifasi (Test)', access_token: 'dummy_token_2' }
-                ]);
-            }
-            return fetchJson<any[]>(`/facebook/pages?clinicId=${clinicId}`);
-        },
-        selectPage: (data: { clinicId: string, pageId: string, pageAccessToken: string, pageName: string }) => {
-            if (isDemoMode()) {
-                DEMO_CLINIC.facebookPageId = data.pageId;
-                DEMO_CLINIC.facebookPageName = data.pageName;
-                DEMO_CLINIC.facebookPageAccessToken = data.pageAccessToken;
-                saveDemoData();
-                return Promise.resolve({ success: true as const });
-            }
-            return fetchJson<{ success: true }>('/facebook/select-page', {
-                method: 'POST',
-                body: JSON.stringify(data)
-            });
-        },
-        disconnect: (clinicId: string) => {
-            if (isDemoMode()) {
-                DEMO_CLINIC.facebookPageId = null as any;
-                DEMO_CLINIC.facebookPageName = null as any;
-                DEMO_CLINIC.facebookPageAccessToken = null as any;
-                saveDemoData();
-                return Promise.resolve({ success: true as const });
-            }
-            return fetchJson<{ success: true }>('/facebook/disconnect', {
-                method: 'POST',
-                body: JSON.stringify({ clinicId })
             });
         }
     },

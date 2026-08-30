@@ -5,7 +5,7 @@ import { toast } from '../services/toast';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
 import { UserRole, Doctor, Receptionist, Clinic, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
-import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Facebook, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History } from 'lucide-react';
+import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History } from 'lucide-react';
 import { api, API_URL, getAuthToken, isDemoMode } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
@@ -79,7 +79,7 @@ export const Settings: React.FC<SettingsProps> = ({
    userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, reviews
 }) => {
    const { t } = useLanguage();
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'facebook' | 'dmed' | 'access' | 'accessLog' | 'leadApi' | 'maintenance' | 'departments'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'leadApi' | 'maintenance' | 'departments'>('services');
 
    // Tashqi lid manbalari (yuboraman.uz va h.k.) uchun integratsiya kaliti
    const [leadApiInfo, setLeadApiInfo] = useState<LeadApiKeyInfo | null>(null);
@@ -262,10 +262,6 @@ export const Settings: React.FC<SettingsProps> = ({
    const [botLogs, setBotLogs] = useState<any[]>([]);
    const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
-   // Facebook State
-   const [facebookPages, setFacebookPages] = useState<any[]>([]);
-   const [isFBPageModalOpen, setIsFBPageModalOpen] = useState(false);
-   const [isFBLoading, setIsFBLoading] = useState(false);
 
    // SMS Settings State
    const [smsForm, setSmsForm] = useState({
@@ -424,80 +420,6 @@ export const Settings: React.FC<SettingsProps> = ({
       };
       fetchBotUsername();
    }, [currentClinic?.id, currentClinic?.botToken]);
-
-   // Handle Facebook Redirect success
-   React.useEffect(() => {
-       const urlParams = new URLSearchParams(window.location.search);
-       if (urlParams.get('connected') === 'true' && urlParams.get('tab') === 'facebook') {
-           setActiveTab('facebook');
-           handleFetchFBPages();
-           // Clear search params
-           window.history.replaceState({}, '', window.location.pathname);
-       }
-   }, []);
-
-   const handleFetchFBPages = async () => {
-       if (!currentClinic?.id) return;
-       setIsFBLoading(true);
-       try {
-           const pages = await api.facebook.getPages(currentClinic.id);
-           setFacebookPages(pages);
-           setIsFBPageModalOpen(true);
-       } catch (error) {
-           console.error('Failed to fetch FB pages:', error);
-           toast.error('Facebook sahifalarini yuklashda xatolik yuz berdi');
-       } finally {
-           setIsFBLoading(false);
-       }
-   };
-
-   const handleConnectFB = async () => {
-       if (!currentClinic?.id) return;
-       try {
-           const { url } = await api.facebook.getAuthUrl(currentClinic.id);
-           const width = 700;
-           const height = 850;
-           const left = Math.max(0, (window.screen.width / 2) - (width / 2));
-           const top = Math.max(0, (window.screen.height / 2) - (height / 2));
-           window.open(
-               url,
-               'FacebookLogin',
-               `width=${width},height=${height},left=${left},top=${top},status=yes,scrollbars=yes`
-           );
-       } catch (error) {
-           console.error('Failed to get FB auth URL:', error);
-           toast.error('Facebook-ga bog\'lanishda xatolik yuz berdi');
-       }
-   };
-
-   const handleSelectFBPage = async (page: any) => {
-       if (!currentClinic?.id) return;
-       try {
-           await api.facebook.selectPage({
-               clinicId: currentClinic.id,
-               pageId: page.id,
-               pageAccessToken: page.access_token,
-               pageName: page.name
-           });
-           setIsFBPageModalOpen(false);
-           toast.success('Sahifa muvaffaqiyatli bog\'landi!');
-           window.location.reload(); // Refresh to get updated clinic data
-       } catch (error) {
-           console.error('Failed to select FB page:', error);
-           toast.error('Sahifani saqlashda xatolik yuz berdi');
-       }
-   };
-
-   const handleDisconnectFB = async () => {
-       if (!currentClinic?.id || !await confirmAction({ title: 'Facebook-ni uzmoqchimisiz?', danger: true, confirmLabel: "O'chirish" })) return;
-       try {
-           await api.facebook.disconnect(currentClinic.id);
-           toast.success('Facebook muvaffaqiyatli uzildi');
-           window.location.reload();
-       } catch (error) {
-           console.error('Failed to disconnect FB:', error);
-       }
-   };
 
    // Categories effect removed as it's now in App.tsx
 
@@ -3236,47 +3158,6 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   >
                      Ha, O'chirish
                   </Button>
-               </div>
-            </div>
-         </Modal>
-         {/* Facebook Page Selection Modal */}
-         <Modal isOpen={isFBPageModalOpen} onClose={() => setIsFBPageModalOpen(false)} title="Facebook Sahifasini Tanlang">
-            <div className="space-y-4">
-               <p className="text-sm text-gray-500 mb-4">
-                  Quyidagi sahifalardan birini tanlang. Ushbu sahifaga kelgan arizalar tizimga avtomatik tushadi.
-               </p>
-               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
-                  {facebookPages.map(page => (
-                     <button
-                        key={page.id}
-                        onClick={() => handleSelectFBPage(page)}
-                        className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 hover:bg-primary-50 dark:hover:bg-primary-900/30 border border-gray-100 dark:border-gray-700 rounded-xl transition-all group"
-                     >
-                        <div className="flex items-center gap-3 text-left">
-                           <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center text-primary-600 dark:text-primary-400">
-                              <Facebook className="w-6 h-6" />
-                           </div>
-                           <div>
-                              <div className="font-bold text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                                 {page.name}
-                               </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">ID: {page.id}</div>
-                           </div>
-                        </div>
-                        <div className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 flex items-center justify-center group-hover:border-primary-500 transition-colors">
-                           <Plus className="w-4 h-4 text-gray-400 group-hover:text-primary-500" />
-                        </div>
-                     </button>
-                  ))}
-                  {facebookPages.length === 0 && (
-                     <div className="py-8 text-center bg-gray-50 dark:bg-gray-800/50 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700">
-                        <Facebook className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500">Hech qanday sahifa topilmadi</p>
-                     </div>
-                  )}
-               </div>
-               <div className="flex justify-end pt-4">
-                  <Button variant="secondary" onClick={() => setIsFBPageModalOpen(false)}>Yopish</Button>
                </div>
             </div>
          </Modal>

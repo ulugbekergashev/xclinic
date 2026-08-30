@@ -558,11 +558,13 @@ export let DEMO_INVENTORY_LOGS: InventoryLog[] = savedData?.logs || [
 export let DEMO_LEADS: Lead[] = savedData?.leads || [
     {
         id: 'demo-lead-1',
-        name: 'Facebook Mijoz (Test)',
+        name: 'Shahnoza Yusupova',
         phone: '+998 90 123 45 67',
         service: 'Implantatsiya',
-        source: 'Facebook',
-        notes: 'Facebook-dan kelgan test arizasi',
+        /* Manba REKLAMA KANALI, integratsiya emas: lid qo'lda kiritiladi.
+           Facebook integratsiyasining o'zi olib tashlangan. */
+        source: 'Instagram',
+        notes: "Reklamani ko'rib qo'ng'iroq qildi, narx so'radi",
         status: 'New',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

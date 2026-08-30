@@ -7,7 +7,7 @@ import { toast } from '../services/toast';
 import { todayISO } from '../utils/dateUtils';
 import {
     Search, Plus, MoreHorizontal, MessageSquare, Phone, Calendar as CalendarIcon,
-    Facebook, RefreshCw, CheckCircle, X, ExternalLink, Trash2, Filter,
+    RefreshCw, CheckCircle, X, ExternalLink, Trash2, Filter,
     ChevronDown, UserPlus, ArrowRight, Settings, Activity, Shield, Eye,
     Building2, MapPin
 } from 'lucide-react';
@@ -118,9 +118,6 @@ export const Leads: React.FC<LeadsProps> = ({
     const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
-    const [isFBLoading, setIsFBLoading] = useState(false);
-    const [facebookPages, setFacebookPages] = useState<any[]>([]);
-    const [isFBPageModalOpen, setIsFBPageModalOpen] = useState(false);
     const [selectedLeadForDetail, setSelectedLeadForDetail] = useState<Lead | null>(null);
 
     // Form State
@@ -234,131 +231,6 @@ export const Leads: React.FC<LeadsProps> = ({
         setDraggedLeadId(null);
     };
 
-    // Handle Facebook Redirect success (for popup flow)
-    React.useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            if (event.data?.type === 'FB_CONNECTED') {
-                handleFetchFBPages();
-            }
-        };
-
-        window.addEventListener('message', handleMessage);
-
-        // Also check if this instance IS a popup
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('connected') === 'true' && window.opener) {
-            // Give user time to see the success message
-            setTimeout(() => {
-                window.opener.postMessage({ type: 'FB_CONNECTED' }, '*');
-                window.close();
-            }, 2000);
-        }
-
-        return () => window.removeEventListener('message', handleMessage);
-    }, [currentClinic?.id]);
-
-    // Handle initial 'connected' param if page was reloaded manually (fallback)
-    React.useEffect(() => {
-        if (!currentClinic?.id) return;
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('connected') === 'true' && !window.opener) {
-            handleFetchFBPages();
-            window.history.replaceState({}, '', window.location.pathname);
-        }
-    }, [currentClinic?.id]);
-
-    const handleFetchFBPages = async () => {
-        if (!currentClinic?.id) return;
-        setIsFBLoading(true);
-        try {
-            const pages = await api.facebook.getPages(currentClinic.id);
-            setFacebookPages(pages);
-            setIsFBPageModalOpen(true);
-        } catch (error: any) {
-            console.error('Failed to fetch FB pages:', error);
-            toast.error(`${t('leads.alerts.fbFetchError')}: ${error.message || ''}`);
-        } finally {
-            setIsFBLoading(false);
-        }
-    };
-
-    const handleConnectFB = async () => {
-        if (!currentClinic?.id) {
-            toast.error(t('leads.alerts.fbConfigError'));
-            return;
-        }
-
-        // In demo mode, skip real Facebook OAuth and show mock page selection
-        if (isDemoMode()) {
-            setIsFBLoading(true);
-            try {
-                const pages = await api.facebook.getPages(currentClinic.id);
-                setFacebookPages(pages);
-                setIsFBPageModalOpen(true);
-            } catch (error: any) {
-                console.error('FB Demo pages error:', error);
-                toast.error(`${t('leads.alerts.fbFetchError')}: ${error.message || ''}`);
-            } finally {
-                setIsFBLoading(false);
-            }
-            return;
-        }
-        
-        setIsFBLoading(true);
-        try {
-            const { url } = await api.facebook.getAuthUrl(currentClinic.id);
-            const width = 600;
-            const height = 700;
-            const left = Math.max(0, (window.screen.width / 2) - (width / 2));
-            const top = Math.max(0, (window.screen.height / 2) - (height / 2));
-            window.open(
-                url,
-                'FacebookLogin',
-                `width=700,height=850,left=${left},top=${top},status=yes,scrollbars=yes`
-            );
-        } catch (error: any) {
-            console.error('FB Connect error:', error);
-            toast.error(`${t('leads.alerts.fbConnectError')}: ${error.message || ''}`);
-        } finally {
-            setIsFBLoading(false);
-        }
-    };
-
-
-    const handleSelectFBPage = async (page: any) => {
-        if (!currentClinic?.id) return;
-        try {
-            await api.facebook.selectPage({
-                clinicId: currentClinic.id,
-                pageId: page.id,
-                pageAccessToken: page.access_token,
-                pageName: page.name
-            });
-            setIsFBPageModalOpen(false);
-            toast.error(t('leads.alerts.fbSuccess'));
-            window.location.reload();
-        } catch (error) {
-            console.error('Failed to select FB page:', error);
-            toast.error(t('leads.alerts.fbFetchError'));
-        }
-    };
-
-    // For popup flow success/auth UI
-    const urlParams = new URLSearchParams(window.location.search);
-    const isPopupSuccess = urlParams.get('connected') === 'true' && !!window.opener;
-
-    if (isPopupSuccess) {
-        return (
-            <div className="flex flex-col items-center justify-center h-screen bg-gray-50 dark:bg-gray-900 p-6 text-center">
-                <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mb-6 animate-bounce">
-                    <CheckCircle className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{t('leads.success.connectedTitle')}</h1>
-                <p className="text-gray-500 dark:text-gray-400">{t('leads.success.connectedDesc')}</p>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-6 h-full flex flex-col">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm shrink-0">
@@ -370,46 +242,6 @@ export const Leads: React.FC<LeadsProps> = ({
                         <p className="text-sm text-gray-500 mt-1">{t('leads.subtitle')}</p>
                     </div>
 
-                    {/* Facebook Integration Quick Status */}
-                    <div className="hidden lg:flex items-center gap-3 pl-4 border-l border-gray-100 dark:border-gray-700">
-                        {currentClinic?.facebookPageId ? (
-                            <div className="flex items-center gap-2 group">
-                                <div className="flex items-center gap-2 px-3 py-1.5 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-lg text-xs font-semibold border border-primary-100/50 dark:border-primary-800/50 transition-all">
-                                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
-                                    <Facebook className="w-3.5 h-3.5 fill-current" />
-                                    <span>{currentClinic.facebookPageName}</span>
-                                </div>
-                                <button
-                                    onClick={() => handleFetchFBPages()}
-                                    className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-md transition-all opacity-0 group-hover:opacity-100"
-                                    title={t('leads.tooltips.changePage')}
-                                >
-                                    <RefreshCw className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        if (await confirmAction({ title: t('leads.alerts.fbDisconnectConfirm') })) {
-                                            await api.facebook.disconnect(currentClinic!.id);
-                                            window.location.reload();
-                                        }
-                                    }}
-                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-all opacity-0 group-hover:opacity-100"
-                                    title={t('leads.tooltips.disconnect')}
-                                >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                        ) : (
-                            <button aria-label="Yangilash"
-                                onClick={handleConnectFB}
-                                disabled={isFBLoading}
-                                className="flex items-center gap-2 px-4 py-2 bg-[#1877F2] hover:bg-primary-600 text-white rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 active:scale-95"
-                            >
-                                {isFBLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Facebook className="w-4 h-4 fill-current" />}
-                                <span>{t('leads.connectFb')}</span>
-                            </button>
-                        )}
-                    </div>
                 </div>
 
                 <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -787,66 +619,6 @@ export const Leads: React.FC<LeadsProps> = ({
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
-            {/* Facebook Page Selection Modal */}
-            {isFBPageModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-2xl p-6 transform transition-all">
-                        <div className="flex items-center justify-between mb-6">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('leads.fbModal.title')}</h2>
-                                <p className="text-sm text-gray-500">{t('leads.fbModal.subtitle')}</p>
-                            </div>
-                            <button
-                                onClick={() => setIsFBPageModalOpen(false)}
-                                className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
-                            {facebookPages.map((page) => (
-                                <button
-                                    key={page.id}
-                                    onClick={() => handleSelectFBPage(page)}
-                                    className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 hover:bg-primary-50 dark:hover:bg-primary-900/30 border border-gray-100 dark:border-gray-700 rounded-xl transition-all group"
-                                >
-                                    <div className="flex items-center gap-3 text-left">
-                                        <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center text-primary-600 dark:text-primary-400">
-                                            <Facebook className="w-6 h-6" />
-                                        </div>
-                                        <div>
-                                            <div className="font-bold text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                                                {page.name}
-                                            </div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">ID: {page.id}</div>
-                                        </div>
-                                    </div>
-                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 flex items-center justify-center group-hover:border-primary-500 transition-colors">
-                                        <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-primary-500" />
-                                    </div>
-                                </button>
-                            ))}
-
-                            {facebookPages.length === 0 && (
-                                <div className="py-8 text-center bg-gray-50 dark:bg-gray-800/50 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700">
-                                    <Facebook className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                                    <p className="text-sm text-gray-500">{t('leads.fbModal.noPages')}</p>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="mt-6 pt-6 border-t dark:border-gray-700">
-                            <button
-                                onClick={() => setIsFBPageModalOpen(false)}
-                                className="w-full py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 font-bold transition-colors"
-                            >
-                                {t('leads.fbModal.close')}
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}

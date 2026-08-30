@@ -510,9 +510,6 @@ export interface Clinic {
   botToken?: string; // Telegram bot token
   customPrice?: number; // Optional custom pricing for special offers
   subscriptionType: 'Paid' | 'Trial';
-  facebookPageId?: string;
-  facebookPageAccessToken?: string;
-  facebookPageName?: string;
   startHour?: number;
   endHour?: number;
   enableReceipts?: boolean;
