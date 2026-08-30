@@ -38,6 +38,27 @@ cd backend && npm run bundle && cd ..
 npm run electron:build        # dist-electron/ ichida NSIS o'rnatuvchi
 ```
 
+`npm run bundle` uch ishni bajaradi: server kodini bitta faylga yig'adi,
+`starter.db` ni yasaydi (faqat sxema, ma'lumotsiz) va migratsiyalarni
+paket yoniga ko'chiradi. Ikkalasisiz o'rnatilgan dastur ishga tushmaydi.
+
+Ikonka `build/icon.ico` dan olinadi. Fayl bo'lmasa electron-builder
+OGOHLANTIRISH yozib, standart Electron belgisini qo'yadi:
+
+```bash
+node scripts/makeIcon.mjs     # public/logo-icon.png dan yasaydi
+```
+
+**Tashqi tarmoqqa ulanish (ixtiyoriy).** `resources/cloudflared.exe`
+repozitoriyda yo'q. Usiz dastur ishlaydi — faqat mahalliy tarmoq bilan
+cheklanadi va jurnalga «cloudflared.exe topilmadi» yoziladi. Internet
+orqali kirish kerak bo'lsa, faylni Cloudflare saytidan olib shu yerga
+qo'ying.
+
+**Dastur ishga tushmasa** — jurnal shu yerda:
+`%APPDATA%\XClinic\logs\main.log`. Windows'da GUI dasturi konsolga
+yozmaydi, shuning uchun sababni faqat shu fayldan bilish mumkin.
+
 ---
 
 ## Klinikaga sotish va o'rnatish

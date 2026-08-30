@@ -3,7 +3,7 @@ dist/
 dist-electron/
 dist-bundle/
 electron-main/
-build/
+build/*
 
 # Muhit va sirlar
 .env
@@ -38,3 +38,9 @@ _*
 # Playwright sinovlarining chiqishi (suratlar, izlar)
 test-results/
 playwright-report/
+
+# Dastur ikonkasi build artefakti EMAS — `electron-builder` uni shu yerdan
+# oladi va fayl bo'lmasa standart Electron belgisini qo'yadi. Ya'ni u
+# repozitoriyda bo'lishi shart, aks holda boshqa kompyuterda yig'ilgan
+# o'rnatuvchi boshqa birovning logosi bilan chiqadi.
+!build/icon.ico

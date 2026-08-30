@@ -8,7 +8,7 @@
     "dev": "ts-node server.ts",
     "build": "tsc",
     "start": "node dist/backend/server.js",
-    "bundle": "prisma generate && ncc build server.ts -o dist-bundle --external prisma --external @prisma/client && node scripts/copy-prisma-engine.js",
+    "bundle": "prisma generate && ncc build server.ts -o dist-bundle --external prisma --external @prisma/client && node scripts/copy-prisma-engine.js && ts-node --transpile-only scripts/makeStarterDb.ts && node scripts/copy-starter-db.js && node ../scripts/markCjs.mjs dist-bundle",
     "db:push": "prisma db push --schema=prisma/schema.prisma",
     "db:studio": "prisma studio --schema=prisma/schema.prisma",
     "postinstall": "prisma generate",

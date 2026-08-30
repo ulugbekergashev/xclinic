@@ -14,6 +14,79 @@ let isQuitting = false;
 let backendErrorOutput = '';
 
 const isDev = process.env.NODE_ENV === 'development';
+
+/* ── FAYL JURNALI ────────────────────────────────────────────────────────
+   Windows'da GUI dasturi konsolga yozmaydi: `console.log` hech qayerga
+   bormaydi. Ya'ni paketlangan nusxa ishga tushmasa, sababini bilishning
+   HECH QANDAY yo'li yo'q edi — na ekranda, na faylda.
+
+   Klinika «ochilmayapti» deb qo'ng'iroq qilganda, so'raladigan yagona
+   narsa shu fayl bo'ladi:
+     %APPDATA%\XClinic\logs\main.log
+
+   Jurnal `app.getPath` ishlaydigan bo'lgach ochiladi; undan oldingi
+   yozuvlar buferda saqlanib turadi va fayl ochilishi bilan tushadi. */
+let logStream: fs.WriteStream | null = null;
+const logBuffer: string[] = [];
+
+/* Jurnal MODUL YUKLANISHIDA ochiladi, `app.whenReady()` da emas.
+
+   Sabab amalda ko'rindi: paketlangan nusxa ishga tushmay, Electron ning
+   o'z «Error» oynasini ko'rsatardi. Bu oyna asosiy jarayonda modul
+   yuklanayotganda istisno bo'lganini bildiradi — ya'ni `whenReady`
+   umuman chaqirilmaydi va o'sha yerdagi jurnal hech qachon ochilmaydi.
+   Aynan diagnostika kerak bo'lgan holat yozib olinmasdan qolardi.
+
+   `app.getPath` bu bosqichda ishlamaydi, shuning uchun katalog `APPDATA`
+   dan qo'lda yig'iladi — u jarayon boshlanishidayoq mavjud. */
+function defaultUserData(): string {
+    const roaming = process.env.APPDATA
+        || path.join(process.env.USERPROFILE || process.env.HOME || '.', 'AppData', 'Roaming');
+    return path.join(roaming, 'XClinic');
+}
+
+function writeLog(level: string, args: unknown[]) {
+    const line = `[${new Date().toISOString()}] ${level} ` +
+        args.map(a => (a instanceof Error ? (a.stack || a.message) : typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+    if (logStream) logStream.write(line + '\n');
+    else logBuffer.push(line);
+}
+
+function openLog(userData: string) {
+    try {
+        const dir = path.join(userData, 'logs');
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, 'main.log');
+
+        /* Jurnal cheksiz o'smasin: 2 MB dan oshsa avvalgisi
+           `main.prev.log` ga ko'chiriladi. Ikkitasi yetarli —
+           muammo odatda oxirgi ishga tushirishda ko'rinadi. */
+        try {
+            if (fs.existsSync(file) && fs.statSync(file).size > 2 * 1024 * 1024) {
+                fs.renameSync(file, path.join(dir, 'main.prev.log'));
+            }
+        } catch { /* aylantirib bo'lmasa ham yozishda davom etamiz */ }
+
+        logStream = fs.createWriteStream(file, { flags: 'a' });
+        logStream.write(`\n=== ${new Date().toISOString()} XClinic ishga tushdi ===\n`);
+        for (const line of logBuffer) logStream.write(line + '\n');
+        logBuffer.length = 0;
+    } catch { /* jurnal ochilmasa dastur baribir ishlashi kerak */ }
+}
+
+/* `console` ni almashtiramiz — mavjud yuzlab `console.log` chaqiruvlari
+   o'zgartirilmasdan faylga tushsin. */
+const rawConsole = { log: console.log, warn: console.warn, error: console.error };
+console.log = (...a: unknown[]) => { rawConsole.log(...a); writeLog('INFO ', a); };
+console.warn = (...a: unknown[]) => { rawConsole.warn(...a); writeLog('WARN ', a); };
+console.error = (...a: unknown[]) => { rawConsole.error(...a); writeLog('ERROR', a); };
+
+/* Ushlanmagan xatolik — aynan shu holat dasturni jimgina yopadi. */
+process.on('uncaughtException', (e) => writeLog('FATAL', [e]));
+process.on('unhandledRejection', (e) => writeLog('FATAL', ['unhandledRejection', e]));
+
+openLog(defaultUserData());
+console.log('main.js yuklandi');
 const DEFAULT_BACKEND_PORT = 3001;
 const FRONTEND_PORT = 3000;
 
@@ -463,6 +536,8 @@ webPreferences: {
 }
 
 app.whenReady().then(async () => {
+    console.log(`Ishga tushmoqda: isDev=${isDev}, resourcesPath=${process.resourcesPath}`);
+
     // IPC Handlers
     ipcMain.handle('select-backup-folder', async () => {
         if (!mainWindow) return null;
@@ -498,11 +573,27 @@ app.whenReady().then(async () => {
         }
     });
 
-    const backendReady = await startBackend();
+    let backendReady = false;
+    try {
+        backendReady = await startBackend();
+    } catch (e: any) {
+        console.error('Backend ishga tushmadi:', e);
+    }
+
     if (backendReady) {
         createWindow();
         startCloudflared(app.getPath('userData'));
     } else {
+        /* Ilgari bu yerda jimgina `app.quit()` turardi: dastur ochilmay
+           yopilar, foydalanuvchi esa hech narsa ko'rmasdi. Endi sabab
+           aytiladi va jurnal fayli ko'rsatiladi. */
+        const logPath = path.join(app.getPath('userData'), 'logs', 'main.log');
+        dialog.showErrorBox(
+            'XClinic ishga tushmadi',
+            'Dastur serveri ko\'tarilmadi.\n\n' +
+            (backendErrorOutput ? backendErrorOutput.slice(-1500) + '\n\n' : '') +
+            'Batafsil ma\'lumot:\n' + logPath,
+        );
         app.quit();
     }
 });

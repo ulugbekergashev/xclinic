@@ -8,12 +8,13 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/checkI18n.mjs && vite build",
+    "build:demo": "cross-env VITE_DEMO_BUILD=true npm run build",
     "check:i18n": "node scripts/checkI18n.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --headed",
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
-    "electron:compile": "tsc -p tsconfig.electron.json",
+    "electron:compile": "tsc -p tsconfig.electron.json && node scripts/markCjs.mjs electron-main",
     "electron:build": "npm run build && npm run electron:compile && electron-builder"
   },
   "build": {
@@ -28,7 +29,10 @@
       "public/**/*",
       "backend/dist-bundle/**/*",
       "!backend/dist-bundle/**/device_id.txt",
-      "!backend/dist-bundle/**/*.db",
+      "!backend/dist-bundle/**/dev.db",
+      "!backend/dist-bundle/**/xclinic.db",
+      "!backend/dist-bundle/**/*.db-wal",
+      "!backend/dist-bundle/**/*.db-shm",
       "!backend/dist-bundle/**/dotenv_log.txt"
     ],
     "asar": true,
