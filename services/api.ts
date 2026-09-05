@@ -1,4 +1,4 @@
-import { Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
+import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
 import { todayISO } from '../utils/dateUtils';
 import * as auth from './authStore';
 
@@ -110,7 +110,6 @@ export const getFileUrl = (kind: FileKind, id: string | null | undefined) => {
     return `${API_BASE_URL}/api/files/${kind}/${id}${q}`;
 };
 
-console.log('🔌 XClinic API:', { hostname: window.location.hostname, API_URL });
 
 export const isDemoMode = () => auth.getSession()?.isDemo === true;
 
@@ -466,9 +465,20 @@ const DEMO_LAB_PARAMS: Record<string, { name: string; unit?: string; refLow?: nu
     'demo-lt-7': [{ name: 'HBsAg', refText: 'Manfiy' } as any],
 };
 
-const MODALITIES = ['XRay', 'Ultrasound', 'CT', 'MRI'] as const;
-const STUDY_NAMES = ['Panoramik rentgen', "Qorin bo'shlig'i UZI", 'Bosh miya KT', 'Tizza MRT',
-    "Ko'krak qafasi rentgeni", 'Qalqonsimon bez UZI'];
+/* Tekshiruv turlari `types.ts` dagi `Modality` bilan BIR XIL bo'lishi shart.
+   Ilgari bu yerda `['XRay','Ultrasound','CT','MRI']` turardi va `as any`
+   bilan o'tkazib yuborilardi. Ekran esa `MODALITY_LABELS[s.modality]` ni
+   qidiradi — kalit topilmagach xom inglizcha so'zni chizardi, ya'ni
+   o'zbekcha interfeysda «Ultrasound» ko'rinardi (audit XC-32). */
+const MODALITIES: Modality[] = ['RENTGEN', 'KT', 'UZI', 'EKG'];
+
+/* Tekshiruvlar STOMATOLOGIYAGA moslandi. Ilgari bu yerda «Qorin
+   bo'shlig'i UZI», «Bosh miya KT» va «Tizza MRT» turardi — demo klinika
+   nomi esa «Demo Stomatologiya». Buni ko'rgan stomatolog dasturni o'ziga
+   emas deb o'ylaydi (audit XC-33). */
+const STUDY_NAMES = ['Panoramik rentgen (OPG)', 'Tish rentgeni (pritsel)',
+    '3D konus-nurli tomografiya', 'Jag\' bo\'g\'imi rentgeni',
+    "So'lak bezi UZI", 'Implant oldi KT'];
 
 const DEMO_STUDIES: DiagnosticStudy[] = STUDY_NAMES.map((name, i) => {
     const patientId = `demo-patient-${(i % 9) + 6}`;
@@ -480,7 +490,7 @@ const DEMO_STUDIES: DiagnosticStudy[] = STUDY_NAMES.map((name, i) => {
         patientId,
         patientName: p ? `${p.firstName} ${p.lastName}` : 'Bemor',
         departmentId: 'demo-diag',
-        modality: MODALITIES[i % MODALITIES.length] as any,
+        modality: MODALITIES[i % MODALITIES.length],
         name,
         status: st,
         orderedByName: 'Dr. Kamola Ahmedova',
@@ -971,6 +981,33 @@ const saveDemoState = () => {
         if (s.resultValues) Object.assign(DEMO_RESULT_VALUES, s.resultValues);
     } catch { try { localStorage.removeItem(DEMO_STATE_KEY); } catch { /* ignore */ } }
 })();
+
+/* NAVBAT TABLOSI — demo ma'lumotining O'ZIDAN.
+
+   Ilgari `QueueBoard.tsx` ichida beshta qator qo'lda yozib qo'yilgan edi va
+   u hech qanday qabulga bog'lanmagan: raqamlari («T-12», «X-14») navbatdagi
+   bemorlarning raqamlari bilan mos kelmasdi, ranglar kodda turardi, va
+   ro'yxatda «Jarrohlik» degan MAVJUD BO'LMAGAN bo'lim ko'rinardi — u
+   xizmat kategoriyasi, bo'lim emas (audit XC-01, XC-03).
+
+   Shakli `backend/multiprofile.ts` dagi `queue-board` javobi bilan bir xil:
+   talon = bo'lim kodi + ikki xonali navbat raqami. */
+export const demoQueueBoard = () => DEMO_VISITS
+    .filter(v => ['Waiting', 'Called', 'In Progress'].includes(v.status))
+    .sort((a, b) => (a.status.localeCompare(b.status)) || ((a.queueNumber ?? 0) - (b.queueNumber ?? 0)))
+    .map(v => {
+        const dep = DEMO_DEPARTMENTS.find(d => d.id === v.departmentId);
+        return {
+            queueNumber: v.queueNumber ?? null,
+            ticket: dep?.code
+                ? `${dep.code}-${String(v.queueNumber ?? 0).padStart(2, '0')}`
+                : (v.queueNumber != null ? String(v.queueNumber) : null),
+            status: v.status as 'Waiting' | 'Called' | 'In Progress',
+            calledAt: v.calledAt ?? null,
+            department: dep?.name ?? null,
+            color: dep?.color ?? null,
+        };
+    });
 
 /** Demo YOZUVINING yakuni: holatni saqlaydi va natijani qaytaradi.
  *  Har bir o'zgartiruvchi amal shu orqali tugaydi — saqlashni bitta joyda
@@ -1620,7 +1657,6 @@ export const api = {
                 return Promise.reject('Transaction not found');
             }
             const url = `/transactions/${id}`;
-            console.log('Transaction update URL:', url, 'Data:', data);
             return fetchJson<Transaction>(url, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },

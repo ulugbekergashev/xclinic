@@ -303,7 +303,6 @@ export const Settings: React.FC<SettingsProps> = ({
 
    // Debug: Log botUsername changes
    React.useEffect(() => {
-      console.log('🔍 botUsername state changed:', botUsername);
    }, [botUsername]);
 
    // Sync generalForm with currentClinic
@@ -376,12 +375,6 @@ export const Settings: React.FC<SettingsProps> = ({
    // Fetch bot username when clinic has bot token
    React.useEffect(() => {
       const fetchBotUsername = async () => {
-         console.log('Checking bot username...', {
-            clinicId: currentClinic?.id,
-            hasBotToken: !!currentClinic?.botToken,
-            botToken: currentClinic?.botToken?.substring(0, 10) + '...'
-         });
-
          if (currentClinic?.id && currentClinic?.botToken) {
             try {
                // Token xotiradan olinadi (S1.3) — diskda saqlanmaydi.
@@ -406,16 +399,13 @@ export const Settings: React.FC<SettingsProps> = ({
                }
 
                const data = await response.json();
-               console.log('Bot username response:', data);
                if (data.botUsername) {
                   setBotUsername(data.botUsername);
-                  console.log('Bot username set:', data.botUsername);
                }
             } catch (err) {
                console.error('Failed to fetch bot username:', err);
             }
          } else {
-            console.log('No clinic ID or bot token, clearing username');
             setBotUsername(null);
          }
       };
@@ -1159,6 +1149,28 @@ export const Settings: React.FC<SettingsProps> = ({
    /* O'chirish EMAS, faolsizlantirish: eski qabullar bo'limga bog'langan va
       ular tarixdan yo'qolmasligi kerak. Backend ham shunday ishlaydi. */
    const toggleDepartmentActive = async (d: any) => {
+      /* TASDIQLASH SO'RALADI. Ilgari bu tugma darhol ishlardi va nomi ham
+         «O'chirish» edi — ya'ni Terapiya yonidagi tugmani tasodifan
+         bosgan odam registratura, kalendar va shifokorlar ro'yxatini bir
+         zumda ishdan chiqarardi, hech qanday ogohlantirishsiz
+         (audit XC-39). Yozuv o'chmaydi, faqat faolsizlanadi — matn ham
+         shuni aytadi. */
+      if (d.isActive) {
+         const bound = [
+            services.filter((s: any) => s.departmentId === d.id).length,
+            doctors.filter((x: any) => x.departmentId === d.id).length,
+         ];
+         const detail = (bound[0] || bound[1])
+            ? ` Unga ${bound[0]} ta xizmat va ${bound[1]} ta shifokor bog'langan.`
+            : '';
+         if (!await confirmAction({
+            title: `«${d.name}» faolsizlantirilsinmi?`,
+            body: `Bo'lim registratura, kalendar va yangi qabullardan yo'qoladi.${detail}`
+               + " Eski yozuvlar joyida qoladi va bo'limni istalgan vaqtda qayta yoqish mumkin.",
+            /* `danger` YO'Q: amal qaytariladi, qizil tugma esa qo'rqitadi. */
+            confirmLabel: 'Faolsizlantirish',
+         })) return;
+      }
       setDeptBusy(true);
       setDeptError('');
       try {
@@ -1481,12 +1493,28 @@ export const Settings: React.FC<SettingsProps> = ({
                               <strong>Uchtasidan bittasi yetadi.</strong> Bir nechtasi kiritilsa, biri limitga
                               urilganda ikkinchisiga avtomatik o’tadi.
                            </p>
-                           {/* Kalit serverda qoladi va so’rov ham serverdan ketadi: u brauzerga
-                               ham, o’rnatuvchi faylga ham tushmaydi. */}
+                           {/* MATN ROSTGA MOSLANDI (audit XC-37, XC-38).
+
+                               Ilgari bu yerda ikkita noaniq gap turardi:
+
+                               1. «Kalit brauzerga uzatilmaydi» — bu FAQAT
+                                  klinika o'rnatmasida to'g'ri. Namoyish
+                                  nusxasida server umuman yo'q, shuning uchun
+                                  u yerda kalit saqlanmaydi va matn ham
+                                  boshqacha bo'lishi kerak.
+
+                               2. «Bemor ismi va tashxisi AI ga yuboriladi» —
+                                  bu ESKIRGAN: `backend/ai/tools.ts` da
+                                  `maskName()` va `maskPhone()` bor va ular
+                                  qator AI ga berilishidan oldin qo'llanadi.
+                                  Eski matn borini yo'q, yo'qini bor qilib
+                                  ko'rsatib, keraksiz qo'rquv uyg'otardi. */}
                            <p className="text-xs text-primary-700/80 dark:text-primary-300/80">
-                              Kalit shu kompyuterdagi bazada saqlanadi va faqat serverdan ishlatiladi —
-                              brauzerga uzatilmaydi. Bemor ismi va tashxisi AI ga yuborilishini
-                              hisobga oling.
+                              {isDemoMode()
+                                 ? "Namoyish nusxasida server yo'q — bu yerda kalit saqlanmaydi. Haqiqiy o'rnatmada u shu kompyuterdagi bazada qoladi va brauzerga uzatilmaydi."
+                                 : "Kalit shu kompyuterdagi bazada saqlanadi va faqat serverdan ishlatiladi — brauzerga uzatilmaydi."}
+                              {' '}Bemor ismi va telefoni AI ga yuborilishidan oldin niqoblanadi,
+                              lekin tashxis va davolash matni yuboriladi — buni hisobga oling.
                            </p>
                         </div>
 
@@ -1520,7 +1548,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  />
 
                                  <div className="flex items-center gap-4 mt-2 flex-wrap">
-                                    <a href={prov.url} target="_blank" rel="noreferrer"
+                                    <a href={prov.url} target="_blank" rel="noopener noreferrer"
                                        className="text-xs text-primary-600 hover:underline inline-flex items-center gap-1">
                                        <Link2 className="w-3 h-3" /> Kalit olish
                                     </a>
@@ -1819,8 +1847,14 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
                            Shifokorlar, xizmatlar, qabullar va kalendar bo'limga bog'lanadi.
-                           Bo'lim turi qaysi ekranda ko'rinishini belgilaydi: registratura faqat
-                           klinik bo'limlarni ko'rsatadi.
+                           {/* Ilgari bu yerda «registratura faqat klinik bo'limlarni
+                               ko'rsatadi» deb yozilgan edi — bu noto'g'ri: diagnostika
+                               ham chiqadi. Endi qoida to'liq aytiladi, chunki aynan shu
+                               izoh tufayli laboratoriya bo'limi «yo'qolgan» deb
+                               hisoblangan (audit XC-05). */}
+                           <b> Klinik</b> va <b>diagnostika</b> bo'limlariga registratura bemorni o'zi yozadi.
+                           <b> Laboratoriya</b>, <b>statsionar</b> va <b>dorixona</b> esa shifokor buyurtmasi
+                           bilan ochiladi — ular registratura ro'yxatida ko'rinmaydi.
                         </p>
 
                         {deptError && (
@@ -1874,8 +1908,11 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                                        <Button variant="secondary" size="sm" onClick={() => openDeptEdit(d)} disabled={deptBusy}>
                                           <Edit className="w-4 h-4" />
                                        </Button>
+                                       {/* «O'chirish» EMAS: yozuv o'chmaydi, faqat
+                                           faolsizlanadi. Eski nom qilinadigan ishga
+                                           mos kelmasdi (audit XC-39). */}
                                        <Button variant="secondary" size="sm" onClick={() => toggleDepartmentActive(d)} disabled={deptBusy}>
-                                          {d.isActive ? 'O\'chirish' : 'Yoqish'}
+                                          {d.isActive ? 'Faolsizlantirish' : 'Yoqish'}
                                        </Button>
                                     </div>
                                  </div>

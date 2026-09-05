@@ -739,7 +739,7 @@ export const translations = {
     'dashboard.financialFlow': 'Moliyaviy Oqim',
     'dashboard.income': 'Daromad',
     'dashboard.visits': 'Qabullar',
-    'dashboard.specialty': 'Mutaxassislik',
+    'dashboard.specialty': 'Xizmatlar taqsimoti',
     'dashboard.active': 'faol',
     'dashboard.allOk': 'Hammasi tartibda',
     'dashboard.pending': 'Kutilayotgan',
@@ -1282,7 +1282,7 @@ export const translations = {
     
     // Dashboard
     'dashboard.totalPatients': 'ВСЕГО ПАЦИЕНТОВ',
-    'dashboard.todayAppointments': 'ЗАПИСИ НА СЕГОДНЯ',
+    'dashboard.todayAppointments': 'ЗАПИСИ',
     'dashboard.todayRevenue': 'ВЫРУЧКА ЗА СЕГОДНЯ',
     'dashboard.monthlyRevenue': 'Выручка за месяц',
     'dashboard.recentAppointments': 'Последняя активность',
@@ -1740,7 +1740,7 @@ export const translations = {
     'dashboard.financialFlow': 'Финансовый поток',
     'dashboard.income': 'Доход',
     'dashboard.visits': 'Посещения',
-    'dashboard.specialty': 'Специальность',
+    'dashboard.specialty': 'Распределение услуг',
     'dashboard.active': 'актив.',
     'dashboard.allOk': 'Всё в порядке',
     'dashboard.pending': 'Ожидается',

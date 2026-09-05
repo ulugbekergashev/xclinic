@@ -5,7 +5,7 @@ import { Doctor, Appointment, Service, Transaction, Review } from '../types';
 import { Card, Input } from '../components/Common';
 import { DollarSign, Calendar, Award, Users, Star } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
-import { calculateDoctorShare, transactionBelongsToDoctor } from '../utils/financialCalculations';
+import { calculateDoctorShare, transactionBelongsToDoctor, sumPaidRevenue } from '../utils/financialCalculations';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../i18n/translations';
@@ -189,7 +189,7 @@ export const DoctorsAnalytics: React.FC<DoctorsAnalyticsProps> = ({ doctors, app
         }).sort((a, b) => b.revenue - a.revenue);
     }, [doctors, filteredAppointments, filteredTransactions, t]);
 
-    const totalRevenue = filteredTransactions.reduce((acc, t) => acc + (t.status === 'Paid' ? t.amount : 0), 0);
+    const totalRevenue = sumPaidRevenue(filteredTransactions);
     const totalAppointments = analyticsData.reduce((sum, d) => sum + d.totalAppts, 0);
     const totalPatients = analyticsData.reduce((sum, d) => sum + d.uniquePatients, 0);
     const topPerformer = analyticsData.length > 0 ? analyticsData[0] : null;

@@ -26,6 +26,44 @@ export const formatDateToISO = (date: Date) => {
 export const todayISO = () => formatDateToISO(new Date());
 
 /**
+ * HAR QANDAY sana qiymatini `YYYY-MM-DD` kalitiga keltiradi.
+ *
+ * Nima uchun kerak. Ma'lumot ikki xil shaklda keladi: qabullarda sof sana
+ * (`2026-09-04`), cheklarda esa to'liq vaqt tamg'asi
+ * (`2026-09-04T15:46:18.857Z`). Guruhlash SATR bo'yicha ketgani uchun bitta
+ * kun ikkita kalitga bo'linib qolardi va Bosh sahifadagi grafikda o'sha kun
+ * ikki marta ko'rinardi (audit XC-20). Xuddi shu sabab moliyaviy raqamlar
+ * ekrandan ekranga farq qilishiga olib kelardi.
+ *
+ * Sof sana QAYTA HISOBLANMAYDI: `new Date('2026-09-04')` UTC yarim tuni
+ * sifatida o'qiladi va manfiy zonada bir kun orqaga siljib ketardi.
+ * Vaqt tamg'asi esa MAHALLIY kunga keltiriladi — Toshkentda tunda
+ * qabul qilingan to'lov o'sha kunga tushishi uchun.
+ */
+export const dayKey = (value?: string | Date | null): string => {
+    if (!value) return '';
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : formatDateToISO(value);
+    const s = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? s.slice(0, 10) : formatDateToISO(d);
+};
+
+/**
+ * Ekranga chiqariladigan sana — `DD.MM.YYYY`.
+ *
+ * Ilgari ba'zi joylarda xom qiymat chizilardi va foydalanuvchi
+ * `2026-08-14T15:46:...` ko'rinishidagi vaqt tamg'asini ko'rardi
+ * (audit XC-22). Ilovada uchta format aralashib ketgan edi.
+ */
+export const formatDay = (value?: string | Date | null): string => {
+    const key = dayKey(value);
+    if (!key) return '';
+    const [y, m, d] = key.split('-');
+    return `${d}.${m}.${y}`;
+};
+
+/**
  * 'YYYY-MM-DD' satrini 'DD.MM.YYYY' ko'rinishida qaytaradi.
  * new Date() ISHLATILMAYDI — UTC/lokal zona siljishi bo'lmaydi (tug'ilgan sana bug fix).
  */

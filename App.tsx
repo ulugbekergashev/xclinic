@@ -733,7 +733,6 @@ const sinceDate = (n: number) =>
 
   const updateTransaction = async (id: string, data: Partial<Transaction>) => {
     try {
-      console.log('Updating transaction:', id, data);
       const updated = await api.transactions.update(id, { ...data });
       setTransactions(prev => prev.map(t => t.id === id ? updated : t));
 
@@ -1890,6 +1889,13 @@ const sinceDate = (n: number) =>
               )}
 
               <Route path="/board" element={<QueueBoard clinicId={clinicId} />} />
+              {/* Kiosk ko'rinishi — televizorga chiqariladigan alohida oyna.
+                  Bu marshrut FAQAT kirmagan holat uchun e'lon qilingan edi
+                  (yuqoridagi ro'yxatga qarang), ya'ni tizimga kirgan odam
+                  «Kiosk rejimi» havolasini bosganda «Sahifa topilmadi»
+                  chiqardi — havola esa aynan shu ekranda turadi
+                  (audit XC-02). */}
+              <Route path="/board/:clinicId" element={<QueueBoard />} />
 
               <Route path="/reception" element={
                 <Reception

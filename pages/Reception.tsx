@@ -97,23 +97,57 @@ export const Reception: React.FC<Props> = ({
         [departments],
     );
 
+    /* Ro'yxatga TUSHMAGAN faol bo'limlar. Ular ekranda nomma-nom
+       ko'rsatiladi: cheklov ataylab qo'yilgan bo'lsa ham, sababini
+       aytmasdan yashirish «bo'lim yo'qoldi» degan taassurot beradi. */
+    const hiddenDepts = useMemo(
+        () => departments.filter(d => d.isActive && !BOOKABLE_TYPES.includes(d.type)),
+        [departments],
+    );
+
     /* Tanlangan bo'lim diagnostikami — shifokor talabini shu hal qiladi. */
     const isDiagnosticDept = useMemo(
         () => departments.find(d => d.id === departmentId)?.type === 'DIAGNOSTIC',
         [departments, departmentId],
     );
 
+    /* Bo'lim tanlanmaguncha shifokor ro'yxati ham BO'SH.
+
+       Ilgari bu yerda `!departmentId ||` turardi, ya'ni boshlang'ich
+       holatda hamma shifokor ko'rinardi. Registrator avval shifokorni,
+       keyin bo'limni tanlasa — bir-biriga mos kelmaydigan juftlik
+       yaratardi va tanlov jimgina eskirib qolardi (audit XC-08).
+
+       BO'LIMSIZ shifokor ham qoladi: eski o'rnatmalarda `departmentId`
+       to'ldirilmagan yozuvlar bor va ular ro'yxatdan butunlay tushib
+       ketmasligi kerak. */
     const deptDoctors = useMemo(
-        () => doctors.filter(d => d.status === 'Active' && (!departmentId || d.departmentId === departmentId)),
+        () => !departmentId ? [] : doctors.filter(d =>
+            d.status === 'Active' && (d.departmentId === departmentId || !d.departmentId)),
         [doctors, departmentId],
     );
 
-    // Faqat tanlangan bo'lim xizmatlari. Bo'lim tanlanmaguncha ro'yxat BO'SH —
-    // aks holda begona bo'lim xizmatini tanlab yuborish mumkin bo'lardi.
+    /* Faqat tanlangan bo'lim xizmatlari. Bo'lim tanlanmaguncha ro'yxat
+       BO'SH — aks holda begona bo'lim xizmatini tanlab yuborish mumkin.
+
+       BO'LIMSIZ xizmat ham chiqadi. `departmentId` xizmatlarga keyin
+       qo'shilgan: undan oldin yaratilgan hamma xizmatda u bo'sh va
+       qat'iy tenglik ularni Registraturadan BUTUNLAY yo'q qilardi —
+       ya'ni ishlab turgan klinikada narxlar ro'yxati bir kunda
+       ko'rinmay qolardi (audit XC-06). */
     const deptServices = useMemo(
-        () => departmentId ? services.filter(s => s.departmentId === departmentId) : [],
+        () => !departmentId ? [] : services.filter(s =>
+            s.departmentId === departmentId || !s.departmentId),
         [services, departmentId],
     );
+
+    /** Qabulni ochishga nima to'sqinlik qilyapti. `null` — hammasi tayyor. */
+    const blockingReason = useMemo(() => {
+        if (!patient) return 'Avval bemorni tanlang yoki yangisini qo\'shing.';
+        if (!departmentId) return "Bo'limni tanlang.";
+        if (!isDiagnosticDept && !doctorId && deptDoctors.length > 0) return 'Shifokorni tanlang.';
+        return null;
+    }, [patient, departmentId, isDiagnosticDept, doctorId, deptDoctors]);
 
     const selectedService = useMemo(
         () => services.find(s => s.id === serviceId),
@@ -578,36 +612,55 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 ${!patient ? 'opacity-50 pointer-events-none' : ''}`}>
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">2. Bo'lim va shifokor</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Yorliqlar `htmlFor` orqali maydonga ulanadi: ekran
+                            o'quvchi dasturda maydon nomsiz o'qilmasin va
+                            yorliqni bosganda fokus maydonga tushsin. */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.department')}</label>
-                            <select ref={deptRef} value={departmentId} onChange={e => setDepartmentId(e.target.value)} className={inputCls}>
+                            <label htmlFor="rc-dept" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.department')}</label>
+                            <select id="rc-dept" ref={deptRef} value={departmentId} onChange={e => setDepartmentId(e.target.value)} className={inputCls}>
                                 <option value="">{t('reception.choose')}</option>
                                 {clinicalDepts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                             </select>
+                            {/* Ro'yxatda hamma bo'lim yo'q — buni AYTIB qo'yamiz.
+                                Ilgari laboratoriya yoki dorixona bo'limini
+                                yaratgan odam uni bu yerda topolmay, dastur
+                                buzuq deb o'ylardi (audit XC-05). */}
+                            {hiddenDepts.length > 0 && (
+                                <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                                    {hiddenDepts.map(d => d.name).join(', ')} — bu yerda yo'q: ular shifokor buyurtmasi bilan ochiladi.
+                                </p>
+                            )}
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                            <label htmlFor="rc-doctor" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
                                 Shifokor{isDiagnosticDept ? '' : ' *'}
                                 {deptDoctors.length === 0 && departmentId ? " (bo'limda shifokor yo'q)" : ''}
                             </label>
-                            <select value={doctorId} onChange={e => setDoctorId(e.target.value)} className={inputCls}>
+                            <select id="rc-doctor" value={doctorId} onChange={e => setDoctorId(e.target.value)}
+                                disabled={!departmentId} className={inputCls}>
                                 <option value="">
-                                    {isDiagnosticDept ? t('reception.unassigned') : 'Shifokorni tanlang'}
+                                    {!departmentId ? "Avval bo'limni tanlang"
+                                        : isDiagnosticDept ? t('reception.unassigned') : 'Shifokorni tanlang'}
                                 </option>
                                 {deptDoctors.map(d => <option key={d.id} value={d.id}>{formatFullName(d)}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Xizmat (qabul turi)</label>
-                            <select value={serviceId} onChange={e => setServiceId(e.target.value ? Number(e.target.value) : '')}
+                            <label htmlFor="rc-service" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Xizmat (qabul turi)</label>
+                            <select id="rc-service" value={serviceId} onChange={e => setServiceId(e.target.value ? Number(e.target.value) : '')}
                                 disabled={!departmentId} className={inputCls}>
                                 <option value="">{departmentId ? 'Xizmatsiz' : "Avval bo'limni tanlang"}</option>
                                 {deptServices.map(s => <option key={s.id} value={s.id}>{s.name} — {fmt(s.price)}</option>)}
                             </select>
+                            {departmentId && deptServices.length === 0 && (
+                                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                                    Bu bo'limga xizmat biriktirilmagan — Sozlamalar &gt; Xizmatlar bo'limida belgilang.
+                                </p>
+                            )}
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Shikoyat (ixtiyoriy)</label>
-                            <input value={complaints} onChange={e => setComplaints(e.target.value)} className={inputCls} placeholder={t('reception.complaintsPh')} />
+                            <label htmlFor="rc-complaints" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Shikoyat (ixtiyoriy)</label>
+                            <input id="rc-complaints" value={complaints} onChange={e => setComplaints(e.target.value)} className={inputCls} placeholder={t('reception.complaintsPh')} />
                         </div>
                     </div>
                 </div>
@@ -620,10 +673,22 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             {fmt(selectedService?.price || 0)} <span className="text-base font-normal">so'm</span>
                         </p>
                     </div>
-                    <button aria-label="Oldinga" onClick={openVisit} disabled={!patient || !departmentId || saving}
-                        className="ml-auto flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                        {saving ? 'Ochilmoqda...' : 'Qabulni ochish'} <ArrowRight className="w-4 h-4" />
-                    </button>
+                    {/* NIMA YETISHMAYOTGANI aytiladi. Ilgari tugma jimgina
+                        o'chiq turardi va registrator uchun u shunchaki
+                        «ishlamayapti» bo'lib ko'rinardi (audit XC-09).
+
+                        `aria-label` ham tuzatildi: u «Oldinga» deb turardi,
+                        ya'ni ekran o'quvchi dastur tugmaning nima
+                        qilishini noto'g'ri o'qirdi. */}
+                    <div className="ml-auto flex items-center gap-3">
+                        {blockingReason && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400 max-w-[16rem] text-right">{blockingReason}</p>
+                        )}
+                        <button aria-label="Qabulni ochish" onClick={openVisit} disabled={!!blockingReason || saving}
+                            className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            {saving ? 'Ochilmoqda...' : 'Qabulni ochish'} <ArrowRight className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Oxirgi talon */}

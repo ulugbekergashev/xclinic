@@ -383,7 +383,7 @@ export const Diagnostics: React.FC<Props> = ({
                                 {editing.files?.length ? (
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                         {editing.files.map(f => (
-                                            <a key={f.id} href={getFileUrl('study-file', f.id)} target="_blank" rel="noreferrer"
+                                            <a key={f.id} href={getFileUrl('study-file', f.id)} target="_blank" rel="noopener noreferrer"
                                                 className="block aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
                                                 <img src={getFileUrl('study-file', f.id)} alt={f.caption || ''} className="w-full h-full object-cover" />
                                             </a>

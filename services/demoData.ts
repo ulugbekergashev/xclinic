@@ -37,29 +37,19 @@ const STORAGE_KEY = 'xclinic_demo_data';
 
    ⚠️ Demo to'plamiga yozuv qo'shsangiz yoki o'zgartirsangiz — SHU RAQAMNI
    OSHIRING, aks holda o'zgarish avval demoni ochgan odamga yetib bormaydi. */
-const DEMO_DATA_VERSION = 3;
+const DEMO_DATA_VERSION = 4;
 const VERSION_KEY = 'xclinic_demo_version';
 
 export const loadDemoData = () => {
     try {
         const storedVersion = Number(localStorage.getItem(VERSION_KEY) || 0);
         if (storedVersion !== DEMO_DATA_VERSION) {
-            console.log(`📦 Demo ma'lumoti eskirgan (v${storedVersion} → v${DEMO_DATA_VERSION}) — qaytadan yig'iladi`);
             localStorage.removeItem(STORAGE_KEY);
             localStorage.setItem(VERSION_KEY, String(DEMO_DATA_VERSION));
             return null;
         }
         const stored = localStorage.getItem(STORAGE_KEY);
-        console.log('📦 Loading Demo Data from LS:', stored ? 'Found' : 'Not Found');
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            console.log('✅ Demo Data Parsed:', {
-                patients: parsed.patients?.length,
-                appointments: parsed.appointments?.length,
-                transactions: parsed.transactions?.length
-            });
-            return parsed;
-        }
+        if (stored) return JSON.parse(stored);
     } catch (e) {
         console.error('❌ Failed to load demo data', e);
     }
@@ -96,7 +86,6 @@ export const saveDemoData = () => {
         const stringified = JSON.stringify(data);
         localStorage.setItem(STORAGE_KEY, stringified);
         localStorage.setItem(VERSION_KEY, String(DEMO_DATA_VERSION));
-        console.log('💾 Demo Data Saved to LS. Size:', Math.round(stringified.length / 1024), 'KB');
     } catch (e) {
         console.error('❌ Failed to save demo data', e);
         if (e instanceof Error && e.name === 'QuotaExceededError') {
@@ -174,14 +163,26 @@ export let DEMO_CATEGORIES: ServiceCategory[] = savedData?.categories || [
 ];
 
 // Demo Services
+/* XIZMATLARDA `departmentId` BO'LISHI SHART.
+
+   Registratura xizmatlarni bo'lim bo'yicha filtrlaydi. Bu maydon bu yerda
+   to'ldirilmagani uchun demoda «Xizmat (qabul turi)» ro'yxati HAR DOIM
+   bo'sh qolardi va qabul 0 so'm bilan ochilardi — ya'ni butun to'lov
+   zanjiri birinchi qadamda uzilardi (audit XC-06).
+
+   Bo'lim id lari `services/api.ts` dagi `DEMO_DEPARTMENTS` bilan bir xil.
+   Diagnostika bo'limiga ham ikkita xizmat berilgan: aks holda u bo'lim
+   tanlansa ro'yxat yana bo'sh bo'lardi. */
 export let DEMO_SERVICES: Service[] = savedData?.services || [
-    { id: 1, name: 'Konsultatsiya', price: 50000, categoryId: 'cat-1', duration: 30, clinicId: 'demo-clinic-1' },
-    { id: 2, name: 'Tish tozalash', price: 200000, categoryId: 'cat-2', duration: 45, clinicId: 'demo-clinic-1' },
-    { id: 3, name: 'Tish plombalash', price: 300000, categoryId: 'cat-3', duration: 60, clinicId: 'demo-clinic-1' },
-    { id: 4, name: 'Tish olib tashlash', price: 150000, categoryId: 'cat-4', duration: 30, clinicId: 'demo-clinic-1' },
-    { id: 5, name: 'Tish oqartirish', price: 800000, categoryId: 'cat-2', duration: 90, clinicId: 'demo-clinic-1' },
-    { id: 6, name: 'Metall-keramika toj', price: 1200000, categoryId: 'cat-6', duration: 120, clinicId: 'demo-clinic-1' },
-    { id: 7, name: 'Breket tizimi', price: 5000000, categoryId: 'cat-5', duration: 90, clinicId: 'demo-clinic-1' },
+    { id: 1, name: 'Konsultatsiya', price: 50000, categoryId: 'cat-1', duration: 30, clinicId: 'demo-clinic-1', departmentId: 'demo-ter' },
+    { id: 2, name: 'Tish tozalash', price: 200000, categoryId: 'cat-2', duration: 45, clinicId: 'demo-clinic-1', departmentId: 'demo-ter' },
+    { id: 3, name: 'Tish plombalash', price: 300000, categoryId: 'cat-3', duration: 60, clinicId: 'demo-clinic-1', departmentId: 'demo-ter' },
+    { id: 4, name: 'Tish olib tashlash', price: 150000, categoryId: 'cat-4', duration: 30, clinicId: 'demo-clinic-1', departmentId: 'demo-ter' },
+    { id: 5, name: 'Tish oqartirish', price: 800000, categoryId: 'cat-2', duration: 90, clinicId: 'demo-clinic-1', departmentId: 'demo-ter' },
+    { id: 6, name: 'Metall-keramika toj', price: 1200000, categoryId: 'cat-6', duration: 120, clinicId: 'demo-clinic-1', departmentId: 'demo-ter' },
+    { id: 7, name: 'Breket tizimi', price: 5000000, categoryId: 'cat-5', duration: 90, clinicId: 'demo-clinic-1', departmentId: 'demo-ter' },
+    { id: 8, name: 'Panoramik rentgen (OPG)', price: 120000, categoryId: 'cat-1', duration: 15, clinicId: 'demo-clinic-1', departmentId: 'demo-diag' },
+    { id: 9, name: '3D konus-nurli tomografiya', price: 350000, categoryId: 'cat-1', duration: 25, clinicId: 'demo-clinic-1', departmentId: 'demo-diag' },
 ];
 
 // Demo Patients
@@ -529,7 +530,7 @@ export const DEMO_CREDENTIALS = {
 export let DEMO_INVENTORY: InventoryItem[] = savedData?.inventory || [
     {
         id: 'demo-item-1',
-        name: 'Liqidoqain',
+        name: 'Lidokain',
         unit: 'ampula',
         quantity: 50,
         minQuantity: 10,
@@ -664,6 +665,10 @@ export let DEMO_LAB_ORDERS: LabOrder[] = savedData?.labOrders || [
         notes: 'Rang A2 bo\'lsin',
         deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         price: 500000,
+        /* `totalPrice` — ekran AYNAN shu maydonni chizadi (LabOrders.tsx:295).
+           Faqat `price` berilgani uchun bu yo'llanma «0 so'm» bo'lib
+           ko'rinardi va kassaga tushmasdi (audit XC-29). */
+        totalPrice: 500000,
         priority: 'Normal',
         clinicianNotes: 'Tishlarni biroz yupqaroq qilish kerak',
         status: 'In-Progress',
@@ -682,6 +687,7 @@ export let DEMO_LAB_ORDERS: LabOrder[] = savedData?.labOrders || [
         notes: 'Bleach 2 rang, ultra tabiiy shakl',
         deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         price: 2400000,
+        totalPrice: 2400000,
         priority: 'Urgent',
         clinicianNotes: 'Bemor juda talabchan, iltimos sifatiga e\'tibor bering',
         status: 'Pending',
@@ -732,9 +738,21 @@ if (!savedData?.patients) {
             lastVisit: dayISO(-(i + 2)),
             status: 'Active',
             gender,
+            /* BIRIKTIRILGAN SHIFOKOR. Bu maydon to'ldirilmagani uchun
+               Bemorlar sahifasida 14 tasining 14 tasi ham
+               «Biriktirilmagan» bo'lib turardi — registratura va
+               kalendarda esa har birida aniq shifokor ko'rinardi
+               (audit XC-26). To'rt shifokor bo'yicha aylantiriladi. */
+            doctorId: `demo-doctor-${(i % 4) + 1}`,
         } as Patient);
     });
 }
+
+/* Qo'lda yozilgan birinchi besh bemorda ham shifokor bo'lsin — ular
+   yuqorida alohida e'lon qilingan va generatorga tushmaydi. */
+DEMO_PATIENTS.forEach((p, i) => {
+    if (!p.doctorId) p.doctorId = `demo-doctor-${(i % 4) + 1}`;
+});
 
 if (!savedData?.doctors) {
     DEMO_DOCTORS.push(
@@ -811,6 +829,12 @@ if (!savedData?.transactions) {
             doctorName: dName(doctorId),
             discountPercent: 0,
             discountAmount: 0,
+            /* PUL QABUL QILINGAN ANIQ VAQT. Busiz kassa jadvalidagi VAQT
+               ustunida `—` turardi: kun yopilganda tafovut chiqsa, uni
+               kimga va qachonga bog'lash imkoni yo'q edi — kassa
+               auditining asosiy talabi buzilardi (audit XC-15). */
+            createdAt: dayFull(-(i * 2)),
+            receivedByName: 'Registratura',
         } as Transaction);
     }
 }
@@ -917,6 +941,10 @@ if (!savedData?.messageLogs) {
 }
 
 if (!savedData?.labOrders) {
+    /** Ish turi → narx. Bir xil ish bir xil turadi — bu tabiiy ko'rinadi. */
+    const LAB_PRICE: Record<string, number> = {
+        Koronka: 900000, Vinir: 1600000, Protez: 2200000, Kappa: 450000,
+    };
     const ORDERS: [number, string, string, LabOrder['status']][] = [
         [6, 'Koronka', 'Sirkoniy', 'InProgress'],
         [7, 'Protez', 'Akril', 'Ordered'],
@@ -938,8 +966,13 @@ if (!savedData?.labOrders) {
             toothNumbers: `${11 + i}, ${12 + i}`,
             notes: '',
             deadline: dayISO(i + 2),
-            price: 350000 + i * 120000,
-            totalPrice: 350000 + i * 120000,
+            /* Narx ISH TURIGA qarab. Ilgari bu yerda `350000 + i * 120000`
+               turardi: ro'yxatdagi har bir narx oldingisidan aynan 120 000
+               ga ko'p bo'lib, seed generatordan chiqqani ko'rinib turardi
+               (audit XC-29). Qiymatlar Toshkent bozoridagi odatiy
+               narxlarga yaqinlashtirildi. */
+            price: LAB_PRICE[orderType] ?? 400000,
+            totalPrice: LAB_PRICE[orderType] ?? 400000,
             priority: i === 1 ? 'Urgent' : 'Normal',
             status,
             orderedAt: dayFull(-(i + 1)),

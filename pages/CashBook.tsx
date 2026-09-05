@@ -958,6 +958,8 @@ export const CashBook: React.FC<CashBookProps> = ({
 
     const expenseAmount = Number(expenseForm.amount);
     const canSaveExpense = expenseForm.title.trim() !== '' && isFinite(expenseAmount) && expenseAmount > 0;
+    /** Ayni damdagi naqd yashiq — xarajat oynasidagi ogohlantirish uchun. */
+    const cashOnHand = day.totals.drawer;
 
     const handleSaveExpense = async () => {
         if (!onAddExpense || !canSaveExpense) return;
@@ -1851,6 +1853,22 @@ export const CashBook: React.FC<CashBookProps> = ({
                         <p className="text-[11px] text-gray-400 mt-1.5">
                             Naqd tanlansa kassadagi pul kamayadi. Boshqasi hisob raqamdan chiqadi.
                         </p>
+                        {/* NAQD YASHIQDA YETARLI PUL BORMI. Yashiqda jismonan
+                            yo'q pulni chiqarib bo'lmaydi, lekin hech qanday
+                            tekshiruv yo'q edi va «Kassada qoldi» manfiy
+                            songa tushib ketardi (audit XC-13).
+
+                            To'sib qo'ymaymiz: kun boshidagi qoldiq
+                            kiritilmagan bo'lsa hisob haqiqatdan past
+                            bo'lishi mumkin va xarajatni yozmaslik
+                            yomonroq. Ogohlantiramiz. */}
+                        {expenseForm.method === 'Cash' && expenseAmount > cashOnHand && (
+                            <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                                Kassadagi naqd — {num(cashOnHand)} so'm. Bu xarajatdan keyin qoldiq
+                                manfiy bo'ladi ({num(cashOnHand - expenseAmount)}). Kun boshidagi
+                                qoldiq kiritilganini tekshiring.
+                            </p>
+                        )}
                     </div>
 
                     <div>

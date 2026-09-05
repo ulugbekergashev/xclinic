@@ -284,8 +284,18 @@ export const LabOrders: React.FC<Props> = ({
                                                 </span>
                                             )}
                                         </div>
+                                        {/* Yo'llanma IKKI xil bo'ladi: klinik tahlil
+                                            (`items` — tahlillar ro'yxati) va tish
+                                            laboratoriyasi ishi (`orderType` + material).
+                                            Ilgari faqat birinchisi chizilardi va
+                                            ikkinchi turdagi yo'llanmada laborant nima
+                                            qilishini ekrandan bilolmasdi — hammasida
+                                            `—` turardi (audit XC-28). */}
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                            {(order.items || []).map(i => i.testName).join(', ') || '—'}
+                                            {(order.items || []).map(i => i.testName).join(', ')
+                                                || [(order as any).orderType, (order as any).material]
+                                                    .filter(Boolean).join(' · ')
+                                                || '—'}
                                         </p>
                                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                                             {order.doctorName || 'Shifokor ko\'rsatilmagan'} · {fmtDate(order.orderedAt)}

@@ -153,6 +153,49 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         await expect(page.locator('main')).toContainText(/Gemini|Groq|OpenRouter/);
     });
 
+    test('Registratura: bo\'lim tanlansa xizmatlar chiqadi', async ({ page }) => {
+        await go(page, '/reception');
+        /* Bemor tanlanmaguncha 2-blok o'chiq turadi — birinchi topilgan
+           bemorni tanlaymiz. */
+        await page.getByPlaceholder(/qidir|ism|telefon/i).first().fill('Aziza');
+        await page.waitForTimeout(1500);
+        await page.getByText('Aziza').first().click();
+        await page.waitForTimeout(800);
+
+        await page.locator('#rc-dept').selectOption({ label: 'Terapiya' });
+        await page.waitForTimeout(600);
+
+        /* Xizmatda `departmentId` bo'lmagani uchun bu ro'yxat HAR DOIM
+           bo'sh qolardi va qabul 0 so'm bilan ochilardi (audit XC-06). */
+        const options = await page.locator('#rc-service option').count();
+        expect(options, 'bo\'lim xizmatlari ro\'yxatga tushishi kerak').toBeGreaterThan(1);
+    });
+
+    test('Kiosk havolasi ochiladi, 404 bermaydi', async ({ page }) => {
+        await go(page, '/board/demo-clinic-1');
+        await expect(page.getByText(/Sahifa topilmadi|404/i)).toHaveCount(0);
+        await expect(page.locator('body')).toContainText('Navbat');
+    });
+
+    test('Tablo haqiqiy navbatdan yig\'iladi', async ({ page }) => {
+        await go(page, '/board');
+        /* Ilgari bu yerda qo'lda yozilgan ro'yxat turardi va unda
+           «Jarrohlik» degan MAVJUD BO'LMAGAN bo'lim ko'rinardi — u
+           xizmat kategoriyasi, bo'lim emas (audit XC-01). */
+        await expect(page.locator('body')).not.toContainText('Jarrohlik');
+        await expect(page.locator('body')).toContainText(/TER-|Terapiya/);
+    });
+
+    test('Bemorlarda shifokor biriktirilgan', async ({ page }) => {
+        await go(page, '/patients');
+        const text = await page.locator('main').innerText();
+        /* 14 tasining 14 tasi ham «Biriktirilmagan» bo'lib turardi
+           (audit XC-26), «Never» esa o'zbekcha interfeysdagi inglizcha
+           qoldiq edi (XC-27). */
+        expect(text, 'shifokor ismi ustunda ko\'rinishi kerak').toMatch(/Ahmedova|Karimov|Tosheva|Mahmudov/);
+        expect(text, 'inglizcha «Never» qolmasligi kerak').not.toContain('Never');
+    });
+
     test('Diagnostika: xulosa saqlanadi', async ({ page }) => {
         await go(page, '/diagnostics');
         await page.getByRole('button', { name: 'Xulosa' }).first().click();

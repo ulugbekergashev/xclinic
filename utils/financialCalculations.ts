@@ -109,15 +109,30 @@ export function calculateDoctorShares(
  * Klinika bo'yicha umumiy moliya: kirim, xarajatlar, sof foyda.
  * Finance sahifasi va Dashboard shu bitta manbadan foydalanadi.
  */
+/**
+ * TUSHUM — yagona ta'rif: faqat `Paid` holatdagi cheklar yig'indisi.
+ *
+ * Nima uchun alohida funksiya. Bu bir xil halqa Bosh sahifada,
+ * Shifokorlar statistikasida va shu faylda — uch joyda mustaqil yozilgan
+ * edi. Ular hozircha bir xil, lekin biri o'zgarsa ikkinchisi o'zgarmaydi
+ * va ilova bitta savolga ikki xil raqam bera boshlaydi. Auditning eng
+ * jiddiy topilmasi shu edi (XC-12): klinika egasi qaysi raqamga
+ * ishonishini bilmaydi.
+ *
+ * Davr va shifokor bo'yicha FILTR bu yerda emas — uni chaqiruvchi ekran
+ * o'zi qiladi, chunki har ekranning oralig'i har xil va bu normal.
+ * Muhimi — «tushum» so'zining ma'nosi bitta bo'lsin.
+ */
+export function sumPaidRevenue(transactions: Transaction[]): number {
+    return transactions.reduce((sum, tx) => sum + (tx.status === 'Paid' ? tx.amount : 0), 0);
+}
+
 export function calculateTotalFinancials(
     transactions: Transaction[],
     expenses: Expense[],
     doctors: Doctor[]
 ): TotalFinancials {
-    let totalRevenue = 0;
-    transactions.forEach(tx => {
-        if (tx.status === 'Paid') totalRevenue += tx.amount;
-    });
+    const totalRevenue = sumPaidRevenue(transactions);
 
     const shares = calculateDoctorShares(transactions, expenses, doctors);
     const doctorShareAccrued = shares.reduce((sum, s) => sum + s.accrued, 0);

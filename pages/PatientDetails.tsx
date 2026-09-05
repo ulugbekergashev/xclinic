@@ -837,7 +837,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       const batchSignature = `${today}-${total}-${procedures.map(p => p.id).join(',')}`;
 
       if (processedBatches.has(batchSignature)) {
-         console.log("Duplicate prevention: Batch already processed");
          return;
       }
 
@@ -873,7 +872,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             const isIndividualPlan = currentClinic?.planId === 'individual';
             if (isIndividualPlan) {
                try {
-                  console.log("Auto-creating doctor for individual plan...");
                   const adminNameParts = currentClinic?.adminName?.split(' ') || ['Admin'];
                   const firstName = adminNameParts[0];
                   const lastName = adminNameParts.slice(1).join(' ') || 'Doctor';
@@ -924,7 +922,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
             // Deduplication check: if notes already contain this text, skip appending
             if (currentNotes.includes(proceduresText)) {
-               console.log("Duplicate prevention: Procedures already in notes");
                toast.success("Qabul tarixi yangilandi!");
                setPendingProcedures([]);
                setVisitKey(prev => prev + 1);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Volume2, VolumeX, Maximize2, MonitorPlay, Clock } from 'lucide-react';
-import { API_URL, isDemoMode } from '../services/api';
+import { API_URL, isDemoMode, demoQueueBoard } from '../services/api';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Navbat tablosi — kutish zalidagi ekran.
@@ -37,19 +37,13 @@ interface BoardEntry {
    polling qoladi va u yagona to'g'ri yechim. */
 const REFRESH_MS = 5000;
 
-/* Demo tablosi. Tablo LOGINSIZ ochiladi, ya'ni bu yerda demo sessiyasi
-   bo'lmasligi ham mumkin — shuning uchun ro'yxat shu faylning o'zida,
-   `api.ts` dagi demo ma'lumotiga bog'lanmasdan turadi. */
-const demoBoard = (): BoardEntry[] => {
-    const now = new Date().toISOString();
-    return [
-        { queueNumber: 12, ticket: 'T-12', status: 'In Progress', calledAt: now, department: 'Terapiya', color: '#2563EB' },
-        { queueNumber: 13, ticket: 'T-13', status: 'Called', calledAt: now, department: 'Terapiya', color: '#2563EB' },
-        { queueNumber: 14, ticket: 'X-14', status: 'Waiting', calledAt: null, department: 'Jarrohlik', color: '#DB2777' },
-        { queueNumber: 15, ticket: 'X-15', status: 'Waiting', calledAt: null, department: 'Jarrohlik', color: '#DB2777' },
-        { queueNumber: 16, ticket: 'L-16', status: 'Waiting', calledAt: null, department: 'Laboratoriya', color: '#0D9488' },
-    ];
-};
+/* Demo tablosi HAQIQIY demo navbatidan yig'iladi — `demoQueueBoard()`.
+
+   Ilgari bu yerda beshta qator qo'lda yozilgan edi. U hech qanday qabulga
+   bog'lanmagani uchun tablodagi raqamlar «Mening navbatim» ekranidagi
+   raqamlar bilan mos kelmasdi va ro'yxatda mavjud bo'lmagan «Jarrohlik»
+   bo'limi turardi. Namoyishda faqat shu bitta ekran yolg'on gapirardi
+   (audit XC-01). */
 
 export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClinicId }) => {
     const params = useParams<{ clinicId?: string }>();
@@ -89,7 +83,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
         if (!clinicId) return;
         /* Demoda tablo o'z ma'lumoti bilan ishlaydi: bugungi qabullardan
            navbat yig'iladi. Server yo'q, lekin ekran tirik ko'rinadi. */
-        if (isDemoMode()) { setEntries(demoBoard()); return; }
+        if (isDemoMode()) { setEntries(demoQueueBoard()); return; }
         try {
             const res = await fetch(`${API_URL}/queue-board/${clinicId}`);
             if (!res.ok) return;

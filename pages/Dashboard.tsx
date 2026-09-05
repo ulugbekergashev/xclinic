@@ -17,8 +17,8 @@ import {
 } from 'recharts';
 import { Patient, Appointment, Transaction, UserRole, Doctor, Lead, LabOrder, Clinic, Service, PaymentMethod } from '../types';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
-import { getCurrentMonthRange, todayISO } from '../utils/dateUtils';
-import { transactionBelongsToDoctor, calculateAppointmentTotal, isAppointmentPaid } from '../utils/financialCalculations';
+import { getCurrentMonthRange, todayISO, dayKey, formatDay } from '../utils/dateUtils';
+import { transactionBelongsToDoctor, calculateAppointmentTotal, isAppointmentPaid, sumPaidRevenue } from '../utils/financialCalculations';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { AddPatientModal } from '../components/AddPatientModal';
@@ -207,7 +207,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   const pendingAppointments = filteredAppointments.filter(a => a.status === 'Pending').length;
 
   // Daromad = to'langan to'lovlar (Finance sahifasi bilan izchil)
-  const totalRevenue = filteredTransactions.reduce((acc, t) => acc + (t.status === 'Paid' ? t.amount : 0), 0);
+  const totalRevenue = sumPaidRevenue(filteredTransactions);
 
   // Dynamic Service Data from Appointments
   const SERVICE_DATA = useMemo(() => {
@@ -252,23 +252,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
   const trendData = useMemo(() => {
     const dataMap = new Map<string, { revenue: number, appointments: number }>();
 
+    /* KALIT `dayKey()` orqali. Cheklar to'liq vaqt tamg'asi bilan
+       (`2026-09-04T15:46:18.857Z`), qabullar esa sof sana bilan keladi —
+       xom satr bo'yicha guruhlaganda bitta kun grafikda IKKI MARTA
+       ko'rinardi va raqamlar ikkiga bo'linib ketardi (audit XC-20). */
     // Aggregate Transactions (faqat to'langanlari)
     filteredTransactions.forEach(t => {
       if (t.status !== 'Paid') return;
-      const current = dataMap.get(t.date) || { revenue: 0, appointments: 0 };
-      dataMap.set(t.date, { ...current, revenue: current.revenue + t.amount });
+      const key = dayKey(t.date);
+      const current = dataMap.get(key) || { revenue: 0, appointments: 0 };
+      dataMap.set(key, { ...current, revenue: current.revenue + t.amount });
     });
 
     // Aggregate Appointments
     filteredAppointments.forEach(a => {
-      const current = dataMap.get(a.date) || { revenue: 0, appointments: 0 };
-      dataMap.set(a.date, { ...current, appointments: current.appointments + 1 });
+      const key = dayKey(a.date);
+      const current = dataMap.get(key) || { revenue: 0, appointments: 0 };
+      dataMap.set(key, { ...current, appointments: current.appointments + 1 });
     });
 
     // Convert to Array & Sort
     const result = Array.from(dataMap.entries())
       .map(([date, data]) => ({ name: date, ...data }))
-      .sort((a, b) => new Date(a.name).getTime() - new Date(b.name).getTime());
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     // If no data, return empty or a placeholder
     return result.length > 0 ? result : [];
@@ -344,7 +350,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
       ? appointments.filter(a => a.doctorId === doctorId)
       : appointments;
     return base
-      .filter(a => a.date === today)
+      .filter(a => dayKey(a.date) === today)
       .sort((a, b) => a.time.localeCompare(b.time));
   }, [appointments, today, userRole, doctorId]);
 
@@ -741,7 +747,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                         >
                           {tx.patientName}
                         </button>
-                        <p className="text-[11px] text-gray-400 truncate">{tx.date} · {serviceLabel}</p>
+                        <p className="text-[11px] text-gray-400 truncate">{formatDay(tx.date)} · {serviceLabel}</p>
                       </div>
                       <span className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums whitespace-nowrap">
                         {formatMoney(tx.amount)}
@@ -804,7 +810,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                         </button>
                         <p className="flex items-center gap-1.5 text-[11px] text-gray-400 truncate">
                           <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: doctorColor }} />
-                          <span className="truncate">{app.date} · {serviceLabel}</span>
+                          <span className="truncate">{formatDay(app.date)} · {serviceLabel}</span>
                         </p>
                       </div>
                       <span className="text-sm font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">
@@ -1025,9 +1031,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-gray-800">
+                    {/* «XIZMAT» sarlavhasi TUSHIB QOLGAN edi: qatorda 6 ta
+                        katak, sarlavhada 5 ta ustun — natijada Shifokordan
+                        keyingi hamma qiymat begona nom ostida ko'rinardi
+                        (audit XC-21). */}
                     <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Sana/Vaqt</th>
                     <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Bemor</th>
                     <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Shifokor</th>
+                    <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Xizmat</th>
                     <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Status</th>
                     <th className="pb-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Baho</th>
                   </tr>
@@ -1035,7 +1046,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
                 <tbody className="text-sm">
                   {filteredAppointments.slice(0, 5).map(app => (
                     <tr key={app.id} className="border-b border-gray-50 dark:border-gray-800 last:border-0">
-                      <td className="py-4 font-medium text-gray-900 dark:text-white">{app.date} {app.time}</td>
+                      <td className="py-4 font-medium text-gray-900 dark:text-white">{formatDay(app.date)} {app.time}</td>
                       <td className="py-4 text-gray-600 dark:text-gray-300">{app.patientName}</td>
                       <td className="py-4 text-gray-500">
                         <div className="flex items-center gap-2">
@@ -1260,7 +1271,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, tr
             <div className="space-y-4">
               <div className="p-4 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700">
                 <p className="text-sm font-bold text-gray-900 dark:text-white">{payingDebt.patientName}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{serviceLabel} · {payingDebt.date}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{serviceLabel} · {formatDay(payingDebt.date)}</p>
                 <p className="text-lg font-black text-red-500 mt-2 tabular-nums">{formatMoney(debtTotal)} UZS</p>
               </div>
 

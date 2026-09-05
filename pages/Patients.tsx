@@ -11,7 +11,7 @@ import { api, getFileUrl } from '../services/api';
 import type { Snapshot } from '../services/api';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useLanguage } from '../context/LanguageContext';
-import { calcAge } from '../utils/dateUtils';
+import { calcAge, formatDay } from '../utils/dateUtils';
 import { maskPhone } from '../utils/accessControl';
 
 interface PatientsProps {
@@ -585,7 +585,7 @@ export const Patients: React.FC<PatientsProps> = ({
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{patient.lastVisit}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{patient.lastVisit && patient.lastVisit !== 'Never' ? formatDay(patient.lastVisit) : 'Hali kelmagan'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {patient.pinfl ? (
                       <span className="text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 w-fit">

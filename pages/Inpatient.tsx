@@ -112,12 +112,21 @@ export const Inpatient: React.FC<Props> = ({
         return q ? src.filter(a => a.patientName.toLowerCase().includes(q)) : src;
     }, [tab, active, archive, search]);
 
+    /* Koyka holatlari TO'RTTA: bo'sh, band, tozalanmoqda va yopiq.
+       Sarlavhada faqat birinchi ikkitasi ko'rsatilardi va yig'indi
+       jamiga yetmasdi — «Koyka 6 · Bo'sh 2 · Band 3» degan qator
+       o'zi-o'ziga zid ko'rinardi (audit XC-31). Qolganlari bitta
+       «boshqa» soniga yig'iladi: ular ham koyka, lekin hozir
+       ishlatib bo'lmaydi. */
     const stats = useMemo(() => {
         const beds = wards.flatMap(w => w.beds || []);
+        const free = beds.filter(b => b.status === 'Free').length;
+        const occupied = beds.filter(b => b.status === 'Occupied').length;
         return {
             total: beds.length,
-            free: beds.filter(b => b.status === 'Free').length,
-            occupied: beds.filter(b => b.status === 'Occupied').length,
+            free,
+            occupied,
+            other: beds.length - free - occupied,
         };
     }, [wards]);
 
@@ -451,6 +460,11 @@ export const Inpatient: React.FC<Props> = ({
                     <span className="text-gray-500 dark:text-gray-400">{t('inp.bedLabel')}<b className="text-gray-900 dark:text-white tabular-nums">{stats.total}</b></span>
                     <span className="text-emerald-600 dark:text-emerald-400">{t('inp.free')}<b className="tabular-nums">{stats.free}</b></span>
                     <span className="text-primary-600 dark:text-primary-400">{t('inp.occupied')}<b className="tabular-nums">{stats.occupied}</b></span>
+                    {stats.other > 0 && (
+                        <span className="text-amber-600 dark:text-amber-400" title="Tozalanmoqda yoki yopiq">
+                            Boshqa: <b className="tabular-nums">{stats.other}</b>
+                        </span>
+                    )}
                 </div>
                 {canManageStay && (
                     <button onClick={() => setShowWard(true)}
