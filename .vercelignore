@@ -23,9 +23,11 @@ build/
 
 # Sinovlar va ularning chiqishi
 e2e/
+e2e-demo/
 test-results/
 playwright-report/
 playwright.config.ts
+playwright.demo.config.ts
 
 # Hujjatlar
 *.md

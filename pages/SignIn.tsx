@@ -3,14 +3,17 @@ import { Logo } from '../components/Logo';
 import { Button, Input, Card } from '../components/Common';
 import { UserRole } from '../types';
 import { AlertCircle, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { api, API_BASE_URL } from '../services/api';
+import { api } from '../services/api';
 import * as auth from '../services/authStore';
 import { IS_DEMO_BUILD, DEMO_USERNAME, DEMO_PASSWORD } from '../services/demoBuild';
 import { useLanguage } from '../context/LanguageContext';
 
 interface SignInProps {
   onLogin: (role: UserRole, name: string, clinicId?: string, doctorId?: string,
-            receptionistId?: string, mustChangePassword?: boolean) => void;
+            receptionistId?: string, mustChangePassword?: boolean,
+            /** So'ralgan manzilda qolish — demo avtomatik kirishi uchun.
+             *  Izohi `enterDemo` da. */
+            keepRoute?: boolean) => void;
 }
 
 /* Demo nusxada avtomatik kirish BIR MARTA bajariladi — pastdagi
@@ -19,53 +22,6 @@ let autoEntered = false;
 
 export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
   const { t } = useLanguage();
-  /* Shu bazadagi loginlar — kirish sahifasidagi eslatma.
-     Parol EMAS, faqat foydalanuvchi nomlari. Server ularni faqat shu
-     kompyuterdan beradi. */
-  const [logins, setLogins] = useState<{ username: string; role: string; name: string }[]>([]);
-
-  React.useEffect(() => {
-    const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (!local) return;
-    fetch(`${API_BASE_URL}/api/local-logins`)
-      .then(r => (r.ok ? r.json() : []))
-      .then(list => setLogins(Array.isArray(list) ? list : []))
-      .catch(() => setLogins([]));
-  }, []);
-
-  /* Nusxa olish. 127.0.0.1 xavfsiz kontekst hisoblanadi, shuning uchun
-     clipboard API ishlaydi; ishlamasa eski usulga tushamiz. */
-  const [copied, setCopied] = useState('');
-  const copy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); } catch { /* qo'lda tanlansin */ }
-      document.body.removeChild(ta);
-    }
-    setCopied(text);
-    setTimeout(() => setCopied(c => (c === text ? '' : c)), 1500);
-  };
-
-  /* Parolni tugma bilan qo'yib bo'lmaydi: bazada u XESH ko'rinishida
-     yotadi, ochiq matni na serverda, na sahifada bor. Shuning uchun
-     "qo'yish" loginni qo'yadi va kursorni parol maydoniga olib boradi —
-     qolgani bitta so'z terish.
-
-     Ikkala maydonni to'ldirish uchun BRAUZER parol saqlagichi bor:
-     maydonlarga `name` va `autoComplete` qo'yilgan, shuning uchun birinchi
-     muvaffaqiyatli kirishdan keyin brauzer "saqlaymizmi?" deb so'raydi va
-     keyingi safar ikkalasini o'zi to'ldiradi. */
-  const passwordRef = React.useRef<HTMLInputElement>(null);
-  const fillLogin = (name: string) => {
-    setUsername(name);
-    setTimeout(() => passwordRef.current?.focus(), 0);
-  };
-
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -75,7 +31,16 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
   /* Demo sessiyasini ochish. Alohida funksiya, chunki ikki joydan
      chaqiriladi: forma orqali (login+parol yozilganda) va demo build'dagi
      «Demoga kirish» tugmasidan. */
-  const enterDemo = () => {
+  /* `keepRoute` — so'ralgan sahifada QOLISH.
+     Avtomatik kirishda foydalanuvchi hech narsa yozmagan: u shunchaki
+     `#/inventory` kabi havolani ochgan. `onLogin` esa har doim rolning
+     bosh sahifasiga o'tkazardi — ya'ni havola tashlab yuborilardi va
+     odam Boshqaruv panelida paydo bo'lardi. Tashqaridan bu «sahifa
+     ochilmadi» bo'lib ko'rinadi.
+
+     Qo'lda kirishda (login+parol yozilganda) eski xatti-harakat qoladi:
+     u yerda odam ATAYLAB kirish sahifasida turgan. */
+  const enterDemo = (keepRoute = false) => {
     auth.setSession({
       role: UserRole.CLINIC_ADMIN,
       name: 'Demo Admin',
@@ -84,7 +49,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
       token: 'demo-token',
       isDemo: true,
     });
-    onLogin(UserRole.CLINIC_ADMIN, 'Demo Admin', 'demo-clinic-1');
+    onLogin(UserRole.CLINIC_ADMIN, 'Demo Admin', 'demo-clinic-1', undefined, undefined, undefined, keepRoute);
     setIsLoading(false);
   };
 
@@ -106,7 +71,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
   React.useEffect(() => {
     if (!IS_DEMO_BUILD || autoEntered) return;
     autoEntered = true;
-    enterDemo();
+    enterDemo(true);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -224,7 +189,6 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                   required
                   name="password"
                   autoComplete="current-password"
-                  ref={passwordRef}
                   className="pl-10 pr-10 block w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
                   placeholder="••••••••"
                   value={password}
@@ -268,7 +232,9 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
               <div className="mb-4">
                 <button
                   type="button"
-                  onClick={enterDemo}
+                  /* Bosish hodisasi `keepRoute` ga tushib qolmasin —
+                     tugmadan kirilganda rolning bosh sahifasi ochiladi. */
+                  onClick={() => enterDemo()}
                   className="w-full py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-base font-medium shadow-lg shadow-primary-500/30 transition-all"
                 >
                   Demoga kirish
@@ -278,61 +244,6 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                   o'chirsangiz ham — faqat sizda ko'rinadi.
                 </p>
               </div>
-            )}
-            {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
-              <>
-                {/* Shu bazadagi HAQIQIY loginlar. Parol ko'rsatilmaydi —
-                    uni faqat klinika biladi. Har qiymatni NUSXA olish yoki
-                    bosib maydonga qo'yish mumkin. */}
-                {logins.length > 0 && (
-                  <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-left">
-                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">
-                      Shu kompyuterdagi loginlar
-                    </p>
-                    <div className="space-y-1.5">
-                      {logins.map(l => (
-                        <div key={l.username} className="flex items-center gap-2">
-                          {/* Matn TANLANADI: qo'lda ham nusxa olish mumkin */}
-                          <code className="px-1.5 py-0.5 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-800 dark:text-gray-100 select-all">
-                            {l.username}
-                          </code>
-                          <span className="text-[11px] text-gray-400">{l.role}</span>
-                          <button type="button" onClick={() => copy(l.username)}
-                            title="Nusxa olish"
-                            className="ml-auto px-1.5 py-0.5 rounded text-[11px] text-gray-500 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700">
-                            {copied === l.username ? "✓ nusxa olindi" : 'nusxa'}
-                          </button>
-                          <button type="button" onClick={() => fillLogin(l.username)}
-                            title="Login qo'yiladi va kursor parolga o'tadi"
-                            className="px-1.5 py-0.5 rounded text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30">
-                            qo'yish
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-gray-400 mt-2">
-                      Parol ko'rsatilmaydi. Unutgan bo'lsangiz — uni tiklash kerak.
-                    </p>
-                  </div>
-                )}
-
-                {/* DEMO BLOKI OLIB TASHLANDI.
-
-                    Bu yerda demo login va paroli katta blok bo'lib,
-                    «Ikkalasini maydonlarga qo'yish» tugmasi bilan turardi.
-                    Haqiqiy login esa yuqoridagi kichik izohda edi.
-
-                    Natijasi: odam demo bilan kirib, hamma ekranni BO'SH
-                    ko'radi (demo rejim serverga umuman bormaydi) va
-                    dasturda ma'lumot yo'q deb o'ylaydi. Bu haqiqatan sodir
-                    bo'ldi.
-
-                    Demo hisobining O'ZI ishlaydi: `demoklinikaadmin` /
-                    `demoklinikaparol` ni qo'lda yozib kirish mumkin
-                    (yuqoridagi `handleSubmit` ga qarang). Faqat unga
-                    tasodifan tushib qolish yo'li yopildi. */}
-
-              </>
             )}
             <p className="text-xs text-gray-400">
               {t('auth.support')} <br />

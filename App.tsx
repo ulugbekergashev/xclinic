@@ -296,6 +296,22 @@ const sinceDate = (n: number) =>
           setLabOrders(DEMO_LAB_ORDERS || []);
           setReceptionists(DEMO_RECEPTIONISTS || []);
           setLeads(DEMO_LEADS || []);
+          /* HISOB QATORLARI VA BO'LIMLAR — demo tarmog'ida TUSHIB QOLGAN edi.
+             Pastdagi haqiqiy tarmoqda ular yuklanadi, bu yerda esa yo'q edi,
+             ya'ni `charges` bo'sh massiv bo'lib qolardi.
+
+             Ko'rinishi: kassada «Hozir klinikada» ro'yxati bemorning 90 000
+             qarzini ko'rsatadi (u boshqa manbadan — `charges.pending()` dan
+             keladi), lekin «To'lash» bosilganda oyna «To'lanmagan qator yo'q»
+             deydi va «qabul qilish» tugmasi o'chiq turadi. Ya'ni kassaning
+             asosiy tugmasi ishlamaydi. Bo'limlarsiz esa registratura va
+             kalendar filtrlari bo'sh qolardi. */
+          const [demoCharges, demoDepts] = await Promise.all([
+            api.charges.getAll({ status: 'Unpaid' }).catch(() => []),
+            api.departments.getAll().catch(() => []),
+          ]);
+          setCharges(demoCharges || []);
+          setDepartments(demoDepts || []);
         } else if (clinicId) {
           const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs, leadsData, clinicData, labTechs, labOrds, closures, movements, depts, chrgs] = await Promise.all([
             // Butun klinika bo'yicha: shifokor boshqa bo'lim ko'rgan bemorning
@@ -382,7 +398,7 @@ const sinceDate = (n: number) =>
   }, [isDarkMode]);
 
   // --- Auth Actions ---
-  const handleLogin = (role: UserRole, name: string, clinicIdParam?: string, doctorIdParam?: string, receptionistIdParam?: string, mustChange?: boolean) => {
+  const handleLogin = (role: UserRole, name: string, clinicIdParam?: string, doctorIdParam?: string, receptionistIdParam?: string, mustChange?: boolean, keepRoute?: boolean) => {
     setUserRole(role);
     setUserName(name);
     if (clinicIdParam) setClinicId(clinicIdParam);
@@ -394,6 +410,20 @@ const sinceDate = (n: number) =>
        "Xush kelibsiz" ham keraksiz: foydalanuvchi bitta ekranni ko'radi. */
     if (mustChange) {
       setMustChangePassword(true);
+      return;
+    }
+
+    /* SO'RALGAN SAHIFADA QOLISH (demo avtomatik kirishi).
+       Demo nusxada kirish sahifasi ko'rsatilmaydi — havolani ochgan odam
+       darhol ichkarida bo'ladi. Lekin quyidagi `navigate` o'sha havolani
+       tashlab yuborardi: `#/inventory` ni ochgan odam Boshqaruv panelida
+       paydo bo'lardi va sahifa ochilmadi deb o'ylardi.
+
+       Faqat HAQIQIY manzil saqlanadi: `/` va `/login` da qolishning
+       ma'nosi yo'q — ular kirish sahifasining o'zi. */
+    const asked = location.pathname;
+    if (keepRoute && asked && asked !== '/' && asked !== '/login') {
+      addToast('success', `Xush kelibsiz, ${name}!`);
       return;
     }
 

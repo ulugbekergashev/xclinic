@@ -7,6 +7,7 @@ import { Card, Button, Input, Modal, Select } from '../components/Common';
 import { UserRole, Doctor, Receptionist, Clinic, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
 import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History } from 'lucide-react';
 import { api, API_URL, getAuthToken, isDemoMode } from '../services/api';
+import type { AiSettingsResponse } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
 import { ACCESS_MODULES, SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
@@ -79,7 +80,7 @@ export const Settings: React.FC<SettingsProps> = ({
    userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, reviews
 }) => {
    const { t } = useLanguage();
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'leadApi' | 'maintenance' | 'departments'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'leadApi' | 'maintenance' | 'departments' | 'ai'>('services');
 
    // Tashqi lid manbalari (yuboraman.uz va h.k.) uchun integratsiya kaliti
    const [leadApiInfo, setLeadApiInfo] = useState<LeadApiKeyInfo | null>(null);
@@ -1079,8 +1080,39 @@ export const Settings: React.FC<SettingsProps> = ({
       }
    };
 
+   /* KOD NOMDAN O'ZI YASALADI.
+
+      Ilgari «Saqlash» tugmasi `name` VA `code` to'lmaguncha o'chiq turardi,
+      lekin «Kod» maydonida majburiyligi haqida hech qanday belgi yo'q edi.
+      Natijasi: odam nomni yozadi, tugma jim o'chiq qoladi va nima
+      yetishmayotgani aytilmaydi — tashqaridan bu «tugma ishlamayapti»
+      bo'lib ko'rinadi. Aynan shu holat sinovda ushlandi.
+
+      Endi kod nomdan hosil bo'ladi (KARDIOLOGIYA → KARD) va foydalanuvchi
+      xohlasa uni qo'lda o'zgartiradi. Takrorlanmasligi ham shu yerda
+      ta'minlanadi: bandi bo'lsa oxiriga raqam qo'shiladi. */
+   const makeDeptCode = (name: string) => {
+      const base = name.trim().toUpperCase()
+         .replace(/['''`ʻʼ]/g, '')          // apostroflar tashlanadi: O'PKA → OPKA
+         .replace(/[^A-ZА-ЯЁ0-9]/g, '')     // faqat harf va raqam
+         .slice(0, 4);
+      if (!base) return '';
+      const taken = new Set(deptList.map((d: any) => String(d.code || '').toUpperCase()));
+      if (!taken.has(base)) return base;
+      for (let i = 2; i < 100; i++) {
+         const next = `${base.slice(0, 3)}${i}`;
+         if (!taken.has(next)) return next;
+      }
+      return base;
+   };
+
+   /** Kodni foydalanuvchi O'ZI tahrirladimi. Tahrirlagan bo'lsa nomni
+    *  o'zgartirish uning yozganini bosib ketmaydi. */
+   const [deptCodeTouched, setDeptCodeTouched] = useState(false);
+
    const openDeptCreate = () => {
       setDeptForm({ name: '', code: '', type: 'CLINICAL', color: DEPT_COLORS[0].value, sortOrder: String((deptList.length + 1) * 10) });
+      setDeptCodeTouched(false);
       setDeptModal({ mode: 'create', data: null });
    };
 
@@ -1092,6 +1124,9 @@ export const Settings: React.FC<SettingsProps> = ({
          color: d.color || DEPT_COLORS[0].value,
          sortOrder: String(d.sortOrder ?? 0),
       });
+      /* Tahrirlashda kod ALLAQACHON bor — uni nomdan qayta yasash
+         mavjud bo'limning kodini almashtirib yuborardi. */
+      setDeptCodeTouched(true);
       setDeptModal({ mode: 'edit', data: d });
    };
 
@@ -1140,6 +1175,91 @@ export const Settings: React.FC<SettingsProps> = ({
       }
    };
 
+   /* ─── AI yordamchi kalitlari ───────────────────────────────────────
+      Ilgari kalit faqat serverdagi `.env` faylida edi: klinika AI ni o’zi
+      yoqa olmasdi, bizga murojaat qilib yangi build kutardi.
+
+      Maydonlar HAR DOIM bo’sh ochiladi — server kalitning o’zini
+      qaytarmaydi, faqat «bor/yo’q», oxirgi 4 belgi va qayerdan kelgani.
+      Bo’sh qoldirilgan maydon «tegma» degani; o’chirish alohida tugma
+      bilan, aks holda forma har saqlashda kalitlarni yo’q qilib
+      yuborardi. */
+   const [aiSettings, setAiSettings] = useState<AiSettingsResponse | null>(null);
+   const [aiDraft, setAiDraft] = useState<Record<string, string>>({});
+   const [aiPreferred, setAiPreferred] = useState<string>('');
+   const [aiBusy, setAiBusy] = useState(false);
+   const [aiTesting, setAiTesting] = useState(false);
+   const [aiTest, setAiTest] = useState<{ ok: boolean; text: string } | null>(null);
+
+   const loadAiSettings = React.useCallback(async () => {
+      try {
+         const data = await api.ai.getSettings();
+         setAiSettings(data);
+         setAiPreferred(data.preferred || '');
+      } catch (err: any) {
+         toast.error(err?.message || 'AI sozlamalarini olib bo’lmadi');
+      }
+   }, []);
+
+   React.useEffect(() => {
+      if (activeTab === 'ai' && userRole === UserRole.CLINIC_ADMIN) loadAiSettings();
+   }, [activeTab, userRole, loadAiSettings]);
+
+   const handleAiSave = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setAiBusy(true);
+      setAiTest(null);
+      try {
+         const keys: Record<string, string> = {};
+         for (const [name, value] of Object.entries(aiDraft)) {
+            if (value.trim()) keys[name] = value.trim();
+         }
+         const data = await api.ai.saveSettings({ keys, preferred: aiPreferred || null });
+         setAiSettings(data);
+         setAiDraft({});
+         toast.success('Saqlandi');
+      } catch (err: any) {
+         toast.error(err?.message || 'Saqlab bo’lmadi');
+      } finally {
+         setAiBusy(false);
+      }
+   };
+
+   const handleAiClear = async (name: string, label: string) => {
+      if (!await confirmAction({
+         title: `${label} kaliti o'chirilsinmi?`,
+         body: 'AI boshqa provayder kaliti bilan ishlashda davom etadi. Kalit qolmasa — AI yordamchi o’chadi.',
+         danger: true,
+         confirmLabel: "O'chirish",
+      })) return;
+      setAiBusy(true);
+      try {
+         const data = await api.ai.saveSettings({ keys: { [name]: '' } });
+         setAiSettings(data);
+         toast.success('Kalit o’chirildi');
+      } catch (err: any) {
+         toast.error(err?.message || 'O’chirib bo’lmadi');
+      } finally {
+         setAiBusy(false);
+      }
+   };
+
+   /* Tekshiruv SAQLAGANDAN KEYIN ishlaydi: server o’zidagi kalit bilan
+      haqiqiy so’rov yuboradi. Shuning uchun «saqlamasdan tekshirish»
+      yo’q — u yolg’on natija berardi. */
+   const handleAiTest = async () => {
+      setAiTesting(true);
+      setAiTest(null);
+      try {
+         const r = await api.ai.test();
+         setAiTest({ ok: true, text: r.message || 'Ulanish ishladi.' });
+      } catch (err: any) {
+         setAiTest({ ok: false, text: err?.message || 'Ulanib bo’lmadi' });
+      } finally {
+         setAiTesting(false);
+      }
+   };
+
    return (
       <div className="space-y-6 animate-fade-in">
          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('settings.title')}</h1>
@@ -1169,6 +1289,8 @@ export const Settings: React.FC<SettingsProps> = ({
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'accessLog', name: 'Kirish jurnali', icon: History }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: 'Bo’limlar', icon: Building2 }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: 'Xizmat ko’rsatish', icon: HardDrive }] : []),
+                  // AI kalitlari pul turadigan resurs — faqat klinika egasi ko'radi.
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'ai', name: 'AI yordamchi', icon: Bot }] : []),
                ].map((item) => (
                   <button
                      key={item.id}
@@ -1338,6 +1460,131 @@ export const Settings: React.FC<SettingsProps> = ({
                )}
 
                {/* DMED Tab */}
+               {activeTab === 'ai' && userRole === UserRole.CLINIC_ADMIN && (
+                  <div className="space-y-6">
+                     <Card className="p-6">
+                        <div className="flex items-center gap-4 mb-6">
+                           <div className="p-3 bg-violet-100 dark:bg-violet-900/40 rounded-xl text-violet-600 dark:text-violet-400">
+                              <Bot className="w-8 h-8" />
+                           </div>
+                           <div>
+                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">AI yordamchi</h2>
+                              <p className="text-sm text-gray-500">
+                                 «Bugun nechta qabul bor?» kabi savollar va hisobotlar uchun. Ishlashi uchun
+                                 kamida bitta provayder kaliti kerak.
+                              </p>
+                           </div>
+                        </div>
+
+                        <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg border border-primary-100 dark:border-primary-800/40 mb-6 space-y-2">
+                           <p className="text-sm text-primary-800 dark:text-primary-200">
+                              <strong>Uchtasidan bittasi yetadi.</strong> Bir nechtasi kiritilsa, biri limitga
+                              urilganda ikkinchisiga avtomatik o’tadi.
+                           </p>
+                           {/* Kalit serverda qoladi va so’rov ham serverdan ketadi: u brauzerga
+                               ham, o’rnatuvchi faylga ham tushmaydi. */}
+                           <p className="text-xs text-primary-700/80 dark:text-primary-300/80">
+                              Kalit shu kompyuterdagi bazada saqlanadi va faqat serverdan ishlatiladi —
+                              brauzerga uzatilmaydi. Bemor ismi va tashxisi AI ga yuborilishini
+                              hisobga oling.
+                           </p>
+                        </div>
+
+                        {!aiSettings ? (
+                           <p className="text-sm text-gray-500">Yuklanmoqda…</p>
+                        ) : (
+                        <form onSubmit={handleAiSave} className="space-y-5">
+                           {aiSettings.providers.map((prov) => (
+                              <div key={prov.name} className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
+                                 <div className="flex items-center justify-between gap-3 mb-3">
+                                    <div>
+                                       <h3 className="font-medium text-gray-900 dark:text-white">{prov.label}</h3>
+                                       <p className="text-xs text-gray-500">{prov.hint}</p>
+                                    </div>
+                                    {prov.configured ? (
+                                       <span className="flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                          <CheckCircle className="w-3.5 h-3.5" /> {prov.masked}
+                                       </span>
+                                    ) : (
+                                       <span className="text-xs text-gray-400 whitespace-nowrap">kalit yo’q</span>
+                                    )}
+                                 </div>
+
+                                 <Input
+                                    label={prov.configured ? 'Yangi kalit (almashtirish uchun)' : 'API kalit'}
+                                    type="password"
+                                    value={aiDraft[prov.name] || ''}
+                                    onChange={e => setAiDraft({ ...aiDraft, [prov.name]: e.target.value })}
+                                    placeholder={prov.configured ? 'Bo’sh qoldirilsa — o’zgarmaydi' : 'Kalitni shu yerga qo’ying'}
+                                    autoComplete="off"
+                                 />
+
+                                 <div className="flex items-center gap-4 mt-2 flex-wrap">
+                                    <a href={prov.url} target="_blank" rel="noreferrer"
+                                       className="text-xs text-primary-600 hover:underline inline-flex items-center gap-1">
+                                       <Link2 className="w-3 h-3" /> Kalit olish
+                                    </a>
+                                    {/* `.env` dagi kalitni bu yerdan o’chirib bo’lmaydi — buni
+                                        aytmasak, «o’chirdim, lekin qolib ketdi» degan xulosa chiqardi. */}
+                                    {prov.source === 'settings' && (
+                                       <button type="button" onClick={() => handleAiClear(prov.name, prov.label)}
+                                          disabled={aiBusy}
+                                          className="text-xs text-red-600 hover:underline inline-flex items-center gap-1">
+                                          <Trash2 className="w-3 h-3" /> Kalitni o’chirish
+                                       </button>
+                                    )}
+                                    {prov.source === 'env' && (
+                                       <span className="text-xs text-gray-400">
+                                          Serverdagi {prov.envName} dan olingan — bu yerdan o’chirilmaydi.
+                                       </span>
+                                    )}
+                                 </div>
+                              </div>
+                           ))}
+
+                           <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                 Birinchi ishlatiladigan provayder
+                              </label>
+                              <Select
+                                 value={aiPreferred}
+                                 onChange={e => setAiPreferred(e.target.value)}
+                                 options={[
+                                    { value: '', label: 'Avtomatik (kalit bor birinchisi)' },
+                                    ...aiSettings.providers.map(prov => ({ value: prov.name, label: prov.label })),
+                                 ]}
+                              />
+                              <p className="text-xs text-gray-400 mt-1">
+                                 Qolganlari zaxira bo’lib qoladi: tanlangani javob bermasa, keyingisiga o’tadi.
+                              </p>
+                           </div>
+
+                           <div className="flex items-center gap-4 pt-2 flex-wrap">
+                              <Button type="submit" disabled={aiBusy}>
+                                 {aiBusy ? 'Saqlanmoqda…' : t('common.save')}
+                              </Button>
+                              <Button
+                                 type="button"
+                                 variant="secondary"
+                                 onClick={handleAiTest}
+                                 disabled={aiTesting || !aiSettings.providers.some(prov => prov.configured)}
+                              >
+                                 {aiTesting ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+                                 Ulanishni tekshirish
+                              </Button>
+                              {aiTest && (
+                                 <span className={`text-sm flex items-center gap-1 ${aiTest.ok ? 'text-green-600' : 'text-red-600'}`}>
+                                    {aiTest.ok ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                                    {aiTest.text}
+                                 </span>
+                              )}
+                           </div>
+                        </form>
+                        )}
+                     </Card>
+                  </div>
+               )}
+
                {activeTab === 'dmed' && (
                   <div className="space-y-6">
                      <Card className="p-6">
@@ -3169,7 +3416,14 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nomi</label>
                   <Input value={deptForm.name}
-                     onChange={(e: any) => setDeptForm(f => ({ ...f, name: e.target.value }))}
+                     onChange={(e: any) => {
+                        const name = e.target.value;
+                        setDeptForm(f => ({
+                           ...f, name,
+                           // Kod qo'lda tegilmagan bo'lsa — nomdan yuriladi
+                           code: deptCodeTouched ? f.code : makeDeptCode(name),
+                        }));
+                     }}
                      placeholder="Masalan: Kardiologiya" />
                </div>
 
@@ -3177,9 +3431,12 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                   <div>
                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kod</label>
                      <Input value={deptForm.code}
-                        onChange={(e: any) => setDeptForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                        onChange={(e: any) => {
+                           setDeptCodeTouched(true);
+                           setDeptForm(f => ({ ...f, code: e.target.value.toUpperCase() }));
+                        }}
                         placeholder="KARD" />
-                     <p className="text-xs text-gray-400 mt-1">Qisqa, takrorlanmaydigan belgi</p>
+                     <p className="text-xs text-gray-400 mt-1">Qisqa, takrorlanmaydigan belgi — nomdan o'zi yasaladi</p>
                   </div>
                   <div>
                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tartib</label>

@@ -4,8 +4,11 @@
 // narsa bilmaydi.
 //
 // Barcha qo'llab-quvvatlanadigan provayderlar OpenAI-compatible `chat/completions`
-// formatida ishlaydi, shuning uchun provayder almashish = .env dagi bitta qiymat.
+// formatida ishlaydi, shuning uchun provayder almashish = bitta qiymat: Sozlamalar > «AI yordamchi»
+// (yoki eski o'rnatmalarda .env).
 // Kelajakda pullik tier'ga o'tish ham shu yerda, bitta qatorda hal bo'ladi.
+
+import { getApiKey, getPreferredProvider } from './aiSettings';
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 export interface ChatMessage {
@@ -46,7 +49,7 @@ const providers = (): ProviderConfig[] => [
     {
         name: 'gemini',
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-        apiKey: process.env.GEMINI_API_KEY,
+        apiKey: getApiKey('gemini'),
         models: {
             chat: process.env.GEMINI_MODEL_CHAT || 'gemini-2.0-flash',
             cheap: process.env.GEMINI_MODEL_CHEAP || 'gemini-2.0-flash-lite',
@@ -55,7 +58,7 @@ const providers = (): ProviderConfig[] => [
     {
         name: 'groq',
         baseUrl: 'https://api.groq.com/openai/v1',
-        apiKey: process.env.GROQ_API_KEY,
+        apiKey: getApiKey('groq'),
         // gpt-oss-120b o'zbek tilida ham, klinik aniqlikda ham llama-3.3-70b dan
         // sezilarli ustun chiqdi (35-tishni to'g'ri aniqladi, differensial tashxis berdi).
         // Tezligi ham bir xil (~1.6s). qwen3.6-27b ni ishlatmang — u ichki
@@ -68,7 +71,7 @@ const providers = (): ProviderConfig[] => [
     {
         name: 'openrouter',
         baseUrl: 'https://openrouter.ai/api/v1',
-        apiKey: process.env.OPENROUTER_API_KEY,
+        apiKey: getApiKey('openrouter'),
         models: {
             chat: process.env.OPENROUTER_MODEL_CHAT || 'meta-llama/llama-3.3-70b-instruct:free',
             cheap: process.env.OPENROUTER_MODEL_CHEAP || 'meta-llama/llama-3.1-8b-instruct:free',
@@ -82,7 +85,7 @@ const providers = (): ProviderConfig[] => [
  */
 const providerChain = (): ProviderConfig[] => {
     const available = providers().filter(p => !!p.apiKey);
-    const preferred = process.env.AI_PROVIDER;
+    const preferred = getPreferredProvider();
     if (!preferred) return available;
     const first = available.filter(p => p.name === preferred);
     const rest = available.filter(p => p.name !== preferred);
@@ -248,8 +251,8 @@ export const chat = async (
     const chain = providerChain();
     if (chain.length === 0) {
         throw new Error(
-            'AI sozlanmagan: GEMINI_API_KEY, GROQ_API_KEY yoki OPENROUTER_API_KEY dan ' +
-            'kamida bittasini .env ga qo\'shing.'
+            "AI sozlanmagan: Sozlamalar > «AI yordamchi» bo’limida Gemini, Groq yoki " +
+            'OpenRouter kalitidan kamida bittasini kiriting.'
         );
     }
 

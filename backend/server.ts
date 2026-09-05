@@ -6826,6 +6826,45 @@ app.get('/api/ai/status', authenticateToken, (req: any, res: any) => {
     res.json({ success: true, ...aiStatus() });
 });
 
+/* ─── AI kalitlari ──────────────────────────────────────────────
+   Kalitni klinika egasi Sozlamalar > «AI yordamchi» bo’limida o’zi kiritadi.
+   Ilgari u faqat serverdagi `.env` faylida edi — ya’ni AI ni yoqish uchun
+   klinika bizga murojaat qilishi va yangi build kutishi kerak edi.
+
+   FAQAT CLINIC_ADMIN. Kalit pul turadigan resurs: registrator yoki shifokorga
+   uni ko’rsatish ham, o’zgartirish ham kerak emas. */
+app.get('/api/ai/settings', authenticateToken, requireRole('CLINIC_ADMIN'), (req: any, res: any) => {
+    const { describeAiSettings } = require('./aiSettings');
+    res.json({ success: true, ...describeAiSettings() });
+});
+
+app.put('/api/ai/settings', authenticateToken, requireRole('CLINIC_ADMIN'), async (req: any, res: any) => {
+    try {
+        const { describeAiSettings, saveAiSettings } = require('./aiSettings');
+        const { keys, preferred } = req.body || {};
+        await saveAiSettings({ keys, preferred });
+        res.json({ success: true, ...describeAiSettings() });
+    } catch (error: any) {
+        console.error('AI sozlamalarini saqlash xatosi:', error);
+        res.status(500).json({ success: false, message: 'AI sozlamalarini saqlashda xatolik' });
+    }
+});
+
+/* Kalit to’g’ri yozilganini DARHOL tekshirish.
+   Busiz xato faqat birinchi haqiqiy savolda chiqardi va odam nima
+   noto’g’ri ekanini — kalitmi, tarmoqmi — bilmasdi. */
+app.post('/api/ai/settings/test', authenticateToken, requireRole('CLINIC_ADMIN'), async (req: any, res: any) => {
+    try {
+        const answer = await aiChat(
+            [{ role: 'user', content: 'Javob sifatida faqat "ok" deb yozing.' }],
+            { task: 'cheap', maxTokens: 16, label: 'settings-test' }
+        );
+        res.json({ success: true, message: 'Ulanish ishladi.', sample: String(answer || '').slice(0, 80) });
+    } catch (error: any) {
+        res.status(400).json({ success: false, message: error?.message || 'Ulanib bo’lmadi' });
+    }
+});
+
 /**
  * POST /api/ai/ask
  * DB tool'lar orqali klinika ma'lumotlari haqida savol-javob.
@@ -6834,7 +6873,7 @@ app.get('/api/ai/status', authenticateToken, (req: any, res: any) => {
 app.post('/api/ai/ask', authenticateToken, async (req: any, res: any) => {
     try {
         if (!isAiConfigured()) {
-            return res.status(503).json({ success: false, message: 'AI sozlanmagan: server .env da API kalit yo\'q.' });
+            return res.status(503).json({ success: false, message: "AI sozlanmagan: klinika egasi Sozlamalar > «AI yordamchi» bo’limida kalit kiritishi kerak." });
         }
         const user = req.user;
         const clinicId = getScopedClinicId(req);
@@ -6925,7 +6964,7 @@ app.get('/api/ai/reports', authenticateToken, (req: any, res: any) => {
 app.post('/api/ai/report', authenticateToken, async (req: any, res: any) => {
     try {
         if (!isAiConfigured()) {
-            return res.status(503).json({ success: false, message: 'AI sozlanmagan: server .env da API kalit yo\'q.' });
+            return res.status(503).json({ success: false, message: "AI sozlanmagan: klinika egasi Sozlamalar > «AI yordamchi» bo’limida kalit kiritishi kerak." });
         }
         const user = req.user;
         const clinicId = getScopedClinicId(req);
@@ -7079,6 +7118,9 @@ console.log('🚀 Server is initializing...');
 /* SQLite rejimi eng birinchi: migratsiyalar ham, zaxira ham, hamma so'rov ham
    shu rejimda ishlashi kerak. WAL baza fayliga bir marta yoziladi. */
 applySqlitePragmas()
+    /* AI kalitlari bazadan keshga. Xato bo’lsa modul o’zi yutadi — AI
+       sozlamasi tufayli butun server ishga tushmay qolishi mumkin emas. */
+    .then(() => require('./aiSettings').loadAiSettings())
     .then(() => runStartupMigrations())
     /* Yangi mexanizm: raqamlangan SQL fayllar (backend/migrations/).
        Eski COLUMN_MIGRATIONS ro'yxati ATAYLAB o'z joyida qoldirildi — u

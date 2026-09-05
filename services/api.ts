@@ -210,12 +210,20 @@ const demoSnapshot = (from?: string, to?: string): Snapshot => {
         },
     };
 };
-/** YOZISH uchun: tushunarli xato beradi. O'qish amalida ISHLATMANG —
- *  aks holda oddiy ko'rish sahifasida "saqlab bo'lmaydi" degan mantiqsiz
- *  xabar chiqadi. */
-const demoWrite = <T,>(): Promise<T> =>
-    Promise.reject(new Error("Demo rejimda saqlab bo'lmaydi. Haqiqiy hisob bilan kiring."));
-/** O'qish, lekin bo'sh qiymat ma'nosiz bo'lgan holat (bitta yozuvni ochish) */
+/* `demoWrite()` va `demoMissing()` OLIB TASHLANDI.
+ *
+ * Ular har qanday yozishni «Demo rejimda saqlab bo'lmaydi» xatosi bilan rad
+ * etardi va o'ttiz bitta yozish amalini o'lik qilib qo'ygan edi: ombor kirimi,
+ * kassa to'lovi, tahlil natijasi, bo'lim qo'shish. Namoyish nusxasida bu
+ * eng yomon holat — ko'rgan odam dasturning o'zini buzuq deb hisoblaydi.
+ *
+ * Endi har bir amal demo to'plamining O'ZIGA yoziladi (`demoDone` ga
+ * qarang). Yangi amal qo'shsangiz ham shu yo'ldan boring — serverga
+ * yuborish demoda ishlamaydi: token soxta va 401 sessiyani uzadi. */
+
+/** BITTA YOZUV so'ralgan, lekin u demo to'plamida yo'q — serverdagi 404 ning
+ *  o'rnini bosadi. Bu `demoWrite` dan farq qiladi: bu yerda amal emas,
+ *  YOZUVNING O'ZI yo'q, ya'ni xato o'rinli. */
 const demoMissing = <T,>(what: string): Promise<T> =>
     Promise.reject(new Error(`Demo rejimda ${what} mavjud emas.`));
 
@@ -426,6 +434,38 @@ const DEMO_LAB_TESTS: LabTest[] = [
     { id: 'demo-lt-8', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Mikroreaksiya', code: 'RW', sampleType: 'Qon', price: 40000, cost: 15000, turnaroundHours: 6, isActive: false, sortOrder: 8 },
 ];
 
+/* Tahlil PARAMETRLARI — natija kiritish oynasi aynan shulardan qatorlar
+   yasaydi. Ular bo'lmagani uchun demoda «Natijani kiritish» oynasi BO'SH
+   ochilardi va «Saqlash» tugmasi hech narsa qilmasdi: ekranning butun
+   ma'nosi shu ro'yxatda. Normalar haqiqiy klinik oraliqlardan olindi. */
+const DEMO_LAB_PARAMS: Record<string, { name: string; unit?: string; refLow?: number; refHigh?: number }[]> = {
+    'demo-lt-1': [
+        { name: 'Gemoglobin', unit: 'g/l', refLow: 120, refHigh: 160 },
+        { name: 'Eritrotsitlar', unit: '10¹²/l', refLow: 3.9, refHigh: 5.2 },
+        { name: 'Leykotsitlar', unit: '10⁹/l', refLow: 4, refHigh: 9 },
+        { name: 'Trombotsitlar', unit: '10⁹/l', refLow: 180, refHigh: 320 },
+        { name: 'EChT', unit: 'mm/soat', refLow: 2, refHigh: 15 },
+    ],
+    'demo-lt-2': [{ name: 'Glyukoza', unit: 'mmol/l', refLow: 3.9, refHigh: 6.1 }],
+    'demo-lt-3': [
+        { name: 'Zichlik', refLow: 1010, refHigh: 1025 },
+        { name: 'Oqsil', unit: 'g/l', refLow: 0, refHigh: 0.033 },
+        { name: 'Leykotsitlar (k/m)', refLow: 0, refHigh: 5 },
+    ],
+    'demo-lt-4': [
+        { name: 'Umumiy bilirubin', unit: 'µmol/l', refLow: 3.4, refHigh: 20.5 },
+        { name: 'ALT', unit: 'U/l', refLow: 0, refHigh: 41 },
+        { name: 'AST', unit: 'U/l', refLow: 0, refHigh: 40 },
+        { name: 'Kreatinin', unit: 'µmol/l', refLow: 62, refHigh: 106 },
+    ],
+    'demo-lt-5': [
+        { name: 'Protrombin indeksi', unit: '%', refLow: 80, refHigh: 105 },
+        { name: 'Fibrinogen', unit: 'g/l', refLow: 2, refHigh: 4 },
+    ],
+    'demo-lt-6': [{ name: 'TTG', unit: 'mMe/l', refLow: 0.4, refHigh: 4 }],
+    'demo-lt-7': [{ name: 'HBsAg', refText: 'Manfiy' } as any],
+};
+
 const MODALITIES = ['XRay', 'Ultrasound', 'CT', 'MRI'] as const;
 const STUDY_NAMES = ['Panoramik rentgen', "Qorin bo'shlig'i UZI", 'Bosh miya KT', 'Tizza MRT',
     "Ko'krak qafasi rentgeni", 'Qalqonsimon bez UZI'];
@@ -496,6 +536,159 @@ const DEMO_BATCHES: InventoryBatch[] = Array.from({ length: 6 }, (_, i) => {
         expired: i === 0,
     } as InventoryBatch;
 });
+
+/* ── DEMO: YOZISH AMALLARI ───────────────────────────────────────────────
+   Ilgari bu yerdagi har bir amal `demoWrite()` ga borardi — ya'ni tugma
+   bosilganda «Demo rejimda saqlab bo'lmaydi» degan xato chiqardi. Namoyish
+   nusxasida bu o'ttiz bitta yozish amalini o'lik qilib qo'ygan edi: ombor kirimi,
+   kassa to'lovi, tahlil natijasi, bo'lim qo'shish — hech biri ishlamasdi.
+   Ko'rgan odam esa dasturni buzuq deb hisoblaydi.
+
+   Endi yozish YUQORIDAGI massivlarning O'ZIGA bajariladi. Ular sessiya
+   davomida yashaydi (sahifa yangilansa boshlang'ich holatga qaytadi) —
+   `DEMO_CASH_REGISTER` bilan bir xil qoida. Bemor, qabul va to'lov kabi
+   `demoData.ts` dagi to'plamlar esa avvalgidek `saveDemoData()` orqali
+   brauzerda saqlanadi. */
+
+/** Demo yozuvi uchun noyob id. */
+const demoId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+const demoNow = () => new Date().toISOString();
+
+/** Nomi bo'yicha ombor mahsuloti — jurnal qatoriga nom yozish uchun. */
+const demoItem = (itemId: string) => DEMO_INVENTORY.find(i => i.id === itemId);
+
+/** Ombor harakati + qoldiqni o'zgartirish + jurnal qatori.
+ *  `delta` musbat — kirim, manfiy — chiqim. `Transfer` da nol beriladi:
+ *  tovar klinika ichida qoladi, umumiy qoldiq o'zgarmaydi. */
+const demoStockMove = (
+    type: StockMovement['type'], itemId: string, delta: number,
+    reason: string, extra?: { note?: string; userName?: string; patientId?: string; visitId?: string },
+): StockMovement => {
+    const item = demoItem(itemId);
+    if (item && delta !== 0) item.quantity = Math.max(0, (item.quantity || 0) + delta);
+    const move: StockMovement = {
+        id: demoId('demo-move'),
+        clinicId: 'demo-clinic-1',
+        itemId,
+        type,
+        quantity: delta,
+        reason,
+        note: extra?.note ?? null,
+        userName: extra?.userName || 'Demo Admin',
+        visitId: extra?.visitId ?? null,
+        createdAt: demoNow(),
+        item: item ? { name: item.name, unit: item.unit || 'dona' } : undefined,
+    };
+    DEMO_STOCK_MOVES.unshift(move);
+    /* Ombor ekranidagi «Harakatlar» va bemor kartasidagi «Sarflangan
+       material» IKKI XIL ro'yxatdan o'qiydi (`stock.movements` va
+       `inventory.getLogs`). Ikkalasiga ham yozamiz, aks holda kirim
+       qilingan tovar bir ekranda ko'rinib, ikkinchisida ko'rinmaydi. */
+    if (delta !== 0) {
+        DEMO_INVENTORY_LOGS.unshift({
+            id: demoId('demo-log'),
+            itemId,
+            change: delta,
+            type: delta > 0 ? 'IN' : 'OUT',
+            note: extra?.note || reason,
+            date: demoNow(),
+            userName: extra?.userName || 'Demo Admin',
+            patientId: extra?.patientId,
+            patientName: extra?.patientId ? demoName(extra.patientId) : undefined,
+            item: item ? { name: item.name, unit: item.unit || 'dona' } : undefined,
+        } as InventoryLog);
+    }
+    saveDemoData();
+    return move;
+};
+
+/* Xizmat retseptlari — «bitta plombaga qancha material ketadi». Demoda
+   bo'sh boshlanadi va foydalanuvchi o'zi to'ldiradi; shuning uchun
+   `let` emas, doimiy massiv yetarli. */
+const DEMO_RECIPES: ServiceRecipeLine[] = [];
+
+/** Retsept qatoriga ombor mahsulotini biriktirish — ekran `item.name` va
+ *  `item.price` ni kutadi, ularsiz jadval bo'sh ustun ko'rsatadi. */
+const demoRecipeLine = (serviceId: number, l: { itemId: string; quantity: number; note?: string }): ServiceRecipeLine => {
+    const item = demoItem(l.itemId);
+    return {
+        id: demoId('demo-recipe'), serviceId, itemId: l.itemId,
+        quantity: l.quantity, note: l.note ?? null,
+        item: item ? { id: item.id, name: item.name, unit: item.unit || 'dona', price: item.price || 0 } : undefined,
+    };
+};
+
+/* ── DEMO: LABORATORIYA NATIJALARI ───────────────────────────────────────
+   Yo'llanmaga tegishli tahlillar va kiritilgan qiymatlar. `demo-order-*`
+   yozuvlarida `items` yo'q, shuning uchun ular BIRINCHI OCHILGANDA
+   yasaladi va shu yerda saqlanadi — aks holda oyna har safar boshqacha
+   ro'yxat ko'rsatib, kiritilgan natija yo'qolardi. */
+const DEMO_ORDER_ITEMS: Record<string, { id: string; testId: string }[]> = {};
+/** `"<orderItemId>:<parameterId>"` → kiritilgan qiymat. */
+const DEMO_RESULT_VALUES: Record<string, { value: string; note?: string }> = {};
+
+/** Norma chegarasiga qarab bayroq — server `flag` maydonini shunday to'ldiradi. */
+const demoFlag = (value: string, refLow?: number, refHigh?: number): 'Low' | 'High' | 'Normal' | null => {
+    const n = Number(String(value).replace(',', '.'));
+    if (!Number.isFinite(n) || (refLow == null && refHigh == null)) return null;
+    if (refLow != null && n < refLow) return 'Low';
+    if (refHigh != null && n > refHigh) return 'High';
+    return 'Normal';
+};
+
+/** Yo'llanmaning to'liq ko'rinishi — natija oynasi shu shaklni kutadi. */
+const demoLabResults = (orderId: string) => {
+    const order = DEMO_LAB_ORDERS.find(o => o.id === orderId);
+    if (!DEMO_ORDER_ITEMS[orderId]) {
+        /* Yo'llanmada tahlil ro'yxati yo'q — katalogdan ikkitasi
+           BARQAROR tanlanadi (id dan hisoblanadi, tasodifiy emas). */
+        const active = DEMO_LAB_TESTS.filter(t => t.isActive);
+        const seed = Array.from(orderId).reduce((s, ch) => s + ch.charCodeAt(0), 0);
+        const picked = active.length
+            ? [active[seed % active.length], active[(seed + 3) % active.length]]
+                .filter((t, i, arr) => arr.findIndex(x => x.id === t.id) === i)
+            : [];
+        DEMO_ORDER_ITEMS[orderId] = picked.map((t, i) => ({ id: `${orderId}-item-${i + 1}`, testId: t.id }));
+    }
+    const items = DEMO_ORDER_ITEMS[orderId].map(it => {
+        const test = DEMO_LAB_TESTS.find(t => t.id === it.testId);
+        const params = DEMO_LAB_PARAMS[it.testId] || [{ name: test?.name || 'Natija' }];
+        const rows = params.map((p, i) => {
+            const parameterId = `${it.testId}-p${i + 1}`;
+            const saved = DEMO_RESULT_VALUES[`${it.id}:${parameterId}`];
+            return {
+                parameterId, name: p.name, unit: p.unit ?? null,
+                refLow: p.refLow ?? null, refHigh: p.refHigh ?? null,
+                refText: (p as any).refText ?? null,
+                value: saved?.value || '',
+                valueNum: saved ? Number(String(saved.value).replace(',', '.')) || null : null,
+                flag: saved ? demoFlag(saved.value, p.refLow, p.refHigh) : null,
+                note: saved?.note ?? null,
+            };
+        });
+        return {
+            id: it.id, orderId, testId: it.testId,
+            testName: test?.name || 'Tahlil', price: test?.price || 0,
+            status: rows.every(r => r.value) ? 'Completed' : 'Pending',
+            parameters: rows,
+        };
+    });
+    return {
+        ...(order || { id: orderId }),
+        id: orderId, items,
+        /* Yosh va jins normalarni tanlash uchun kerak; demoda bemor
+           kartasidan olinadi, topilmasa null — ekran shunga tayyor. */
+        patientAge: null as number | null,
+        patientSex: null as string | null,
+    };
+};
+
+/** Hisob qatorlarining yig'indisi — server `ChargeSummary` bilan bir xil. */
+const demoSummarize = (rows: VisitCharge[]): ChargeSummary => {
+    const total = rows.reduce((s, c) => s + (c.total || 0), 0);
+    const paid = rows.reduce((s, c) => s + (c.paidAmount || 0), 0);
+    return { total, paid, due: Math.max(0, total - paid), unpaidCount: rows.filter(c => c.status !== 'Paid').length };
+};
 
 /* ── DEMO: HISOBOTLAR VA JURNALLAR ───────────────────────────────────────
    Bularning turi `any`, ya'ni TypeScript shaklni tekshirmaydi — shuning
@@ -703,7 +896,99 @@ const demoVisitCharges = (visitId: string) => {
     };
 };
 
-/** Hamshiralar — Sozlamalardagi «Xodimlar» bo'limi bo'sh qolmasligi uchun. */
+/* ── DEMO: SHU FAYLDAGI TO'PLAMLARNI SAQLASH ─────────────────────────────
+   `demoData.ts` dagi ro'yxatlar (bemor, qabul, chek, ombor) brauzerda
+   saqlanadi — `saveDemoData()`. Shu fayldagilar esa saqlanmasdi va sahifa
+   yangilanganda boshlang'ich holatga qaytardi.
+
+   Bu ZIDDIYAT tug'dirardi, chunki ikkala to'plam BOG'LIQ. Misol: kassada
+   90 000 so'm qabul qilinadi — chek `DEMO_TRANSACTIONS` ga tushib saqlanadi,
+   hisob qatorining «to'landi» belgisi esa shu yerda qolib, yangilashda
+   yo'qolardi. Natijada pul ham olingan, qarz ham joyida ko'rinardi.
+   Xuddi shu narsa omborda: qoldiq oshgan, lekin «Harakatlar» ro'yxatida
+   o'sha kirim yo'q.
+
+   Shuning uchun bu to'plamlar ham saqlanadi — alohida kalit ostida, chunki
+   ular `demoData.ts` ga ko'rinmaydi. Xatolik (kvota, xususiy oyna) butun
+   ilovani yiqitmasligi kerak: hamma amal `try` ichida. */
+const DEMO_STATE_KEY = 'xclinic_demo_state';
+const DEMO_STATE_VERSION = 1;
+
+/** O'rnida almashtirish: massivlar boshqa joylarda havola bo'yicha
+ *  ishlatiladi, shuning uchun yangisini tayinlab bo'lmaydi. */
+const replaceAll = <T,>(target: T[], next: unknown) => {
+    if (!Array.isArray(next)) return;
+    target.splice(0, target.length, ...(next as T[]));
+};
+
+/* `demoData.ts` dagi to'plam versiyasi. Ikkala saqlanma BIR BUTUN: bu
+   yerdagi hisob qatorlari o'sha yerdagi qabul va bemorlarga id bo'yicha
+   bog'langan. Demo to'plami yangilanib, u yerdagi nusxa tashlansa, bu
+   yerdagisi ham tashlanishi kerak — aks holda mavjud bo'lmagan bemorga
+   tegishli qarz qatorlari qolib ketadi. */
+const demoDataVersion = () => {
+    try { return localStorage.getItem('xclinic_demo_version') || ''; } catch { return ''; }
+};
+
+const saveDemoState = () => {
+    if (!isDemoMode()) return;
+    try {
+        localStorage.setItem(DEMO_STATE_KEY, JSON.stringify({
+            v: DEMO_STATE_VERSION,
+            dataV: demoDataVersion(),
+            charges: DEMO_CHARGES, departments: DEMO_DEPARTMENTS,
+            stockMoves: DEMO_STOCK_MOVES, batches: DEMO_BATCHES,
+            studies: DEMO_STUDIES, prescriptions: DEMO_PRESCRIPTIONS,
+            labTests: DEMO_LAB_TESTS, templates: DEMO_ENCOUNTER_TEMPLATES,
+            recipes: DEMO_RECIPES, orderItems: DEMO_ORDER_ITEMS,
+            resultValues: DEMO_RESULT_VALUES,
+        }));
+    } catch { /* saqlanmasa ham sessiya davomida ishlayveradi */ }
+};
+
+/** Saqlangan holatni tiklash — modul yuklanganda BIR MARTA. */
+(function restoreDemoState() {
+    try {
+        const raw = typeof localStorage !== 'undefined' && localStorage.getItem(DEMO_STATE_KEY);
+        if (!raw) return;
+        const s = JSON.parse(raw);
+        /* Versiya mos kelmasa — tashlab yuboramiz. Yangi demo chiqarilganda
+           eski shakldagi yozuv ekranni buzmasin (`demoData.ts` dagi bilan
+           bir xil qoida). */
+        if (s?.v !== DEMO_STATE_VERSION || s?.dataV !== demoDataVersion()) {
+            localStorage.removeItem(DEMO_STATE_KEY); return;
+        }
+        replaceAll(DEMO_CHARGES, s.charges);
+        replaceAll(DEMO_DEPARTMENTS, s.departments);
+        replaceAll(DEMO_STOCK_MOVES, s.stockMoves);
+        replaceAll(DEMO_BATCHES, s.batches);
+        replaceAll(DEMO_STUDIES, s.studies);
+        replaceAll(DEMO_PRESCRIPTIONS, s.prescriptions);
+        replaceAll(DEMO_LAB_TESTS, s.labTests);
+        replaceAll(DEMO_ENCOUNTER_TEMPLATES, s.templates);
+        replaceAll(DEMO_RECIPES, s.recipes);
+        if (s.orderItems) Object.assign(DEMO_ORDER_ITEMS, s.orderItems);
+        if (s.resultValues) Object.assign(DEMO_RESULT_VALUES, s.resultValues);
+    } catch { try { localStorage.removeItem(DEMO_STATE_KEY); } catch { /* ignore */ } }
+})();
+
+/** Demo YOZUVINING yakuni: holatni saqlaydi va natijani qaytaradi.
+ *  Har bir o'zgartiruvchi amal shu orqali tugaydi — saqlashni bitta joyda
+ *  ushlab turish uchun (unutilgan chaqiruv = yo'qolgan o'zgarish). */
+const demoDone = <T,>(value: T): Promise<T> => { saveDemoState(); return Promise.resolve(value); };
+
+/* AI provayderlari — Sozlamalar > «AI yordamchi» ro'yxati. Nomlar
+   `backend/aiSettings.ts` dagi `AI_PROVIDER_INFO` bilan bir xil bo'lishi
+   kerak, aks holda demo va haqiqiy o'rnatma ikki xil ro'yxat ko'rsatadi. */
+const DEMO_AI_PROVIDERS = [
+    { name: 'gemini' as const, label: 'Google Gemini', envName: 'GEMINI_API_KEY',
+      hint: 'Google AI Studio da bepul kalit beriladi.', url: 'https://aistudio.google.com/apikey' },
+    { name: 'groq' as const, label: 'Groq', envName: 'GROQ_API_KEY',
+      hint: 'Eng tez javob beradi, bepul limiti bor.', url: 'https://console.groq.com/keys' },
+    { name: 'openrouter' as const, label: 'OpenRouter', envName: 'OPENROUTER_API_KEY',
+      hint: "Bitta kalit bilan ko'p model. Bepul modellari ham bor.", url: 'https://openrouter.ai/keys' },
+];
+
 /** Bemor hujjatlari (rozilik, shartnoma) — sessiya davomida saqlanadi. */
 const DEMO_DOCUMENTS: any[] = [];
 
@@ -963,6 +1248,26 @@ async function fetchJson<T>(url: string, options: RequestInit = {}, isRetry = fa
         throw err;
     }
     return response.json();
+}
+
+/** Sozlamalar oynasi uchun AI holati. Kalitlar oshkor qilinmaydi. */
+export interface AiProviderStatus {
+    name: 'gemini' | 'groq' | 'openrouter';
+    label: string;
+    hint: string;
+    url: string;
+    configured: boolean;
+    /** «••••••••1234» ko’rinishida yoki null. */
+    masked: string | null;
+    /** 'settings' — sozlamalardan kiritilgan, 'env' — serverdagi .env dan. */
+    source: 'settings' | 'env' | null;
+    envName: string;
+}
+
+export interface AiSettingsResponse {
+    success: boolean;
+    preferred: 'gemini' | 'groq' | 'openrouter' | null;
+    providers: AiProviderStatus[];
 }
 
 export const api = {
@@ -1656,6 +1961,48 @@ export const api = {
             });
         },
     },
+    /* AI kalitlari — Sozlamalar > «AI yordamchi».
+       Kalitning O’ZI hech qachon qaytmaydi: server faqat «bormi, qayerdan
+       kelgan va oxirgi 4 belgisi» ni beradi. Shuning uchun formada
+       maydonlar bo’sh turadi — bo’sh qoldirilsa kalit o’zgarmaydi. */
+    /* DEMO TO'SIG'I SHART. Demo tokeni soxta ('demo-token'), server esa
+       unga 401 qaytaradi — 401 sozlamasi bo'yicha sessiya tozalanadi va
+       odam kirish sahifasiga uloqtiriladi. Ya'ni to'siqsiz «AI yordamchi»
+       vkladkasini ochishning O'ZI namoyish nusxasidan chiqarib yuborardi.
+
+       AI ni demoda ishlatib bo'lmaydi va bu to'g'ri: kalit klinikaning
+       o'z serverida turadi. Shuning uchun o'qish «sozlanmagan» holatini
+       ko'rsatadi, yozish esa sababini tushuntiradi — `AiAssistant.tsx`
+       dagi bilan bir xil ohangda. */
+    ai: {
+        getSettings: () => {
+            if (isDemoMode()) return demoRead<AiSettingsResponse>({
+                success: true, preferred: null,
+                providers: DEMO_AI_PROVIDERS.map(p => ({ ...p, configured: false, masked: null, source: null })),
+            });
+            return fetchJson<AiSettingsResponse>('/ai/settings');
+        },
+        /* Bo’sh satr = O’CHIRISH, yuborilmagan maydon = tegilmaydi.
+           Shu farq bo’lmasa kalitni olib tashlashning yo’li qolmasdi. */
+        saveSettings: (payload: { keys?: Record<string, string>; preferred?: string | null }) => {
+            if (isDemoMode()) return Promise.reject(new Error(
+                'AI kaliti namoyish nusxasida saqlanmaydi — u klinikadagi serverda turadi.'));
+            return fetchJson<AiSettingsResponse>('/ai/settings', {
+                method: 'PUT',
+                body: JSON.stringify(payload),
+            });
+        },
+        test: () => {
+            if (isDemoMode()) return demoRead<{ success: boolean; message: string; sample?: string }>({
+                success: false,
+                message: 'Namoyish nusxasida server yo\'q — ulanishni klinikadagi o\'rnatmada sinash mumkin.',
+            });
+            return fetchJson<{ success: boolean; message: string; sample?: string }>('/ai/settings/test', {
+                method: 'POST',
+            });
+        },
+    },
+
     clinics: {
         getById: (id: string) => {
             if (isDemoMode()) return Promise.resolve(DEMO_CLINIC);
@@ -1996,8 +2343,22 @@ export const api = {
                 DEMO_CHARGES.push(row);
                 return demoRead<any>(row);
             })() : fetchJson<any>(`/visits/${visitId}/procedures`, { method: 'POST', body: JSON.stringify(data) }),
-        removeProcedure: (procedureId: string) =>
-            isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/visit-procedures/${procedureId}`, { method: 'DELETE' }),
+        removeProcedure: (procedureId: string) => {
+            if (isDemoMode()) {
+                /* `addProcedure` hisob qatorini yaratadi — o'chirish ham
+                   o'sha qatorni olib tashlashi kerak, aks holda qo'shilgan
+                   xizmat kassada abadiy osilib qoladi. */
+                const i = DEMO_CHARGES.findIndex(c => c.id === procedureId);
+                if (i !== -1) {
+                    if ((DEMO_CHARGES[i].paidAmount || 0) > 0) {
+                        return Promise.reject(new Error("To'langan xizmatni o'chirib bo'lmaydi."));
+                    }
+                    DEMO_CHARGES.splice(i, 1);
+                }
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/visit-procedures/${procedureId}`, { method: 'DELETE' });
+        },
         update: (id: string, data: Partial<Visit>) => {
             if (isDemoMode()) {
                 const v = DEMO_VISITS.find(x => x.id === id);
@@ -2009,8 +2370,22 @@ export const api = {
             }
             return fetchJson<Visit>(`/visits/${id}`, { method: 'PUT', body: JSON.stringify(data) });
         },
-        delete: (id: string) =>
-            isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/visits/${id}`, { method: 'DELETE' }),
+        delete: (id: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_VISITS.findIndex(v => v.id === id);
+                if (i === -1) return Promise.reject(new Error('Qabul topilmadi.'));
+                /* To'lov o'tgan qabul o'chirilmaydi — pul qatorlari
+                   egasiz qolib ketadi. Serverdagi bilan bir xil to'siq. */
+                const paid = DEMO_CHARGES.some(c => c.visitId === id && (c.paidAmount || 0) > 0);
+                if (paid) return Promise.reject(new Error("To'lov qilingan qabulni o'chirib bo'lmaydi."));
+                DEMO_VISITS.splice(i, 1);
+                for (let k = DEMO_CHARGES.length - 1; k >= 0; k--) {
+                    if (DEMO_CHARGES[k].visitId === id) DEMO_CHARGES.splice(k, 1);
+                }
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/visits/${id}`, { method: 'DELETE' });
+        },
         // Navbatni chaqirish — tablo shu holatni ko'rsatadi
         call: (id: string) => {
             if (isDemoMode()) {
@@ -2031,42 +2406,144 @@ export const api = {
             const qs = q.toString();
             return fetchJson<StockMovement[]>(`/stock-movements${qs ? `?${qs}` : ''}`);
         },
-        receive: (data: { itemId: string; quantity: number; cost?: number; batchNumber?: string; expiryDate?: string; note?: string; userName?: string }) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/in', { method: 'POST', body: JSON.stringify(data) }),
+        receive: (data: { itemId: string; quantity: number; cost?: number; batchNumber?: string; expiryDate?: string; note?: string; userName?: string }) => {
+            if (isDemoMode()) {
+                const move = demoStockMove('In', data.itemId, Math.abs(data.quantity), 'Yetkazib berish', data);
+                /* Partiya raqami yoki muddat berilgan bo'lsa — «Partiya va
+                   muddat» tabida ham ko'rinsin, aks holda kirim qilingan
+                   dori u yerda paydo bo'lmaydi. */
+                if (data.batchNumber || data.expiryDate) {
+                    DEMO_BATCHES.unshift({
+                        id: demoId('demo-batch'), itemId: data.itemId,
+                        batchNumber: data.batchNumber || null,
+                        expiryDate: data.expiryDate || null,
+                        quantity: Math.abs(data.quantity),
+                        cost: data.cost || 0,
+                        receivedAt: demoNow(),
+                        expired: !!data.expiryDate && data.expiryDate < todayISO(),
+                    } as InventoryBatch);
+                }
+                return demoDone(move);
+            }
+            return fetchJson<any>('/stock-movements/in', { method: 'POST', body: JSON.stringify(data) });
+        },
         /** Chiqim. `patientId` bilan — bemor kartasidan sarflangan material (0028). */
         /* `force: true` — muddati o'tgan partiyani ATAYLAB sarflash (S2.5).
            Serversiz to'sib bo'lmaydi: brauzerda partiyalar ro'yxati yo'q. */
-        issue: (data: { itemId: string; quantity: number; reason?: string; note?: string; userName?: string; patientId?: string; visitId?: string; force?: boolean }) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/out', { method: 'POST', body: JSON.stringify(data) }),
+        issue: (data: { itemId: string; quantity: number; reason?: string; note?: string; userName?: string; patientId?: string; visitId?: string; force?: boolean }) => {
+            if (isDemoMode()) {
+                const item = demoItem(data.itemId);
+                const want = Math.abs(data.quantity);
+                /* Qoldiqdan ko'p chiqim — serverdagi bilan bir xil rad javobi.
+                   Demoda ham to'sib qo'yamiz: aks holda ekranda manfiy
+                   qoldiq paydo bo'ladi va bu xato taassurot qoldiradi. */
+                if (item && want > (item.quantity || 0)) {
+                    return Promise.reject(new Error(
+                        `Omborda yetarli emas: ${item.name} — qoldiq ${item.quantity} ${item.unit || 'dona'}.`));
+                }
+                return demoDone(demoStockMove('Out', data.itemId, -want, data.reason || 'Qabulda ishlatildi', data));
+            }
+            return fetchJson<any>('/stock-movements/out', { method: 'POST', body: JSON.stringify(data) });
+        },
         /** Xato yozilgan chiqimni bekor qiladi — teskari harakat yoziladi, o'chirilmaydi. */
-        reverse: (movementId: string, data?: { note?: string; userName?: string }) =>
-            isDemoMode() ? demoWrite<any>()
-                : fetchJson<any>(`/stock-movements/${movementId}/reverse`, { method: 'POST', body: JSON.stringify(data || {}) }),
+        reverse: (movementId: string, data?: { note?: string; userName?: string }) => {
+            if (isDemoMode()) {
+                const orig = DEMO_STOCK_MOVES.find(m => m.id === movementId);
+                if (!orig) return Promise.reject(new Error('Harakat topilmadi.'));
+                const back = demoStockMove('Adjust', orig.itemId, -orig.quantity,
+                    'Bekor qilindi', { note: data?.note, userName: data?.userName });
+                /* Asl qator TARIXDA qoladi, faqat belgilanadi — serverdagi
+                   qoida (0028) bilan bir xil. */
+                const log = DEMO_INVENTORY_LOGS.find(l => l.itemId === orig.itemId && l.change === orig.quantity);
+                if (log) log.reversed = true;
+                saveDemoData();
+                return demoDone(back);
+            }
+            return fetchJson<any>(`/stock-movements/${movementId}/reverse`, { method: 'POST', body: JSON.stringify(data || {}) });
+        },
         /** Bo'limlar orasida ko'chirish. Umumiy qoldiq O'ZGARMAYDI — tovar
          *  klinika ichida qoladi, faqat 'Transfer' qatori yoziladi. */
-        transfer: (data: { itemId: string; quantity: number; fromDepartmentId?: string; toDepartmentId: string; note?: string; userName?: string }) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/transfer', { method: 'POST', body: JSON.stringify(data) }),
+        transfer: (data: { itemId: string; quantity: number; fromDepartmentId?: string; toDepartmentId: string; note?: string; userName?: string }) => {
+            if (isDemoMode()) {
+                /* Umumiy qoldiq O'ZGARMAYDI — shuning uchun `delta` nol.
+                   Faqat harakat qatori yoziladi. */
+                const to = DEMO_DEPARTMENTS.find(d => d.id === data.toDepartmentId);
+                return demoDone(demoStockMove('Adjust', data.itemId, 0,
+                    `Ko'chirildi: ${to?.name || "bo'lim"}`, data));
+            }
+            return fetchJson<any>('/stock-movements/transfer', { method: 'POST', body: JSON.stringify(data) });
+        },
         // Inventarizatsiya — haqiqiy qoldiqqa tenglashtirish
-        adjust: (data: { itemId: string; actualQuantity: number; note?: string; userName?: string }) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>('/stock-movements/adjust', { method: 'POST', body: JSON.stringify(data) }),
+        adjust: (data: { itemId: string; actualQuantity: number; note?: string; userName?: string }) => {
+            if (isDemoMode()) {
+                const item = demoItem(data.itemId);
+                const delta = data.actualQuantity - (item?.quantity || 0);
+                return demoDone(demoStockMove('Adjust', data.itemId, delta, 'Inventarizatsiya', data));
+            }
+            return fetchJson<any>('/stock-movements/adjust', { method: 'POST', body: JSON.stringify(data) });
+        },
         // Mahsulot xossalari (narx, sarflanadigan bayrog'i). Miqdor bu yerda o'zgarmaydi.
-        updateItem: (id: string, data: { name?: string; unit?: string; minQuantity?: number; price?: number; isMedication?: boolean; isConsumable?: boolean; departmentId?: string | null }) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>(`/inventory-items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-        alerts: (days = 60) =>
-            isDemoMode() ? demoRead<InventoryAlerts>({ expiring: [], lowStock: [] })
-                : fetchJson<InventoryAlerts>(`/inventory-alerts?days=${days}`),
+        updateItem: (id: string, data: { name?: string; unit?: string; minQuantity?: number; price?: number; isMedication?: boolean; isConsumable?: boolean; departmentId?: string | null }) => {
+            if (isDemoMode()) {
+                const idx = DEMO_INVENTORY.findIndex(i => i.id === id);
+                if (idx === -1) return Promise.reject(new Error('Mahsulot topilmadi.'));
+                DEMO_INVENTORY[idx] = { ...DEMO_INVENTORY[idx], ...data, updatedAt: demoNow() } as InventoryItem;
+                saveDemoData();
+                return demoDone(DEMO_INVENTORY[idx]);
+            }
+            return fetchJson<any>(`/inventory-items/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
+        alerts: (days = 60) => {
+            if (isDemoMode()) {
+                /* Ilgari bu yerda qat'iy bo'sh javob turardi va Ombor
+                   ekranidagi «Ogohlantirishlar» bloki demoda HAR DOIM bo'sh
+                   chiqardi — modulning eng ko'rsatishga arzigulik qismi
+                   ko'rinmasdi. Endi ikkalasi ham demo ma'lumotidan sanaladi. */
+                const limit = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+                return demoRead<InventoryAlerts>({
+                    expiring: DEMO_BATCHES.filter(b => b.expiryDate && b.expiryDate <= limit && b.quantity > 0),
+                    lowStock: DEMO_INVENTORY
+                        .filter(i => (i.quantity || 0) <= (i.minQuantity || 0))
+                        .map(i => ({ id: i.id, name: i.name, unit: i.unit, quantity: i.quantity, minQuantity: i.minQuantity })),
+                });
+            }
+            return fetchJson<InventoryAlerts>(`/inventory-alerts?days=${days}`);
+        },
     },
     recipes: {
         get: (serviceId?: number) =>
-            isDemoMode() ? demoRead<ServiceRecipeLine[]>([])
-                : fetchJson<ServiceRecipeLine[]>(`/service-recipes${serviceId ? `?serviceId=${serviceId}` : ''}`),
-        save: (serviceId: number, lines: { itemId: string; quantity: number; note?: string }[]) =>
-            isDemoMode() ? demoWrite<ServiceRecipeLine[]>()
-                : fetchJson<ServiceRecipeLine[]>(`/service-recipes/${serviceId}`, { method: 'PUT', body: JSON.stringify({ lines }) }),
-        cost: (serviceId: number) =>
             isDemoMode()
-                ? demoRead<ServiceCost>({ serviceId, price: 0, cost: 0, margin: 0, marginPercent: 0, lines: 0 })
-                : fetchJson<ServiceCost>(`/service-recipes/${serviceId}/cost`),
+                ? demoRead<ServiceRecipeLine[]>(serviceId ? DEMO_RECIPES.filter(r => r.serviceId === serviceId) : [...DEMO_RECIPES])
+                : fetchJson<ServiceRecipeLine[]>(`/service-recipes${serviceId ? `?serviceId=${serviceId}` : ''}`),
+        save: (serviceId: number, lines: { itemId: string; quantity: number; note?: string }[]) => {
+            if (isDemoMode()) {
+                /* Saqlash — ALMASHTIRISH, qo'shish emas: forma butun
+                   ro'yxatni yuboradi, o'chirilgan qator ham shunda bilinadi. */
+                for (let i = DEMO_RECIPES.length - 1; i >= 0; i--) {
+                    if (DEMO_RECIPES[i].serviceId === serviceId) DEMO_RECIPES.splice(i, 1);
+                }
+                const saved = lines.map(l => demoRecipeLine(serviceId, l));
+                DEMO_RECIPES.push(...saved);
+                return demoDone(saved);
+            }
+            return fetchJson<ServiceRecipeLine[]>(`/service-recipes/${serviceId}`, { method: 'PUT', body: JSON.stringify({ lines }) });
+        },
+        cost: (serviceId: number) => {
+            if (isDemoMode()) {
+                /* Tannarx retseptdan sanaladi — nol qaytarilsa «Ulush»
+                   ustuni har doim 0% ko'rsatadi va ekran ma'nosiz bo'ladi. */
+                const lines = DEMO_RECIPES.filter(r => r.serviceId === serviceId);
+                const price = DEMO_SERVICES.find(s => s.id === serviceId)?.price || 0;
+                const cost = lines.reduce((s, l) => s + l.quantity * (l.item?.price || 0), 0);
+                const margin = price - cost;
+                return demoRead<ServiceCost>({
+                    serviceId, price, cost, margin,
+                    marginPercent: price > 0 ? Math.round((margin / price) * 100) : 0,
+                    lines: lines.length,
+                });
+            }
+            return fetchJson<ServiceCost>(`/service-recipes/${serviceId}/cost`);
+        },
     },
 
     /* ─── Klinik kontur: bemor tarixi, allergiya, natija belgisi ────────────
@@ -2154,10 +2631,53 @@ export const api = {
             isDemoMode()
                 ? demoRead<{ charges: VisitCharge[]; summary: ChargeSummary }>(demoVisitCharges(visitId))
                 : fetchJson<{ charges: VisitCharge[]; summary: ChargeSummary }>(`/visits/${visitId}/charges`),
-        create: (data: Partial<VisitCharge>) =>
-            isDemoMode() ? demoWrite<VisitCharge>() : fetchJson<VisitCharge>('/charges', { method: 'POST', body: JSON.stringify(data) }),
-        cancel: (id: string) =>
-            isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/charges/${id}`, { method: 'DELETE' }),
+        create: (data: Partial<VisitCharge>) => {
+            if (isDemoMode()) {
+                const qty = data.quantity ?? 1;
+                const unit = data.unitPrice ?? 0;
+                const discount = data.discount ?? 0;
+                const visit = DEMO_VISITS.find(v => v.id === data.visitId);
+                const row: VisitCharge = {
+                    id: demoId('demo-charge'),
+                    clinicId: 'demo-clinic-1',
+                    visitId: data.visitId ?? null,
+                    patientId: data.patientId ?? visit?.patientId ?? null,
+                    patientName: data.patientName || demoName(data.patientId || visit?.patientId || ''),
+                    source: data.source || 'Service',
+                    sourceId: data.sourceId ?? null,
+                    name: data.name || 'Xizmat',
+                    quantity: qty,
+                    unitPrice: unit,
+                    discount,
+                    /* Yig'indini EKRAN emas, shu yer sanaydi — forma faqat
+                       miqdor va narxni yuboradi. */
+                    total: data.total ?? Math.max(0, qty * unit - discount),
+                    status: 'Unpaid',
+                    paidAmount: 0,
+                    paidAt: null,
+                    createdAt: demoNow(),
+                    createdByName: 'Demo Admin',
+                    visit: visit ? { id: visit.id, date: visit.date, queueNumber: visit.queueNumber, departmentId: visit.departmentId } : undefined,
+                };
+                DEMO_CHARGES.push(row);
+                return demoDone(row);
+            }
+            return fetchJson<VisitCharge>('/charges', { method: 'POST', body: JSON.stringify(data) });
+        },
+        cancel: (id: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_CHARGES.findIndex(c => c.id === id);
+                if (i === -1) return Promise.reject(new Error('Qator topilmadi.'));
+                /* To'langan qatorni bekor qilib bo'lmaydi — qaytarish
+                   («Refund») orqali bo'ladi. Serverdagi qoida bilan bir xil. */
+                if ((DEMO_CHARGES[i].paidAmount || 0) > 0) {
+                    return Promise.reject(new Error("To'langan qatorni bekor qilib bo'lmaydi — qaytarishni ishlating."));
+                }
+                DEMO_CHARGES.splice(i, 1);
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/charges/${id}`, { method: 'DELETE' });
+        },
     },
     payments: {
         /** `perCharge` — qaysi qatorga qancha (tanlab to'lash).
@@ -2168,14 +2688,107 @@ export const api = {
             receivedByName?: string; doctorId?: string; doctorName?: string;
             perCharge?: Record<string, number>;
             payments?: { method: string; amount: number }[];
-        }) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>('/payments', { method: 'POST', body: JSON.stringify(data) }),
+        }) => {
+            if (isDemoMode()) {
+                const rows = DEMO_CHARGES.filter(c => data.chargeIds.includes(c.id));
+                if (!rows.length) return Promise.reject(new Error("To'lanadigan qator tanlanmadi."));
+                let paidTotal = 0;
+                for (const row of rows) {
+                    const due = Math.max(0, (row.total || 0) - (row.paidAmount || 0));
+                    /* Uch xil to'lash usuli qo'llab-quvvatlanadi va ustuvorligi
+                       shu tartibda: qator bo'yicha summa → umumiy summa →
+                       qoldiqni to'liq yopish. */
+                    const want = data.perCharge?.[row.id] ?? (data.amount != null && rows.length === 1 ? data.amount : due);
+                    const pay = Math.min(due, Math.max(0, want));
+                    row.paidAmount = (row.paidAmount || 0) + pay;
+                    /* «Qisman to'langan» degan HOLAT yo'q — server ham
+                       shunday (backend/billing.ts): to'liq yopilmaguncha
+                       qator `Unpaid` bo'lib qoladi, qancha to'langani
+                       `paidAmount` da turadi. */
+                    const fully = row.paidAmount >= (row.total || 0) - 0.001;
+                    row.status = fully ? 'Paid' : 'Unpaid';
+                    if (fully) row.paidAt = demoNow();
+                    paidTotal += pay;
+                }
+                /* Chek MOLIYAGA ham tushadi. Busiz kassada to'lov ko'rinardi,
+                   lekin bosh sahifadagi «bugungi tushum» qimirlamasdi —
+                   demoni ko'rsatayotgan odam uchun bu buzuqlik belgisi. */
+                const first = rows[0];
+                const method = (data.payments?.[0]?.method || data.method || 'Cash') as Transaction['type'];
+                const tx: Transaction = {
+                    id: demoId('demo-tx'),
+                    patientId: first.patientId || undefined,
+                    patientName: first.patientName,
+                    date: demoNow(),
+                    amount: paidTotal,
+                    type: method,
+                    service: rows.map(r => r.name).join(', ').slice(0, 120),
+                    status: 'Paid',
+                    clinicId: 'demo-clinic-1',
+                    doctorId: data.doctorId,
+                    doctorName: data.doctorName,
+                    createdAt: demoNow(),
+                    receivedByName: data.receivedByName || 'Demo Admin',
+                    linkedToCharges: true,
+                };
+                DEMO_TRANSACTIONS.push(tx);
+                saveDemoData();
+                return demoDone({ success: true, paid: paidTotal, transaction: tx });
+            }
+            return fetchJson<any>('/payments', { method: 'POST', body: JSON.stringify(data) });
+        },
         /** Qator bo'yicha qaytarish — faqat klinika admini */
-        refund: (chargeId: string, data: { amount?: number; method?: string; reason?: string }) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>(`/charges/${chargeId}/refund`, { method: 'POST', body: JSON.stringify(data) }),
+        refund: (chargeId: string, data: { amount?: number; method?: string; reason?: string }) => {
+            if (isDemoMode()) {
+                const row = DEMO_CHARGES.find(c => c.id === chargeId);
+                if (!row) return Promise.reject(new Error('Qator topilmadi.'));
+                const back = Math.min(row.paidAmount || 0, Math.max(0, data.amount ?? row.paidAmount ?? 0));
+                if (back <= 0) return Promise.reject(new Error("Bu qator bo'yicha qaytariladigan summa yo'q."));
+                row.paidAmount = (row.paidAmount || 0) - back;
+                row.status = row.paidAmount >= (row.total || 0) - 0.001 ? 'Paid' : 'Unpaid';
+                if (row.paidAmount <= 0.001) row.paidAt = null;
+                /* Qaytarish MANFIY chek bo'lib yoziladi — kunlik hisobot
+                   o'zi to'g'rilanadi, alohida tuzatish kerak emas. */
+                DEMO_TRANSACTIONS.push({
+                    id: demoId('demo-tx'),
+                    patientId: row.patientId || undefined,
+                    patientName: row.patientName,
+                    date: demoNow(),
+                    amount: -back,
+                    type: (data.method || 'Cash') as Transaction['type'],
+                    service: `Qaytarish: ${row.name}${data.reason ? ` — ${data.reason}` : ''}`,
+                    status: 'Paid',
+                    clinicId: 'demo-clinic-1',
+                    createdAt: demoNow(),
+                    linkedToCharges: true,
+                });
+                saveDemoData();
+                return demoDone({ success: true, refunded: back });
+            }
+            return fetchJson<any>(`/charges/${chargeId}/refund`, { method: 'POST', body: JSON.stringify(data) });
+        },
         /** Qatorga chegirma — admin va registrator */
-        discount: (chargeId: string, discount: number) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<any>(`/charges/${chargeId}/discount`, { method: 'PUT', body: JSON.stringify({ discount }) }),
+        discount: (chargeId: string, discount: number) => {
+            if (isDemoMode()) {
+                const row = DEMO_CHARGES.find(c => c.id === chargeId);
+                if (!row) return Promise.reject(new Error('Qator topilmadi.'));
+                const gross = (row.quantity || 1) * (row.unitPrice || 0);
+                const value = Math.min(Math.max(0, discount), gross);
+                /* To'langan summadan past chegirma berib bo'lmaydi — server
+                   ham buni rad etadi (billing.ts), aks holda qator
+                   «ortiqcha to'langan» holatga tushadi. */
+                if (gross - value < (row.paidAmount || 0) - 0.001) {
+                    return Promise.reject(new Error("Chegirma to'langan summadan kam bo'lib qoladi."));
+                }
+                row.discount = value;
+                row.total = gross - value;
+                /* Chegirmadan keyin qator allaqachon to'liq to'langan bo'lib
+                   qolishi mumkin — holatni qayta hisoblaymiz. */
+                row.status = (row.paidAmount || 0) >= row.total - 0.001 ? 'Paid' : 'Unpaid';
+                return demoDone(row);
+            }
+            return fetchJson<any>(`/charges/${chargeId}/discount`, { method: 'PUT', body: JSON.stringify({ discount }) });
+        },
     },
 
     cashShift: {
@@ -2543,13 +3156,40 @@ export const api = {
     // ─── Bo'limlar ──────────────────────────────────────────────────────────
     departments: {
         getAll: () => isDemoMode() ? demoRead<Department[]>(DEMO_DEPARTMENTS) : fetchJson<Department[]>('/departments'),
-        create: (data: Partial<Department>) =>
-            isDemoMode() ? demoWrite<Department>() : fetchJson<Department>('/departments', { method: 'POST', body: JSON.stringify(data) }),
-        update: (id: string, data: Partial<Department>) =>
-            isDemoMode() ? demoWrite<Department>() : fetchJson<Department>(`/departments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+        create: (data: Partial<Department>) => {
+            if (isDemoMode()) {
+                const dep = {
+                    id: demoId('demo-dep'), clinicId: 'demo-clinic-1',
+                    name: data.name || "Yangi bo'lim", code: data.code || '',
+                    type: data.type || 'CLINICAL', color: data.color || '#64748B',
+                    sortOrder: data.sortOrder ?? DEMO_DEPARTMENTS.length + 1,
+                    isActive: true,
+                    ...data,
+                } as Department;
+                DEMO_DEPARTMENTS.push(dep);
+                return demoDone(dep);
+            }
+            return fetchJson<Department>('/departments', { method: 'POST', body: JSON.stringify(data) });
+        },
+        update: (id: string, data: Partial<Department>) => {
+            if (isDemoMode()) {
+                const i = DEMO_DEPARTMENTS.findIndex(d => d.id === id);
+                if (i === -1) return Promise.reject(new Error("Bo'lim topilmadi."));
+                DEMO_DEPARTMENTS[i] = { ...DEMO_DEPARTMENTS[i], ...data };
+                return demoDone(DEMO_DEPARTMENTS[i]);
+            }
+            return fetchJson<Department>(`/departments/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
         // Bo'lim o'chirilmaydi — faolsizlantiriladi, chunki eski qabullar unga bog'langan
-        deactivate: (id: string) =>
-            isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/departments/${id}`, { method: 'DELETE' }),
+        deactivate: (id: string) => {
+            if (isDemoMode()) {
+                const dep = DEMO_DEPARTMENTS.find(d => d.id === id);
+                if (!dep) return Promise.reject(new Error("Bo'lim topilmadi."));
+                dep.isActive = false;
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/departments/${id}`, { method: 'DELETE' });
+        },
     },
 
     // ─── Qabul bayoni shablonlari ───────────────────────────────────────────
@@ -2565,24 +3205,83 @@ export const api = {
             const qs = q.toString();
             return fetchJson<EncounterTemplate[]>(`/encounter-templates${qs ? `?${qs}` : ''}`);
         },
-        create: (data: { departmentId: string; name: string; fields: EncounterField[]; isDefault?: boolean; gender?: string | null; minAge?: number | null; maxAge?: number | null }) =>
-            isDemoMode() ? demoWrite<EncounterTemplate>() : fetchJson<EncounterTemplate>('/encounter-templates', { method: 'POST', body: JSON.stringify(data) }),
-        update: (id: string, data: { name?: string; fields?: EncounterField[]; isDefault?: boolean; gender?: string | null; minAge?: number | null; maxAge?: number | null }) =>
-            isDemoMode() ? demoWrite<EncounterTemplate>() : fetchJson<EncounterTemplate>(`/encounter-templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-        delete: (id: string) =>
-            isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/encounter-templates/${id}`, { method: 'DELETE' }),
+        create: (data: { departmentId: string; name: string; fields: EncounterField[]; isDefault?: boolean; gender?: string | null; minAge?: number | null; maxAge?: number | null }) => {
+            if (isDemoMode()) {
+                const tpl = { id: demoId('demo-tpl'), clinicId: 'demo-clinic-1', ...data } as EncounterTemplate;
+                /* «Standart» bitta bo'ladi — yangisi shunday belgilansa
+                   o'sha bo'limdagi eskisidan belgi olinadi. */
+                if (data.isDefault) {
+                    DEMO_ENCOUNTER_TEMPLATES.forEach(t => {
+                        if (t.departmentId === data.departmentId) t.isDefault = false;
+                    });
+                }
+                DEMO_ENCOUNTER_TEMPLATES.push(tpl);
+                return demoDone(tpl);
+            }
+            return fetchJson<EncounterTemplate>('/encounter-templates', { method: 'POST', body: JSON.stringify(data) });
+        },
+        update: (id: string, data: { name?: string; fields?: EncounterField[]; isDefault?: boolean; gender?: string | null; minAge?: number | null; maxAge?: number | null }) => {
+            if (isDemoMode()) {
+                const i = DEMO_ENCOUNTER_TEMPLATES.findIndex(t => t.id === id);
+                if (i === -1) return Promise.reject(new Error('Shablon topilmadi.'));
+                if (data.isDefault) {
+                    DEMO_ENCOUNTER_TEMPLATES.forEach(t => {
+                        if (t.departmentId === DEMO_ENCOUNTER_TEMPLATES[i].departmentId) t.isDefault = false;
+                    });
+                }
+                DEMO_ENCOUNTER_TEMPLATES[i] = { ...DEMO_ENCOUNTER_TEMPLATES[i], ...data } as EncounterTemplate;
+                return demoDone(DEMO_ENCOUNTER_TEMPLATES[i]);
+            }
+            return fetchJson<EncounterTemplate>(`/encounter-templates/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
+        delete: (id: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_ENCOUNTER_TEMPLATES.findIndex(t => t.id === id);
+                if (i !== -1) DEMO_ENCOUNTER_TEMPLATES.splice(i, 1);
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/encounter-templates/${id}`, { method: 'DELETE' });
+        },
     },
 
     // ─── Laboratoriya: katalog ──────────────────────────────────────────────
     labTests: {
         getAll: () => isDemoMode() ? demoRead<LabTest[]>(DEMO_LAB_TESTS) : fetchJson<LabTest[]>('/lab-tests'),
-        create: (data: Partial<LabTest> & { parameters?: Partial<LabTestParameter>[] }) =>
-            isDemoMode() ? demoWrite<LabTest>() : fetchJson<LabTest>('/lab-tests', { method: 'POST', body: JSON.stringify(data) }),
-        update: (id: string, data: Partial<LabTest> & { parameters?: Partial<LabTestParameter>[] }) =>
-            isDemoMode() ? demoWrite<LabTest>() : fetchJson<LabTest>(`/lab-tests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-        delete: (id: string) =>
-            isDemoMode() ? demoWrite<{ success: true; deactivated?: boolean }>()
-                : fetchJson<{ success: true; deactivated?: boolean }>(`/lab-tests/${id}`, { method: 'DELETE' }),
+        create: (data: Partial<LabTest> & { parameters?: Partial<LabTestParameter>[] }) => {
+            if (isDemoMode()) {
+                const test = {
+                    id: demoId('demo-lt'), clinicId: 'demo-clinic-1', departmentId: 'demo-lab',
+                    isActive: true, sortOrder: DEMO_LAB_TESTS.length + 1,
+                    ...data,
+                } as LabTest;
+                DEMO_LAB_TESTS.push(test);
+                return demoDone(test);
+            }
+            return fetchJson<LabTest>('/lab-tests', { method: 'POST', body: JSON.stringify(data) });
+        },
+        update: (id: string, data: Partial<LabTest> & { parameters?: Partial<LabTestParameter>[] }) => {
+            if (isDemoMode()) {
+                const i = DEMO_LAB_TESTS.findIndex(t => t.id === id);
+                if (i === -1) return Promise.reject(new Error('Tahlil topilmadi.'));
+                DEMO_LAB_TESTS[i] = { ...DEMO_LAB_TESTS[i], ...data } as LabTest;
+                return demoDone(DEMO_LAB_TESTS[i]);
+            }
+            return fetchJson<LabTest>(`/lab-tests/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
+        delete: (id: string) => {
+            if (isDemoMode()) {
+                const test = DEMO_LAB_TESTS.find(t => t.id === id);
+                if (!test) return Promise.reject(new Error('Tahlil topilmadi.'));
+                /* Buyurtmada ishlatilgan tahlil O'CHIRILMAYDI —
+                   faolsizlantiriladi, aks holda eski buyurtmalar nomsiz
+                   qoladi. Server ham shu javobni beradi. */
+                const used = DEMO_LAB_ORDERS.some(o => (o as any).items?.some((it: any) => it.testId === id));
+                if (used) { test.isActive = false; return demoDone({ success: true as const, deactivated: true }); }
+                DEMO_LAB_TESTS.splice(DEMO_LAB_TESTS.indexOf(test), 1);
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true; deactivated?: boolean }>(`/lab-tests/${id}`, { method: 'DELETE' });
+        },
     },
 
     // ─── Laboratoriya: natijalar ────────────────────────────────────────────
@@ -2590,32 +3289,105 @@ export const api = {
         // Normalar bemorning jinsi/yoshiga moslab serverda tanlanadi
         get: (orderId: string) =>
             isDemoMode()
-                ? demoRead<any>({ id: orderId, items: [], patientAge: null, patientSex: null })
+                ? demoRead<any>(demoLabResults(orderId))
                 : fetchJson<LabOrder & { items: LabOrderItem[]; patientAge: number | null; patientSex: string | null }>(
                     `/lab-orders/${orderId}/results`),
-        save: (orderId: string, results: { orderItemId: string; parameterId: string; value: string; note?: string }[], enteredBy?: string) =>
-            isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/lab-orders/${orderId}/results`, {
+        save: (orderId: string, results: { orderItemId: string; parameterId: string; value: string; note?: string }[], enteredBy?: string) => {
+            if (isDemoMode()) {
+                for (const r of results) {
+                    DEMO_RESULT_VALUES[`${r.orderItemId}:${r.parameterId}`] = { value: r.value, note: r.note };
+                }
+                /* Hamma parametr to'lgan bo'lsa yo'llanma yopiladi — LabOrders
+                   ro'yxatidagi holat ham shu bilan o'zgaradi. */
+                const full = demoLabResults(orderId);
+                const order = DEMO_LAB_ORDERS.find(o => o.id === orderId);
+                if (order && full.items.length && full.items.every(i => i.status === 'Completed')) {
+                    order.status = 'Completed' as LabOrder['status'];
+                    order.completedAt = demoNow();
+                    order.technicianName = enteredBy || order.technicianName;
+                }
+                saveDemoData();
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/lab-orders/${orderId}/results`, {
                 method: 'POST',
                 body: JSON.stringify({ results, enteredBy }),
-            }),
+            });
+        },
     },
 
     // ─── Diagnostika ────────────────────────────────────────────────────────
     studies: {
         getAll: (params?: { patientId?: string; status?: string }) => {
-            if (isDemoMode()) return demoRead<DiagnosticStudy[]>(DEMO_STUDIES);
+            if (isDemoMode()) {
+                /* Filtrlar demoda E'TIBORSIZ qolardi: bemor kartasi
+                   klinikadagi HAMMA tekshiruvni ko'rsatardi. */
+                return demoRead<DiagnosticStudy[]>(DEMO_STUDIES.filter(s =>
+                    (!params?.patientId || s.patientId === params.patientId)
+                    && (!params?.status || s.status === params.status)));
+            }
             const q = new URLSearchParams();
             if (params?.patientId) q.set('patientId', params.patientId);
             if (params?.status) q.set('status', params.status);
             const qs = q.toString();
             return fetchJson<DiagnosticStudy[]>(`/studies${qs ? `?${qs}` : ''}`);
         },
-        create: (data: Partial<DiagnosticStudy>) =>
-            isDemoMode() ? demoWrite<DiagnosticStudy>() : fetchJson<DiagnosticStudy>('/studies', { method: 'POST', body: JSON.stringify(data) }),
-        update: (id: string, data: Partial<DiagnosticStudy>) =>
-            isDemoMode() ? demoWrite<DiagnosticStudy>() : fetchJson<DiagnosticStudy>(`/studies/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-        delete: (id: string) =>
-            isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/studies/${id}`, { method: 'DELETE' }),
+        create: (data: Partial<DiagnosticStudy>) => {
+            if (isDemoMode()) {
+                const study = {
+                    id: demoId('demo-study'), clinicId: 'demo-clinic-1',
+                    departmentId: 'demo-diag',
+                    patientName: data.patientName || demoName(data.patientId || ''),
+                    status: 'Ordered', orderedAt: demoNow(),
+                    orderedByName: 'Demo Admin', performedByName: null, performedAt: null,
+                    ...data,
+                } as DiagnosticStudy;
+                DEMO_STUDIES.unshift(study);
+                /* Tekshiruv PULLIK — hisob qatori ham yaratiladi, aks holda
+                   kassada u ko'rinmaydi va zanjir uzilib qoladi. */
+                if (study.price) {
+                    DEMO_CHARGES.push({
+                        id: demoId('demo-charge'), clinicId: 'demo-clinic-1',
+                        visitId: null, patientId: study.patientId || null,
+                        patientName: study.patientName,
+                        source: 'Study', sourceId: study.id, name: study.name,
+                        quantity: 1, unitPrice: study.price, discount: 0, total: study.price,
+                        status: 'Unpaid', paidAmount: 0, paidAt: null,
+                        createdAt: demoNow(), createdByName: 'Demo Admin',
+                    });
+                }
+                return demoDone(study);
+            }
+            return fetchJson<DiagnosticStudy>('/studies', { method: 'POST', body: JSON.stringify(data) });
+        },
+        update: (id: string, data: Partial<DiagnosticStudy>) => {
+            if (isDemoMode()) {
+                const i = DEMO_STUDIES.findIndex(s => s.id === id);
+                if (i === -1) return Promise.reject(new Error('Tekshiruv topilmadi.'));
+                DEMO_STUDIES[i] = { ...DEMO_STUDIES[i], ...data } as DiagnosticStudy;
+                /* Xulosa yozilsa tekshiruv tugallangan hisoblanadi —
+                   ro'yxatdagi holat o'zi o'zgarishi kerak. */
+                if (data.conclusion || data.findings) {
+                    DEMO_STUDIES[i].status = data.status || 'Completed';
+                    DEMO_STUDIES[i].performedAt = DEMO_STUDIES[i].performedAt || demoNow();
+                    DEMO_STUDIES[i].performedByName = DEMO_STUDIES[i].performedByName || 'Demo Admin';
+                }
+                return demoDone(DEMO_STUDIES[i]);
+            }
+            return fetchJson<DiagnosticStudy>(`/studies/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
+        delete: (id: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_STUDIES.findIndex(s => s.id === id);
+                if (i !== -1) DEMO_STUDIES.splice(i, 1);
+                for (let k = DEMO_CHARGES.length - 1; k >= 0; k--) {
+                    if (DEMO_CHARGES[k].source === 'Study' && DEMO_CHARGES[k].sourceId === id
+                        && (DEMO_CHARGES[k].paidAmount || 0) === 0) DEMO_CHARGES.splice(k, 1);
+                }
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/studies/${id}`, { method: 'DELETE' });
+        },
     },
 
     // ─── Statsionar ─────────────────────────────────────────────────────────
@@ -2937,24 +3709,76 @@ export const api = {
 
     // ─── Retsept ────────────────────────────────────────────────────────────
     prescriptions: {
+        /* `patientId` demoda E'TIBORSIZ qolardi — bemor kartasida BOSHQA
+           bemorlarning retseptlari ko'rinardi. Server esa filtrlaydi. */
         getAll: (patientId?: string) =>
-            isDemoMode() ? demoRead<Prescription[]>(DEMO_PRESCRIPTIONS)
+            isDemoMode()
+                ? demoRead<Prescription[]>(patientId ? DEMO_PRESCRIPTIONS.filter(p => p.patientId === patientId) : [...DEMO_PRESCRIPTIONS])
                 : fetchJson<Prescription[]>(`/prescriptions${patientId ? `?patientId=${patientId}` : ''}`),
-        create: (data: Partial<Prescription> & { items: Partial<PrescriptionItem>[] }) =>
-            isDemoMode() ? demoWrite<Prescription>() : fetchJson<Prescription>('/prescriptions', { method: 'POST', body: JSON.stringify(data) }),
-        delete: (id: string) =>
-            isDemoMode() ? demoWrite<{ success: true }>() : fetchJson<{ success: true }>(`/prescriptions/${id}`, { method: 'DELETE' }),
+        create: (data: Partial<Prescription> & { items: Partial<PrescriptionItem>[] }) => {
+            if (isDemoMode()) {
+                const rx = {
+                    id: demoId('demo-rx'), clinicId: 'demo-clinic-1',
+                    patientName: data.patientName || demoName(data.patientId || ''),
+                    doctorName: data.doctorName || 'Dr. Kamola Ahmedova',
+                    date: data.date || todayISO(),
+                    status: data.status || 'Issued',
+                    ...data,
+                    items: (data.items || []).map((it, i) => ({ id: demoId(`demo-rxi-${i}`), ...it })),
+                } as Prescription;
+                DEMO_PRESCRIPTIONS.unshift(rx);
+                return demoDone(rx);
+            }
+            return fetchJson<Prescription>('/prescriptions', { method: 'POST', body: JSON.stringify(data) });
+        },
+        delete: (id: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_PRESCRIPTIONS.findIndex(p => p.id === id);
+                if (i !== -1) DEMO_PRESCRIPTIONS.splice(i, 1);
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/prescriptions/${id}`, { method: 'DELETE' });
+        },
     },
 
     // ─── Ombor: partiya va muddat ───────────────────────────────────────────
     batches: {
         getAll: (itemId: string) =>
             isDemoMode() ? demoRead<InventoryBatch[]>(DEMO_BATCHES.filter(b => b.itemId === itemId)) : fetchJson<InventoryBatch[]>(`/inventory/${itemId}/batches`),
-        create: (itemId: string, data: Partial<InventoryBatch>) =>
-            isDemoMode() ? demoWrite<InventoryBatch>() : fetchJson<InventoryBatch>(`/inventory/${itemId}/batches`, { method: 'POST', body: JSON.stringify(data) }),
+        create: (itemId: string, data: Partial<InventoryBatch>) => {
+            if (isDemoMode()) {
+                const batch = {
+                    id: demoId('demo-batch'), itemId,
+                    batchNumber: data.batchNumber || null,
+                    expiryDate: data.expiryDate || null,
+                    quantity: data.quantity || 0,
+                    cost: data.cost || 0,
+                    receivedAt: demoNow(),
+                    expired: !!data.expiryDate && data.expiryDate < todayISO(),
+                } as InventoryBatch;
+                DEMO_BATCHES.unshift(batch);
+                /* Partiya qo'shilishi — bu KIRIM. Qoldiq ham oshishi kerak,
+                   aks holda «Partiya» tabida 40 dona, «Qoldiq» ustunida
+                   eski son turadi va ikki ekran bir-biriga zid ko'rinadi. */
+                if (batch.quantity > 0) {
+                    demoStockMove('In', itemId, batch.quantity, 'Yangi partiya',
+                        { note: batch.batchNumber || undefined });
+                }
+                return demoDone(batch);
+            }
+            return fetchJson<InventoryBatch>(`/inventory/${itemId}/batches`, { method: 'POST', body: JSON.stringify(data) });
+        },
         // Muddati o'tgan/yaqinlashgan partiyalar — Ombor sahifasidagi ogohlantirish
-        expiring: (days = 60) =>
-            isDemoMode() ? demoRead<InventoryBatch[]>(DEMO_BATCHES.slice(0, 3)) : fetchJson<InventoryBatch[]>(`/inventory-expiring?days=${days}`),
+        expiring: (days = 60) => {
+            if (isDemoMode()) {
+                /* Ilgari «birinchi uchtasi» qaytarilardi — muddati bilan
+                   hech qanday aloqasi yo'q edi, ya'ni ro'yxat yolg'on. */
+                const limit = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+                return demoRead<InventoryBatch[]>(
+                    DEMO_BATCHES.filter(b => b.expiryDate && b.expiryDate <= limit && b.quantity > 0));
+            }
+            return fetchJson<InventoryBatch[]>(`/inventory-expiring?days=${days}`);
+        },
     },
     batch: {
         remindAppointments: (clinicId: string, message?: string) => {
@@ -3495,9 +4319,26 @@ export const api = {
         },
         /** Proba olindi. To'lov yo'q bo'lsa ham bajariladi, lekin ogohlantiradi:
          *  qon olingan bo'lsa — olingan, faktni yozmaslik yomonroq. */
-        collect: (id: string) =>
-            isDemoMode() ? demoWrite<any>() : fetchJson<{ order: any; unpaidWarning: string | null }>(
-                `/lab-orders/${id}/collect`, { method: 'POST' }),
+        collect: (id: string) => {
+            if (isDemoMode()) {
+                const order = DEMO_LAB_ORDERS.find(o => o.id === id);
+                if (!order) return Promise.reject(new Error("Yo'llanma topilmadi."));
+                order.status = 'In-Progress' as LabOrder['status'];
+                order.sampleCollectedAt = demoNow();
+                saveDemoData();
+                /* To'lanmagan bo'lsa — OGOHLANTIRISH, to'siq emas: qon
+                   olingan bo'lsa fakt yozilishi kerak (serverdagi qoida). */
+                const due = DEMO_CHARGES
+                    .filter(c => c.source === 'Lab' && c.patientId === order.patientId)
+                    .reduce((s, c) => s + Math.max(0, (c.total || 0) - (c.paidAmount || 0)), 0);
+                return demoDone({
+                    order,
+                    unpaidWarning: due > 0 ? `To'lanmagan qarz: ${due.toLocaleString('uz-UZ')} so'm` : null,
+                });
+            }
+            return fetchJson<{ order: any; unpaidWarning: string | null }>(
+                `/lab-orders/${id}/collect`, { method: 'POST' });
+        },
         create: (data: any) => {
             if (isDemoMode()) {
                 const newOrder = { 
