@@ -1088,9 +1088,17 @@ const demoDoctorLines = (from: string, to: string) => {
 /** `payroll.preview` shakli. */
 const demoPayrollPreview = (from: string, to: string) => {
     const lines = demoDoctorLines(from, to);
+    /* `stats` shakli SERVERDAGI bilan bir xil: ekran davr bo'sh
+       bo'lganda aynan shu raqamlarga qarab sababni aytadi. Demoda
+       tashlab ketiladigan qator yo'q — hamma chekda shifokor bor. */
+    const paid = DEMO_TRANSACTIONS.filter(t => t.status === 'Paid' && inRange(t.date as any, from, to));
     return {
         periodFrom: from, periodTo: to,
         lines,
+        stats: { payments: paid.length, skippedNoDoctor: 0, skippedNoDoctorSum: 0, skippedCancelled: 0 },
+        lastPaymentAt: [...DEMO_TRANSACTIONS]
+            .filter(t => t.status === 'Paid')
+            .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0]?.date ?? null,
         total: lines.reduce((s, l) => s + l.accrued, 0),
     };
 };

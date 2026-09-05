@@ -205,11 +205,26 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
 
         const byDoctor = new Map<string, any>();
 
+        /* NEGA BO'SH — shu yerda sanaladi.
+           Ilgari tashlab ketilgan qatorlar jimgina yo'qolardi va ekranda
+           faqat «bu davrda ulush yo'q» degan umumiy gap qolardi. Klinika
+           egasi uchun bu ikki xil holatni ajratmaydi: davrda umuman
+           to'lov bo'lmaganmi, yoki to'lov bor-u shifokori ko'rsatilmaganmi.
+           Ikkinchisi — pul biror kishiga tegishli emasligi, ya'ni
+           tuzatilishi kerak bo'lgan xato. */
+        let skippedNoDoctor = 0;
+        let skippedNoDoctorSum = 0;
+        let skippedCancelled = 0;
+
         for (const p of payments) {
             const c = p.charge;
+            if (c?.status === 'Cancelled') { skippedCancelled++; continue; }
             // Shifokori ko'rsatilmagan qator (masalan avans) ulushga kirmaydi
-            if (!c?.doctorId) continue;
-            if (c.status === 'Cancelled') continue;
+            if (!c?.doctorId) {
+                skippedNoDoctor++;
+                skippedNoDoctorSum = round(skippedNoDoctorSum + (p.amount || 0));
+                continue;
+            }
 
             const doc = doctors.find((d: any) => d.id === c.doctorId);
             if (!byDoctor.has(c.doctorId)) {
@@ -241,19 +256,42 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
         /* Manfiyga tushib ketgan ulush nolga tenglashtiriladi: qaytarish
            o'tgan oyning to'lovidan ko'p bo'lsa, shifokordan pul talab
            qilish — bu tizimning ishi emas. Raqam ko'rinib turadi. */
-        return Array.from(byDoctor.values())
+        const lines = Array.from(byDoctor.values())
             .map((g: any) => ({ ...g, accrued: Math.max(0, g.accrued) }))
             .sort((a, b) => b.accrued - a.accrued);
+
+        return {
+            lines,
+            stats: {
+                /** Davr oynasiga tushgan to'lov yozuvlari — hammasi. */
+                payments: payments.length,
+                skippedNoDoctor, skippedNoDoctorSum, skippedCancelled,
+            },
+        };
     }
 
     /** Oldindan ko'rish: vedomost yaratmasdan raqamni ko'rish */
     route('get', '/api/payroll/preview', async (req, res, clinicId) => {
         const from = String(req.query.from || tashkentMonthStart());
         const to = String(req.query.to || tashkentDateStr());
-        const lines = await computePayroll(clinicId, from, to);
+        const { lines, stats } = await computePayroll(clinicId, from, to);
+
+        /* Davr bo'sh bo'lsa — OXIRGI to'lov qachon bo'lganini aytamiz.
+           Busiz ekran «ulush yo'q» deb turadi va foydalanuvchi sababini
+           topish uchun sanalarni qo'lda paypaslashi kerak bo'ladi. */
+        let lastPaymentAt: Date | null = null;
+        if (stats.payments === 0) {
+            const last = await prisma.chargePayment.findFirst({
+                where: { clinicId },
+                orderBy: { createdAt: 'desc' },
+                select: { createdAt: true },
+            });
+            lastPaymentAt = last?.createdAt ?? null;
+        }
+
         res.json({
-            from, to, lines,
-            total: round(lines.reduce((s, l) => s + l.accrued, 0)),
+            from, to, lines, stats, lastPaymentAt,
+            total: round(lines.reduce((s: number, l: any) => s + l.accrued, 0)),
         });
     });
 
@@ -304,7 +342,7 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
             });
         }
 
-        const lines = await computePayroll(clinicId, from, to);
+        const { lines } = await computePayroll(clinicId, from, to);
         const user = (req as any).user;
 
         const run = await prisma.payrollRun.create({

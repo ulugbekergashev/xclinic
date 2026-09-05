@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Doctor, Department, Service } from '../types';
 import { api } from '../services/api';
-import { todayISO } from '../utils/dateUtils';
+import { todayISO, formatDateToISO, formatDay } from '../utils/dateUtils';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Shifokor ulushi: STAVKALAR va VEDOMOST.
@@ -39,9 +39,15 @@ interface Props {
    emas va u vergul qo'yadi («160,000»), Moliya bo'limi esa bo'shliq
    qo'yardi («160 000») — bitta ilovada ikki xil ko'rinish. */
 const fmt = (n: number) => formatNumber(n);
+/* Oy boshi — MAHALLIY sana bo'yicha.
+   Ilgari bu yerda `toISOString()` turardi. U UTC beradi, Toshkent esa
+   UTC+5: 1-sentabr mahalliy yarim tuni UTC da 31-avgust 19:00 bo'ladi va
+   `.split('T')[0]` BIR KUN ORQAGA siljigan sanani qaytarardi. Ekranda
+   davr «31.08» dan boshlanib turardi va vedomost o'tgan oyning oxirgi
+   kunini ham qamrab olardi. */
 const monthStart = () => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+    return formatDateToISO(new Date(d.getFullYear(), d.getMonth(), 1));
 };
 const fmtDate = (v?: string | null) => v ? formatDate(v) : '—';
 
@@ -252,14 +258,63 @@ export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clini
                         {previewLoading ? (
                             <p className="text-sm text-gray-400 py-8 text-center">Hisoblanmoqda...</p>
                         ) : !preview ? null : (preview.lines || []).length === 0 ? (
+                            /* NEGA BO'SH — aniq sabab bilan.
+
+                               Ilgari bu yerda bitta umumiy gap turardi: «ulush
+                               faqat to'langan xizmatlardan hisoblanadi va
+                               qatorda shifokor ko'rsatilgan bo'lishi kerak».
+                               U qoidani tushuntiradi, lekin SABABNI aytmaydi —
+                               holbuki sabablar butunlay har xil va har birining
+                               yechimi boshqa:
+
+                                 · davrda umuman to'lov bo'lmagan — sanani
+                                   o'zgartirish kerak;
+                                 · to'lov bor, lekin shifokorsiz — bu XATO,
+                                   pul hech kimga tegishli emas;
+                                 · hammasi bekor qilingan qatorlar.
+
+                               Endi server sanab beradi va ekran o'shani
+                               ko'rsatadi. */
                             <div className="text-center py-8 mt-3 border-t border-gray-100 dark:border-gray-700">
                                 <p className="text-sm text-gray-500 dark:text-gray-400">
                                     Bu davrda hisoblanadigan ulush yo'q
                                 </p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                    Ulush faqat TO'LANGAN xizmatlardan hisoblanadi va qatorda shifokor
-                                    ko'rsatilgan bo'lishi kerak.
-                                </p>
+
+                                {(preview.stats?.payments ?? 0) === 0 ? (
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {formatDay(from)} — {formatDay(to)} oralig'ida bironta to'lov bo'lmagan.
+                                        {preview.lastPaymentAt && (
+                                            <> Oxirgi to'lov: <b className="text-gray-500 dark:text-gray-300">{formatDay(preview.lastPaymentAt)}</b>.</>
+                                        )}
+                                    </p>
+                                ) : (
+                                    <div className="text-xs text-gray-400 mt-1 space-y-1">
+                                        <p>Davrda {preview.stats.payments} ta to'lov bor, lekin ulushga hech biri kirmadi.</p>
+                                        {preview.stats.skippedNoDoctor > 0 && (
+                                            <p className="text-amber-600 dark:text-amber-400">
+                                                {preview.stats.skippedNoDoctor} ta to'lovda shifokor ko'rsatilmagan
+                                                ({fmt(preview.stats.skippedNoDoctorSum)} so'm) — bu pul hech kimga biriktirilmagan.
+                                            </p>
+                                        )}
+                                        {preview.stats.skippedCancelled > 0 && (
+                                            <p>{preview.stats.skippedCancelled} ta qator bekor qilingan.</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Oxirgi to'lov bo'lgan oyga bir bosishda o'tish —
+                                    aks holda sanalarni qo'lda paypaslash kerak. */}
+                                {preview.lastPaymentAt && (
+                                    <button
+                                        onClick={() => {
+                                            const d = new Date(preview.lastPaymentAt);
+                                            setFrom(formatDateToISO(new Date(d.getFullYear(), d.getMonth(), 1)));
+                                            setTo(formatDateToISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)));
+                                        }}
+                                        className="mt-3 text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
+                                        Oxirgi to'lov bo'lgan oyni ko'rsatish
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
