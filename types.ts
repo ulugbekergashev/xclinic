@@ -565,6 +565,12 @@ export interface PatientDiagnosis {
   notes?: string;
   status: 'Active' | 'Resolved' | 'Chronic';
   clinicId: string;
+  /** Qaysi qabulda qo'yilgani — kartadagi «bu tashrifda nima topildi» */
+  visitId?: string | null;
+  /* Sxemada (`PatientDiagnosis.isChronic`) bor va server uni qabul
+     qiladi, lekin bu yerda e'lon qilinmagani uchun front `as any` bilan
+     ishlatishga majbur edi — ya'ni typecheck xatoni ushlamasdi. */
+  isChronic?: boolean;
 }
 
 export interface PatientPhoto {

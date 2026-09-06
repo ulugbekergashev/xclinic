@@ -529,11 +529,50 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             }
         }
 
+        /* QABULNI BEKOR QILISH.
+
+           `Cancelled` holati kodning hamma filtrida bor edi, lekin uni
+           qo'yadigan joy yo'q edi — xato ochilgan qabul navbatda abadiy
+           osilib turardi. Endi qo'yiladi, lekin ikkita shart bilan:
+
+             1. Pul o'tgan bo'lsa — YO'Q. Qaytarish kassaning ishi
+                (`POST /api/charges/:id/refund`), qabulni jimgina yopib
+                pulni osmonda qoldirib bo'lmaydi.
+             2. To'lanmagan qatorlar BEKOR QILINADI, aks holda ular
+                kassaning «to'lanmagan» ro'yxatida abadiy qolardi. */
+        if (status === 'Cancelled') {
+            const paid = await prisma.visitCharge.aggregate({
+                where: { visitId: req.params.id, status: { not: 'Cancelled' } },
+                _sum: { paidAmount: true },
+            });
+            if ((paid._sum.paidAmount || 0) > 0) {
+                return res.status(409).json({
+                    error: "To'lov o'tgan qabulni bekor qilib bo'lmaydi — kassada qaytarish rasmiylashtiriladi",
+                    code: 'VISIT_HAS_PAYMENT',
+                });
+            }
+            await prisma.visitCharge.updateMany({
+                where: { visitId: req.params.id, status: 'Unpaid' },
+                data: { status: 'Cancelled' },
+            });
+            emitEvent(clinicId, 'charge.changed', { reason: 'visit-cancelled', visitId: req.params.id });
+        }
+
         /* Sabab bilan yopilgan bo'lsa — u YOZIB QOLADI. «Nega tashxissiz
-           yopilgan?» degan savol keyin ham javobsiz qolmasin. */
-        const closeNote = (status === 'Completed' && req.body?.force === true && req.body?.closeReason)
-            ? String(req.body.closeReason).slice(0, 200)
-            : null;
+           yopilgan?» degan savol keyin ham javobsiz qolmasin.
+
+           QO'SHILADI, ALMASHTIRILMAYDI. Ilgari bu yerda `notes: closeNote`
+           turardi va u qabulning BUTUN izohini o'chirib yuborardi —
+           shifokor yozgan matn yakunlash sababi bilan almashib ketardi. */
+        let closeNote: string | null = null;
+        if (status === 'Completed' && req.body?.force === true && req.body?.closeReason) {
+            const reason = String(req.body.closeReason).slice(0, 200);
+            const cur = await prisma.visit.findUnique({
+                where: { id: req.params.id }, select: { notes: true },
+            });
+            const prev = (cur?.notes || '').trim();
+            closeNote = (prev ? `${prev}\n${reason}` : reason).slice(0, 2000);
+        }
 
         const visit = await prisma.visit.update({
             where: { id: req.params.id },

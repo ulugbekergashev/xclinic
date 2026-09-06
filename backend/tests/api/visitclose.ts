@@ -114,6 +114,88 @@ async function main() {
             close3.status === 200, `status: ${close3.status}, ${JSON.stringify(close3.data?.reasons || '')}`);
     }
 
+    console.log('\n=== 5b. SABAB IZOHNI ALMASHTIRMAYDI ===');
+    /* Ilgari bu yerda `notes: closeNote` turardi va u qabulning BUTUN
+       izohini o'chirib yuborardi: shifokor yozgan matn yakunlash sababi
+       bilan almashib ketardi. Endi QO'SHILADI. */
+    const pn = (await call('POST', '/patients', {
+        firstName: 'Izoh', lastName: `Saqlan${tag}`, gender: 'Male',
+        phone: `+99894${tag}`, force: true,
+    }, token)).data;
+    const vn = await call('POST', '/visits', { patientId: pn?.id }, token);
+    const idn = vn.data?.id;
+    ok('izoh sinovi uchun qabul ochildi', !!idn, `status: ${vn.status}`);
+    if (idn) {
+        await call('PUT', `/visits/${idn}`, { notes: 'Bemor allergiyasi bor' }, token);
+        const forcedN = await call('PUT', `/visits/${idn}`, {
+            status: 'Completed', force: true, closeReason: 'Tashxissiz yopildi',
+        }, token);
+        const notes = String(forcedN.data?.notes || '');
+        ok('eski izoh JOYIDA qoldi', notes.includes('allergiyasi'), notes.slice(0, 80));
+        ok('yangi sabab ham yozildi', notes.includes('Tashxissiz'), notes.slice(0, 80));
+    }
+
+    console.log('\n=== 5c. QABULNI BEKOR QILISH ===');
+    /* `Cancelled` holati kodning hamma filtrida bor edi, lekin uni
+       qo'yadigan joy yo'q edi. Endi qo'yiladi va to'lanmagan qatorlar
+       birga bekor qilinadi — aks holda ular kassaning «to'lanmagan»
+       ro'yxatida abadiy qolardi. */
+    const pc = (await call('POST', '/patients', {
+        firstName: 'Bekor', lastName: `Qilish${tag}`, gender: 'Female',
+        phone: `+99895${tag}`, force: true,
+    }, token)).data;
+    const vc = await call('POST', '/visits', { patientId: pc?.id }, token);
+    const idc = vc.data?.id;
+    ok('bekor qilish uchun qabul ochildi', !!idc, `status: ${vc.status}`);
+    if (idc) {
+        const ch = await call('POST', '/charges', {
+            visitId: idc, patientId: pc.id, patientName: `${pc.lastName} ${pc.firstName}`,
+            source: 'Other', name: "Bekor bo'ladigan xizmat", quantity: 1,
+            unitPrice: 50000, total: 50000,
+        }, token);
+        ok("to'lanmagan qator qo'shildi", ch.status === 200, `status: ${ch.status}`);
+
+        const cancelled = await call('PUT', `/visits/${idc}`, { status: 'Cancelled' }, token);
+        ok('qabul bekor qilindi', cancelled.status === 200 && cancelled.data?.status === 'Cancelled',
+            `status: ${cancelled.status}, ${cancelled.data?.status}`);
+
+        const after = await call('GET', `/visits/${idc}/charges`, undefined, token);
+        const live = (after.data?.charges || []).filter((c: any) => c.status !== 'Cancelled');
+        ok("to'lanmagan qator ham bekor qilindi", live.length === 0, `qolgan: ${live.length}`);
+        ok('qarz nolga tushdi', (after.data?.summary?.due || 0) === 0,
+            String(after.data?.summary?.due));
+    }
+
+    console.log('\n=== 5d. TOLANGAN QABUL BEKOR QILINMAYDI ===');
+    /* Pul o'tgan bo'lsa qaytarish kassaning ishi. Qabulni jimgina yopib
+       pulni osmonda qoldirib bo'lmaydi. */
+    const pp = (await call('POST', '/patients', {
+        firstName: 'Tolangan', lastName: `Bekor${tag}`, gender: 'Male',
+        phone: `+99896${tag}`, force: true,
+    }, token)).data;
+    const vp = await call('POST', '/visits', { patientId: pp?.id }, token);
+    const idp = vp.data?.id;
+    if (idp) {
+        const chp = await call('POST', '/charges', {
+            visitId: idp, patientId: pp.id, patientName: `${pp.lastName} ${pp.firstName}`,
+            source: 'Other', name: "To'langan xizmat", quantity: 1,
+            unitPrice: 30000, total: 30000,
+        }, token);
+        const chargeId = chp.data?.id;
+        const paid = await call('POST', '/payments', {
+            patientId: pp.id, chargeIds: [chargeId], received: 30000, method: 'Cash',
+        }, token);
+        ok("to'lov o'tdi", paid.status === 200,
+            `status: ${paid.status}, ${JSON.stringify(paid.data).slice(0, 140)}`);
+
+        if (paid.status === 200) {
+            const refused = await call('PUT', `/visits/${idp}`, { status: 'Cancelled' }, token);
+            ok("to'langan qabulni bekor qilish RAD ETILDI", refused.status === 409,
+                `status: ${refused.status}`);
+            ok('sabab VISIT_HAS_PAYMENT', refused.data?.code === 'VISIT_HAS_PAYMENT',
+                String(refused.data?.code));
+        }
+    }
     console.log('\n═══ 6. BOSHQA HOLATLAR TO\'SILMAYDI ════════════════');
     /* Nazorat faqat YAKUNLASHDA. «Chaqirildi», «Qabulda» kabi holatlar
        hech qanday tekshiruvsiz o'tishi kerak — aks holda navbat qotadi. */

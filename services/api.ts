@@ -36,7 +36,7 @@ export interface CashCloseInput {
     expectedClick?: number | null;
     note?: string;
 }
-import { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_DOCTORS, DEMO_SERVICES, DEMO_CLINIC, DEMO_CLINICS, DEMO_PLAN, DEMO_INVENTORY, DEMO_INVENTORY_LOGS, DEMO_RECEPTIONISTS, DEMO_DIAGNOSES, DEMO_CATEGORIES, DEMO_LEADS, DEMO_INSTALLMENTS, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_MESSAGE_TEMPLATES, DEMO_AUTOMATION_RULES, DEMO_MESSAGE_LOGS, DEMO_TRIGGERS, DEMO_SEGMENT_FIELDS, saveDemoData } from './demoData';
+import { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_DOCTORS, DEMO_SERVICES, DEMO_CLINIC, DEMO_CLINICS, DEMO_PLAN, DEMO_INVENTORY, DEMO_INVENTORY_LOGS, DEMO_RECEPTIONISTS, DEMO_DIAGNOSES, DEMO_ICD10, DEMO_CATEGORIES, DEMO_LEADS, DEMO_INSTALLMENTS, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_MESSAGE_TEMPLATES, DEMO_AUTOMATION_RULES, DEMO_MESSAGE_LOGS, DEMO_TRIGGERS, DEMO_SEGMENT_FIELDS, saveDemoData } from './demoData';
 
 // XClinic offline rejimda ishlaydi — hech qanday bulut manzili yo'q.
 // Backend shu kompyuterda turadi; uch xil kirish usuli qo'llab-quvvatlanadi.
@@ -2282,12 +2282,38 @@ export const api = {
         },
     },
     diagnoses: {
-        searchCodes: (query: string) => fetchJson<ICD10Code[]>(`/icd10?query=${query}`),
-        add: (data: Omit<PatientDiagnosis, 'id' | 'icd10'>) => fetchJson<PatientDiagnosis>('/diagnoses', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        }),
+        /* NAMOYISH NUSXASIDA ISHLAYDI.
+
+           Ilgari bu ikkalasi demo qo'riqchisisiz edi va `fetchJson` ga
+           tushib «Demo rejimida bu ma'lumot mavjud emas» xatosini berardi.
+           Ya'ni namoyishda TASHXIS QO'YIB BO'LMASDI — shifokorning eng
+           asosiy amali. Bu klinikadagi namoyishda aynan shunday chiqdi. */
+        searchCodes: (query: string) => {
+            if (isDemoMode()) {
+                const q = query.trim().toLowerCase();
+                return Promise.resolve(DEMO_ICD10.filter(c =>
+                    c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
+                ).slice(0, 12));
+            }
+            return fetchJson<ICD10Code[]>(`/icd10?query=${query}`);
+        },
+        add: (data: Omit<PatientDiagnosis, 'id' | 'icd10'>) => {
+            if (isDemoMode()) {
+                const created = {
+                    ...data,
+                    id: demoId('demo-dx'),
+                    icd10: DEMO_ICD10.find(c => c.code === data.code),
+                } as PatientDiagnosis;
+                DEMO_DIAGNOSES.unshift(created);
+                saveDemoData();
+                return demoDone(created);
+            }
+            return fetchJson<PatientDiagnosis>('/diagnoses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+        },
         getByPatient: (patientId: string) => {
             if (isDemoMode()) return Promise.resolve(DEMO_DIAGNOSES.filter(d => d.patientId === patientId));
             return fetchJson<PatientDiagnosis[]>(`/diagnoses?patientId=${patientId}`);

@@ -207,6 +207,45 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
     });
 });
 
+/* ── 2b. BEMOR KARTASI: TASHXIS ────────────────────────────────────────────
+
+   Klinikadagi namoyishda aynan shu yiqilgan edi: MKB-10 qidiruvi va
+   tashxis qo'shish demo qo'riqchisisiz qolgan va «Demo rejimida bu
+   ma'lumot mavjud emas» xatosini berardi. Ya'ni shifokorning eng asosiy
+   amalini ko'rsatib bo'lmasdi. */
+
+test.describe('Demo: bemor kartasida tashxis', () => {
+    test("MKB-10 qidiruvi ishlaydi va tashxis qo'shiladi", async ({ page }) => {
+        await go(page, '/patients');
+        // Ro'yxatdagi birinchi bemorning kartasi
+        await page.locator('tbody tr').first().click();
+        await page.waitForTimeout(2500);
+
+        /* Qabul ochilmagan bo'lsa — panel «Qabul ochish» formasini beradi.
+           Namoyishda ham shu yo'l ishlashi kerak. */
+        const openBtn = page.getByRole('button', { name: /^Qabul ochish$/ });
+        if (await openBtn.count()) {
+            await page.locator('select').first().selectOption({ index: 1 });
+            await openBtn.click();
+            await page.waitForTimeout(2000);
+        }
+
+        const icd = page.getByPlaceholder(/Kod yoki kasallik nomi/);
+        await expect(icd).toBeVisible();
+        await icd.fill('gipert');
+        await page.waitForTimeout(1200);
+
+        const hit = page.locator('button', { hasText: /^I10/ }).first();
+        await expect(hit, 'MKB-10 qidiruvi demoda ham natija berishi kerak').toBeVisible();
+        await hit.click();
+        await page.waitForTimeout(1500);
+
+        await noDemoError(page);
+        await expect(page.getByText(/Demo rejimida bu ma'lumot mavjud emas/)).toHaveCount(0);
+        await expect(page.getByText('I10').first()).toBeVisible();
+    });
+});
+
 /* ── 3. YANGILASHDAN KEYIN SAQLANADIMI ─────────────────────────────────── */
 
 test.describe('Demo: o\'zgarish sahifa yangilangandan keyin ham turadi', () => {

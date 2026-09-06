@@ -313,3 +313,53 @@ export function printPatientDocument(doc: any, clinic?: PrintClinic | null): boo
 
     return printDocument(doc?.title || 'Hujjat', body);
 }
+
+/* ═══ 6. RETSEPT ═════════════════════════════════════════════════════════════
+
+   Retsept dasturda YOZILARDI, lekin uni bosib bo'lmasdi va hech qayerda
+   ko'rinmasdi ham: `prescriptions.getAll` ni chaqiradigan ekran yo'q edi.
+   Ya'ni dori tayinlanardi, bemor esa qo'lida hech narsasiz chiqib ketardi.
+
+   Qog'ozda dori nomi va qabul tartibi eng katta shrift bilan turadi —
+   bemor uyda aynan shu ikkitasini o'qiydi. */
+
+export function printPrescription(rx: any, clinic?: PrintClinic | null): boolean {
+    const items: any[] = Array.isArray(rx?.items) ? rx.items : [];
+
+    /* Qabul tartibi bitta satrga yig'iladi: "500 mg · kuniga 2 mahal · 7 kun".
+       Bo'sh maydonlar tushib qoladi, ya'ni "· ·" ko'rinmaydi. */
+    const regimen = (it: any) => [
+        it?.dosage,
+        it?.frequency,
+        it?.durationDays ? `${it.durationDays} kun` : null,
+    ].filter(Boolean).join(' · ') || '—';
+
+    const table = items.length
+        ? `<table class="grid">
+        <thead><tr>
+          <th style="width:10mm">№</th><th>Dori</th><th style="width:60mm">Qabul tartibi</th>
+        </tr></thead>
+        <tbody>${items.map((it, i) => `<tr>
+          <td>${i + 1}</td>
+          <td><b>${esc(it?.name || '—')}</b>${it?.instructions ? `<br><span style="font-size:9pt">${esc(it.instructions)}</span>` : ''}</td>
+          <td>${esc(regimen(it))}</td>
+        </tr>`).join('')}</tbody>
+      </table>`
+        : `<div class="note">Dorilar ko'rsatilmagan.</div>`;
+
+    const body = `
+    ${clinicHeader(clinic || rx?.clinic)}
+    <div class="title">Retsept</div>
+    <div class="subtitle">${esc(fmtDate(rx?.date))}</div>
+    ${patientRows(rx?.patient || { lastName: rx?.patientName })}
+    ${table}
+    ${rx?.notes ? `<div class="box"><div class="box-title">Izoh</div>${esc(rx.notes)}</div>` : ''}
+    <div class="note">
+      Dorilarni faqat shifokor ko'rsatgan tartibda qabul qiling. Yon ta'sir
+      sezilsa qabulni to'xtatib, shifokorga murojaat qiling.
+    </div>
+    ${signatureBlock('Shifokor', rx?.doctorName)}
+    ${letterheadFooter(clinic || rx?.clinic)}`;
+
+    return printDocument('Retsept', body);
+}

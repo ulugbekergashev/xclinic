@@ -2,17 +2,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { formatMoney, formatNumber, formatDateLong, formatDate, formatDoctorName, formatFullName } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
-import { useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, CreditCard, FileText, User, Activity, Phone, MapPin, Clock, Edit, Printer, Send, Package, UserPlus, UserCheck, Plus, FlaskConical } from 'lucide-react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Calendar, CreditCard, FileText, User, Activity, Phone, MapPin, Clock, Edit, Printer, Send, Package, UserPlus, UserCheck, Plus, FlaskConical, Stethoscope, Pill, ClipboardList, Image, ChevronRight, Trash2 } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, Select } from '../components/Common';
-import { EncounterForm, EncounterSummary } from '../components/EncounterForm';
+import { EncounterSummary } from '../components/EncounterForm';
 import { PatientPhotos } from '../components/PatientPhotos';
-import { VisitWorkflow, ProceduresSection } from '../components/ProceduresSection';
 import { PatientHistoryPanel } from '../components/PatientHistoryPanel';
 import { PatientDocuments } from '../components/PatientDocuments';
 import { LabDynamics } from '../components/LabDynamics';
 import { InstallmentsTab } from '../components/InstallmentsTab';
-import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate } from '../types';
+import { VisitPanel, VISIT_STATUS_KEY } from '../components/VisitPanel';
+import { printPrescription } from '../utils/printForms';
+import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription } from '../types';
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
@@ -74,9 +75,25 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 }) => {
    const { patientId: patientIdParam } = useParams<{ patientId: string }>();
    const patientId = patientIdProp || patientIdParam || null;
+   /* `?visit=` — «Mening navbatim» dan yoki eski `/visit/:id` havolasidan
+      kelgan aniq qabul. Bo'lmasa bugungi ochiq qabul o'zi tanlanadi. */
+   const [searchParams] = useSearchParams();
+   const requestedVisitId = searchParams.get('visit');
    const { t } = useLanguage();
 
-   const [activeTab, setActiveTab] = useState<'overview' | 'chart' | 'labs' | 'photos' | 'appointments' | 'payments' | 'materials' | 'installments'>('overview');
+   /* TARIX BO'LIMLARI. Ilgari bu vkladkalar edi va ular butun ekranni
+      egallardi: shifokor tarixni ochsa joriy qabulni ko'rmasdi, qabulni
+      ochsa tarixni. Endi qabul o'ng ustunda DOIM turadi, tarix bo'limi esa
+      pastda, to'liq kenglikda ochiladi. `null` — hech biri ochilmagan. */
+   type HistorySection =
+      | 'visits' | 'diagnoses' | 'labs' | 'photos' | 'prescriptions'
+      | 'appointments' | 'payments' | 'materials' | 'installments'
+      | 'documents' | 'anamnesis';
+   const [openSec, setOpenSec] = useState<HistorySection | null>(null);
+   /* Panelga tushadigan qabul. Standart — bugungi ochiq qabul; tarixdagi
+      eski qabulni bosib ko'rish ham mumkin. */
+   const [panelVisitId, setPanelVisitId] = useState<string | null>(null);
+   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
@@ -102,7 +119,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          ? Math.round(baseAmount * (1 - discountVal / 100))
          : Math.max(0, baseAmount - discountVal);
    };
-   const [pendingProcedures, setPendingProcedures] = useState<any[]>([]);
 
    // Installment quick-open state (from appointment row)
    const [installmentQuickOpen, setInstallmentQuickOpen] = useState<{ service: string; amount: number; doctorId: string } | null>(null);
@@ -133,9 +149,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       notes: ''
    });
 
-   // Key to reset VisitWorkflow after successful payment
-   const [visitKey, setVisitKey] = useState(0);
-   const [processedBatches, setProcessedBatches] = useState<Set<string>>(new Set());
 
    // Diagnosis State
    const [diagnoses, setDiagnoses] = useState<PatientDiagnosis[]>([]);
@@ -152,9 +165,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const [visits, setVisits] = useState<Visit[]>([]);
    const [departments, setDepartments] = useState<Department[]>([]);
    const [templates, setTemplates] = useState<EncounterTemplate[]>([]);
-   const [encounterDeptId, setEncounterDeptId] = useState<string | undefined>(undefined);
-   const [encounterData, setEncounterData] = useState<Record<string, any>>({});
-   const [encounterTemplateId, setEncounterTemplateId] = useState<string | undefined>(undefined);
 
    // Payment Edit State
    const [isPaymentEditModalOpen, setIsPaymentEditModalOpen] = useState(false);
@@ -242,16 +252,18 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       return results;
    }, [effAppointments, patientId, patient?.id]);
 
-   const allProceduresHistory = React.useMemo(() => {
-      const today = todayISO();
-      const current = pendingProcedures.map((p: any) => ({
-         id: p.id,
-         serviceName: p.serviceName,
-         date: today,
-         toothNumber: p.toothNumber
-      }));
-      return [...pastProcedures, ...current];
-   }, [pastProcedures, pendingProcedures]);
+   /* BOSMA KARTA UCHUN BAYON. Ilgari bu alohida holatda («chart» vkladkasi)
+      turardi va u ochiq qabulga bog'lanmagan edi: saqlaganda jimgina YANGI
+      qabul yaratilardi — shifokorsiz va navbat raqamisiz. Endi bayon
+      panelga tushgan qabuldan o'qiladi, ya'ni bitta manba. */
+   const panelVisit = React.useMemo(
+      () => visits.find(v => v.id === panelVisitId) || null, [visits, panelVisitId]);
+   const panelEncounterData = React.useMemo(() => {
+      try { return panelVisit?.examData ? JSON.parse(panelVisit.examData) : {}; }
+      catch { return {}; }
+   }, [panelVisit]);
+   const panelTemplate = React.useMemo(
+      () => templates.find(x => x.id === panelVisit?.templateId), [templates, panelVisit]);
 
 
    useEffect(() => {
@@ -284,55 +296,34 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       }
    };
 
-   const [isLoaded, setIsLoaded] = useState(false);
 
-   // Persistence for pending procedures
-   useEffect(() => {
-      setIsLoaded(false);
-      if (patientId) {
-         const key = `pending_procedures_${patientId}`;
-         const saved = localStorage.getItem(key);
-
-         if (saved) {
-            try {
-               const parsed = JSON.parse(saved);
-               setPendingProcedures(parsed);
-            } catch (e) {
-               console.error('Failed to parse saved procedures');
-               setPendingProcedures([]);
-            }
-         } else {
-            setPendingProcedures([]);
-         }
-         setIsLoaded(true);
-      }
+   /* Klinik ma'lumotni qayta o'qish. `VisitPanel` har o'zgarishdan keyin
+      shuni chaqiradi: tashxis qo'shilsa chap ustundagi ro'yxat ham,
+      qabullar ro'yxati ham darhol yangilanishi kerak. */
+   const reloadClinical = React.useCallback((keepVisitId?: string | null) => {
+      if (!patientId) return;
+      api.diagnoses.getByPatient(patientId).then(setDiagnoses).catch(console.error);
+      api.prescriptions.getAll(patientId).then(setPrescriptions).catch(() => setPrescriptions([]));
+      api.visits.getAll({ patientId }).then(vs => {
+         setVisits(vs);
+         /* Panelga BUGUNGI ochiq qabul tushadi. Kechagi tugallanmagan
+            qabul o'z-o'zidan ochilmasligi kerak: shifokor bugungi ish
+            bilan shug'ullanadi, eskisini tarixdan ataylab ochadi. */
+         setPanelVisitId(prev => {
+            if (keepVisitId !== undefined) return keepVisitId;
+            if (prev && vs.some(v => v.id === prev)) return prev;
+            const today = todayISO();
+            const open = vs.find(v => v.date === today && v.status !== 'Completed' && v.status !== 'Cancelled');
+            return open ? open.id : null;
+         });
+      }).catch(console.error);
    }, [patientId]);
 
    useEffect(() => {
-      if (patientId && isLoaded) {
-         const key = `pending_procedures_${patientId}`;
-         if (pendingProcedures.length > 0) {
-            localStorage.setItem(key, JSON.stringify(pendingProcedures));
-         } else {
-            localStorage.removeItem(key);
-         }
-      }
-   }, [patientId, pendingProcedures, isLoaded]);
-
-   useEffect(() => {
       if (patientId) {
-         api.diagnoses.getByPatient(patientId).then(setDiagnoses).catch(console.error);
+         setPanelVisitId(requestedVisitId || null);
          api.departments.getAll().then(setDepartments).catch(console.error);
-         api.visits.getAll({ patientId }).then(vs => {
-            setVisits(vs);
-            // Oxirgi ochiq qabuldan bayonni tiklaymiz
-            const open = vs.find(v => v.status !== 'Completed' && v.status !== 'Cancelled') || vs[0];
-            if (open) {
-               setEncounterDeptId(open.departmentId || undefined);
-               setEncounterTemplateId(open.templateId || undefined);
-               try { setEncounterData(open.examData ? JSON.parse(open.examData) : {}); } catch { setEncounterData({}); }
-            }
-         }).catch(console.error);
+         reloadClinical();
          /* `patient.id` uzatiladi — server bemorga mos kelmaydigan
             shablonlarni chiqarib tashlaydi (jins va yosh, B-09). */
          api.encounterTemplates.getAll(undefined, patient?.id).then(setTemplates).catch(console.error);
@@ -343,7 +334,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             api.inventory.getLogs(currentClinic?.id ?? undefined, patientId).then(setMaterialLogs).catch(console.error);
          }
       }
-   }, [patientId, currentClinic]);
+   }, [patientId, currentClinic, reloadClinical, requestedVisitId]);
 
    const [isAssignDoctorModalOpen, setIsAssignDoctorModalOpen] = useState(false);
 
@@ -432,35 +423,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       }
    };
 
-   const handleSaveEncounter = async (data: Record<string, any>, templateId: string | undefined) => {
-      if (!patientId) return;
-      try {
-         setEncounterData(data);
-         setEncounterTemplateId(templateId);
-         // Bayon ochiq qabulga yoziladi; qabul bo'lmasa yangisi ochiladi.
-         const today = todayISO();
-         const open = visits.find(v => v.status !== 'Completed' && v.status !== 'Cancelled');
-         if (open) {
-            await api.visits.update(open.id, {
-               examData: JSON.stringify(data),
-               templateId,
-               departmentId: encounterDeptId,
-            });
-         } else {
-            await api.visits.create({
-               patientId,
-               clinicId: patient?.clinicId,
-               date: today,
-               departmentId: encounterDeptId,
-               templateId,
-               examData: JSON.stringify(data),
-            } as any);
-         }
-      } catch (e) {
-         console.error('Bayonni saqlab bo\'lmadi', e);
-         toast.error(t('patients.details.alerts.error'));
-      }
-   };
 
    const handleEditPaymentOpen = (transaction: Transaction) => {
       setEditingTransaction(transaction);
@@ -733,7 +695,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          // Cleanup only on SUCCESS
          setIsPaymentModalOpen(false);
          setPaymentData({ amount: '', paidAmount: '', debtAmount: '', service: '', type: 'Cash', status: 'Paid', doctorId: defaultDoctorId, appointmentDate: '', discountPercent: '' });
-         setVisitKey(prev => prev + 1);
       } catch (error: any) {
          console.error('Payment processing failed', error);
          toast.error(`${t('patients.details.alerts.paymentError')} ${error.message || t('common.error')}`);
@@ -829,146 +790,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       setIsApptModalOpen(true);
    };
 
-   const handleCompleteVisit = async (procedures: any[], total: number) => {
-      // 1. Double-check if we are already processing or have processed this exact content recently
-      const today = todayISO();
-
-      // Generate a simple hash/signature for this batch of procedures
-      const batchSignature = `${today}-${total}-${procedures.map(p => p.id).join(',')}`;
-
-      if (processedBatches.has(batchSignature)) {
-         return;
-      }
-
-      const existingAppt = effAppointments.find(a =>
-         a.patientId === patient.id &&
-         a.date === today &&
-         a.status !== 'Cancelled'
-      );
-
-      // Shifokor ustuvorligi: qabulga biriktirilgan → kirgan shifokor → bemorga biriktirilgan → birinchi.
-      // Aks holda admin yakunlaganda to'lov har doim ro'yxatdagi birinchi shifokorga yozilib qolardi.
-      const apptDoctor = existingAppt ? doctors.find(d => d.id === existingAppt.doctorId) : undefined;
-      const patientDoctor = patient.doctorId ? doctors.find(d => d.id === patient.doctorId) : undefined;
-      const chosenDoctor = apptDoctor || myDoctor || patientDoctor;
-      let finalDoctorId = chosenDoctor?.id || (doctors.length > 0 ? doctors[0].id : '');
-      let finalDoctorName = chosenDoctor ? `Dr. ${chosenDoctor.lastName}` : (doctors.length > 0 ? `Dr. ${doctors[0].lastName}` : 'Doctor');
-
-      /* DIQQAT. Bu matn shunchaki izoh emas — stomatologiya tarixining
-         YAGONA saqlash joyi: tish kartasi (pastProcedures, yuqorida) aynan
-         shu satrlarni regex bilan o'qiydi, kassa esa narxni shundan
-         hisoblaydi (calculateAppointmentTotal).
-
-         Shuning uchun "notes ga yozishni to'xtatish" (qaror В6) shu relizda
-         BAJARILMADI: avval bajarilgan xizmatlar `VisitCharge` qatorlariga
-         ko'chirilishi va to'lov oynasi o'sha qatorlarni yopadigan qilib
-         ulanishi kerak. Matnni olib tashlash — tish kartasini yo'q qilish.
-         Batafsil: BUILD-SPEC.md, Б4.1. */
-      const proceduresText = procedures.map(p => `- ${p.serviceName} (${p.toothNumber ? `Tish #${p.toothNumber}` : 'Umumiy'}) [${formatMoney(p.price).replace(/,/g, ' ')} UZS]`).join('\n');
-
-      try {
-         // ENSURE DOCTOR EXISTS (especially for new clinics or individual plans)
-         if (!finalDoctorId) {
-            const isIndividualPlan = currentClinic?.planId === 'individual';
-            if (isIndividualPlan) {
-               try {
-                  const adminNameParts = currentClinic?.adminName?.split(' ') || ['Admin'];
-                  const firstName = adminNameParts[0];
-                  const lastName = adminNameParts.slice(1).join(' ') || 'Doctor';
-
-                  const newDoctor = await api.doctors.create({
-                     firstName,
-                     lastName,
-                     specialty: 'Stomatolog',
-                     phone: currentClinic?.phone || '',
-                     status: 'Active',
-                     clinicId: currentClinic?.id || ''
-                  });
-
-                  finalDoctorId = newDoctor.id;
-                  finalDoctorName = `Dr. ${newDoctor.lastName}`;
-               } catch (err) {
-                  /* Shifokor yaratish faqat klinika EGASIDA (reliz 4):
-                     registrator bu yerda 403 oladi. */
-                  console.error('Failed to auto-create doctor', err);
-                  throw new Error("Shifokor profili yo'q. Uni klinika egasi Sozlamalar bo'limida qo'shadi.");
-               }
-            } else if (doctors.length > 0) {
-               finalDoctorId = doctors[0].id;
-               finalDoctorName = `Dr. ${doctors[0].lastName}`;
-            } else {
-               throw new Error("Tizimda shifokor topilmadi. Iltimos, 'Sozlamalar' bo'limida kamida bitta shifokor profilini yarating.");
-            }
-         }
-
-         if (!existingAppt) {
-            // Create NEW Appointment
-            await onAddAppointment({
-               patientId: patient.id,
-               patientName: `${formatFullName(patient)}`,
-               doctorId: finalDoctorId,
-               doctorName: finalDoctorName,
-               type: 'Davolash',
-               date: today,
-               time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-               duration: 60,
-               status: 'Completed',
-               notes: `Bajarilgan ishlar:\n` + proceduresText
-            });
-            toast.error(t('patients.details.alerts.visitSaved'));
-         } else {
-            // Update EXISTING Appointment
-            const currentNotes = existingAppt.notes || '';
-
-            // Deduplication check: if notes already contain this text, skip appending
-            if (currentNotes.includes(proceduresText)) {
-               toast.success("Qabul tarixi yangilandi!");
-               setPendingProcedures([]);
-               setVisitKey(prev => prev + 1);
-               return;
-            }
-
-            const newNotes = currentNotes ? currentNotes + '\n\n' + `Qo'shimcha (${new Date().toLocaleTimeString()}):\n` + proceduresText : `Bajarilgan ishlar:\n` + proceduresText;
-
-            await onUpdateAppointment(existingAppt.id, {
-               notes: newNotes,
-               status: 'Completed'
-            });
-            toast.error(t('patients.details.alerts.visitUpdated'));
-         }
-
-         // 2. Cleanup only on SUCCESS
-         setProcessedBatches(prev => {
-            const newSet = new Set(prev);
-            newSet.add(batchSignature);
-            return newSet;
-         });
-         setPendingProcedures([]);
-         setVisitKey(prev => prev + 1);
-
-         // 3. Qabul yakunlangach — darhol to'lov oynasini oldindan to'ldirib ochamiz
-         if (total > 0) {
-            const breakdown = procedures.map(p => `${p.serviceName}|${p.price}`).join('||') + `||TOTAL|${total}`;
-            setDiscountType('percent');
-            setPaymentData({
-               amount: total.toString(),
-               paidAmount: total.toString(),
-               debtAmount: '0',
-               service: breakdown,
-               type: 'Cash',
-               status: 'Paid',
-               doctorId: finalDoctorId,
-               appointmentDate: today,
-               discountPercent: ''
-            });
-            setIsPaymentModalOpen(true);
-         }
-      } catch (error: any) {
-         console.error('Visit completion failed', error);
-         // Error toast is already shown by App.tsx, but we can add more specific alert here if needed
-         toast.error(`Xatolik: ${error.message || 'Tashrifni yakunlashda xato yuz berdi. Iltimos qaytadan urunib ko\'ring.'}`);
-      }
-   };
 
 
    return (
@@ -987,9 +808,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         patient,
                         clinic: currentClinic,
                         doctor: doctors.find(d => d.id === patient.doctorId) || myDoctor || doctors[0],
-                        encounter: { data: encounterData, template: templates.find(x => x.id === encounterTemplateId) },
+                        encounter: { data: panelEncounterData, template: panelTemplate },
                         diagnoses,
-                        procedures: allProceduresHistory,
+                        procedures: pastProcedures,
                      })}
                   >
                      <Printer className="w-4 h-4 mr-2" /> Karta (vipiska)
@@ -1088,56 +909,103 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                </div>
             </Card>
 
-            {/* Tabs */}
-            <div className="border-b border-gray-200 dark:border-gray-700">
-               <nav className="-mb-px flex space-x-8 overflow-x-auto">
-                  {[
-                     { id: 'overview', label: t('patients.details.tabs.overview'), icon: User },
-                     { id: 'chart', label: t('patients.details.tabs.chart'), icon: Activity },
-                     { id: 'photos', label: t('patients.details.tabs.photos'), icon: FileText },
-                     /* Dinamika: bitta qiymat kam narsa aytadi, o'zgarish muhim */
-                     { id: 'labs', label: 'Tahlil dinamikasi', icon: FlaskConical },
-                     { id: 'appointments', label: t('patients.details.tabs.appointments'), icon: Calendar },
-                     { id: 'payments', label: t('patients.details.tabs.payments'), icon: CreditCard },
-                     { id: 'installments', label: "Bo'lib to'lash", icon: Clock },
-                     { id: 'materials', label: t('patients.details.tabs.materials'), icon: Package },
-                  ].map(tab => (
-                     <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id as any)}
-                        className={`
-                  group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors
-                  ${activeTab === tab.id
-                              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                           }
-                `}
-                     >
-                        <tab.icon className={`
-                  -ml-0.5 mr-2 h-4 w-4
-                  ${activeTab === tab.id ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500'}
-                `} />
-                        {tab.label}
-                     </button>
-                  ))}
-               </nav>
-            </div>
+            {/* ── ISH MAYDONI ───────────────────────────────────────────────
+                Chapda «avval nima bo'lgan», o'ngda «hozir nima qilinmoqda».
+                Ilgari bu ikkisi bitta ekranga sig'masdi: tarix vkladkalarda
+                edi, joriy qabul esa butunlay boshqa sahifada (`/visit/:id`)
+                va kartadan unga havola YO'Q edi. */}
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)] gap-6 items-start">
 
-            {/* Tab Content */}
-            <div className="min-h-[400px]">
-
-               {activeTab === 'overview' && (
-                  <div className="space-y-6">
+               {/* ── CHAP: tarix ────────────────────────────────────────── */}
+               <div className="space-y-4">
                   {/* Allergiya, surunkali kasalliklar va BOSHQA bo'limlardagi
-                      qabullar. Shu ekranda ilgari faqat stomatologiya
-                      ko'rinardi — bemor terapevtga ham borgani bilinmasdi. */}
+                      qabullar — dori yoki tahlil buyurishdan OLDIN ko'rinadi. */}
                   <PatientHistoryPanel
                      patientId={patient.id}
                      canEdit={userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.DOCTOR}
-                     // Bu ekranda toast tizimi yo'q — xabar alert bilan
                      addToast={(_t, msg) => toast.error(msg)}
                   />
 
+                  {/* Tashxislar — qisqacha. To'liq ro'yxat pastdagi bo'limda. */}
+                  <Card className="p-4">
+                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                        <ClipboardList className="w-4 h-4 text-gray-400" /> {t('card.secDiagnoses')}
+                     </h3>
+                     {diagnoses.length === 0 ? (
+                        <p className="text-sm text-gray-400 dark:text-gray-500">{t('card.noDiagnoses')}</p>
+                     ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                           {diagnoses.slice(0, 6).map(d => (
+                              <span key={d.id} className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-xs text-gray-800 dark:text-gray-200">
+                                 <b>{d.code}</b>{d.isChronic ? ' ·' : ''}
+                                 {d.isChronic && <span className="text-amber-600 dark:text-amber-400"> {t('visit.chronic')}</span>}
+                              </span>
+                           ))}
+                           {diagnoses.length > 6 && (
+                              <button onClick={() => setOpenSec('diagnoses')} className="px-2 py-0.5 text-xs text-primary-600 dark:text-primary-400 hover:underline">
+                                 +{diagnoses.length - 6}
+                              </button>
+                           )}
+                        </div>
+                     )}
+                  </Card>
+
+                  {/* Bo'limlar ro'yxati — bosilganda pastda to'liq kenglikda ochiladi */}
+                  <Card className="p-2">
+                     <p className="px-2 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{t('card.historyTitle')}</p>
+                     <nav className="flex flex-col">
+                        {([
+                           ['visits', Stethoscope, t('card.secVisits'), visits.length],
+                           ['diagnoses', ClipboardList, t('card.secDiagnoses'), diagnoses.length],
+                           ['labs', FlaskConical, t('card.secLabs'), null],
+                           ['prescriptions', Pill, t('card.secPrescriptions'), prescriptions.length],
+                           ['photos', Image, t('card.secPhotos'), null],
+                           ['appointments', Calendar, t('card.secAppointments'), patientAppointments.length],
+                           ['payments', CreditCard, t('card.secPayments'), patientTransactions.length],
+                           ['installments', Clock, t('card.secInstallments'), null],
+                           ['materials', Package, t('card.secMaterials'), materialLogs.length],
+                           ['documents', FileText, t('card.secDocuments'), null],
+                           ['anamnesis', Activity, t('card.secAnamnesis'), null],
+                        ] as [HistorySection, React.ElementType, string, number | null][]).map(([id, Icon, label, count]) => (
+                           <button key={id} onClick={() => setOpenSec(openSec === id ? null : id)}
+                              className={`flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm text-left transition-colors ${openSec === id
+                                 ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 font-medium'
+                                 : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                              <Icon className={`w-4 h-4 shrink-0 ${openSec === id ? 'text-primary-500' : 'text-gray-400'}`} />
+                              <span className="flex-1 min-w-0 truncate">{label}</span>
+                              {count !== null && count > 0 && (
+                                 <span className="text-xs tabular-nums text-gray-400">{count}</span>
+                              )}
+                              <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform ${openSec === id ? 'rotate-90 text-primary-500' : 'text-gray-300'}`} />
+                           </button>
+                        ))}
+                     </nav>
+                  </Card>
+               </div>
+
+               {/* ── O'NG: joriy qabul ──────────────────────────────────── */}
+               {/* Tashxis, tahlil, UZI, retsept, xizmat va yakunlash — hammasi
+                   shu panelda. Bemor kartadan chiqmaydi. */}
+               <VisitPanel
+                  patient={patient}
+                  visitId={panelVisitId}
+                  departments={departments}
+                  services={services}
+                  doctors={doctors}
+                  currentUserName={myDoctor ? formatDoctorName(myDoctor) : undefined}
+                  userRole={userRole}
+                  loggedDoctorId={loggedDoctorId}
+                  addToast={(type, msg) => type === 'error' ? toast.error(msg) : toast.success(msg)}
+                  onVisitChanged={(id) => reloadClinical(id === undefined ? undefined : id)}
+               />
+            </div>
+
+            {/* ── Ochilgan tarix bo'limi — to'liq kenglikda ────────────────── */}
+            {openSec && (
+               <div className="space-y-6">
+
+               {openSec === 'documents' && (
+                  <div className="space-y-6">
                   {/* Rozilik, shartnoma, ma'lumotlarga rozilik — qonun talabi
                       (25 va 26-moddalar, ЗРУ-547). Ilgari tizimda imzolanadigan
                       birorta qog'oz yo'q edi. */}
@@ -1146,17 +1014,12 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      canCreate={userRole !== UserRole.LAB_TECHNICIAN}
                      addToast={(_t, msg) => toast.error(msg)}
                   />
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                     <VisitWorkflow
-                        key={visitKey}
-                        services={services}
-                        categories={categories}
-                        doctors={doctors}
-                        initialProcedures={pendingProcedures}
-                        onProceduresChange={setPendingProcedures}
-                        onCompleteVisit={handleCompleteVisit}
-                     />
+                  </div>
+               )}
 
+               {/* ── Anamnez ─────────────────────────────────────────────── */}
+               {openSec === 'anamnesis' && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                      <Card className="p-6 space-y-4">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                            <Activity className="w-5 h-5" /> {t('patients.details.medicalHistory.title')}
@@ -1227,48 +1090,127 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                            </div>
                         </div>
                      </Card>
-
-
-                  </div>
                   </div>
                )}
 
-
-               {/* Dental Chart Tab */}
-               {activeTab === 'chart' && (
-                  <div className="space-y-4">
-                     <div className="flex justify-between items-center">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t('patients.details.chart.title')}</h3>
-                        <div className="flex gap-2">
-                           <Button variant="secondary" size="sm" onClick={() => window.print()}><Printer className="w-4 h-4 mr-2" /> {t('patients.details.chart.print')}</Button>
+               {/* ── Qabullar tarixi ─────────────────────────────────────────
+                   Har qator — bosiladigan: o'ng ustundagi panel o'sha qabulni
+                   ko'rsatadi. Ilgari kartadan qabulga o'tish yo'li YO'Q edi. */}
+               {openSec === 'visits' && (
+                  <Card className="p-0 overflow-hidden">
+                     {visits.length === 0 ? (
+                        <p className="p-8 text-center text-gray-500">{t('card.noVisits')}</p>
+                     ) : (
+                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                           {visits.map(v => {
+                              const isOpenVisit = v.status !== 'Completed' && v.status !== 'Cancelled';
+                              return (
+                                 <button key={v.id} onClick={() => { setPanelVisitId(v.id); setOpenSec(null); }}
+                                    className={`w-full flex flex-wrap items-center gap-3 p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${panelVisitId === v.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''}`}>
+                                    <span className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 grid place-items-center text-sm font-bold text-gray-600 dark:text-gray-300 shrink-0">
+                                       {v.queueNumber ?? '—'}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                       <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">
+                                          {v.department?.name || departments.find(d => d.id === v.departmentId)?.name || t('visit.noDept')}
+                                          {v.doctorName ? ` · ${v.doctorName}` : ''}
+                                       </span>
+                                       <span className="block text-xs text-gray-500 dark:text-gray-400 truncate">
+                                          {formatDate(v.date)}{v.complaints ? ` · ${v.complaints}` : ''}
+                                       </span>
+                                    </span>
+                                    {isOpenVisit && (
+                                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                          {t('card.openVisitBadge')}
+                                       </span>
+                                    )}
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">{t(VISIT_STATUS_KEY[v.status] || 'visit.status.Waiting')}</span>
+                                    <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                                 </button>
+                              );
+                           })}
                         </div>
-                     </div>
-                     <EncounterForm
-                        departments={departments}
-                        templates={templates}
-                        patientGender={patient.gender === 'Male' || patient.gender === 'Female' ? patient.gender : null}
-                        patientAge={calcAge(patient.dob)}
-                        departmentId={encounterDeptId}
-                        templateId={encounterTemplateId}
-                        value={encounterData}
-                        onDepartmentChange={setEncounterDeptId}
-                        onSave={handleSaveEncounter}
-                     />
-                  </div>
+                     )}
+                  </Card>
+               )}
+
+               {/* ── Tashxislar ─────────────────────────────────────────────── */}
+               {openSec === 'diagnoses' && (
+                  <Card className="p-0 overflow-hidden">
+                     {diagnoses.length === 0 ? (
+                        <p className="p-8 text-center text-gray-500">{t('card.noDiagnoses')}</p>
+                     ) : (
+                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                           {diagnoses.map(d => (
+                              <div key={d.id} className="flex flex-wrap items-center gap-3 p-4">
+                                 <span className="min-w-0 flex-1">
+                                    <span className="block text-sm text-gray-900 dark:text-white">
+                                       <b>{d.code}</b>{d.icd10?.name ? ` — ${d.icd10.name}` : ''}
+                                    </span>
+                                    {d.notes && <span className="block text-xs text-gray-500 dark:text-gray-400">{formatDiagnosisNotes(d.notes)}</span>}
+                                 </span>
+                                 {d.isChronic && (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                       {t('visit.chronic')}
+                                    </span>
+                                 )}
+                                 <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(d.date)}</span>
+                                 {userRole !== UserRole.LAB_TECHNICIAN && (
+                                    <button onClick={() => handleDeleteDiagnosis(d.id)} aria-label={t('common.delete')}
+                                       className="p-1 text-gray-300 hover:text-red-500">
+                                       <Trash2 className="w-4 h-4" />
+                                    </button>
+                                 )}
+                              </div>
+                           ))}
+                        </div>
+                     )}
+                  </Card>
+               )}
+
+               {/* ── Retseptlar ──────────────────────────────────────────────
+                   Retsept yozilardi, lekin uni ko'rish va chop etish
+                   IMKONI YO'Q edi: bemor qo'lida hech narsasiz chiqib ketardi. */}
+               {openSec === 'prescriptions' && (
+                  <Card className="p-0 overflow-hidden">
+                     {prescriptions.length === 0 ? (
+                        <p className="p-8 text-center text-gray-500">{t('card.noPrescriptions')}</p>
+                     ) : (
+                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                           {prescriptions.map(rx => (
+                              <div key={rx.id} className="flex flex-wrap items-center gap-3 p-4">
+                                 <Pill className="w-4 h-4 text-gray-400 shrink-0" />
+                                 <span className="min-w-0 flex-1">
+                                    <span className="block text-sm text-gray-900 dark:text-white">
+                                       {(rx.items || []).map(i => i.name).filter(Boolean).join(', ') || t('visit.prescription')}
+                                    </span>
+                                    <span className="block text-xs text-gray-500 dark:text-gray-400">
+                                       {formatDate(rx.date)}{rx.doctorName ? ` · ${rx.doctorName}` : ''}
+                                    </span>
+                                 </span>
+                                 <Button variant="secondary" size="sm"
+                                    onClick={() => printPrescription({ ...rx, patient }, currentClinic)}>
+                                    <Printer className="w-4 h-4 mr-2" /> {t('common.print')}
+                                 </Button>
+                              </div>
+                           ))}
+                        </div>
+                     )}
+                  </Card>
                )}
 
                {/* Tahlil dinamikasi (reliz 6+) */}
-               {activeTab === 'labs' && (
+               {openSec === 'labs' && (
                   <LabDynamics patientId={patient.id} />
                )}
 
                {/* Photos Tab */}
-               {activeTab === 'photos' && (
+               {openSec === 'photos' && (
                   <PatientPhotos patientId={patient.id} clinicId={patient.clinicId} token={token} />
                )}
 
                {/* Appointments Tab */}
-               {activeTab === 'appointments' && (
+               {openSec === 'appointments' && (
                   <div className="space-y-6">
                      {/* Upcoming Appointments Section */}
                      <Card className="p-6">
@@ -1368,7 +1310,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                )}
 
                {/* Payments Tab */}
-               {activeTab === 'payments' && (
+               {openSec === 'payments' && (
                   <div className="space-y-6">
                      {/* Pending Payments Section */}
                      <Card className="overflow-hidden border-yellow-200 dark:border-yellow-800">
@@ -1425,7 +1367,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                              <Button size="sm" variant="secondary" className="bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800" onClick={() => {
                                                 const { total, breakdown } = calculateAppointmentTotal(app.notes || '', services);
                                                 setInstallmentQuickOpen({ service: breakdown || app.type, amount: total, doctorId: app.doctorId });
-                                                setActiveTab('installments');
+                                                setOpenSec('installments');
                                              }}>Bo'lib to'lash</Button>
                                              {(patient.balance || 0) > 0 && (
                                                 <Button size="sm" variant="secondary" className="bg-primary-50 text-primary-700 border-primary-100" onClick={async () => {
@@ -1554,7 +1496,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      </Card>
                   </div>
                )}
-               {activeTab === 'installments' && patient && currentClinic && (
+               {openSec === 'installments' && patient && currentClinic && (
                   <InstallmentsTab 
                      patientId={patient.id} 
                      clinicId={currentClinic.id} 
@@ -1565,7 +1507,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   />
                )}
                
-               {activeTab === 'materials' && (
+               {openSec === 'materials' && (
                   <Card className="overflow-hidden">
                      <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                         <h3 className="font-bold text-gray-900 dark:text-white">{t('patients.details.materials.title')}</h3>
@@ -1636,7 +1578,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      {materialLogs.length === 0 && <div className="p-8 text-center text-gray-500">{t('patients.details.materials.empty')}</div>}
                   </Card>
                )}
-            </div>
+               </div>
+            )}
 
             {/* Edit Modal */}
             <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={t('patients.details.modals.editProfile')}>
@@ -2259,8 +2202,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             <div className="mb-8 break-inside-avoid">
                <h3 className="text-lg font-bold border-b border-gray-400 mb-4 pb-1">Qabul bayoni</h3>
                <EncounterSummary
-                  template={templates.find(x => x.id === encounterTemplateId)}
-                  value={JSON.stringify(encounterData)}
+                  template={panelTemplate}
+                  value={JSON.stringify(panelEncounterData)}
                />
             </div>
 

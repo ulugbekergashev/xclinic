@@ -1922,15 +1922,9 @@ const sinceDate = (n: number) =>
               {/* Kassa endi Moliya ichida — eski havolalar shu yerga tushadi */}
               <Route path="/cashier" element={<Navigate to="/finance" replace />} />
 
-              <Route path="/visit/:visitId" element={
-                <VisitWorkspace
-                  departments={departments}
-                  services={services}
-                  doctors={doctors}
-                  currentUserName={userName}
-                  addToast={addToast}
-                />
-              } />
+              {/* Qabul ish stoli bemor kartasiga ko'chdi. Marshrut kartaga
+                  yo'naltiradi — eski havolalar va talonlar ishlayveradi. */}
+              <Route path="/visit/:visitId" element={<VisitWorkspace />} />
 
               <Route path="/diagnostics" element={
                 <Diagnostics

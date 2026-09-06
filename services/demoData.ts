@@ -119,6 +119,33 @@ export let DEMO_RECEPTIONISTS: Receptionist[] = savedData?.receptionists || [];
 
 export let DEMO_DIAGNOSES: PatientDiagnosis[] = savedData?.diagnoses || [];
 
+/* MKB-10 katalogi namoyish uchun. Haqiqiy bazada u 12 mingdan ortiq kod —
+   uni demoga solib bo'lmaydi, lekin QIDIRUV ishlashi shart: namoyishda
+   tashxis qo'yolmaslik eng ko'zga tashlanadigan nuqson edi.
+   Ro'yxat ko'p profilli: terapiya, kardiologiya, LOR, endokrinologiya. */
+export const DEMO_ICD10: { code: string; name: string; nameRu?: string }[] = [
+   { code: 'I10', name: 'Essensial (birlamchi) gipertenziya', nameRu: 'Эссенциальная (первичная) гипертензия' },
+   { code: 'I25.9', name: 'Surunkali yurak ishemik kasalligi', nameRu: 'Хроническая ишемическая болезнь сердца' },
+   { code: 'E11.9', name: 'Qandli diabet, 2-tur', nameRu: 'Сахарный диабет 2 типа' },
+   { code: 'E03.9', name: 'Gipotireoz', nameRu: 'Гипотиреоз' },
+   { code: 'J06.9', name: "Yuqori nafas yo'llarining o'tkir infeksiyasi", nameRu: 'Острая инфекция верхних дыхательных путей' },
+   { code: 'J35.0', name: 'Surunkali tonzillit', nameRu: 'Хронический тонзиллит' },
+   { code: 'J45.9', name: 'Bronxial astma', nameRu: 'Бронхиальная астма' },
+   { code: 'K29.5', name: 'Surunkali gastrit', nameRu: 'Хронический гастрит' },
+   { code: 'K21.0', name: 'Gastroezofageal reflyuks ezofagit bilan', nameRu: 'Гастроэзофагеальный рефлюкс с эзофагитом' },
+   { code: 'N39.0', name: "Siydik yo'llari infeksiyasi", nameRu: 'Инфекция мочевыводящих путей' },
+   { code: 'M54.5', name: "Bel og'rig'i", nameRu: 'Боль внизу спины' },
+   { code: 'M17.9', name: 'Gonartroz', nameRu: 'Гонартроз' },
+   { code: 'D50.9', name: 'Temir tanqisligi anemiyasi', nameRu: 'Железодефицитная анемия' },
+   { code: 'G43.9', name: 'Migren', nameRu: 'Мигрень' },
+   { code: 'H52.1', name: 'Miopiya', nameRu: 'Миопия' },
+   { code: 'Z00.0', name: "Umumiy tibbiy ko'rik", nameRu: 'Общий медицинский осмотр' },
+   { code: 'Z34.9', name: 'Normal homiladorlikni kuzatish', nameRu: 'Наблюдение за нормальной беременностью' },
+   { code: 'K02.1', name: 'Dentin kariyesi', nameRu: 'Кариес дентина' },
+   { code: 'K04.0', name: 'Pulpit', nameRu: 'Пульпит' },
+   { code: 'K05.3', name: 'Surunkali periodontit', nameRu: 'Хронический пародонтит' },
+];
+
 
 // Demo Doctors
 export let DEMO_DOCTORS: Doctor[] = savedData?.doctors || [
