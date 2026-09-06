@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { Appointment, Patient, Doctor, UserRole, Clinic, ServiceCategory, Service } from '../types';
 import { api } from '../services/api';
+import { markAppointmentArrived } from '../utils/arrival';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 
 interface CalendarProps {
@@ -735,6 +737,34 @@ Baribir yozilsinmi?`
     }
   };
 
+
+  /* Kelgan bemorni navbatga qo'yish. Mantiq `utils/arrival.ts` da —
+     Registratura ham xuddi shu funksiyani chaqiradi. */
+  const [arriving, setArriving] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const handleArrived = async (appt: Appointment) => {
+    setArriving(appt.id);
+    try {
+      const r = await markAppointmentArrived(appt, { doctors, services });
+      if (r.appointmentNotClosed) {
+        toast.error("Qabul ochildi, lekin kalendardagi yozuv holati yangilanmadi");
+      }
+      setSelectedAppointment(null);
+      /* Darhol bemor kartasiga — qabul o'sha yerda olib boriladi. */
+      navigate(`/patients/${appt.patientId}?visit=${r.visit.id}`);
+    } catch (e: any) {
+      const f = e?.failure;
+      if (f?.code === 'EXISTS') {
+        setSelectedAppointment(null);
+        navigate(`/patients/${appt.patientId}?visit=${f.visitId}`);
+        return;
+      }
+      toast.error(e?.message || "Qabulni ochib bo'lmadi");
+    } finally {
+      setArriving(null);
+    }
+  };
 
   const handleStatusUpdate = async (status: Appointment['status']) => {
     if (selectedAppointment) {
@@ -1494,12 +1524,20 @@ Baribir yozilsinmi?`
                       {t('calendar.noShow')}
                     </button>
 
+                    {/* «KELDI» — ilgari bu yerda «Yakunlash» turardi va u
+                        yozuv holatini o'zgartirib qo'yardi, LEKIN hech qanday
+                        qabul yaratmasdi: bemor «qabul qilingan» ko'rinardi,
+                        tizimda esa na tashxis, na xizmat, na pul qatori
+                        bo'lardi. Ko'prik faqat Registraturada bor edi. */}
                     <button
-                      onClick={() => handleStatusUpdate('Completed')}
-                      className="inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 flex-1"
+                      onClick={() => handleArrived(selectedAppointment)}
+                      disabled={arriving === selectedAppointment.id}
+                      className="inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 flex-1"
                     >
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      {t('calendar.complete')}
+                      {arriving === selectedAppointment.id
+                        ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        : <CheckCircle className="w-4 h-4 mr-2" />}
+                      {t('calendar.arrived')}
                     </button>
                   </div>
                 )}

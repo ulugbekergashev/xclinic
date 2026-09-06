@@ -12,12 +12,12 @@ import { PatientDocuments } from '../components/PatientDocuments';
 import { LabDynamics } from '../components/LabDynamics';
 import { InstallmentsTab } from '../components/InstallmentsTab';
 import { VisitPanel, VISIT_STATUS_KEY } from '../components/VisitPanel';
+import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import { printPrescription } from '../utils/printForms';
-import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription } from '../types';
+import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription, VisitCharge } from '../types';
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
-import { calculateAppointmentTotal } from '../utils/financialCalculations';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { maskPhone } from '../utils/accessControl';
 import { printPatientCard } from '../utils/printPatientCard';
@@ -94,6 +94,10 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       eski qabulni bosib ko'rish ham mumkin. */
    const [panelVisitId, setPanelVisitId] = useState<string | null>(null);
    const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+   /* To'lanmagan hisob qatorlari — kassa bilan BITTA manba (`VisitCharge`).
+      Ilgari karta buni kalendar yozuvlaridan taxmin qilardi. */
+   const [unpaidCharges, setUnpaidCharges] = useState<VisitCharge[]>([]);
+   const [isChargeModalOpen, setIsChargeModalOpen] = useState(false);
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
@@ -256,6 +260,10 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       turardi va u ochiq qabulga bog'lanmagan edi: saqlaganda jimgina YANGI
       qabul yaratilardi — shifokorsiz va navbat raqamisiz. Endi bayon
       panelga tushgan qabuldan o'qiladi, ya'ni bitta manba. */
+   const unpaidTotal = React.useMemo(
+      () => unpaidCharges.reduce((sum, c) => sum + (c.total - (c.paidAmount || 0)), 0),
+      [unpaidCharges]);
+
    const panelVisit = React.useMemo(
       () => visits.find(v => v.id === panelVisitId) || null, [visits, panelVisitId]);
    const panelEncounterData = React.useMemo(() => {
@@ -304,6 +312,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       if (!patientId) return;
       api.diagnoses.getByPatient(patientId).then(setDiagnoses).catch(console.error);
       api.prescriptions.getAll(patientId).then(setPrescriptions).catch(() => setPrescriptions([]));
+      api.charges.getAll({ patientId, status: 'Unpaid' })
+         .then(cs => setUnpaidCharges(cs || [])).catch(() => setUnpaidCharges([]));
       api.visits.getAll({ patientId }).then(vs => {
          setVisits(vs);
          /* Panelga BUGUNGI ochiq qabul tushadi. Kechagi tugallanmagan
@@ -1312,13 +1322,50 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                {/* Payments Tab */}
                {openSec === 'payments' && (
                   <div className="space-y-6">
-                     {/* Pending Payments Section */}
+                     {/* ── TO'LANMAGAN QATORLAR ──────────────────────────────
+                         Ilgari bu ro'yxat KALENDAR YOZUVLARIDAN yasalardi:
+                         «yakunlangan yozuv bor, o'sha SANADA to'lov yo'q =
+                         qarz». Uch xato birdan: summa yozuv izohidan regexp
+                         bilan ajratilardi, boshqa kuni to'langan qarz
+                         «to'lanmagan» bo'lib turaverardi, va kassadagi
+                         haqiqiy hisob qatorlari (`VisitCharge`) bu yerda
+                         umuman ko'rinmasdi — shifokor kartada bir qarzni,
+                         kassir esa boshqasini ko'rardi.
+
+                         Endi manba bitta: kassa nimani ko'rsa, karta ham
+                         shuni ko'radi. */}
                      <Card className="overflow-hidden border-yellow-200 dark:border-yellow-800">
-                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-100 dark:border-yellow-800 flex justify-between items-center">
+                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-100 dark:border-yellow-800 flex flex-wrap justify-between items-center gap-3">
                            <div>
-                              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-yellow-600" /> {t('patients.details.payments.pendingTitle')}</h3>
-                              <p className="text-sm text-gray-500">{t('patients.details.payments.pendingDesc')}</p>
+                              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                 <FileText className="w-5 h-5 text-yellow-600" /> {t('patients.details.payments.pendingTitle')}
+                              </h3>
+                              <p className="text-sm text-gray-500">{t('card.unpaidDesc')}</p>
                            </div>
+                           {unpaidCharges.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-3">
+                                 <span className="text-sm text-gray-600 dark:text-gray-300">
+                                    {t('visit.due')}: <b className="tabular-nums text-red-600 dark:text-red-400">
+                                       {formatMoney(unpaidTotal)} UZS
+                                    </b>
+                                 </span>
+                                 <Button size="sm" onClick={() => setIsChargeModalOpen(true)}>
+                                    <CreditCard className="w-4 h-4 mr-2" /> {t('card.takePayment')}
+                                 </Button>
+                                 <Button size="sm" variant="secondary"
+                                    className="bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800"
+                                    onClick={() => {
+                                       setInstallmentQuickOpen({
+                                          service: unpaidCharges.map(c => c.name).join(', ').slice(0, 120),
+                                          amount: unpaidTotal,
+                                          doctorId: unpaidCharges.find(c => c.doctorId)?.doctorId || '',
+                                       });
+                                       setOpenSec('installments');
+                                    }}>
+                                    {t('card.secInstallments')}
+                                 </Button>
+                              </div>
+                           )}
                         </div>
                         <div className="overflow-x-auto">
                            <table className="w-full text-left text-sm">
@@ -1326,77 +1373,36 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                  <tr>
                                     <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.date')}</th>
                                     <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.procedure')}</th>
-                                    <th className="p-4 font-medium text-gray-500 w-1/3">{t('patients.details.appointments.table.worksDone')}</th>
-                                    <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.status')}</th>
-                                    <th className="p-4 font-medium text-gray-500">{t('common.actions')}</th>
+                                    <th className="p-4 font-medium text-gray-500">{t('common.doctor')}</th>
+                                    <th className="p-4 font-medium text-gray-500 text-right">{t('common.total')}</th>
+                                    <th className="p-4 font-medium text-gray-500 text-right">{t('visit.paid')}</th>
+                                    <th className="p-4 font-medium text-gray-500 text-right">{t('visit.due')}</th>
                                  </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                 {patientAppointments.filter(app => {
-                                    if (!app || !app.date) return false;
-                                    const isPaid = (patientTransactions || []).some(t => t && t.date === app.date && t.status === 'Paid');
-                                    return (app.status === 'Completed' || app.status === 'Checked-In') && !isPaid;
-                                 }).map(app => {
-                                    const doctor = (doctors || []).find(d => d && d.id === app.doctorId);
-                                    return (
-                                       <tr key={app.id} className="hover:bg-yellow-50/50 dark:hover:bg-yellow-900/10 transition-colors">
-                                          <td className="p-4 text-gray-900 dark:text-white font-medium whitespace-nowrap">
-                                             {app.date ? formatDate(new Date(app.date)) : 'N/A'} <br />
-                                             <span className="text-xs text-gray-500 font-normal">{app.time}</span>
-                                          </td>
-                                          <td className="p-4 text-gray-600 dark:text-gray-300">{app.type}</td>
-                                          <td className="p-4 text-gray-600 dark:text-gray-300 min-w-[200px]"><div className="text-xs bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-100 dark:border-gray-700 whitespace-pre-line">{app.notes || '-'}</div></td>
-                                          <td className="p-4"><Badge status="Pending" /></td>
-                                          <td className="p-4 flex gap-2 flex-wrap">
-                                             <Button size="sm" onClick={() => {
-                                                const { total, breakdown } = calculateAppointmentTotal(app.notes || '', services);
-                                                setDiscountType('percent');
-                                                setPaymentData({
-                                                   amount: total.toString(),
-                                                   paidAmount: total.toString(),
-                                                   debtAmount: '0',
-                                                   service: breakdown || app.type,
-                                                   type: 'Cash',
-                                                   status: 'Paid',
-                                                   doctorId: app.doctorId,
-                                                   appointmentDate: app.date,
-                                                   discountPercent: ''
-                                                });
-                                                setIsPaymentModalOpen(true);
-                                             }}>To'lov</Button>
-                                             <Button size="sm" variant="secondary" className="bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800" onClick={() => {
-                                                const { total, breakdown } = calculateAppointmentTotal(app.notes || '', services);
-                                                setInstallmentQuickOpen({ service: breakdown || app.type, amount: total, doctorId: app.doctorId });
-                                                setOpenSec('installments');
-                                             }}>Bo'lib to'lash</Button>
-                                             {(patient.balance || 0) > 0 && (
-                                                <Button size="sm" variant="secondary" className="bg-primary-50 text-primary-700 border-primary-100" onClick={async () => {
-                                                   const { total, breakdown } = calculateAppointmentTotal(app.notes || '', services);
-                                                   if (await confirmAction({ title: `Ushbu qabul uchun ${formatMoney(total)} UZS miqdorini bemor avansidan yechishga ruxsatingiz bormi?` })) {
-                                                      const doctor = doctors.find(d => d.id === app.doctorId);
-                                                      await onAddTransaction({
-                                                         patientId: patient.id,
-                                                         patientName: `${formatFullName(patient)}`,
-                                                         date: app.date,
-                                                         amount: total,
-                                                         service: breakdown || app.type,
-                                                         type: 'Balance' as any,
-                                                         status: 'Paid',
-                                                         doctorId: app.doctorId,
-                                                         doctorName: doctor ? `${formatDoctorName(doctor)}` : ''
-                                                      });
-                                                      toast.success("To'lov avans hisobidan muvaffaqiyatli amalga oshirildi!");
-                                                   }
-                                                }}>Hisobdan</Button>
-                                             )}
-                                          </td>
-                                       </tr>
-                                    );
-                                 })}
+                                 {unpaidCharges.map(c => (
+                                    <tr key={c.id} className="hover:bg-yellow-50/50 dark:hover:bg-yellow-900/10 transition-colors">
+                                       <td className="p-4 text-gray-900 dark:text-white whitespace-nowrap">
+                                          {c.createdAt ? formatDate(new Date(c.createdAt)) : '—'}
+                                       </td>
+                                       <td className="p-4 text-gray-600 dark:text-gray-300">
+                                          {c.name}
+                                          {c.quantity > 1 && <span className="text-xs text-gray-400"> ×{c.quantity}</span>}
+                                       </td>
+                                       <td className="p-4 text-gray-600 dark:text-gray-300">{c.doctorName || '—'}</td>
+                                       <td className="p-4 text-right tabular-nums text-gray-900 dark:text-white">{formatMoney(c.total)}</td>
+                                       <td className="p-4 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoney(c.paidAmount || 0)}</td>
+                                       <td className="p-4 text-right tabular-nums font-medium text-red-600 dark:text-red-400">
+                                          {formatMoney(c.total - (c.paidAmount || 0))}
+                                       </td>
+                                    </tr>
+                                 ))}
                               </tbody>
                            </table>
                         </div>
-                        {patientAppointments.filter(app => { const isPaid = (patientTransactions || []).some(trans => trans && trans.date === app.date && trans.status === 'Paid'); return (app.status === 'Completed' || app.status === 'Checked-In') && !isPaid; }).length === 0 && <div className="p-8 text-center text-gray-500">{t('patients.details.payments.pendingEmpty')}</div>}
+                        {unpaidCharges.length === 0 && (
+                           <div className="p-8 text-center text-gray-500">{t('patients.details.payments.pendingEmpty')}</div>
+                        )}
                      </Card>
                      {/* Transaction History Section */}
                      <Card className="overflow-hidden">
@@ -1580,6 +1586,24 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                )}
                </div>
             )}
+
+            {/* ── TO'LOV OYNASI ─────────────────────────────────────────────
+                Kassadagi bilan AYNAN BIR XIL oyna (`ChargePaymentModal`):
+                qatorlarni belgilash, qisman to'lov, usullarga bo'lish,
+                chegirma va qaytarish. Ilgari kartada o'zining alohida
+                oynasi bor edi va u `Transaction` ga to'g'ridan-to'g'ri
+                yozardi — ya'ni hisob qatori to'lanmagan bo'lib qolaverardi. */}
+            <ChargePaymentModal
+               isOpen={isChargeModalOpen}
+               onClose={() => setIsChargeModalOpen(false)}
+               patientName={formatFullName(patient)}
+               charges={unpaidCharges}
+               patientId={patient.id}
+               receivedByName={myDoctor ? formatDoctorName(myDoctor) : undefined}
+               role={userRole}
+               addToast={(type, msg) => type === 'error' ? toast.error(msg) : toast.success(msg)}
+               onDone={() => { setIsChargeModalOpen(false); reloadClinical(); }}
+            />
 
             {/* Edit Modal */}
             <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={t('patients.details.modals.editProfile')}>

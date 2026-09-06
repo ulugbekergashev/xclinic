@@ -6,7 +6,7 @@ import {
 import {
     Visit, Department, EncounterTemplate, LabTest, Service, Doctor, Patient,
     Modality, MODALITY_LABELS, ICD10Code, VisitCharge, ChargeSummary, UserRole,
-    Prescription,
+    Prescription, InventoryItem,
 } from '../types';
 import { api } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -107,6 +107,9 @@ export const VisitPanel: React.FC<Props> = ({
     const [openBusy, setOpenBusy] = useState(false);
 
     const [refBusy, setRefBusy] = useState(false);
+    /* Retseptdagi dorilar ombordan taklif qilinadi. Erkin matn ham
+       qoladi: omborda yo'q dorini yozish mumkin bo'lishi kerak. */
+    const [meds, setMeds] = useState<InventoryItem[]>([]);
 
     const reload = useCallback(async () => {
         if (!visitId) { setVisit(null); setCharges([]); setMoney({ total: 0, paid: 0, due: 0, unpaidCount: 0 }); setLoading(false); return; }
@@ -132,6 +135,15 @@ export const VisitPanel: React.FC<Props> = ({
         api.encounterTemplates.getAll().then(setTemplates).catch(() => { });
         api.labTests.getAll().then(setLabTests).catch(() => { });
     }, []);
+
+    /* Dorilar ro'yxati faqat retsept paneli ochilganda yuklanadi —
+       har karta ochilishida ombor so'rovi yuborishning ma'nosi yo'q. */
+    useEffect(() => {
+        if (panel !== 'rx' || meds.length || !patient.clinicId) return;
+        api.inventory.getAll(patient.clinicId)
+            .then(items => setMeds(items.filter(i => i.isMedication)))
+            .catch(() => { });
+    }, [panel, patient.clinicId, meds.length]);
 
     /* Kirgan shifokor o'zi standart bo'lib turadi: o'z bemorini qabul
        qilayotgan odam har safar ro'yxatdan o'zini qidirib o'tirmasin. */
@@ -262,10 +274,16 @@ export const VisitPanel: React.FC<Props> = ({
         patientName,
         visitId: visit!.id,
         doctorName: visit!.doctorName || currentUserName || null,
-        items: rxItems.filter(i => i.name.trim()).map(i => ({
-            name: i.name.trim(), dosage: i.dosage || null, frequency: i.frequency || null,
-            durationDays: i.durationDays ? Number(i.durationDays) : null,
-        })),
+        items: rxItems.filter(i => i.name.trim()).map(i => {
+            /* Nom ombordagi dori bilan mos kelsa — bog'laymiz. Bunsiz
+               retsept ombordan butunlay uzilgan matn bo'lib qolardi. */
+            const hit = meds.find(m => m.name.trim().toLowerCase() === i.name.trim().toLowerCase());
+            return {
+                name: i.name.trim(), dosage: i.dosage || null, frequency: i.frequency || null,
+                durationDays: i.durationDays ? Number(i.durationDays) : null,
+                ...(hit ? { medicationId: hit.id } : {}),
+            };
+        }),
     }), t('visit.rxSaved')).then(() => setRxItems([{ name: '', dosage: '', frequency: '', durationDays: '' }]));
 
     const addService = () => guard(
@@ -726,10 +744,14 @@ export const VisitPanel: React.FC<Props> = ({
             {panel === 'rx' && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
                     <h4 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.prescription')}</h4>
+                    <datalist id="xc-rx-meds">
+                        {meds.map(m => <option key={m.id} value={m.name} />)}
+                    </datalist>
                     <div className="space-y-2">
                         {rxItems.map((it, i) => (
                             <div key={i} className="grid grid-cols-12 gap-2">
-                                <input value={it.name} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
+                                <input value={it.name} list="xc-rx-meds"
+                                    onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
                                     className={`${inputCls} col-span-12 sm:col-span-4`} placeholder={t('visit.medName')} />
                                 <input value={it.dosage} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, dosage: e.target.value } : x))}
                                     className={`${inputCls} col-span-4 sm:col-span-3`} placeholder={t('visit.dose')} />

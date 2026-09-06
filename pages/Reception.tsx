@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Patient, Doctor, Department, Service, Visit, Clinic } from '../types';
 import { api } from '../services/api';
+import { markAppointmentArrived } from '../utils/arrival';
 import { useLanguage } from '../context/LanguageContext';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
@@ -264,63 +265,29 @@ export const Reception: React.FC<Props> = ({
         [todayAppts],
     );
 
-    /* «Keldi» — bitta bosishda uch ish:
-         1. tashrif yaratiladi va yozuvga BOG'LANADI (`appointmentId`)
-         2. yozilish paytida tanlangan xizmat qabulga qo'shiladi
-         3. kalendardagi yozuv «Checked-In» ga o'tadi va ro'yxatdan chiqadi */
+    /* «Keldi» — kalendardagi yozuv bilan navbat orasidagi ko'prik.
+       Mantiq `utils/arrival.ts` da: kalendar ham xuddi shu funksiyani
+       chaqiradi, ya'ni qoida bitta joyda turadi. */
     const markArrived = async (appt: any) => {
         setArriving(appt.id);
         setError('');
         try {
-            const doc = doctors.find(d => d.id === appt.doctorId);
-            const dep = appt.departmentId
-                || doc?.departmentId
-                || departments.find(x => x.id === doc?.departmentId)?.id
-                || '';
-            if (!dep) {
-                setError("Bu yozuvda bo'lim aniqlanmadi — qabulni qo'lda oching");
-                return;
+            const r = await markAppointmentArrived(appt, { doctors, services });
+            if (r.appointmentNotClosed) {
+                addToast('info', "Qabul ochildi, lekin kalendardagi yozuv holati yangilanmadi");
             }
-
-            const visit = await api.visits.create({
-                patientId: appt.patientId,
-                appointmentId: appt.id,
-                departmentId: dep,
-                doctorId: appt.doctorId || undefined,
-                doctorName: appt.doctorName || (doc ? `${formatFullName(doc)}` : undefined),
-                complaints: appt.notes || undefined,
-                date: today(),
-                status: 'Waiting',
-            } as any);
-
-            /* Yozuvdagi xizmat nomiga ko'ra narxni topamiz. Topilmasa
-               qabul baribir ochiladi — xizmatni kassada qo'shish mumkin. */
-            const svc = services.find(x => x.name === appt.type);
-            if (svc) {
-                try { await api.visits.addProcedure(visit.id, { serviceId: Number(svc.id) }); }
-                catch (e) { console.error('Xizmat qo\'shilmadi', e); }
-            }
-
-            try { await api.appointments.update(appt.id, { status: 'Checked-In' } as any); }
-            catch (e) {
-                /* Tashrif yaratildi, lekin yozuv yopilmadi. Bu jimgina
-                   o'tkazib yuboriladigan holat emas: kalendar «hali
-                   kelmagan» deb ko'rsatib turaveradi. */
-                console.error('Yozuv holati yangilanmadi', e);
-                addToast('info', 'Qabul ochildi, lekin kalendardagi yozuv holati yangilanmadi');
-            }
-
-            setLastTicket({ ...visit, patient: appt.patient || null });
-            addToast('success', `${appt.patientName} — navbat №${visit.queueNumber ?? '—'}`);
+            setLastTicket({ ...r.visit, patient: appt.patient || null });
+            addToast('success', `${appt.patientName} — navbat №${r.visit.queueNumber ?? '—'}`);
             loadToday();
             loadTodayAppts();
         } catch (e: any) {
-            if (e?.status === 409 && e?.data?.visitId) {
-                addToast('info', 'Bu bemorga bugun shu bo\'limda qabul allaqachon ochilgan');
-                navigate(`/visit/${e.data.visitId}`);
+            const f = e?.failure;
+            if (f?.code === 'EXISTS') {
+                addToast('info', e.message);
+                navigate(`/patients/${appt.patientId}?visit=${f.visitId}`);
                 return;
             }
-            setError(e?.message || 'Qabulni ochib bo\'lmadi');
+            setError(e?.message || "Qabulni ochib bo'lmadi");
         } finally {
             setArriving(null);
         }

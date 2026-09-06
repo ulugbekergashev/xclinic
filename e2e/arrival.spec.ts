@@ -63,6 +63,30 @@ test.describe('Yozilgan bemor keldi', () => {
         expect(rowText.length).toBeGreaterThan(0);
     });
 
+    test("kalendarda ham «Keldi» bor, «Yakunlash» yo'q", async ({ page }) => {
+        /* Kalendarda ilgari «Yakunlash» tugmasi turardi va u yozuv
+           holatini o'zgartirib qo'yardi, LEKIN hech qanday qabul
+           yaratmasdi: bemor «qabul qilingan» ko'rinardi, tizimda esa
+           na tashxis, na xizmat, na pul qatori bo'lardi. Kelgan bemorni
+           navbatga qo'yadigan ko'prik faqat Registraturada bor edi. */
+        await login(page);
+        await go(page, '/calendar');
+        await page.waitForTimeout(3000);
+
+        /* Bugungi yozuvni ochamiz. Kalendar katakchalari — bosiladigan
+           bloklar; yozuv bo'lmasa tekshiradigan narsa yo'q. */
+        const slot = page.locator('[class*="cursor-pointer"]').filter({ hasText: /\d{2}:\d{2}/ }).first();
+        test.skip(await slot.count() === 0, "Kalendarda yozuv yo'q");
+        await slot.click();
+        await page.waitForTimeout(1500);
+
+        const keldi = page.getByRole('button', { name: /^Keldi$/ });
+        test.skip(await keldi.count() === 0, 'Yozuv oynasi ochilmadi yoki yozuv yakunlangan');
+
+        await expect(keldi).toBeVisible();
+        /* Aynan shu tugma OLIB TASHLANGAN — u yolg'on holat yasardi. */
+        await expect(page.getByRole('button', { name: /^Yakunlash$/ })).toHaveCount(0);
+    });
     test('qabul kalendardagi yozuvga bog\'lanadi', async ({ page }) => {
         /* Bog'lanish `Visit.appointmentId` orqali amalga oshadi. Uni
            ekrandan ko'rib bo'lmaydi, shuning uchun API dan so'raymiz:

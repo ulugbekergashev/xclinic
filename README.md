@@ -273,19 +273,38 @@ Birinchi ishga tushishda `admin` / `admin` logini yaratiladi —
 ## Ish jarayoni (oqim)
 
 Tizim ekranlar to'plami emas — bemorni bir qo'ldan ikkinchisiga uzatadigan
-konveyer. Bemor **faqat registraturada** tanlanadi, qolgan hamma narsa qabul
-ichidan bajariladi.
+konveyer. Shifokorning ish joyi bitta: **bemor kartasi**.
 
 ```
 Registratura  bemor -> bo'lim -> shifokor -> QABUL ochiladi (navbat №, talon)
+     |        (yoki kalendardagi yozuvda «Keldi» — bir bosishda o'sha ish)
      |
 Kassa         har buyurtma alohida hisob qatori: to'lanmagan -> to'langan
      |
-Shifokor      "Mening navbatim" -> qabul ish stoli:
-              bayon · tashxis · tahlilga · diagnostikaga · retsept · yakunlash
+Shifokor      "Mening navbatim" -> BEMOR KARTASI
+              chapda: allergiya, tashxislar, qabullar, tahlil dinamikasi,
+                      retseptlar, to'lovlar, hujjatlar
+              o'ngda: joriy qabul — bayon · tashxis · xizmat · tahlilga ·
+                      diagnostikaga · boshqa shifokorga · retsept ·
+                      yo'llanma · yakunlash
      |
-Lab/Diag      shifokordan kelgan yo'llanmalar -> natija -> shifokorga qaytadi
+Lab/Diag      shifokordan kelgan yo'llanmalar -> natija -> kartaga qaytadi
 ```
+
+### Nima uchun karta ichida
+
+Ilgari qabul alohida sahifada edi (`/visit/:id`) va bemor kartasidan unga
+havola yo'q edi. Natijada tashxis faqat qabul sahifasidan qo'yilardi, bemor
+tarixi esa faqat kartadan ko'rinardi — shifokor ikkalasini birga ko'ra
+olmasdi. Kartadagi MKB-10 oynasi yozilgan, lekin uni ochadigan tugma yo'q
+edi, ya'ni o'lik kod.
+
+`/visit/:id` marshruti saqlanadi va kartaga yo'naltiradi — talonlar va
+eski havolalar ishlayveradi.
+
+**Qabulni shifokorning o'zi ham ochadi.** Kartada ochiq qabul bo'lmasa panel
+«Qabul ochish» formasini beradi: bo'lim, shifokor, xizmat. Navbat raqamini
+baribir server beradi, ya'ni tablo va navbat mantiqi buzilmaydi.
 
 ### Moliya
 

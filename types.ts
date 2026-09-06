@@ -102,6 +102,12 @@ export interface Appointment {
   notes?: string;
   clinicId: string;
   review?: Review;
+  /* Sxemada (`model Appointment`) bor va Registratura «Keldi» da uni
+     ISHLATADI, lekin bu yerda e'lon qilinmagani uchun kod `any` bilan
+     ishlashga majbur edi — ya'ni typecheck xatoni ushlamasdi. */
+  departmentId?: string | null;
+  /** Serverdan yozuv bemor bilan birga so'ralganda keladi */
+  patient?: Patient;
 }
 
 export interface Transaction {
@@ -1086,6 +1092,12 @@ export interface VisitCharge {
   transactionId?: string | null;
   createdAt: string;
   createdByName?: string | null;
+  /* Sxemada (`model VisitCharge`) bor va shifokor ulushi aynan shu
+     ustunlardan hisoblanadi (migratsiya 0007), lekin bu yerda e'lon
+     qilinmagan edi. */
+  doctorId?: string | null;
+  doctorName?: string | null;
+  admissionId?: string | null;
   visit?: { id: string; date: string; queueNumber?: number | null; departmentId?: string | null };
 }
 

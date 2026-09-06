@@ -139,6 +139,38 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await expect(page.getByText('ochiq').first()).toBeVisible();
     });
 
+    test("kartadagi to'lovlar kassa bilan BITTA manbadan o'qiydi", async ({ page }) => {
+        await login(page);
+        await openFreshPatientCard(page);
+
+        await page.locator('select').first().selectOption({ index: 1 });
+        await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
+        await page.waitForTimeout(2500);
+
+        /* Tekshiruv buyuramiz — server unga `VisitCharge` qatori yaratadi. */
+        await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
+        await page.waitForTimeout(800);
+        await page.getByPlaceholder(/Masalan: Qorin/).fill('Sinov UZI');
+        await page.getByPlaceholder(/^Narx$/).fill('75000');
+        await page.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();
+        await page.waitForTimeout(3000);
+
+        /* Endi «To'lovlar» bo'limida O'SHA qator ko'rinishi kerak.
+           Ilgari bu ro'yxat kalendar yozuvlaridan yasalardi va hisob
+           qatorlarini umuman ko'rmasdi: shifokor kartada bir qarzni,
+           kassir esa boshqasini ko'rardi. */
+        await page.getByRole('button', { name: /^To'lovlar/ }).click();
+        await page.waitForTimeout(2000);
+
+        await expect(page.getByText('Sinov UZI').first()).toBeVisible();
+
+        /* To'lov oynasi — kassadagi bilan aynan bir xil komponent. */
+        const pay = page.getByRole('button', { name: /To'lov qabul qilish/ });
+        await expect(pay).toBeVisible();
+        await pay.click();
+        await page.waitForTimeout(1500);
+        await expect(page.getByText('Sinov UZI').first()).toBeVisible();
+    });
     test('/visit/:id eski havolasi bemor kartasiga yo\'naltiradi', async ({ page }) => {
         await login(page);
         await go(page, '/myqueue');
