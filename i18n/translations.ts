@@ -20,7 +20,6 @@ export const translations = {
     'nav.patients': 'Bemorlar',
     'nav.calendar': 'Kalendar',
     'nav.finance': 'Moliya',
-    'nav.cashbook': 'Kassa',
     'nav.doctors': 'Shifokorlar',
     'inventory.title': 'Ombor',
     'inventory.subtitle': 'Klinika materiallarini boshqarish',
@@ -53,9 +52,6 @@ export const translations = {
     'inventory.noteOutPlaceholder': 'Masalan: Davolashda ishlatildi',
     'inventory.deleteTitle': 'Materialni O\'chirish',
     'inventory.deleteConfirm': '<strong>{name}</strong> ni o\'chirmoqchimisiz? Bu amalni qaytarib bo\'lmaydi va barcha tarix ham o\'chiriladi.',
-    'nav.queue': 'Online Navbat',
-    'nav.reception': 'Registratura',
-    'nav.myqueue': 'Mening navbatim',
     'nav.board': 'Navbat tablosi',
     'nav.visit': 'Qabul',
     'nav.lab': 'Laboratoriya',
@@ -320,7 +316,6 @@ export const translations = {
     'nav.inventory': 'Ombor',
     'nav.messages': 'Xabarlar',
     'nav.settings': 'Sozlamalar',
-    'nav.saas': 'SaaS Dashboard',
 
     // Common
     'common.search': 'Qidirish...',
@@ -1177,7 +1172,6 @@ export const translations = {
     'nav.patients': 'Пациенты',
     'nav.calendar': 'Календарь',
     'nav.finance': 'Финансы',
-    'nav.cashbook': 'Касса',
     'nav.doctors': 'Врачи',
     'inventory.title': 'Склад',
     'inventory.subtitle': 'Управление материалами клиники',
@@ -1210,9 +1204,6 @@ export const translations = {
     'inventory.noteOutPlaceholder': 'Например: Использовано при лечении',
     'inventory.deleteTitle': 'Удалить материал',
     'inventory.deleteConfirm': 'Вы уверены, что хотите удалить <strong>{name}</strong>? Это действие нельзя отменить, и вся история также будет удалена.',
-    'nav.queue': 'Онлайн очередь',
-    'nav.reception': 'Регистратура',
-    'nav.myqueue': 'Моя очередь',
     'nav.board': 'Табло очереди',
     'nav.visit': 'Приём',
     'nav.lab': 'Лаборатория',
@@ -1499,7 +1490,6 @@ export const translations = {
     'nav.inventory': 'Склад',
     'nav.messages': 'Сообщения',
     'nav.settings': 'Настройки',
-    'nav.saas': 'SaaS Панель',
 
     // Common
     'common.search': 'Поиск...',

@@ -35,7 +35,6 @@ export const ROLES = {
     RECEPTION: 'RECEPTIONIST',
     LAB: 'LAB_TECHNICIAN',
     NURSE: 'NURSE',
-    SALES: 'SALES_AGENT',
 } as const;
 
 const A = ROLES.ADMIN;

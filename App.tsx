@@ -112,7 +112,6 @@ const getPageLabelKey = (pathname: string): any => {
   if (pathname === '/lab') return 'nav.lab';
   if (pathname === '/messages') return 'nav.messages';
   if (pathname === '/settings') return 'nav.settings';
-  if (pathname === '/admin') return 'nav.saas';
   return 'nav.dashboard';
 };
 

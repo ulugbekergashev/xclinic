@@ -2230,58 +2230,6 @@ export const api = {
     /* `plans` OLIB TASHLANDI — tarif/obuna tushunchasi bilan birga.
        XClinic bitta o'rnatma = bitta klinika, sotilmaydi. Endpointlar ham
        serverdan olib tashlandi. */
-    sales: {
-        getAll: () => {
-            if (isDemoMode()) return Promise.resolve([]);
-            return fetchJson<any[]>('/superadmin/sales');
-        },
-        create: (data: any) => {
-            if (isDemoMode()) return Promise.resolve({ success: true, agent: { id: 'demo-agent-1', ...data } });
-            return fetchJson<{ success: boolean; agent: any }>('/superadmin/sales', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            });
-        },
-        myClinics: () => {
-            if (isDemoMode()) return Promise.resolve([]);
-            return fetchJson<any[]>('/sales/clinics');
-        },
-    },
-    demoRequests: {
-        getAll: () => {
-            if (isDemoMode()) return Promise.resolve([]);
-            return fetchJson<any[]>('/admin/demo-requests');
-        },
-        update: (id: string, data: { status?: string; notes?: string }) =>
-            fetchJson<any>(`/admin/demo-requests/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            }),
-        remove: (id: string) =>
-            fetchJson<any>(`/admin/demo-requests/${id}`, { method: 'DELETE' }),
-    },
-    // Platforma (SuperAdmin) uchun tashqi lid manbasi kaliti (yuboraman.uz va h.k.).
-    // Bu kalit bilan kelgan lidlar klinikaga emas, DemoRequest ro'yxatiga tushadi.
-    adminLeads: {
-        getApiKey: () => {
-            if (isDemoMode()) {
-                return Promise.resolve({ apiKey: null, createdAt: null, endpoint: 'http://localhost:3001/api/public/leads' } as LeadApiKeyInfo);
-            }
-            return fetchJson<LeadApiKeyInfo>('/admin/lead-api-key');
-        },
-        generateApiKey: () => {
-            if (isDemoMode()) {
-                return Promise.resolve({ apiKey: `dk_plat_demo${Date.now()}`, createdAt: new Date().toISOString(), endpoint: 'http://localhost:3001/api/public/leads' } as LeadApiKeyInfo);
-            }
-            return fetchJson<LeadApiKeyInfo>('/admin/lead-api-key', { method: 'POST' });
-        },
-        revokeApiKey: () => {
-            if (isDemoMode()) return Promise.resolve({ success: true as const });
-            return fetchJson<{ success: true }>('/admin/lead-api-key', { method: 'DELETE' });
-        },
-    },
     diagnoses: {
         /* NAMOYISH NUSXASIDA ISHLAYDI.
 

@@ -15,7 +15,11 @@ export enum UserRole {
      menyu shu ro'yxat bo'yicha filtrlanadi, shuning uchun hamshira kirsa
      hech qanday bo'lim ko'rmasdi. */
   NURSE = 'NURSE',
-  SALES_AGENT = 'SALES_AGENT'
+  /* SALES_AGENT HAM OLIB TASHLANDI. U ko'p klinikali obuna sotish
+     konturidan qolgan rol edi: serverdagi kirish yo'li allaqachon
+     yopilgan (`server.ts`, «SOTUVCHI AGENT KIRISHI OLIB TASHLANDI»),
+     lekin enum da qolgani uchun kodda hali ham tirik tushuncha bo'lib
+     ko'rinardi. */
 }
 
 export interface Doctor {
