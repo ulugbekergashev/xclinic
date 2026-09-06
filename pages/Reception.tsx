@@ -360,7 +360,7 @@ export const Reception: React.FC<Props> = ({
         if (!duplicate) return;
         const id = duplicate.visitId;
         setDuplicate(null);
-        navigate(`/visit/${id}`);
+        navigate(`/patients/${patient?.id}?visit=${id}`);
     };
 
     const forceNew = async () => {
@@ -696,7 +696,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         {todayVisits.map(v => {
                             const done = v.status === 'Completed';
                             return (
-                                <button key={v.id} onClick={() => navigate(`/visit/${v.id}`)}
+                                <button key={v.id} onClick={() => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
                                     className="w-full text-left bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center gap-3 hover:border-primary-400 transition-colors">
                                     <span className={`w-9 h-9 rounded-lg grid place-items-center font-bold text-sm shrink-0 ${done
                                         ? 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500'

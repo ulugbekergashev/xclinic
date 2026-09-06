@@ -710,6 +710,7 @@ const demoPendingResults = () => DEMO_VISITS
     .filter(v => v.status === 'AwaitingResults' || v.status === 'In Progress')
     .map((v, i) => ({
         visitId: v.id,
+        patientId: v.patientId,
         patientName: demoName(v.patientId),
         department: 'Terapiya',
         date: v.date,

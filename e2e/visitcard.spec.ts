@@ -171,6 +171,26 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await page.waitForTimeout(1500);
         await expect(page.getByText('Sinov UZI').first()).toBeVisible();
     });
+    test("«Mening navbatim» dagi tugma to'g'ridan-to'g'ri kartani ochadi", async ({ page }) => {
+        /* `/visit/:id` ham ishlaydi, lekin u avval qabulni so'rab, keyin
+           yo'naltiradi. Navbatdagi qatorda bemor id si allaqachon bor —
+           ortiqcha qadam kerak emas. Natija tayyor qatorlarida esa
+           server `patientId` ni UMUMAN qaytarmasdi va havola
+           `/patients/undefined` bo'lib chiqardi. */
+        await login(page);
+        await go(page, '/myqueue');
+        await page.waitForTimeout(2500);
+
+        const openBtn = page.getByRole('button', { name: /^Ochish$/ }).first();
+        test.skip(await openBtn.count() === 0, "Navbatda qabul yo'q");
+
+        await openBtn.click();
+        await page.waitForTimeout(3000);
+
+        expect(page.url()).toContain('/patients/');
+        expect(page.url()).not.toContain('undefined');
+        await expect(page.getByText('Joriy qabul')).toBeVisible();
+    });
     test('/visit/:id eski havolasi bemor kartasiga yo\'naltiradi', async ({ page }) => {
         await login(page);
         await go(page, '/myqueue');

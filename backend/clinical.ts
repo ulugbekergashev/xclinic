@@ -323,6 +323,10 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
                 + (v.studies || []).length - readyStudies.length;
             return {
                 visitId: v.id, date: v.date, queueNumber: v.queueNumber,
+                /* `patientId` ham kerak: «Mening navbatim» dagi qator
+                   endi bemor kartasini ochadi (qabul o'sha yerda olib
+                   boriladi), karta manzili esa bemor id siga quriladi. */
+                patientId: v.patientId,
                 patientName: `${v.patient?.lastName || ''} ${v.patient?.firstName || ''}`.trim(),
                 department: v.department?.name || null,
                 doctorName: v.doctorName || null,

@@ -123,7 +123,9 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
         if (v.status === 'Waiting' || v.status === 'Called') {
             try { await api.visits.update(v.id, { status: 'In Progress' }); } catch { /* ochilaversin */ }
         }
-        navigate(`/visit/${v.id}`);
+        /* To'g'ridan-to'g'ri kartaga. `/visit/:id` ham ishlaydi, lekin u
+           avval qabulni so'rab, keyin yo'naltiradi — ortiqcha qadam. */
+        navigate(`/patients/${v.patientId}?visit=${v.id}`);
     };
 
     const inputCls = 'px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500';
@@ -205,7 +207,7 @@ export const MyQueue: React.FC<Props> = ({ userRole, doctorId, departments, addT
                         )}
                     </div>
                 </div>
-                <button onClick={() => navigate(`/visit/${r.visitId}`)}
+                <button onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
                     className={`shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 text-white ${highlight
                         ? 'bg-purple-600 hover:bg-purple-700' : 'bg-primary-600 hover:bg-primary-700'}`}>
                     Ochish <ArrowRight className="w-3 h-3" />
