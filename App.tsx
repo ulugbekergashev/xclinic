@@ -28,8 +28,7 @@ const DoctorDetails = React.lazy(() => import('./pages/DoctorDetails').then(m =>
 const Inventory = React.lazy(() => import('./pages/Inventory').then(m => ({ default: m.Inventory })));
 const LabOrders = React.lazy(() => import('./pages/LabOrders').then(m => ({ default: m.LabOrders })));
 const Diagnostics = React.lazy(() => import('./pages/Diagnostics').then(m => ({ default: m.Diagnostics })));
-const Reception = React.lazy(() => import('./pages/Reception').then(m => ({ default: m.Reception })));
-const MyQueue = React.lazy(() => import('./pages/MyQueue').then(m => ({ default: m.MyQueue })));
+const Today = React.lazy(() => import('./pages/Today').then(m => ({ default: m.Today })));
 const VisitWorkspace = React.lazy(() => import('./pages/VisitWorkspace').then(m => ({ default: m.VisitWorkspace })));
 const Inpatient = React.lazy(() => import('./pages/Inpatient').then(m => ({ default: m.Inpatient })));
 const MessagesManagement = React.lazy(() => import('./pages/MessagesManagement').then(m => ({ default: m.MessagesManagement })));
@@ -67,11 +66,12 @@ import { Language } from './i18n/translations';
 // Navigation config for Clinic Admin and Doctors
 const CLINIC_NAVIGATION = [
   { id: 'dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-  { id: 'reception', labelKey: 'nav.reception', icon: UserPlus, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  /* Hamshira navbatni va bemor kartasini ko'radi: dori berish va harorat
-     varag'i uchun kimga nima buyurilganini bilishi kerak. Ilgari u faqat
-     `inpatient` ni ko'rardi va bemorni izlashning yo'li yo'q edi. */
-  { id: 'myqueue', labelKey: 'nav.myqueue', icon: Stethoscope, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
+  /* «Bugun» — ilgari IKKITA punkt edi: «Registratura» va «Mening
+     navbatim». Ikkalasi bir xil `Visit` jadvalini ko'rsatardi, faqat
+     boshqacha guruhlab. Endi bitta ekran, rolga qarab boshqacha
+     ko'rinadi. Hamshira ham ko'radi: dori berish uchun kimga nima
+     buyurilganini bilishi kerak. */
+  { id: 'today', labelKey: 'today.title', icon: Stethoscope, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
   { id: 'leads', labelKey: 'nav.leads', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
   { id: 'patients', labelKey: 'nav.patients', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
   { id: 'calendar', labelKey: 'nav.calendar', icon: CalendarIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
@@ -104,8 +104,7 @@ const getPageLabelKey = (pathname: string): any => {
   if (pathname === '/finance') return 'nav.finance';
   if (pathname === '/doctors') return 'nav.doctors';
   if (pathname === '/inventory') return 'inventory.title';
-  if (pathname === '/reception') return 'nav.reception';
-  if (pathname === '/myqueue') return 'nav.myqueue';
+  if (pathname === '/today') return 'today.title';
   if (pathname.startsWith('/visit/')) return 'nav.visit';
   if (pathname === '/board') return 'nav.board';
   if (pathname === '/diagnostics') return 'nav.diagnostics';
@@ -430,9 +429,9 @@ const sinceDate = (n: number) =>
     // Navigate based on role
     // Har kim o'z ish o'rniga tushadi — hamma Dashboard'ga emas
     if (role === UserRole.RECEPTIONIST) {
-      navigate('/reception');
+      navigate('/today');
     } else if (role === UserRole.DOCTOR) {
-      navigate('/myqueue');
+      navigate('/today');
     } else if (role === UserRole.LAB_TECHNICIAN) {
       navigate('/lab');
     } else if (role === UserRole.NURSE) {
@@ -1244,7 +1243,7 @@ const sinceDate = (n: number) =>
      mavjud. Sahifa ichidagi ish (fokus, modal ochish) esa sahifaning o'zida
      bo'ladi — u yerda `Escape` va `Ctrl+S` ishlatiladi. */
   const hotkeys = React.useMemo(() => ({
-    F2: () => navigate('/reception'),
+    F2: () => navigate('/today'),
     F3: () => navigate('/patients'),
     F4: () => { if (showFinanceForRole) navigate('/finance'); },
   }), [navigate, showFinanceForRole]);
@@ -1897,27 +1896,24 @@ const sinceDate = (n: number) =>
                   (audit XC-02). */}
               <Route path="/board/:clinicId" element={<QueueBoard />} />
 
-              <Route path="/reception" element={
-                <Reception
+              <Route path="/today" element={
+                <Today
                   clinicId={clinicId}
                   patients={patients}
                   doctors={doctors}
                   departments={departments}
                   services={services}
                   currentClinic={currentClinic}
-                  onPatientAdded={(p) => setPatients(prev => [p, ...prev])}
+                  userRole={userRole}
+                  doctorId={doctorId}
+                  onPatientAdded={(p: Patient) => setPatients(prev => [p, ...prev])}
                   addToast={addToast}
                 />
               } />
 
-              <Route path="/myqueue" element={
-                <MyQueue
-                  userRole={userRole}
-                  doctorId={doctorId}
-                  departments={departments}
-                  addToast={addToast}
-                />
-              } />
+              {/* Eski manzillar — talonlar, xatcho'plar va odat uchun */}
+              <Route path="/reception" element={<Navigate to="/today" replace />} />
+              <Route path="/myqueue" element={<Navigate to="/today" replace />} />
 
               {/* Kassa endi Moliya ichida — eski havolalar shu yerga tushadi */}
               <Route path="/cashier" element={<Navigate to="/finance" replace />} />

@@ -374,7 +374,20 @@ kerak emas.
 
 ### Rol bo'yicha bosh sahifa
 
-Registrator → Registratura · Shifokor → Mening navbatim · Laborant → Laboratoriya
+Registrator, shifokor va ega → **Bugun** · Laborant → Laboratoriya ·
+Hamshira → Statsionar.
+
+«Bugun» ilgari ikkita ekran edi — «Registratura» va «Mening navbatim» —
+va ikkalasi bir xil `Visit` jadvalini ko'rsatardi, faqat boshqacha
+guruhlab. Endi bitta ekran, rolga qarab boshqacha ko'rinadi:
+
+| Rol | Nima ko'radi |
+|---|---|
+| Registrator, ega | qabul ochish mastero · butun klinika navbati (chaqirish, ochish) · bugunga yozilganlar («Keldi») |
+| Shifokor | natijasi tayyor bo'lganlar · o'z navbati · natija kutayotganlar · bugun yakunlanganlar |
+| Hamshira | navbat va bemor kartasi |
+
+`/reception` va `/myqueue` manzillari `Bugun` ga yo'naltiriladi.
 
 ---
 

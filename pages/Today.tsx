@@ -1,13 +1,14 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { formatUzPhone } from '../shared/validation';
-import { formatFullName, formatNumber } from '../utils/format';
+import { formatFullName, formatNumber, formatDateLong } from '../utils/format';
 import { todayISO } from '../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import {
     UserPlus, Search, ArrowRight, Printer, Clock, Stethoscope,
     CheckCircle, AlertCircle, X, Phone, RefreshCw, Calendar as CalendarIcon,
+    Volume2, FlaskConical, BellRing, CalendarClock, Tv,
 } from 'lucide-react';
-import { Patient, Doctor, Department, Service, Visit, Clinic } from '../types';
+import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole } from '../types';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useLanguage } from '../context/LanguageContext';
@@ -16,18 +17,25 @@ import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
 import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
-const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status'];
+const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Registratura — bemorning klinikaga kirish nuqtasi.
+   BUGUN — klinikaning kunlik ish ekrani. Rolga qarab boshqacha ko'rinadi.
 
-   Butun tizimda bemor FAQAT shu yerda tanlanadi. Bir ekranda uch qadam:
-     1. bemorni topish (yoki yangisini qo'shish)
-     2. bo'lim va shifokorni tanlash
-     3. qabulni ochish — navbat raqami beriladi, konsultatsiya xizmati qo'shiladi
+   Ilgari bu UCHTA ekran edi va ular bir xil `Visit` jadvalini ko'rsatardi:
+   «Registratura» (o'ng ustunda bugungi navbat), «Mening navbatim» (o'sha
+   navbat, boshqacha guruhlangan) va «Boshqaruv paneli» (bugungi yozuvlar
+   jadvali). Registrator kelgan bemorni belgilash uchun Registraturaga,
+   shifokor esa o'z navbatini ko'rish uchun boshqa ekranga borardi.
 
-   Shundan keyin bemor shifokorning navbatida paydo bo'ladi va qolgan hamma
-   narsa (tahlil, diagnostika, retsept) shu qabul ichidan bajariladi.
+   ENDI BITTA:
+     · registrator va ega — yangi qabul ochish mastero + butun klinika
+       navbati + bugunga yozilganlar;
+     · shifokor — natijasi tayyor bo'lganlar, o'z navbati, natija
+       kutayotganlar va bugun yakunlanganlar.
+
+   Bemor baribir bir marta tanlanadi, qolgan hamma narsa bemor kartasidan
+   bajariladi.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
@@ -37,6 +45,9 @@ interface Props {
     departments: Department[];
     services: Service[];
     currentClinic?: Clinic | null;
+    userRole: UserRole;
+    /** Kirgan shifokor — navbat faqat unga tegishli bo'ladi */
+    doctorId?: string;
     onPatientAdded: (p: Patient) => void;
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
@@ -48,11 +59,18 @@ interface Props {
 const fmt = (n: number) => formatNumber(n);
 const today = () => todayISO();
 
-export const Reception: React.FC<Props> = ({
-    clinicId, patients, doctors, departments, services, currentClinic, onPatientAdded, addToast,
+export const Today: React.FC<Props> = ({
+    clinicId, patients, doctors, departments, services, currentClinic,
+    userRole, doctorId: myDoctorId, onPatientAdded, addToast,
 }) => {
     const navigate = useNavigate();
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
+
+    /* Kim nima ko'radi. Ega ikkalasini ham ko'radi: kichik klinikada u
+       ham registrator, ham shifokor bo'lishi mumkin. */
+    const canRegister = userRole === UserRole.RECEPTIONIST || userRole === UserRole.CLINIC_ADMIN;
+    const isDoctorView = userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN
+        || userRole === UserRole.NURSE;
 
     const [search, setSearch] = useState('');
     const [patient, setPatient] = useState<Patient | null>(null);
@@ -69,11 +87,66 @@ export const Reception: React.FC<Props> = ({
     const [todayVisits, setTodayVisits] = useState<Visit[]>([]);
     const [lastTicket, setLastTicket] = useState<Visit | null>(null);
 
+    /* «Natija tayyor, lekin ko'rilmagan» — ALOHIDA so'rov.
+       Sabab: bu ekran BUGUNGI sanani so'raydi, tahlil esa ertaga tayyor
+       bo'lishi mumkin — o'sha qabul kechagi kunda qolib, shifokor
+       ko'zidan butunlay g'oyib bo'lardi (GAP-ANALYSIS, B22). */
+    const [pending, setPending] = useState<any[]>([]);
+    const [busyVisit, setBusyVisit] = useState<string | null>(null);
+
     const loadToday = useCallback(async () => {
-        try { setTodayVisits(await api.visits.getAll({ date: today() })); }
+        try {
+            const [vs, pr] = await Promise.all([
+                api.visits.getAll({ date: today() }),
+                api.clinical.pendingResults().catch(() => [] as any[]),
+            ]);
+            setTodayVisits(vs);
+            setPending(pr || []);
+        }
         catch { /* navbat yuklanmasa ham qabul ochish ishlayveradi */ }
     }, []);
     useEffect(() => { loadToday(); }, [loadToday]);
+
+    /* Shifokor FAQAT o'z bemorlarini ko'radi. Ega va registrator —
+       butun klinikani. */
+    const myVisits = useMemo(
+        () => userRole === UserRole.DOCTOR && myDoctorId
+            ? todayVisits.filter(v => v.doctorId === myDoctorId)
+            : todayVisits,
+        [todayVisits, userRole, myDoctorId],
+    );
+
+    const groups = useMemo(() => ({
+        active: myVisits.filter(v => ['Waiting', 'Called', 'In Progress'].includes(v.status)),
+        done: myVisits.filter(v => v.status === 'Completed').slice(0, 10),
+    }), [myVisits]);
+
+    /** Natijasi tayyor va hali ko'rilmaganlar — eng tepada turadi */
+    const readyUnseen = useMemo(() => pending.filter(r => (r.unseenCount || 0) > 0), [pending]);
+    const stillWaiting = useMemo(() => pending.filter(r => !(r.unseenCount || 0)), [pending]);
+
+    /** Navbatga chaqirish — tablo shu holatni ko'rsatadi */
+    const callVisit = async (v: Visit) => {
+        setBusyVisit(v.id);
+        try { await api.visits.call(v.id); await loadToday(); addToast('success', `№${v.queueNumber ?? '—'} chaqirildi`); }
+        catch (e: any) { addToast('error', e?.message || 'Xatolik'); }
+        finally { setBusyVisit(null); }
+    };
+
+    /** Qabulni ochish — bemor kartasiga o'tadi va holat «Qabulda» bo'ladi */
+    const openVisitCard = async (v: Visit) => {
+        if (v.status === 'Waiting' || v.status === 'Called') {
+            try { await api.visits.update(v.id, { status: 'In Progress' }); } catch { /* ochilaversin */ }
+        }
+        navigate(`/patients/${v.patientId}?visit=${v.id}`);
+    };
+
+    /** Necha daqiqadan beri kutyapti */
+    const waitedMin = (v: Visit) => {
+        const from = v.checkInTime ? new Date(v.checkInTime).getTime() : 0;
+        if (!from) return null;
+        return Math.max(0, Math.round((Date.now() - from) / 60000));
+    };
 
     /* Ikkinchi registrator qabul ochsa — bugungi navbat DARHOL yangilanadi.
        Ilgari ekran umuman yangilanmasdi va ikki registrator bir-birining
@@ -427,27 +500,29 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             {/* ── Chap: qabul ochish ────────────────────────────────────────── */}
             <div className="xl:col-span-2 space-y-4">
-                <div className="flex items-center gap-2">
-                    <UserPlus className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('reception.title')}</h2>
+                <div className="flex flex-wrap items-center gap-3">
+                    <Stethoscope className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('today.title')}</h2>
+                    {/* Sana loyihaning O'Z formatlagichidan. `toLocaleDateString('uz-UZ')`
+                        Chrome da «M09 6, Sun» beradi — `uz` lokali to'liq emas. Xuddi
+                        shu sabab bilan raqamlar ham `formatNumber` orqali chiqadi. */}
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                        {formatDateLong(new Date(), language === 'ru' ? 'ru' : 'uz')}
+                    </span>
+                    <div className="ml-auto flex items-center gap-2">
+                        <button onClick={loadToday} aria-label={t('reception.refresh')} title={t('reception.refresh')}
+                            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg">
+                            <RefreshCw className="w-4 h-4" />
+                        </button>
+                        {canRegister && (
+                            <button onClick={() => navigate('/board')}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400">
+                                <Tv className="w-4 h-4" /> {t('today.board')}
+                            </button>
+                        )}
+                    </div>
                 </div>
 
-                {/* Qadamlar */}
-                <div className="flex items-center gap-2 text-sm">
-                    {[['1', 'Bemor'], ['2', "Bo'lim"], ['3', 'Qabul']].map(([n, label], i) => {
-                        const idx = i + 1;
-                        const cls = step > idx ? stepDone : step === idx ? stepNow : stepIdle;
-                        return (
-                            <React.Fragment key={n}>
-                                <span className={`w-6 h-6 rounded-full grid place-items-center text-xs font-bold ${cls}`}>
-                                    {step > idx ? <CheckCircle className="w-3.5 h-3.5" /> : n}
-                                </span>
-                                <span className={step >= idx ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400'}>{label}</span>
-                                {idx < 3 && <ArrowRight className="w-4 h-4 text-gray-300 dark:text-gray-600 mx-1" />}
-                            </React.Fragment>
-                        );
-                    })}
-                </div>
 
                 {error && (
                     <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -457,6 +532,97 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     </div>
                 )}
 
+                {/* ── SHIFOKOR BO'LIMLARI ─────────────────────────────────
+                    Ilgari bular alohida ekran edi («Mening navbatim») va
+                    shifokor navbatni ko'rish uchun boshqa sahifaga o'tardi. */}
+                {isDoctorView && readyUnseen.length > 0 && (
+                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-purple-300 dark:border-purple-700 p-4">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+                            <BellRing className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                            {t('today.resultsReady')}
+                            <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                {readyUnseen.length}
+                            </span>
+                        </h3>
+                        <div className="space-y-2">
+                            {readyUnseen.map(r => (
+                                <button key={r.visitId}
+                                    onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
+                                    className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-900/20 hover:border-purple-400 transition-colors">
+                                    <FlaskConical className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{r.patientName}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                            {r.department || '—'}
+                                            {r.date && r.date !== today() ? ` · ${r.date}` : ''}
+                                        </p>
+                                    </div>
+                                    <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-600 text-white">
+                                        {r.unseenCount} {t('today.newResult')}
+                                    </span>
+                                    <ArrowRight className="w-4 h-4 text-purple-300 shrink-0" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {isDoctorView && stillWaiting.length > 0 && (
+                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+                            <CalendarClock className="w-4 h-4 text-amber-500" />
+                            {t('today.awaitingResults')}
+                            <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                {stillWaiting.length}
+                            </span>
+                        </h3>
+                        <div className="space-y-2">
+                            {stillWaiting.map(r => (
+                                <button key={r.visitId}
+                                    onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
+                                    className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary-400 transition-colors">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{r.patientName}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                            {r.department || '—'}
+                                            {/* `0 ta kutilmoqda` hech narsa aytmaydi. Bunday
+                                                qabul aslida OSILIB QOLGAN: natija ham
+                                                kutilmayapti, ko'rilmagan natija ham yo'q. */}
+                                            {r.stillPending > 0
+                                                ? ` · ${r.stillPending} ${t('today.pendingShort')}`
+                                                : ` · ${t('today.stuck')}`}
+                                        </p>
+                                    </div>
+                                    <ArrowRight className="w-4 h-4 text-gray-300 shrink-0" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {isDoctorView && groups.done.length > 0 && (
+                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                            {t('today.finished')}
+                            <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                {groups.done.length}
+                            </span>
+                        </h3>
+                        <div className="space-y-1.5">
+                            {groups.done.map(v => (
+                                <button key={v.id} onClick={() => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
+                                    className="w-full text-left flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <span className="text-xs tabular-nums text-gray-400 w-6 shrink-0">{v.queueNumber ?? '—'}</span>
+                                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">
+                                        {v.patient?.lastName} {v.patient?.firstName}
+                                    </span>
+                                    <span className="text-xs text-gray-400 truncate">{v.department?.name || ''}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 {/* ── Bugun yozilganlar ──────────────────────────────────
                     Kalendardan kelgan ro'yxat. Pastdagi qo'lda ochish
                     yo'li yo'qolmaydi — kim yozilmasdan kelsa, o'sha
@@ -505,6 +671,26 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     </div>
                 )}
 
+                {/* ── QABUL OCHISH MASTERO — faqat registrator va ega ────
+                    Qadam ko'rsatkichi masteroning YONIDA: ilgari u ekran
+                    tepasida turardi va shifokor bo'limlari orasida
+                    ma'nosiz osilib qolardi. */}
+                {canRegister && (<>
+                <div className="flex items-center gap-2 text-sm pt-2">
+                    {[['1', 'Bemor'], ['2', "Bo'lim"], ['3', 'Qabul']].map(([n, label], i) => {
+                        const idx = i + 1;
+                        const cls = step > idx ? stepDone : step === idx ? stepNow : stepIdle;
+                        return (
+                            <React.Fragment key={n}>
+                                <span className={`w-6 h-6 rounded-full grid place-items-center text-xs font-bold ${cls}`}>
+                                    {step > idx ? <CheckCircle className="w-3.5 h-3.5" /> : n}
+                                </span>
+                                <span className={step >= idx ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400'}>{label}</span>
+                                {idx < 3 && <ArrowRight className="w-4 h-4 text-gray-300 dark:text-gray-600 mx-1" />}
+                            </React.Fragment>
+                        );
+                    })}
+                </div>
                 {/* 1. Bemor */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">1. Bemor</h3>
@@ -674,47 +860,58 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         </button>
                     </div>
                 )}
+                </>)}
             </div>
 
             {/* ── O'ng: bugungi navbat ──────────────────────────────────────── */}
             <div className="space-y-3">
                 <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-gray-400" />
-                    <h3 className="font-semibold text-gray-900 dark:text-white">{t('reception.todayQueue')}</h3>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{todayVisits.length} ta</span>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                        {userRole === UserRole.DOCTOR ? t('today.myQueue') : t('reception.todayQueue')}
+                    </h3>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">{groups.active.length} ta</span>
                     <button aria-label={t('reception.refresh')} onClick={loadToday} className="ml-auto p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={t('reception.refresh')}>
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>
 
-                {todayVisits.length === 0 ? (
+                {groups.active.length === 0 ? (
                     <div className="text-center py-10 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                         <p className="text-sm text-gray-500 dark:text-gray-400">{t('reception.noVisits')}</p>
                     </div>
                 ) : (
                     <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-                        {todayVisits.map(v => {
-                            const done = v.status === 'Completed';
+                        {groups.active.map(v => {
+                            const waited = waitedMin(v);
                             return (
-                                <button key={v.id} onClick={() => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
-                                    className="w-full text-left bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center gap-3 hover:border-primary-400 transition-colors">
-                                    <span className={`w-9 h-9 rounded-lg grid place-items-center font-bold text-sm shrink-0 ${done
-                                        ? 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500'
-                                        : 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'}`}>
+                                <div key={v.id}
+                                    className="w-full bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center gap-3 hover:border-primary-400 transition-colors">
+                                    <span className="w-9 h-9 rounded-lg grid place-items-center font-bold text-sm shrink-0 bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
                                         {v.queueNumber ?? '—'}
                                     </span>
-                                    <div className="min-w-0 flex-1">
+                                    <button onClick={() => openVisitCard(v)} className="min-w-0 flex-1 text-left">
                                         <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                                             {v.patient?.lastName} {v.patient?.firstName}
                                         </p>
                                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                             {v.department?.name || '—'}{v.doctorName ? ` · ${v.doctorName}` : ''}
+                                            {waited != null && v.status === 'Waiting' ? ` · ${waited} ${t('common.min')}` : ''}
                                         </p>
-                                    </div>
-                                    {done
-                                        ? <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
-                                        : <Stethoscope className="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" />}
-                                </button>
+                                    </button>
+                                    {/* Chaqirish — tablo va ovoz shu holatdan ishlaydi */}
+                                    {v.status === 'Waiting' && (
+                                        <button onClick={() => callVisit(v)} disabled={busyVisit === v.id}
+                                            aria-label={t('today.call')} title={t('today.call')}
+                                            className="shrink-0 p-1.5 rounded-lg text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 disabled:opacity-50">
+                                            <Volume2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    <button onClick={() => openVisitCard(v)}
+                                        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold inline-flex items-center gap-1">
+                                        {t('today.open')} <ArrowRight className="w-3 h-3" />
+                                    </button>
+                                </div>
                             );
                         })}
                     </div>

@@ -24,8 +24,8 @@ export const NotFound: React.FC<Props> = ({ userRole }) => {
 
     const home = userRole === UserRole.NURSE ? '/inpatient'
         : userRole === UserRole.LAB_TECHNICIAN ? '/lab'
-            : userRole === UserRole.DOCTOR ? '/myqueue'
-                : userRole === UserRole.RECEPTIONIST ? '/reception'
+            : userRole === UserRole.DOCTOR ? '/today'
+                : userRole === UserRole.RECEPTIONIST ? '/today'
                     : '/';
 
     return (

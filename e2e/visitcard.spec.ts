@@ -171,40 +171,44 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await page.waitForTimeout(1500);
         await expect(page.getByText('Sinov UZI').first()).toBeVisible();
     });
-    test("«Mening navbatim» dagi tugma to'g'ridan-to'g'ri kartani ochadi", async ({ page }) => {
-        /* `/visit/:id` ham ishlaydi, lekin u avval qabulni so'rab, keyin
-           yo'naltiradi. Navbatdagi qatorda bemor id si allaqachon bor —
-           ortiqcha qadam kerak emas. Natija tayyor qatorlarida esa
-           server `patientId` ni UMUMAN qaytarmasdi va havola
-           `/patients/undefined` bo'lib chiqardi. */
+    test("«Bugun» ekranidan qabul ochiladi, eski havola ham ishlaydi", async ({ page }) => {
+        /* Ikkita narsa birga tekshiriladi, chunki ikkinchisi birinchisining
+           natijasiga tayanadi: navbatdagi tugma bemor kartasini ochishi va
+           eski `/visit/:id` havolasi o'sha kartaga yo'naltirishi kerak.
+
+           Sinov O'ZI qabul ochadi: ilgari u navbatda tayyor yozuv bo'lishiga
+           umid qilardi va oldingi sinovlar navbatni bo'shatib qo'yganda
+           jimgina o'tkazib yuborilardi — ya'ni hech narsa tekshirmasdi. */
         await login(page);
-        await go(page, '/myqueue');
+        await openFreshPatientCard(page);
+
+        await page.locator('select').first().selectOption({ index: 1 });
+        await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
         await page.waitForTimeout(2500);
+        await expect(page.getByText('Joriy qabul')).toBeVisible();
+
+        /* Endi «Bugun» ekranida o'sha qabul navbatda turishi kerak. */
+        await go(page, '/today');
+        await page.waitForTimeout(3000);
 
         const openBtn = page.getByRole('button', { name: /^Ochish$/ }).first();
-        test.skip(await openBtn.count() === 0, "Navbatda qabul yo'q");
-
+        await expect(openBtn).toBeVisible({ timeout: 15_000 });
         await openBtn.click();
         await page.waitForTimeout(3000);
 
         expect(page.url()).toContain('/patients/');
         expect(page.url()).not.toContain('undefined');
-        await expect(page.getByText('Joriy qabul')).toBeVisible();
-    });
-    test('/visit/:id eski havolasi bemor kartasiga yo\'naltiradi', async ({ page }) => {
-        await login(page);
-        await go(page, '/myqueue');
-        await page.waitForTimeout(2500);
-
-        const openBtn = page.getByRole('button', { name: /^Ochish$/ }).first();
-        if (await openBtn.count() === 0) test.skip(true, 'Navbatda qabul yo\'q');
-
-        await openBtn.click();
-        await page.waitForTimeout(3000);
-
-        /* Yakuniy manzil — bemor kartasi, `/visit/` EMAS. */
-        expect(page.url()).toContain('/patients/');
         expect(page.url()).toContain('visit=');
+        await expect(page.getByText('Joriy qabul')).toBeVisible();
+
+        /* Eski havola: `/visit/:id` bemor kartasiga yo'naltiradi —
+           chop etilgan talonlar va xatcho'plar ishlashda davom etsin. */
+        const visitId = new URL(page.url().replace('/#/', '/')).searchParams.get('visit')
+            || page.url().split('visit=')[1];
+        expect(visitId).toBeTruthy();
+        await go(page, `/visit/${visitId}`);
+        await page.waitForTimeout(3000);
+        expect(page.url()).toContain('/patients/');
         await expect(page.getByText('Joriy qabul')).toBeVisible();
     });
 });

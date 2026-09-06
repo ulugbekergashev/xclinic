@@ -30,8 +30,8 @@ export const VisitWorkspace: React.FC = () => {
         return () => { alive = false; };
     }, [visitId]);
 
-    /* Qabul topilmasa registraturaga — bemor kartasi manzili noma'lum. */
-    if (failed) return <Navigate to="/reception" replace />;
+    /* Qabul topilmasa bugungi ekranga — bemor kartasi manzili noma'lum. */
+    if (failed) return <Navigate to="/today" replace />;
     if (patientId) return <Navigate to={`/patients/${patientId}?visit=${visitId}`} replace />;
 
     return (
