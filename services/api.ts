@@ -1537,95 +1537,133 @@ export const api = {
             });
         },
     },
+    /* BO'LIB TO'LASH — reja hisob qatorlari ustiga quriladi.
+       To'lov `POST /installments/:id/pay` orqali ketadi va serverda
+       kassadagi oddiy to'lov bilan AYNAN bir yo'ldan o'tadi. */
     installments: {
         getAll: (clinicId?: string, patientId?: string) => {
             if (isDemoMode()) {
-                 let results = [...DEMO_INSTALLMENTS];
-                 if (patientId) results = results.filter(p => p.patientId === patientId);
-                 if (clinicId) results = results.filter(p => p.clinicId === clinicId);
-                 return Promise.resolve(results);
+                const dueOf = (planId: string) => DEMO_CHARGES
+                    .filter(c => (c as any).installmentPlanId === planId && c.status !== 'Cancelled');
+                return demoRead<any[]>(DEMO_INSTALLMENTS
+                    .filter(p => (!patientId || p.patientId === patientId)
+                        && (!clinicId || p.clinicId === clinicId))
+                    .map(p => {
+                        const rows = dueOf(p.id);
+                        const due = rows.reduce(
+                            (acc, c) => acc + Math.max(0, (c.total || 0) - (c.paidAmount || 0)), 0);
+                        return { ...p, charges: rows, due, collected: (p.totalAmount || 0) - due };
+                    }));
             }
             const query = new URLSearchParams();
             if (clinicId) query.append('clinicId', clinicId);
             if (patientId) query.append('patientId', patientId);
             return fetchJson<any[]>(`/installments?${query.toString()}`);
         },
-        create: (data: any) => {
+        create: (data: { patientId: string; clinicId: string; chargeIds: string[]; months: number; startDate: string }) => {
             if (isDemoMode()) {
-                const newPlan = { 
-                    ...data, 
-                    id: `demo-ins-${Date.now()}`,
-                    totalPaid: parseFloat(data.totalPaid || 0),
-                    items: data.items.map((it: any, i: number) => ({ ...it, id: `demo-item-${Date.now()}-${i}` }))
-                };
-                DEMO_INSTALLMENTS.push(newPlan);
-                saveDemoData();
-                return Promise.resolve(newPlan);
-            }
-            return fetchJson<any>('/installments', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-        },
-        pay: (itemId: string, date: string, paymentMethod: string) => {
-            if (isDemoMode()) {
-                let foundItem: any = null;
-                let foundPlan: any = null;
-                DEMO_INSTALLMENTS.forEach(p => {
-                    const item = p.items?.find(it => it.id === itemId);
-                    if (item) {
-                        foundItem = item;
-                        foundPlan = p;
-                    }
-                });
-                
-                if (foundItem && foundPlan) {
-                    foundItem.status = 'Paid';
-                    foundItem.paidDate = date;
-                    foundPlan.totalPaid += foundItem.amount;
-                    if (foundPlan.items.every((it: any) => it.status === 'Paid')) {
-                        foundPlan.status = 'Completed';
-                    }
-                    
-                    const patient = DEMO_PATIENTS.find(p => p.id === foundPlan.patientId);
-                    const doctor = DEMO_DOCTORS.find(d => d.id === foundPlan.doctorId);
-
-                    const newTx: Transaction = {
-                        id: `demo-tx-${Date.now()}`,
-                        patientId: foundPlan.patientId,
-                        patientName: patient ? `${patient.lastName} ${patient.firstName}` : 'Bemor',
-                        clinicId: foundPlan.clinicId,
-                        doctorId: foundPlan.doctorId,
-                        doctorName: doctor ? `${doctor.lastName} ${doctor.firstName}` : '',
-                        amount: foundItem.amount,
-                        date: date,
-                        service: `Bo'lib to'lash (${foundPlan.service})`,
-                        type: paymentMethod as any,
-                        status: 'Paid'
+                const rows = DEMO_CHARGES.filter(c => data.chargeIds.includes(c.id));
+                const total = Math.round(rows.reduce(
+                    (acc, c) => acc + Math.max(0, c.total - (c.paidAmount || 0)), 0));
+                const per = Math.round(total / data.months);
+                const start = new Date(data.startDate);
+                const items = Array.from({ length: data.months }, (_, i) => {
+                    const d = new Date(start);
+                    d.setMonth(start.getMonth() + i + 1);
+                    return {
+                        id: demoId('demo-item'),
+                        expectedDate: d.toISOString().split('T')[0],
+                        amount: i === data.months - 1 ? total - per * (data.months - 1) : per,
+                        status: 'Pending' as const,
                     };
-                    DEMO_TRANSACTIONS.push(newTx);
+                });
+                const plan: any = {
+                    id: demoId('demo-ins'), clinicId: data.clinicId, patientId: data.patientId,
+                    doctorId: rows[0]?.doctorId || null,
+                    service: rows.map(c => c.name).join(', ').slice(0, 200),
+                    totalAmount: total, totalPaid: 0,
+                    startDate: data.startDate, endDate: items[items.length - 1].expectedDate,
+                    status: 'Active', items,
+                };
+                DEMO_INSTALLMENTS.push(plan);
+                rows.forEach(c => { (c as any).installmentPlanId = plan.id; });
+                saveDemoData();
+                return demoDone(plan);
+            }
+            return fetchJson<any>('/installments', { method: 'POST', body: JSON.stringify(data) });
+        },
+        pay: (itemId: string, paymentMethod: string, receivedByName?: string) => {
+            if (isDemoMode()) {
+                const plan: any = DEMO_INSTALLMENTS.find(p => p.items?.some((it: any) => it.id === itemId));
+                const item: any = plan?.items?.find((it: any) => it.id === itemId);
+                if (!plan || !item) return Promise.reject(new Error('Jadval qatori topilmadi'));
+
+                /* Demo ham QATORLARGA to'laydi — aks holda namoyishda
+                   kassa va bo'lib to'lash boshqa-boshqa raqam ko'rsatardi. */
+                const rows = DEMO_CHARGES.filter(c => (c as any).installmentPlanId === plan.id
+                    && c.status === 'Unpaid');
+                if (rows.length === 0) {
+                    plan.status = 'Completed';
                     saveDemoData();
-                    return Promise.resolve({ success: true, item: foundItem, transaction: newTx });
+                    return Promise.reject(Object.assign(
+                        new Error("Qarz allaqachon to'langan — reja yopildi."),
+                        { data: { code: 'ALREADY_PAID' } },
+                    ));
                 }
-                return Promise.reject("Item not found");
+                let left = Math.min(item.amount, rows.reduce(
+                    (acc, c) => acc + Math.max(0, c.total - (c.paidAmount || 0)), 0));
+                for (const c of rows) {
+                    if (left <= 0) break;
+                    const part = Math.min(left, c.total - (c.paidAmount || 0));
+                    c.paidAmount = (c.paidAmount || 0) + part;
+                    if (c.paidAmount >= c.total - 0.001) { c.status = 'Paid'; c.paidAt = demoNow(); }
+                    left -= part;
+                }
+                const patient = DEMO_PATIENTS.find(p => p.id === plan.patientId);
+                const doctor = DEMO_DOCTORS.find(d => d.id === plan.doctorId);
+                const tx: Transaction = {
+                    id: demoId('demo-tx'),
+                    patientId: plan.patientId,
+                    patientName: patient ? `${patient.lastName} ${patient.firstName}` : 'Bemor',
+                    clinicId: plan.clinicId,
+                    doctorId: plan.doctorId,
+                    doctorName: doctor ? `${doctor.lastName} ${doctor.firstName}` : '',
+                    amount: item.amount,
+                    date: demoNow().split('T')[0],
+                    service: plan.service,
+                    type: paymentMethod as any,
+                    status: 'Paid',
+                    receivedByName,
+                } as Transaction;
+                DEMO_TRANSACTIONS.unshift(tx);
+
+                item.status = 'Paid';
+                item.paidDate = demoNow().split('T')[0];
+                item.transactionId = tx.id;
+                plan.totalPaid += item.amount;
+                if (plan.items.every((it: any) => it.status === 'Paid')) plan.status = 'Completed';
+                saveDemoData();
+                return demoDone({ success: true as const, transaction: tx });
             }
             return fetchJson<any>(`/installments/${itemId}/pay`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date, paymentMethod })
+                body: JSON.stringify({ paymentMethod, receivedByName }),
             });
         },
         delete: (id: string) => {
-             if (isDemoMode()) {
-                 const idx = DEMO_INSTALLMENTS.findIndex(p => p.id === id);
-                 if (idx !== -1) {
-                     DEMO_INSTALLMENTS.splice(idx, 1);
-                     saveDemoData();
-                 }
-                 return Promise.resolve({ success: true });
-             }
-             return fetchJson<{ success: true }>(`/installments/${id}`, { method: 'DELETE' });
+            if (isDemoMode()) {
+                const idx = DEMO_INSTALLMENTS.findIndex(p => p.id === id);
+                if (idx !== -1) {
+                    // Qatorlar QOLADI — faqat rejadan uziladi
+                    DEMO_CHARGES.forEach(c => {
+                        if ((c as any).installmentPlanId === id) (c as any).installmentPlanId = null;
+                    });
+                    DEMO_INSTALLMENTS.splice(idx, 1);
+                    saveDemoData();
+                }
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/installments/${id}`, { method: 'DELETE' });
         }
     },
     transactions: {

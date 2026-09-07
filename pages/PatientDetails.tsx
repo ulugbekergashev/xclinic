@@ -115,7 +115,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    // Chegirmadan keyingi jami summa (asl narx ma'lum bo'lganda)
 
    // Installment quick-open state (from appointment row)
-   const [installmentQuickOpen, setInstallmentQuickOpen] = useState<{ service: string; amount: number; doctorId: string } | null>(null);
 
    // Medical History State
    const [historyText, setHistoryText] = useState('');
@@ -1131,14 +1130,11 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                  </Button>
                                  <Button size="sm" variant="secondary"
                                     className="bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800"
-                                    onClick={() => {
-                                       setInstallmentQuickOpen({
-                                          service: unpaidCharges.map(c => c.name).join(', ').slice(0, 120),
-                                          amount: unpaidTotal,
-                                          doctorId: unpaidCharges.find(c => c.doctorId)?.doctorId || '',
-                                       });
-                                       setOpenSec('installments');
-                                    }}>
+                                    /* Bo'limni ochamiz, xolos. Ilgari bu yerdan
+                                       rejaga TAYYOR summa uzatilardi — ya'ni qarz
+                                       matn va son sifatida ko'chirilardi. Endi reja
+                                       qatorlarning O'ZINI tanlaydi. */
+                                    onClick={() => setOpenSec('installments')}>
                                     {t('card.secInstallments')}
                                  </Button>
                               </div>
@@ -1265,13 +1261,11 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   </div>
                )}
                {openSec === 'installments' && patient && currentClinic && (
-                  <InstallmentsTab 
-                     patientId={patient.id} 
-                     clinicId={currentClinic.id} 
+                  <InstallmentsTab
+                     patientId={patient.id}
+                     clinicId={currentClinic.id}
                      doctors={doctors}
-                     services={services}
-                     initialCreateData={installmentQuickOpen || undefined}
-                     onInitialDataConsumed={() => setInstallmentQuickOpen(null)}
+                     currentUserName={myDoctor ? formatDoctorName(myDoctor) : undefined}
                   />
                )}
                

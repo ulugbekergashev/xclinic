@@ -448,8 +448,16 @@ export interface InstallmentPlan {
   status: 'Active' | 'Completed' | 'Cancelled';
   createdAt?: string;
   items?: InstallmentItem[];
-  
-  // Relations mapped out
+
+  /* Reja qaysi qatorlar ustiga qurilgan (0033). Qoldiq AYNAN shulardan
+     hisoblanadi: bemor kassada to'g'ridan-to'g'ri to'lagan bo'lishi
+     mumkin va u holda `totalPaid` ortda qoladi. */
+  charges?: { id: string; name: string; total: number; paidAmount: number; status: string }[];
+  /** Serverdagi hisob: qatorlarning qolgan qarzi */
+  due?: number;
+  /** Serverdagi hisob: qatorlar bo'yicha yig'ilgan summa */
+  collected?: number;
+
   patient?: Patient;
   doctor?: Doctor;
 }
@@ -1112,6 +1120,8 @@ export interface VisitCharge {
   doctorId?: string | null;
   doctorName?: string | null;
   admissionId?: string | null;
+  /** Qator bo'lib to'lash rejasiga kiritilgan. Migratsiya 0033. */
+  installmentPlanId?: string | null;
   visit?: { id: string; date: string; queueNumber?: number | null; departmentId?: string | null };
 }
 

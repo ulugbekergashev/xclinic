@@ -141,35 +141,91 @@ async function main() {
         Math.round(balAfterRecalc) === Math.round(balAfterRefund),
         `${balAfterRefund} → ${balAfterRecalc} (tuzatilgan: ${applied.data?.patientsFixed})`);
 
-    console.log('\n═══ BUG C — bo\'lib to\'lashda avansdan ═════════════');
+    console.log('\n═══ BO\'LIB TO\'LASH QATORLAR USTIGA QURILADI ════════');
+    /* Ilgari reja ALOHIDA pul modeli edi: xizmat nomi erkin matn, summa
+       qo'lda. Har to'lov chek yozardi, `ChargePayment` esa YOZMASDI —
+       ya'ni shifokor bu puldan ulush olmasdi. Endi reja mavjud
+       to'lanmagan qatorlarni bo'ladi va to'lov kassadagi oddiy to'lov
+       bilan bir xil yo'ldan o'tadi. */
     const today = new Date().toISOString().split('T')[0];
+
+    const instCharge = await api('POST', '/charges', {
+        patientId, patientName: 'Bemorov Sinov',
+        source: 'Other', name: 'Breket tizimi',
+        quantity: 1, unitPrice: 200000, total: 200000,
+    });
+    const instChargeId = instCharge.data?.id;
+    ok('bo\'lib to\'lash uchun qator yaratildi', !!instChargeId,
+        JSON.stringify(instCharge.data).slice(0, 120));
+
+    /* SUMMASIZ reja tuzib bo'lmaydi: qarz qatorlardan keladi. */
+    const noRows = await api('POST', '/installments', {
+        patientId, chargeIds: [], months: 3, startDate: today,
+    });
+    ok('qatorsiz reja RAD ETILDI', noRows.status === 400, `status: ${noRows.status}`);
+
     const plan = await api('POST', '/installments', {
-        patientId, service: 'Sinov davolash',
-        totalAmount: 200000, totalPaid: 0,
-        startDate: today, endDate: today, status: 'Active',
-        items: [
-            { expectedDate: today, amount: 100000, status: 'Pending' },
-            { expectedDate: today, amount: 100000, status: 'Pending' },
-        ],
+        patientId, chargeIds: [instChargeId], months: 2, startDate: today,
     });
     const planId = plan.data?.id;
-    if (!planId) {
-        console.log(`  ⏭  bo'lib to'lash rejasi yaratilmadi (${plan.status}) — sinov o'tkazib yuborildi`);
-        console.log(`     javob: ${JSON.stringify(plan.data).slice(0, 160)}`);
-    } else {
-        const items = plan.data?.items || (await api('GET', `/installments/${planId}`)).data?.items || [];
+    ok('reja yaratildi', !!planId, `status: ${plan.status}, ${JSON.stringify(plan.data).slice(0, 140)}`);
+
+    if (planId) {
+        const items = plan.data?.items || [];
+        ok('jadval ikki oyga bo\'lindi', items.length === 2, `qatorlar: ${items.length}`);
+        ok('jadval yig\'indisi qarzga TENG',
+            Math.round(items.reduce((s: number, i: any) => s + i.amount, 0)) === 200000,
+            String(items.reduce((s: number, i: any) => s + i.amount, 0)));
+        ok('reja summasi qatordan olindi', Math.round(plan.data?.totalAmount) === 200000,
+            String(plan.data?.totalAmount));
+
+        /* Bitta qator ikki rejada bo'lolmaydi. */
+        const twice = await api('POST', '/installments', {
+            patientId, chargeIds: [instChargeId], months: 3, startDate: today,
+        });
+        ok('bir qator ikkinchi rejaga TUSHMADI (409)', twice.status === 409,
+            `status: ${twice.status}`);
+
         const itemId = items[0]?.id;
-        ok('reja va qatorlar yaratildi', !!itemId, `qatorlar: ${items.length}`);
         if (itemId) {
             const balBeforeInst = await balanceOf(patientId);
             const payInst = await api('POST', `/installments/${itemId}/pay`, {
-                date: new Date().toISOString().split('T')[0], paymentMethod: 'Balance',
+                paymentMethod: 'Balance', receivedByName: 'Sinov kassiri',
             });
+            ok('avansdan to\'landi (200)', payInst.status === 200,
+                `status: ${payInst.status}, ${JSON.stringify(payInst.data).slice(0, 140)}`);
             const balAfterInst = await balanceOf(patientId);
-            ok('avansdan to\'landi (200)', payInst.status === 200, `status: ${payInst.status}`);
-            ok('BALANS KAMAYDI (bug tuzatildi)',
+            ok('BALANS KAMAYDI',
                 Math.round(balBeforeInst - balAfterInst) === Math.round(items[0].amount),
                 `${balBeforeInst} → ${balAfterInst}, qator: ${items[0]?.amount}`);
+
+            /* ENG MUHIMI: pul QATORGA tushdi. Ilgari chek yozilardi, qator
+               esa «to'lanmagan» bo'lib qolaverardi — shifokor ulushi ham
+               shu sababli nolga teng edi. */
+            const fresh = ((await api('GET', `/charges?patientId=${patientId}`)).data || [])
+                .find((c: any) => c.id === instChargeId);
+            ok('qatorning to\'langan summasi oshdi',
+                Math.round(fresh?.paidAmount || 0) === 100000, String(fresh?.paidAmount));
+            ok('qator hali to\'liq to\'lanmagan', fresh?.status === 'Unpaid', String(fresh?.status));
+
+            // Ikkinchi oy — qator to'liq yopiladi va reja tugaydi
+            const second = await api('POST', `/installments/${items[1].id}/pay`, {
+                paymentMethod: 'Cash',
+            });
+            ok('ikkinchi oy to\'landi', second.status === 200, `status: ${second.status}`);
+
+            const done = ((await api('GET', `/charges?patientId=${patientId}`)).data || [])
+                .find((c: any) => c.id === instChargeId);
+            ok('qator TO\'LIQ to\'landi', done?.status === 'Paid', String(done?.status));
+
+            const plans = (await api('GET', `/installments?patientId=${patientId}`)).data || [];
+            const mine2 = plans.find((x: any) => x.id === planId);
+            ok('reja yopildi', mine2?.status === 'Completed', String(mine2?.status));
+            ok('rejada qarz qolmadi', Math.round(mine2?.due ?? -1) === 0, String(mine2?.due));
+
+            /* To'langan oyi bor rejani o'chirib bo'lmaydi. */
+            const del = await api('DELETE', `/installments/${planId}`);
+            ok('to\'langan reja O\'CHIRILMADI (409)', del.status === 409, `status: ${del.status}`);
         }
     }
 

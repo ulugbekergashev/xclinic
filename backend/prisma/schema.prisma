@@ -760,6 +760,8 @@ model InstallmentPlan {
   status      String            @default("Active")
   createdAt   DateTime          @default(now())
   items       InstallmentItem[]
+  /// Reja qaysi qatorlar ustiga qurilgan (0033)
+  charges     VisitCharge[]
   clinic      Clinic            @relation(fields: [clinicId], references: [id])
   doctor      Doctor?           @relation(fields: [doctorId], references: [id])
   patient     Patient           @relation(fields: [patientId], references: [id])
@@ -1260,12 +1262,16 @@ model VisitCharge {
   /// Xizmat katalogiga bog'lanish. Nom o'zgaradi, id o'zgarmaydi —
   /// hisobot va shifokor ulushi shunga tayanadi. Migratsiya 0021.
   serviceId     Int?
+  /// Qator bo'lib to'lash rejasiga kiritilgan. Reja PULNI yozmaydi — u
+  /// faqat jadval; to'lov shu qatorlar orqali o'tadi. Migratsiya 0033.
+  installmentPlanId String?
 
   clinic          Clinic                     @relation(fields: [clinicId], references: [id])
   visit           Visit?                     @relation(fields: [visitId], references: [id])
   patient         Patient?                   @relation(fields: [patientId], references: [id])
   admission       Admission?                 @relation(fields: [admissionId], references: [id])
   service         Service?                   @relation(fields: [serviceId], references: [id])
+  installmentPlan InstallmentPlan?           @relation(fields: [installmentPlanId], references: [id])
   payments        ChargePayment[]
   administrations MedicationAdministration[]
 
@@ -1276,6 +1282,7 @@ model VisitCharge {
   @@index([sourceId])
   @@index([admissionId])
   @@index([serviceId])
+  @@index([installmentPlanId])
 }
 
 

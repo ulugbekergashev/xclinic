@@ -261,6 +261,267 @@ async function writeAuditFor(prisma: any, input: {
     }
 }
 
+/* ═══ TO'LOVNING YADROSI ═════════════════════════════════════
+
+   Bu funksiya OCHIQ TRANZAKSIYA ichida chaqiriladi (`tx` — uning
+   mijozi). Ikki chaqiruvchisi bor:
+
+     * `POST /api/payments` — kassadagi oddiy to'lov;
+     * `POST /api/installments/:id/pay` — bo'lib to'lash jadvalidagi
+       navbatdagi to'lov.
+
+   Nima uchun umumiy. Bo'lib to'lash ilgari O'ZINING chekini yozardi va
+   `ChargePayment` yaratmasdi — ya'ni shifokor ulushi bu puldan
+   hisoblanmasdi. Nusxa ko'chirish bilan tuzatish vaqtinchalik bo'lardi:
+   ikki nusxa birinchi o'zgarishdayoq ajraladi. */
+
+/* Qatorlar to'plamining "barmoq izi": id, to'langan summa, jami va holat.
+   To'lovni tayyorlash paytida o'qilgan holat bilan tranzaksiya ichida
+   o'qilgan holatni solishtirish uchun — farq bo'lsa, boshqa kassir oradan
+   o'tgan degani. */
+export const chargeFingerprint = (rows: any[]): string =>
+    rows.map((r) => `${r.id}:${round(r.paidAmount || 0)}:${round(r.total)}:${r.status}`)
+        .sort().join('|');
+
+export interface ChargePaymentInput {
+    chargeIds: string[];
+    /** Umumiy summa. Berilmasa — qatorlarning qolgan qarzi to'liq. */
+    amount?: number | null;
+    /** Bitta usul (eski shakl). `payments` berilsa e'tiborsiz. */
+    method?: string | null;
+    /** Qaysi qatorga qancha. Berilmasa — eng eski qatordan navbat bilan. */
+    perCharge?: Record<string, number> | null;
+    /** Bitta to'lovni bir necha usulga bo'lish (naqd + karta). */
+    payments?: { method: string; amount: number }[] | null;
+    receivedById?: string | null;
+    receivedByName?: string | null;
+    doctorId?: string | null;
+    doctorName?: string | null;
+    /** Tranzaksiyadan OLDIN o'qilgan holat izi. Mos kelmasa 409. */
+    expectFingerprint?: string | null;
+}
+
+export async function applyChargePayment(tx: any, clinicId: string, input: ChargePaymentInput) {
+    const { chargeIds, amount, method, receivedById, receivedByName,
+            doctorId, doctorName, perCharge, payments, expectFingerprint } = input;
+
+    const charges = await tx.visitCharge.findMany({
+        where: { id: { in: chargeIds }, clinicId, status: 'Unpaid' },
+        orderBy: { createdAt: 'asc' },
+    });
+    /* `expectFingerprint` berilmasa tekshirmaymiz: bo'lib to'lash yo'li
+       qatorlarni tashqarida o'qimaydi va uning uchun bu shart yo'q. */
+    if (charges.length === 0
+        || (expectFingerprint != null && chargeFingerprint(charges) !== expectFingerprint)) {
+        throw new HttpError(409,
+            "Bu qatorlar oradan o'zgardi — boshqa kassir to'lov qabul qilgan bo'lishi mumkin. "
+            + "Ro'yxatni yangilab, qaytadan urinib ko'ring.",
+            { code: 'CHARGES_CHANGED' });
+    }
+
+    const remainingOf = (c: any) => round(c.total - (c.paidAmount || 0));
+    const due = round(charges.reduce((s: number, c: any) => s + remainingOf(c), 0));
+
+    /* ─── Qatorlar bo'yicha taqsimot ─────────────────────────────────────
+       `perCharge` berilgan bo'lsa — aynan shunday, aks holda navbat
+       bo'yicha (eski xatti-harakat). */
+    const plan = new Map<string, number>();
+    if (perCharge && typeof perCharge === 'object') {
+        for (const c of charges) {
+            const want = round(Number(perCharge[c.id] ?? 0));
+            if (!(want > 0)) continue;
+            if (want > remainingOf(c) + 0.001) {
+                throw new HttpError(400, `"${c.name}" uchun summa qarzdan ko'p (qarz: ${remainingOf(c)})`);
+            }
+            plan.set(c.id, want);
+        }
+        if (plan.size === 0) throw new HttpError(400, "Summa ko'rsatilmagan");
+    }
+
+    const received = plan.size > 0
+        ? round(Array.from(plan.values()).reduce((a, b) => a + b, 0))
+        : (amount != null ? round(Number(amount)) : due);
+
+    if (received <= 0) throw new HttpError(400, "Summa noto'g'ri");
+    if (received > due) throw new HttpError(400, `Summa qarzdan ko'p (qarz: ${due})`);
+
+    if (plan.size === 0) {
+        // Navbat bo'yicha: eng eski qatordan boshlab
+        let left = received;
+        for (const c of charges) {
+            if (left <= 0) break;
+            const pay = Math.min(left, remainingOf(c));
+            if (pay > 0) plan.set(c.id, round(pay));
+            left = round(left - pay);
+        }
+    }
+
+    /* ─── To'lov usullari ────────────────────────────────────────────────
+       `payments: [{ method, amount }]` berilsa — har usulga alohida chek.
+       Berilmasa — bitta chek, bitta usul (eski xatti-harakat). */
+    let methodSplit: { method: string; amount: number }[];
+    if (Array.isArray(payments) && payments.length > 0) {
+        methodSplit = payments.map((p: any) => ({
+            method: String(p.method || 'Cash'),
+            amount: round(Number(p.amount) || 0),
+        })).filter((p) => p.amount > 0);
+        const sum = round(methodSplit.reduce((s, p) => s + p.amount, 0));
+        if (methodSplit.length === 0) throw new HttpError(400, "To'lov usuli ko'rsatilmagan");
+        if (Math.abs(sum - received) > 0.01) {
+            throw new HttpError(400, `Usullar yig'indisi (${sum}) umumiy summaga (${received}) teng emas`);
+        }
+    } else {
+        methodSplit = [{ method: String(method || 'Cash'), amount: received }];
+    }
+
+    const first = charges[0];
+    const paidAt = new Date();
+
+    /* AVANSDAN TO'LASH.
+       `POST /api/transactions` avans hisobini yuritadi: 'Avans' xizmati
+       balansni oshiradi, `type: 'Balance'` esa kamaytiradi. Lekin BU
+       endpoint cheklarni to'g'ridan-to'g'ri yaratadi va o'sha mantiqni
+       chetlab o'tardi — ya'ni avansdan to'lov balansni KAMAYTIRMASDI va
+       bemor bir xil avansni cheksiz sarflay olardi. Reliz 3 dagi o'z
+       xatoim.
+
+       Tekshiruv to'lovdan OLDIN: yetmagan avansni yozib qo'yib, keyin
+       minusga tushirish — eng yomon variant. */
+    const balanceSpend = round(
+        methodSplit.filter((m) => m.method === 'Balance')
+            .reduce((sum, m) => sum + m.amount, 0),
+    );
+    if (balanceSpend > 0) {
+        if (!first.patientId) {
+            throw new HttpError(400, "Avansdan to'lash uchun bemor ko'rsatilishi kerak");
+        }
+        const patient = await tx.patient.findUnique({
+            where: { id: first.patientId },
+            select: { balance: true, clinicId: true },
+        });
+        if (!patient || patient.clinicId !== clinicId) {
+            throw new HttpError(404, 'Bemor topilmadi');
+        }
+        const have = round(patient.balance || 0);
+        if (balanceSpend > have + 0.001) {
+            throw new HttpError(400,
+                `Avans yetarli emas: hisobda ${Math.round(have)}, kerak ${Math.round(balanceSpend)}`);
+        }
+    }
+    const chargeById = new Map(charges.map((c: any) => [c.id, c]));
+    const serviceLabel = charges
+        .filter((c: any) => plan.has(c.id))
+        .map((c: any) => c.name).join(', ').slice(0, 200);
+
+    /* Har usul uchun chek va uning ulushidagi ChargePayment qatorlari.
+       Usul ulushi qatorlar bo'yicha proportsional taqsimlanadi — shunda
+       kassa kitobidagi "naqd" va "karta" summalari to'g'ri chiqadi. */
+    const createdTx: any[] = [];
+    const paidPerCharge = new Map<string, number>();
+
+    for (let mi = 0; mi < methodSplit.length; mi++) {
+        const ms = methodSplit[mi];
+        const receipt = await tx.transaction.create({
+            data: {
+                clinicId,
+                patientId: first.patientId || null,
+                patientName: first.patientName,
+                visitId: first.visitId || null,
+                date: nowDate(),
+                amount: ms.amount,
+                type: ms.method,
+                service: serviceLabel,
+                status: 'Paid',
+                doctorId: doctorId || null,
+                doctorName: doctorName || null,
+                receivedById: receivedById || null,
+                receivedByName: receivedByName || null,
+            },
+        });
+        createdTx.push(receipt);
+
+        /* ── USUL ULUSHINI QATORLARGA TAQSIMLASH ────────────────────────
+           Ilgari har qism alohida yaxlitlanardi: `round(chargeAmount * share)`.
+           Butun so'mga o'tgach bu qismlar yig'indisini chekka teng
+           qilmasdi — 100 000 ni uchga bo'lsak 33 333 × 3 = 99 999 va bitta
+           so'm yo'qolardi. Yaxlitlik tekshiruvi (7.5) buni darhol
+           "buzilish" deb ko'rsatardi.
+
+           Ikki qavatli kafolat:
+             - qatorlar bo'yicha: `splitProportionally` (eng katta qoldiq)
+               yig'indini AYNAN `ms.amount` ga tenglashtiradi;
+             - usullar bo'yicha: OXIRGI usul qolgan summani oladi, ya'ni
+               har qator bo'yicha jami aynan `plan[chargeId]` bo'ladi. */
+        const entries = Array.from(plan.entries());
+        const isLastMethod = mi === methodSplit.length - 1;
+
+        const parts = isLastMethod
+            ? entries.map(([chargeId, chargeAmount]) =>
+                som(chargeAmount - (paidPerCharge.get(chargeId) || 0)))
+            : splitProportionally(ms.amount, entries.map(([, amt]) => amt));
+
+        for (let i = 0; i < entries.length; i++) {
+            const [chargeId] = entries[i];
+            const part = parts[i];
+            if (part <= 0) continue;
+            await tx.chargePayment.create({
+                data: {
+                    clinicId, chargeId, transactionId: receipt.id,
+                    amount: part, kind: 'Payment',
+                    createdByName: receivedByName || null,
+                },
+            });
+            paidPerCharge.set(chargeId, som((paidPerCharge.get(chargeId) || 0) + part));
+        }
+    }
+
+    // Qator holatini yangilaymiz. `paidAmount` — kesh, haqiqiy manba
+    // ChargePayment qatorlari.
+    const lastTxId = createdTx[createdTx.length - 1]?.id || null;
+    const updated: any[] = [];
+    for (const [chargeId, part] of paidPerCharge.entries()) {
+        const c: any = chargeById.get(chargeId);
+        const newPaid = round((c.paidAmount || 0) + part);
+        const fully = newPaid >= c.total - 0.001;
+        updated.push(await tx.visitCharge.update({
+            where: { id: chargeId },
+            data: {
+                paidAmount: newPaid,
+                status: fully ? 'Paid' : 'Unpaid',
+                ...(fully ? { paidAt, transactionId: lastTxId } : {}),
+            },
+        }));
+    }
+
+    /* Avans sarflandi — hisobdan yechamiz. To'lov muvaffaqiyatli
+       bo'lgandan KEYIN: qatorlar yangilanmasa avans ham sarflanmasligi
+       kerak. */
+    if (balanceSpend > 0 && first.patientId) {
+        await tx.patient.update({
+            where: { id: first.patientId },
+            data: { balance: { decrement: balanceSpend } },
+        });
+    }
+
+    return {
+        payload: {
+            transaction: createdTx[0],
+            transactions: createdTx,
+            charges: updated,
+            received,
+            due: round(due - received),
+        },
+        audit: {
+            patientId: first.patientId || null,
+            patientName: first.patientName,
+            received,
+            methods: methodSplit.map((m) => `${m.method} ${Math.round(m.amount)}`).join(' + '),
+            chargeIds: updated.map((c: any) => c.id).join(','),
+            rows: updated.length,
+        },
+    };
+}
+
 export function registerBillingRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId } = deps;
 
@@ -284,14 +545,6 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             }
         });
     };
-
-    /* Qatorlar to'plamining "barmoq izi": id, to'langan summa va jami.
-       To'lovni tayyorlash paytida o'qilgan holat bilan tranzaksiya ichida
-       o'qilgan holatni solishtirish uchun — farq bo'lsa, boshqa kassir
-       oradan o'tgan degani. */
-    const fingerprint = (rows: any[]): string =>
-        rows.map((r) => `${r.id}:${round(r.paidAmount || 0)}:${round(r.total)}:${r.status}`)
-            .sort().join('|');
 
     const writeAudit = (input: any) => writeAuditFor(prisma, input);
 
@@ -526,226 +779,18 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             select: { id: true, paidAmount: true, total: true, status: true },
         });
         if (before.length === 0) return res.status(400).json({ error: "To'lanmagan qator topilmadi" });
-        const beforeFp = fingerprint(before);
+        const beforeFp = chargeFingerprint(before);
 
-        const outcome = await prisma.$transaction(async (tx: any) => {
-
-        const charges = await tx.visitCharge.findMany({
-            where: { id: { in: chargeIds }, clinicId, status: 'Unpaid' },
-            orderBy: { createdAt: 'asc' },
-        });
-        if (charges.length === 0 || fingerprint(charges) !== beforeFp) {
-            throw new HttpError(409,
-                "Bu qatorlar oradan o'zgardi — boshqa kassir to'lov qabul qilgan bo'lishi mumkin. "
-                + "Ro'yxatni yangilab, qaytadan urinib ko'ring.",
-                { code: 'CHARGES_CHANGED' });
-        }
-
-        const remainingOf = (c: any) => round(c.total - (c.paidAmount || 0));
-        const due = round(charges.reduce((s: number, c: any) => s + remainingOf(c), 0));
-
-        /* ─── Qatorlar bo'yicha taqsimot ─────────────────────────────────────
-           `perCharge` berilgan bo'lsa — aynan shunday, aks holda navbat
-           bo'yicha (eski xatti-harakat). */
-        const plan = new Map<string, number>();
-        if (perCharge && typeof perCharge === 'object') {
-            for (const c of charges) {
-                const want = round(Number(perCharge[c.id] ?? 0));
-                if (!(want > 0)) continue;
-                if (want > remainingOf(c) + 0.001) {
-                    throw new HttpError(400, `"${c.name}" uchun summa qarzdan ko'p (qarz: ${remainingOf(c)})`);
-                }
-                plan.set(c.id, want);
-            }
-            if (plan.size === 0) throw new HttpError(400, "Summa ko'rsatilmagan");
-        }
-
-        const received = plan.size > 0
-            ? round(Array.from(plan.values()).reduce((a, b) => a + b, 0))
-            : (amount != null ? round(Number(amount)) : due);
-
-        if (received <= 0) throw new HttpError(400, "Summa noto'g'ri");
-        if (received > due) throw new HttpError(400, `Summa qarzdan ko'p (qarz: ${due})`);
-
-        if (plan.size === 0) {
-            // Navbat bo'yicha: eng eski qatordan boshlab
-            let left = received;
-            for (const c of charges) {
-                if (left <= 0) break;
-                const pay = Math.min(left, remainingOf(c));
-                if (pay > 0) plan.set(c.id, round(pay));
-                left = round(left - pay);
-            }
-        }
-
-        /* ─── To'lov usullari ────────────────────────────────────────────────
-           `payments: [{ method, amount }]` berilsa — har usulga alohida chek.
-           Berilmasa — bitta chek, bitta usul (eski xatti-harakat). */
-        let methodSplit: { method: string; amount: number }[];
-        if (Array.isArray(payments) && payments.length > 0) {
-            methodSplit = payments.map((p: any) => ({
-                method: String(p.method || 'Cash'),
-                amount: round(Number(p.amount) || 0),
-            })).filter((p) => p.amount > 0);
-            const sum = round(methodSplit.reduce((s, p) => s + p.amount, 0));
-            if (methodSplit.length === 0) throw new HttpError(400, "To'lov usuli ko'rsatilmagan");
-            if (Math.abs(sum - received) > 0.01) {
-                throw new HttpError(400, `Usullar yig'indisi (${sum}) umumiy summaga (${received}) teng emas`);
-            }
-        } else {
-            methodSplit = [{ method: String(method || 'Cash'), amount: received }];
-        }
-
-        const first = charges[0];
-        const paidAt = new Date();
-
-        /* AVANSDAN TO'LASH.
-           `POST /api/transactions` avans hisobini yuritadi: 'Avans' xizmati
-           balansni oshiradi, `type: 'Balance'` esa kamaytiradi. Lekin BU
-           endpoint cheklarni to'g'ridan-to'g'ri yaratadi va o'sha mantiqni
-           chetlab o'tardi — ya'ni avansdan to'lov balansni KAMAYTIRMASDI va
-           bemor bir xil avansni cheksiz sarflay olardi. Reliz 3 dagi o'z
-           xatoim.
-
-           Tekshiruv to'lovdan OLDIN: yetmagan avansni yozib qo'yib, keyin
-           minusga tushirish — eng yomon variant. */
-        const balanceSpend = round(
-            methodSplit.filter((m) => m.method === 'Balance')
-                .reduce((sum, m) => sum + m.amount, 0),
+        const outcome = await prisma.$transaction(
+            (tx: any) => applyChargePayment(tx, clinicId, {
+                chargeIds, amount, method, perCharge, payments,
+                receivedById, receivedByName, doctorId, doctorName,
+                expectFingerprint: beforeFp,
+            }),
+            /* Tranzaksiya CHEGARASI. `timeout` — Prisma o'z taymeri;
+               15 s klinika uchun juda ko'p, lekin sekin diskda ham yetadi. */
+            { timeout: 15000, maxWait: 10000 },
         );
-        if (balanceSpend > 0) {
-            if (!first.patientId) {
-                throw new HttpError(400, "Avansdan to'lash uchun bemor ko'rsatilishi kerak");
-            }
-            const patient = await tx.patient.findUnique({
-                where: { id: first.patientId },
-                select: { balance: true, clinicId: true },
-            });
-            if (!patient || patient.clinicId !== clinicId) {
-                throw new HttpError(404, 'Bemor topilmadi');
-            }
-            const have = round(patient.balance || 0);
-            if (balanceSpend > have + 0.001) {
-                throw new HttpError(400,
-                    `Avans yetarli emas: hisobda ${Math.round(have)}, kerak ${Math.round(balanceSpend)}`);
-            }
-        }
-        const chargeById = new Map(charges.map((c: any) => [c.id, c]));
-        const serviceLabel = charges
-            .filter((c: any) => plan.has(c.id))
-            .map((c: any) => c.name).join(', ').slice(0, 200);
-
-        /* Har usul uchun chek va uning ulushidagi ChargePayment qatorlari.
-           Usul ulushi qatorlar bo'yicha proportsional taqsimlanadi — shunda
-           kassa kitobidagi "naqd" va "karta" summalari to'g'ri chiqadi. */
-        const createdTx: any[] = [];
-        const paidPerCharge = new Map<string, number>();
-
-        for (let mi = 0; mi < methodSplit.length; mi++) {
-            const ms = methodSplit[mi];
-            const receipt = await tx.transaction.create({
-                data: {
-                    clinicId,
-                    patientId: first.patientId || null,
-                    patientName: first.patientName,
-                    visitId: first.visitId || null,
-                    date: nowDate(),
-                    amount: ms.amount,
-                    type: ms.method,
-                    service: serviceLabel,
-                    status: 'Paid',
-                    doctorId: doctorId || null,
-                    doctorName: doctorName || null,
-                    receivedById: receivedById || null,
-                    receivedByName: receivedByName || null,
-                },
-            });
-            createdTx.push(receipt);
-
-            /* ── USUL ULUSHINI QATORLARGA TAQSIMLASH ────────────────────────
-               Ilgari har qism alohida yaxlitlanardi: `round(chargeAmount * share)`.
-               Butun so'mga o'tgach bu qismlar yig'indisini chekka teng
-               qilmasdi — 100 000 ni uchga bo'lsak 33 333 × 3 = 99 999 va bitta
-               so'm yo'qolardi. Yaxlitlik tekshiruvi (7.5) buni darhol
-               "buzilish" deb ko'rsatardi.
-
-               Ikki qavatli kafolat:
-                 - qatorlar bo'yicha: `splitProportionally` (eng katta qoldiq)
-                   yig'indini AYNAN `ms.amount` ga tenglashtiradi;
-                 - usullar bo'yicha: OXIRGI usul qolgan summani oladi, ya'ni
-                   har qator bo'yicha jami aynan `plan[chargeId]` bo'ladi. */
-            const entries = Array.from(plan.entries());
-            const isLastMethod = mi === methodSplit.length - 1;
-
-            const parts = isLastMethod
-                ? entries.map(([chargeId, chargeAmount]) =>
-                    som(chargeAmount - (paidPerCharge.get(chargeId) || 0)))
-                : splitProportionally(ms.amount, entries.map(([, amt]) => amt));
-
-            for (let i = 0; i < entries.length; i++) {
-                const [chargeId] = entries[i];
-                const part = parts[i];
-                if (part <= 0) continue;
-                await tx.chargePayment.create({
-                    data: {
-                        clinicId, chargeId, transactionId: receipt.id,
-                        amount: part, kind: 'Payment',
-                        createdByName: receivedByName || null,
-                    },
-                });
-                paidPerCharge.set(chargeId, som((paidPerCharge.get(chargeId) || 0) + part));
-            }
-        }
-
-        // Qator holatini yangilaymiz. `paidAmount` — kesh, haqiqiy manba
-        // ChargePayment qatorlari.
-        const lastTxId = createdTx[createdTx.length - 1]?.id || null;
-        const updated: any[] = [];
-        for (const [chargeId, part] of paidPerCharge.entries()) {
-            const c: any = chargeById.get(chargeId);
-            const newPaid = round((c.paidAmount || 0) + part);
-            const fully = newPaid >= c.total - 0.001;
-            updated.push(await tx.visitCharge.update({
-                where: { id: chargeId },
-                data: {
-                    paidAmount: newPaid,
-                    status: fully ? 'Paid' : 'Unpaid',
-                    ...(fully ? { paidAt, transactionId: lastTxId } : {}),
-                },
-            }));
-        }
-
-        /* Avans sarflandi — hisobdan yechamiz. To'lov muvaffaqiyatli
-           bo'lgandan KEYIN: qatorlar yangilanmasa avans ham sarflanmasligi
-           kerak. */
-        if (balanceSpend > 0 && first.patientId) {
-            await tx.patient.update({
-                where: { id: first.patientId },
-                data: { balance: { decrement: balanceSpend } },
-            });
-        }
-
-        return {
-            payload: {
-                transaction: createdTx[0],
-                transactions: createdTx,
-                charges: updated,
-                received,
-                due: round(due - received),
-            },
-            audit: {
-                patientId: first.patientId || null,
-                patientName: first.patientName,
-                received,
-                methods: methodSplit.map((m) => `${m.method} ${Math.round(m.amount)}`).join(' + '),
-                chargeIds: updated.map((c: any) => c.id).join(','),
-                rows: updated.length,
-            },
-        };
-
-        /* Tranzaksiya CHEGARASI shu yerda. `timeout` — Prisma o'z taymeri;
-           15 s klinika uchun juda ko'p, lekin sekin diskda ham yetadi. */
-        }, { timeout: 15000, maxWait: 10000 });
 
         /* Kassa izi — tranzaksiyadan TASHQARIDA va commit dan KEYIN.
            Ikki sabab: (1) jurnal yozuvi to'lovni to'xtatmasligi kerak —

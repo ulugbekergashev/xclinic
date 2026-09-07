@@ -95,7 +95,7 @@ app.get('/api/tts', async (req: any, res: any) => {
 
 // Load everything else
 import { registerMultiprofileRoutes } from './multiprofile';
-import { registerBillingRoutes, createCharge, findBalanceMismatches, payStateBySource } from './billing';
+import { registerBillingRoutes, createCharge, findBalanceMismatches, payStateBySource, applyChargePayment } from './billing';
 import { registerInventoryRoutes } from './inventory';
 import { registerPatientMergeRoutes } from './patientMerge';
 import { registerEventRoutes, emitEvent } from './events';
@@ -3876,6 +3876,21 @@ app.get('/api/cash-audit', authenticateToken, async (req, res) => {
 });
 
 // --- Installments ---
+/* ═══ BO'LIB TO'LASH ══════════════════════════════════════════
+
+   Reja — bu JADVAL, pul emas. U mavjud to'lanmagan hisob qatorlari ustiga
+   quriladi: qachon qancha kutilishini yozadi va boshqa hech narsa qilmaydi.
+   Pul faqat bitta yo'ldan o'tadi — `applyChargePayment` (`billing.ts`).
+
+   ILGARI QANDAY EDI. Reja butunlay alohida model edi: xizmat nomi erkin
+   matn, summa qo'lda kiritilardi, qatorlar bilan aloqasi yo'q edi. Har
+   to'lov `Transaction` yozardi, `ChargePayment` esa YOZMASDI — ya'ni
+   shifokor ulushi bu puldan hisoblanmasdi (vedomost faqat `ChargePayment`
+   ni o'qiydi). Bemorda esa bir vaqtning o'zida to'lanmagan qator ham,
+   o'sha xizmat uchun reja ham turardi: qarz ikki marta ko'rinardi.
+
+   Migratsiya 0033 eski rejalarga qator yaratib bog'lab qo'ydi. */
+
 app.get('/api/installments', authenticateToken, async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
@@ -3885,164 +3900,237 @@ app.get('/api/installments', authenticateToken, async (req, res) => {
         const where: any = {};
         if (clinicId) where.clinicId = clinicId as string;
         if (patientId) where.patientId = patientId as string;
-        
+
         const plans = await prisma.installmentPlan.findMany({
             where,
-            include: { items: true, patient: true, doctor: true },
-            orderBy: { createdAt: 'desc' }
+            include: {
+                items: { orderBy: { expectedDate: 'asc' } },
+                patient: true,
+                doctor: true,
+                /* Qatorlar ham qaytadi: interfeys «qancha qoldi» ni
+                   rejaning `totalPaid` idan emas, QATORDAN ko'rsatadi —
+                   bemor kassada to'g'ridan-to'g'ri to'lagan bo'lishi
+                   mumkin va u holda reja o'z-o'zidan yopiladi. */
+                charges: {
+                    where: { status: { not: 'Cancelled' } },
+                    select: { id: true, name: true, total: true, paidAmount: true, status: true },
+                },
+            },
+            orderBy: { createdAt: 'desc' },
         });
-        res.json(plans);
+
+        res.json(plans.map((p: any) => {
+            const due = som(p.charges.reduce(
+                (acc: number, c: any) => acc + Math.max(0, (c.total || 0) - (c.paidAmount || 0)), 0));
+            return { ...p, due, collected: som(p.totalAmount - due) };
+        }));
     } catch (error) {
         console.error('Fetch installments error:', error);
         res.status(500).json({ error: 'Failed to fetch installments' });
     }
 });
 
+/**
+ * Reja tuzish. Kirish — BEMORNING TO'LANMAGAN QATORLARI, summa emas:
+ * bo'lib to'lash mavjud qarzni bo'ladi, yangi qarz o'ylab topmaydi.
+ */
 app.post('/api/installments', authenticateToken, async (req, res) => {
     try {
-        const { patientId, doctorId, service, totalAmount, totalPaid, startDate, endDate, status, items } = req.body;
-
         const clinicId = getScopedClinicId(req);
-        if (!clinicId) {
-            return res.status(400).json({ error: 'clinicId is required' });
-        }
-        // Kiruvchi havolalar ham tekshiriladi: reja begona bemor yoki begona
-        // shifokorga ulanib qolmasligi kerak (6-qadamda shu sinf xatosi topilgan).
+        if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
+
+        const { patientId, chargeIds, months, startDate } = req.body || {};
         if (!patientId) return res.status(400).json({ error: 'Bemor majburiy' });
         if (!(await assertPatientOwnership(req, res, patientId))) return;
-        if (doctorId) {
-            const doc = await prisma.doctor.findUnique({ where: { id: doctorId } });
-            if (!doc || doc.clinicId !== clinicId) {
-                return res.status(400).json({ error: 'Shifokor topilmadi yoki boshqa klinikaga tegishli' });
-            }
+        if (!Array.isArray(chargeIds) || chargeIds.length === 0) {
+            return res.status(400).json({ error: 'Kamida bitta to\'lanmagan qator tanlanishi kerak' });
         }
-        if (!Array.isArray(items)) return res.status(400).json({ error: "items massiv bo'lishi kerak" });
+        const monthCount = Math.floor(Number(months));
+        if (!(monthCount > 0 && monthCount <= 60)) {
+            return res.status(400).json({ error: 'Oylar soni 1 dan 60 gacha bo\'lishi kerak' });
+        }
+        const start = String(startDate || tashkentDateStr());
 
-        const plan = await prisma.installmentPlan.create({
-            data: {
-                patientId, clinicId, doctorId, service, totalAmount, totalPaid, startDate, endDate, status,
-                items: {
-                    create: items.map((item: any) => ({
-                        expectedDate: item.expectedDate,
-                        amount: item.amount,
-                        status: item.status || 'Pending'
-                    }))
-                }
+        const charges = await prisma.visitCharge.findMany({
+            where: {
+                id: { in: chargeIds.map(String) },
+                clinicId, patientId: String(patientId),
+                status: 'Unpaid',
             },
-            include: { items: true, patient: true, doctor: true }
         });
-        
+        if (charges.length === 0) {
+            return res.status(400).json({ error: 'To\'lanmagan qator topilmadi' });
+        }
+        /* Bitta qator IKKI rejada bo'lolmaydi — aks holda bir qarz ikki
+           jadval bo'yicha to'lanardi va ikkinchisi hech qachon
+           yopilmasdi. */
+        const busy = charges.filter((c: any) => c.installmentPlanId);
+        if (busy.length > 0) {
+            return res.status(409).json({
+                error: `Bu qatorlar allaqachon boshqa rejada: ${busy.map((c: any) => c.name).join(', ')}`,
+            });
+        }
+
+        const total = som(charges.reduce(
+            (acc: number, c: any) => acc + Math.max(0, c.total - (c.paidAmount || 0)), 0));
+        if (!(total > 0)) return res.status(400).json({ error: 'Qarz qolmagan' });
+
+        /* Oylik ulush: oxirgi oy qolgan tiyinlarni oladi, shunda
+           jadval yig'indisi AYNAN qarzga teng bo'ladi. */
+        const per = som(total / monthCount);
+        const items: { expectedDate: string; amount: number; status: string }[] = [];
+        const startDt = new Date(start);
+        for (let i = 0; i < monthCount; i++) {
+            const d = new Date(startDt);
+            d.setMonth(startDt.getMonth() + i + 1);
+            items.push({
+                expectedDate: d.toISOString().split('T')[0],
+                amount: i === monthCount - 1 ? som(total - per * (monthCount - 1)) : per,
+                status: 'Pending',
+            });
+        }
+
+        // Shifokor — qatorlar bittasiniki bo'lsa. Aralash bo'lsa NULL:
+        // yolg'on biriktirishdan ko'ra bo'shligi ma'qul.
+        const docIds = Array.from(new Set(charges.map((c: any) => c.doctorId).filter(Boolean)));
+        const doctorId = docIds.length === 1 ? String(docIds[0]) : null;
+
+        const plan = await prisma.$transaction(async (tx: any) => {
+            const created = await tx.installmentPlan.create({
+                data: {
+                    patientId: String(patientId), clinicId, doctorId,
+                    // Xizmat nomi — SNIMOK: qatorlar keyin o'zgarsa ham
+                    // rejaning sarlavhasi o'sha paytdagidek qoladi.
+                    service: charges.map((c: any) => c.name).join(', ').slice(0, 200),
+                    totalAmount: total, totalPaid: 0,
+                    startDate: start, endDate: items[items.length - 1].expectedDate,
+                    status: 'Active',
+                    items: { create: items },
+                },
+                include: { items: true, patient: true, doctor: true },
+            });
+            await tx.visitCharge.updateMany({
+                where: { id: { in: charges.map((c: any) => c.id) } },
+                data: { installmentPlanId: created.id },
+            });
+            return created;
+        }, { timeout: 15000, maxWait: 10000 });
+
         res.json(plan);
-    } catch (error) {
-        console.error('Create installment error:', error);
-        res.status(500).json({ error: 'Failed to create installment' });
+    } catch (error: any) {
+        console.error('Create installment error:', error?.message || error);
+        res.status(500).json({ error: 'Rejani yaratib bo\'lmadi' });
     }
 });
 
+/**
+ * Jadvaldagi navbatdagi to'lov. Pul rejaning QATORLARIGA tushadi —
+ * kassadagi oddiy to'lov bilan aynan bir xil yo'ldan (`applyChargePayment`),
+ * ya'ni chek, `ChargePayment` va shifokor ulushi hammasi joyida.
+ */
 app.post('/api/installments/:id/pay', authenticateToken, async (req, res) => {
     try {
+        const clinicId = getScopedClinicId(req);
         const itemId = req.params.id;
-        const { date, paymentMethod } = req.body;
-        
-        const item = await prisma.installmentItem.findUnique({ where: { id: itemId }, include: { plan: { include: { patient: true, doctor: true } } } });
-        if (!item) return res.status(404).json({ error: 'Installment item not found' });
-        // Egalik: bo'lib to'lash rejasi klinikasi tekshiriladi
-        if (item.plan?.clinicId !== (req as any).user?.clinicId) {
+        const { paymentMethod, receivedById, receivedByName } = req.body || {};
+
+        const item = await prisma.installmentItem.findUnique({
+            where: { id: itemId },
+            include: { plan: { include: { charges: true } } },
+        });
+        if (!item) return res.status(404).json({ error: 'Jadval qatori topilmadi' });
+        if (item.plan?.clinicId !== clinicId) {
             return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         }
-        if (item.status === 'Paid') return res.status(400).json({ error: 'Already paid' });
+        if (item.status === 'Paid') return res.status(400).json({ error: 'Bu oy allaqachon to\'langan' });
 
-        /* AVANSDAN TO'LASH (FIX-PLAN 7.7-C).
-
-           Topilgan xato: bu endpoint chekni `type: paymentMethod` bilan
-           yozardi, ya'ni kassir «avansdan» tanlasa chek `type: 'Balance'`
-           bo'lardi — LEKIN bemor balansi kamaymasdi. Keyin balanslarni qayta
-           hisoblash o'sha chekni ko'rib balansni kamaytirardi, ya'ni ikki
-           endpoint bir xil ma'lumotni qarama-qarshi talqin qilardi.
-
-           Endi avansdan to'lash haqiqatan balansdan yechadi. Tekshiruv
-           to'lovdan OLDIN: yetmagan avansni yozib qo'yib, keyin minusga
-           tushirish — eng yomon variant (billing.ts dagi qaror bilan bir xil). */
-        const method = String(paymentMethod || 'Cash');
-        const fromBalance = method === 'Balance';
-        if (fromBalance) {
-            const have = item.plan.patient?.balance || 0;
-            if (item.amount > have + 0.001) {
-                return res.status(400).json({
-                    error: `Avans yetarli emas: hisobda ${Math.round(have)}, kerak ${Math.round(item.amount)}`,
-                });
-            }
+        const unpaid = (item.plan.charges || []).filter((c: any) => c.status === 'Unpaid');
+        if (unpaid.length === 0) {
+            /* Qatorlar kassada to'g'ridan-to'g'ri to'langan — rejani
+               yopamiz. Ilgari bunday holatda reja abadiy «faol» bo'lib
+               qolardi va bemordan ikkinchi marta pul so'ralardi. */
+            await prisma.installmentPlan.update({
+                where: { id: item.planId }, data: { status: 'Completed' },
+            });
+            return res.status(400).json({
+                error: 'Qarz allaqachon to\'langan — reja yopildi.',
+                code: 'ALREADY_PAID',
+            });
         }
 
-        /* Beshta yozuv — bitta tranzaksiyada. Ilgari ular alohida edi va
-           o'rtada uzilish "qism to'landi" holatini qoldirardi: reja summasi
-           oshgan, chek esa yozilmagan. */
-        const { updatedItem, transaction } = await prisma.$transaction(async (tx: any) => {
-            const updatedItem = await tx.installmentItem.update({
-                where: { id: itemId },
-                data: { status: 'Paid', paidDate: date },
+        const dueLeft = som(unpaid.reduce(
+            (acc: number, c: any) => acc + Math.max(0, c.total - (c.paidAmount || 0)), 0));
+        // Oxirgi oyda qarz jadvaldagidan kam bo'lishi mumkin (qisman
+        // to'lov kassada bo'lgan) — ortiqcha olmaymiz.
+        const amount = Math.min(som(item.amount), dueLeft);
+
+        const outcome = await prisma.$transaction(async (tx: any) => {
+            const paid = await applyChargePayment(tx, clinicId as string, {
+                chargeIds: unpaid.map((c: any) => c.id),
+                amount,
+                method: String(paymentMethod || 'Cash'),
+                receivedById: receivedById || null,
+                receivedByName: receivedByName || null,
+                doctorId: item.plan.doctorId || null,
             });
 
-            await tx.installmentPlan.update({
-                where: { id: item.planId },
-                data: { totalPaid: { increment: item.amount } },
-            });
-
-            const remainingItems = await tx.installmentItem.count({
-                where: { planId: item.planId, status: 'Pending' },
-            });
-            if (remainingItems === 0) {
-                await tx.installmentPlan.update({
-                    where: { id: item.planId },
-                    data: { status: 'Completed' },
-                });
-            }
-
-            const transaction = await tx.transaction.create({
-                data: {
-                    patientId: item.plan.patientId,
-                    patientName: `${item.plan.patient.lastName} ${item.plan.patient.firstName}`,
-                    clinicId: item.plan.clinicId,
-                    doctorId: item.plan.doctorId,
-                    doctorName: item.plan.doctor ? `${item.plan.doctor.lastName} ${item.plan.doctor.firstName}` : '',
-                    amount: item.amount,
-                    date: date,
-                    service: `Bo'lib to'lash (${item.plan.service})`,
-                    type: method,
-                    status: 'Paid',
-                },
-            });
-
+            const lastTx = paid.payload.transactions[paid.payload.transactions.length - 1];
             await tx.installmentItem.update({
                 where: { id: itemId },
-                data: { transactionId: transaction.id },
+                data: { status: 'Paid', paidDate: tashkentDateStr(), transactionId: lastTx?.id || null },
             });
-
-            if (fromBalance && item.plan.patientId) {
-                await tx.patient.update({
-                    where: { id: item.plan.patientId },
-                    data: { balance: { decrement: item.amount } },
+            await tx.installmentPlan.update({
+                where: { id: item.planId },
+                data: { totalPaid: { increment: amount } },
+            });
+            const left = await tx.installmentItem.count({
+                where: { planId: item.planId, status: 'Pending' },
+            });
+            if (left === 0) {
+                await tx.installmentPlan.update({
+                    where: { id: item.planId }, data: { status: 'Completed' },
                 });
             }
+            return paid.payload;
+        }, { timeout: 15000, maxWait: 10000 });
 
-            return { updatedItem, transaction };
-        });
-
-        res.json({ success: true, item: updatedItem, transaction });
-    } catch (error) {
-        console.error('Pay installment error:', error);
-        res.status(500).json({ error: 'Failed to pay installment' });
+        emitEvent(clinicId as string, 'charge.paid', { patientId: item.plan.patientId || null });
+        res.json({ success: true, transaction: outcome.transaction, charges: outcome.charges });
+    } catch (error: any) {
+        if (error?.name === 'HttpError') {
+            return res.status(error.status).json({ error: error.message, ...(error.payload || {}) });
+        }
+        console.error('Pay installment error:', error?.message || error);
+        res.status(500).json({ error: 'To\'lovni o\'tkazib bo\'lmadi' });
     }
 });
 
 app.delete('/api/installments/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'installmentPlan', req.params.id))) return;
-        await prisma.installmentPlan.delete({ where: { id: req.params.id } });
+        const paidCount = await prisma.installmentItem.count({
+            where: { planId: req.params.id, status: 'Paid' },
+        });
+        /* To'langan oyi bor rejani o'chirib bo'lmaydi: uning cheklari va
+           `ChargePayment` qatorlari bazada qoladi, reja esa yo'qoladi —
+           pul qayerdan kelgani tushunarsiz bo'lib qolardi. */
+        if (paidCount > 0) {
+            return res.status(409).json({
+                error: 'Bu rejada to\'langan oylar bor — o\'chirib bo\'lmaydi.',
+            });
+        }
+        await prisma.$transaction(async (tx: any) => {
+            // Qatorlar QOLADI — ular haqiqiy qarz. Faqat rejadan uziladi.
+            await tx.visitCharge.updateMany({
+                where: { installmentPlanId: req.params.id },
+                data: { installmentPlanId: null },
+            });
+            await tx.installmentPlan.delete({ where: { id: req.params.id } });
+        });
         res.json({ success: true });
-    } catch (error) {
-        console.error('Delete installment error:', error);
-        res.status(500).json({ error: 'Failed to delete installment plan' });
+    } catch (error: any) {
+        console.error('Delete installment error:', error?.message || error);
+        res.status(500).json({ error: 'Rejani o\'chirib bo\'lmadi' });
     }
 });
 
