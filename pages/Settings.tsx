@@ -2071,7 +2071,11 @@ export const Settings: React.FC<SettingsProps> = ({
                                        {cloudFolders.length > 0 ? (
                                           <div className="flex flex-wrap gap-2 mt-3">
                                              {cloudFolders.map(f => {
-                                                const target = `${f.path}\XClinic\zaxira`;
+                                                /* Teskari chiziq IKKI marta yozilishi shart:
+                                                   `\X` va `\z` JavaScript da yaroqsiz qochish
+                                                   ketma-ketligi va chiziq JIMGINA tushib qoladi —
+                                                   yo'l «DriveXCliniczaxira» bo'lib chiqardi. */
+                                                const target = `${f.path}\\XClinic\\zaxira`;
                                                 const active = (cfgDraft.extraDir || '') === target;
                                                 return (
                                                    <Button key={f.path} size="sm"

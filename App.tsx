@@ -63,6 +63,17 @@ import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { Language } from './i18n/translations';
 
 
+/* Namoyishdagi rollar. Shifokorning `doctorId` si demo ma'lumotidagi
+   shifokor bilan mos bo'lishi SHART: navbat aynan shu bo'yicha
+   filtrlanadi va mos kelmasa ekran bo'sh chiqadi. */
+const DEMO_ROLE_PROFILES: Record<string, { label: string; name: string; doctorId?: string }> = {
+  [UserRole.CLINIC_ADMIN]: { label: 'Ega', name: 'Demo Admin' },
+  [UserRole.DOCTOR]: { label: 'Shifokor', name: 'Dr. Kamola Ahmedova', doctorId: 'demo-doctor-1' },
+  [UserRole.RECEPTIONIST]: { label: 'Registrator', name: 'Registrator' },
+  [UserRole.LAB_TECHNICIAN]: { label: 'Laborant', name: 'Laborant' },
+  [UserRole.NURSE]: { label: 'Hamshira', name: 'Hamshira' },
+};
+
 // Helper: get page label key from path
 const getPageLabelKey = (pathname: string): any => {
   if (pathname === '/' || pathname === '/dashboard') return 'today.title';
@@ -1481,6 +1492,36 @@ const sinceDate = (n: number) =>
                   </button>
                 ))}
               </div>
+
+              {/* ── NAMOYISHDA ROLNI ALMASHTIRISH ────────────────────────
+                  Namoyish nusxasi HAR DOIM ega sifatida kirardi va boshqa
+                  rol ko'rinishini ko'rsatishning yo'li yo'q edi: shifokor
+                  nima ko'radi, registrator nima ko'radi — hech biri. Aynan
+                  shu klinikada tushuntirishning yarmi edi.
+
+                  Faqat namoyish nusxasida. Klinikaga tarqatiladigan
+                  bundle'da bu tugma umuman yo'q. */}
+              {IS_DEMO_BUILD && (
+                <select
+                  aria-label="Demo: rol"
+                  value={userRole}
+                  onChange={(e) => {
+                    const r = e.target.value as UserRole;
+                    const who = DEMO_ROLE_PROFILES[r];
+                    auth.setSession({
+                      role: r, name: who.name, clinicId: 'demo-clinic-1',
+                      username: 'demo', token: 'demo-token', isDemo: true,
+                      ...(who.doctorId ? { doctorId: who.doctorId } : {}),
+                    } as any);
+                    handleLogin(r, who.name, 'demo-clinic-1', who.doctorId);
+                  }}
+                  className="px-2 py-1.5 text-xs font-semibold rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300"
+                >
+                  {Object.entries(DEMO_ROLE_PROFILES).map(([role, who]) => (
+                    <option key={role} value={role}>{who.label}</option>
+                  ))}
+                </select>
+              )}
 
               {/* User Profile Info */}
               <div className="flex items-center gap-3 pl-4 border-l border-gray-200 dark:border-gray-700 ml-2">

@@ -246,6 +246,48 @@ test.describe('Demo: bemor kartasida tashxis', () => {
     });
 });
 
+/* ── 2c. ROLNI ALMASHTIRISH VA XIZMAT KO'RSATISH ──────────────────────────
+
+   Namoyish nusxasi HAR DOIM ega sifatida kirardi: shifokor yoki
+   registrator nima ko'rishini ko'rsatib bo'lmasdi. Zaxira nusxa
+   tugmalari esa «Demo rejimida bu ma'lumot mavjud emas» xatosini
+   berardi — ro'yxat soxta, tugma xato. */
+
+test.describe("Demo: rol va xizmat ko'rsatish", () => {
+    test("rolni almashtirganda menyu o'zgaradi", async ({ page }) => {
+        await go(page, '/today');
+
+        const roleSelect = page.locator('select[aria-label="Demo: rol"]');
+        await expect(roleSelect).toBeVisible();
+
+        // Ega rejimida Moliya bor
+        await expect(page.getByRole('link', { name: 'Moliya' })).toBeVisible();
+
+        // Shifokorga o'tamiz — Moliya yo'qoladi
+        await roleSelect.selectOption('DOCTOR');
+        await page.waitForTimeout(2500);
+        await expect(page.getByRole('link', { name: 'Moliya' })).toHaveCount(0);
+        await expect(page.getByRole('link', { name: 'Bugun' })).toBeVisible();
+
+        // Laborantga — faqat Laboratoriya va Bemorlar
+        await roleSelect.selectOption('LAB_TECHNICIAN');
+        await page.waitForTimeout(2500);
+        await expect(page.getByRole('link', { name: 'Laboratoriya' })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Kalendar' })).toHaveCount(0);
+    });
+
+    test('zaxira nusxa tugmalari xato bermaydi', async ({ page }) => {
+        await go(page, '/settings');
+        await page.getByRole('button', { name: /Xizmat ko/ }).click();
+        await page.waitForTimeout(2500);
+
+        await page.getByRole('button', { name: /Hozir nusxa olish/ }).click();
+        await page.waitForTimeout(2000);
+        await expect(page.getByText(/Demo rejimida bu ma'lumot mavjud emas/)).toHaveCount(0);
+        await noDemoError(page);
+    });
+});
+
 /* ── 3. YANGILASHDAN KEYIN SAQLANADIMI ─────────────────────────────────── */
 
 test.describe('Demo: o\'zgarish sahifa yangilangandan keyin ham turadi', () => {

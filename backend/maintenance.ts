@@ -655,7 +655,7 @@ export function findCloudFolders(): { path: string; label: string }[] {
     /* «Google Drive for desktop» virtual disk ulaydi (odatda G:).
        Undagi `My Drive` — sinxronlanadigan papka. */
     for (const letter of ['G', 'H', 'I', 'J']) {
-        add(`${letter}:\My Drive`, `Google Drive (${letter}:)`);
+        add(`${letter}:\\My Drive`, `Google Drive (${letter}:)`);
     }
     return found;
 }

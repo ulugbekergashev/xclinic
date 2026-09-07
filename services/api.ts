@@ -1326,10 +1326,15 @@ export const api = {
     auth: {
         /* Majburiy parol almashtirish. Standart parol bilan kirilganda server
            CHEKLANGAN token beradi va u faqat shu endpointga yaraydi. */
-        changePassword: (currentPassword: string, newPassword: string) =>
-            fetchJson<{ success: true; token: string }>('/auth/change-password', {
+        changePassword: (currentPassword: string, newPassword: string) => {
+            /* Namoyishda parol o'zgarmaydi — baza yo'q. Lekin xato ham
+               bermaydi: majburiy almashtirish oynasi ochilib qolsa,
+               undan CHIQIB bo'lmasdi. */
+            if (isDemoMode()) return demoDone({ success: true as const, token: 'demo-token' });
+            return fetchJson<{ success: true; token: string }>('/auth/change-password', {
                 method: 'POST', body: JSON.stringify({ currentPassword, newPassword }),
-            }),
+            });
+        },
         login: async (username: string, password: string) => {
             const response = await fetch(`${API_URL}/auth/login`, {
                 method: 'POST',
@@ -2895,21 +2900,45 @@ export const api = {
             hasUploads: boolean; note: string | null;
         }[]>('/admin/backups'),
 
-        createBackup: (note?: string) => fetchJson<{
-            file: string; sizeBytes: number; createdAt: string;
-            uploadsCount: number; durationMs: number;
-        }>('/admin/backup', { method: 'POST', body: JSON.stringify({ note: note || '' }) }),
+        /* NAMOYISHDA HAM «ISHLAYDI». Uchala chaqiruv demo qo'riqchisisiz
+           edi va «Demo rejimida bu ma'lumot mavjud emas» xatosini berardi:
+           nusxalar ro'yxati soxta, tugmalar esa xato — namoyish qilib
+           turgan odam uchun eng yomon ziddiyat. */
+        createBackup: (note?: string) => {
+            if (isDemoMode()) {
+                const now = new Date();
+                const st = (n: number) => String(n).padStart(2, '0');
+                const file = `xclinic-${now.getFullYear()}${st(now.getMonth() + 1)}${st(now.getDate())}`
+                    + `-${st(now.getHours())}${st(now.getMinutes())}${st(now.getSeconds())}.db`;
+                const row = {
+                    file, sizeBytes: 842_000, createdAt: now.toISOString(),
+                    uploadsCount: 12, durationMs: 340, note: note || null, hasUploads: true,
+                };
+                DEMO_BACKUPS.unshift(row as any);
+                return demoDone(row);
+            }
+            return fetchJson<{
+                file: string; sizeBytes: number; createdAt: string;
+                uploadsCount: number; durationMs: number;
+            }>('/admin/backup', { method: 'POST', body: JSON.stringify({ note: note || '' }) });
+        },
 
         // Tiklash DARHOL bajarilmaydi: server bazani ochiq tutadi. Bu chaqiruv
         // faqat belgi qo'yadi, almashtirish dastur qayta ishga tushganda bo'ladi.
-        stageRestore: (file: string) => fetchJson<{ staged: true; restartRequired: true; file: string }>(
-            '/admin/backup/restore', { method: 'POST', body: JSON.stringify({ file, confirm: true }) }),
+        stageRestore: (file: string) => {
+            if (isDemoMode()) return demoDone({ staged: true as const, restartRequired: true as const, file });
+            return fetchJson<{ staged: true; restartRequired: true; file: string }>(
+                '/admin/backup/restore', { method: 'POST', body: JSON.stringify({ file, confirm: true }) });
+        },
 
         restoreState: () => isDemoMode() ? demoRead<any>({ staged: false }) : fetchJson<{
             staged: boolean; file?: string; stagedAt?: string; byName?: string | null;
         }>('/admin/backup/restore'),
 
-        cancelRestore: () => fetchJson<{ success: true }>('/admin/backup/restore', { method: 'DELETE' }),
+        cancelRestore: () => {
+            if (isDemoMode()) return demoDone({ success: true as const });
+            return fetchJson<{ success: true }>('/admin/backup/restore', { method: 'DELETE' });
+        },
 
         /* Avtomatik nusxa holati. `stale` — 3 kundan beri nusxa yo'q degani;
            interfeys shu bayroq bo'yicha qizil ogohlantirish ko'rsatadi. */
@@ -2941,7 +2970,7 @@ export const api = {
         cloudFolders: () => {
             if (isDemoMode()) {
                 return demoRead<{ folders: { path: string; label: string }[] }>({
-                    folders: [{ path: 'C:\Users\Klinika\Google Drive', label: 'Google Drive' }],
+                    folders: [{ path: 'C:\\Users\\Klinika\\Google Drive', label: 'Google Drive' }],
                 });
             }
             return fetchJson<{ folders: { path: string; label: string }[] }>('/admin/backup/cloud-folders');
@@ -2966,12 +2995,21 @@ export const api = {
         }>('/admin/integrity'),
 
         /** Balanslarni qayta hisoblash. `confirm` bermasa — faqat farqni ko'rsatadi. */
-        recalculateBalances: (confirm = false) => fetchJson<{
-            dryRun: boolean; patientsChecked: number;
-            mismatches?: number; patientsFixed?: number;
-            sample?: { patientName: string; current: number; correct: number; diff: number }[];
-            message?: string;
-        }>('/admin/recalculate-balances', { method: 'POST', body: JSON.stringify({ confirm }) }),
+        recalculateBalances: (confirm = false) => {
+            if (isDemoMode()) {
+                return demoDone({
+                    dryRun: !confirm, patientsChecked: DEMO_PATIENTS.length,
+                    mismatches: 0, patientsFixed: 0, sample: [],
+                    message: "Farq topilmadi — hamma balans to'g'ri.",
+                });
+            }
+            return fetchJson<{
+                dryRun: boolean; patientsChecked: number;
+                mismatches?: number; patientsFixed?: number;
+                sample?: { patientName: string; current: number; correct: number; diff: number }[];
+                message?: string;
+            }>('/admin/recalculate-balances', { method: 'POST', body: JSON.stringify({ confirm }) });
+        },
     },
 
     reports: {
