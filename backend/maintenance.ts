@@ -605,6 +605,61 @@ export function startBackupScheduler(deps: {
     console.log('✅ Avtomatik zaxira jadvali yoqildi');
 }
 
+/* ─── GOOGLE DRIVE PAPKASI ────────────────────────────────────────────────
+
+   NIMA UCHUN API EMAS, PAPKA.
+
+   dentalocal da «Google Drive backup» degan narsa BOR deb hisoblanardi,
+   aslida esa u shunchaki papka tanlash edi: matn «Google Drive yoki
+   istalgan papkani tanlang» deb turardi va sinxronizatsiyani Google ning
+   o'z dasturi qilardi. Integratsiya, OAuth, kalit — hech biri yo'q edi.
+
+   Biz ham shu yo'ldan boramiz, lekin ATAYLAB va aytib:
+
+     · dasturga Google kaliti kerak emas — u paketda yotib, o'g'irlanishi
+       mumkin bo'lgan sir bo'lardi;
+     · internet uzilganda nusxa OLINAVERADI, keyin Drive o'zi ko'taradi;
+     · klinika Drive o'rniga OneDrive yoki oddiy flesh ishlatsa ham
+       bir xil ishlaydi.
+
+   Bu yerda faqat papkani TOPAMIZ, shunda foydalanuvchi qo'lda yo'l
+   yozib o'tirmaydi. Topilmasa — oddiy papka tanlash qoladi. */
+
+const DRIVE_CANDIDATES = (home: string): { path: string; label: string }[] => [
+    { path: path.join(home, 'Google Drive'), label: 'Google Drive' },
+    { path: path.join(home, 'My Drive'), label: 'Google Drive (My Drive)' },
+    { path: path.join(home, 'GoogleDrive'), label: 'Google Drive' },
+    { path: path.join(home, 'OneDrive'), label: 'OneDrive' },
+    { path: path.join(home, 'Dropbox'), label: 'Dropbox' },
+    { path: path.join(home, 'YandexDisk'), label: 'Yandex Disk' },
+];
+
+/** Kompyuterdagi bulut papkalarini topadi. Diskning o'zi ham qaraladi. */
+export function findCloudFolders(): { path: string; label: string }[] {
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    const found: { path: string; label: string }[] = [];
+    const seen = new Set<string>();
+
+    const add = (p: string, label: string) => {
+        try {
+            if (!p || seen.has(p.toLowerCase())) return;
+            if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+                seen.add(p.toLowerCase());
+                found.push({ path: p, label });
+            }
+        } catch { /* ruxsat yo'q — o'tkazamiz */ }
+    };
+
+    if (home) for (const c of DRIVE_CANDIDATES(home)) add(c.path, c.label);
+
+    /* «Google Drive for desktop» virtual disk ulaydi (odatda G:).
+       Undagi `My Drive` — sinxronlanadigan papka. */
+    for (const letter of ['G', 'H', 'I', 'J']) {
+        add(`${letter}:\My Drive`, `Google Drive (${letter}:)`);
+    }
+    return found;
+}
+
 export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, requireRole, migrationsDir,
             userDataPath, dbPath, uploadsDir } = deps;
@@ -714,6 +769,16 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
         } catch (e: any) {
             console.error('[GET /api/admin/backup/status]', e?.message || e);
             res.status(500).json({ error: 'Zaxira holatini o\'qib bo\'lmadi' });
+        }
+    });
+
+    /** GET /api/admin/backup/cloud-folders — kompyuterdagi bulut papkalari */
+    app.get('/api/admin/backup/cloud-folders', auth, requireRole('CLINIC_ADMIN'), (_req: any, res: any) => {
+        try {
+            res.json({ folders: findCloudFolders() });
+        } catch (e: any) {
+            console.error('[GET /api/admin/backup/cloud-folders]', e?.message || e);
+            res.json({ folders: [] });
         }
     });
 

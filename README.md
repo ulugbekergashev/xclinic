@@ -147,6 +147,22 @@ kompyuter yoki telefon hech narsa o'rnatmasdan `http://<server-ip>:3001` ga kiri
 ishlay oladi. CORS xususiy tarmoqlarga (192.168.x.x, 10.x.x.x, 172.16–31.x.x)
 ochiq, tashqi domenlarga yopiq.
 
+**Manzil qayerda ko'rinadi.** Sozlamalar → **Tarmoq va kirish**: havola, «nusxa
+olish» tugmasi va QR kod (telefon uchun). Shu yerda internet orqali kirish
+tumbleri ham — u standart parol turganda ATAYLAB yoqilmaydi.
+
+### Zaxira nusxa bulutga
+
+Sozlamalar → Xizmat ko'rsatish → «Nusxa bulut papkasiga». Dastur kompyuterdagi
+Google Drive, OneDrive, Dropbox va Yandex Disk papkalarini o'zi topadi; bittasi
+tanlansa nusxa o'sha yerga ham ko'chadi va bulut dasturi uni o'zi ko'taradi.
+
+Google API ataylab ISHLATILMAYDI: kalit dastur paketida yotishi kerak bo'lardi
+va uni ochib olish mumkin; internet uzilganda nusxa umuman olinmay qolardi;
+Drive o'rniga OneDrive ishlatadigan klinikaga esa yaramasdi. Papka usuli
+hammasida bir xil ishlaydi. `dentalocal` da ham aynan shu yo'l — farqi shundaki,
+u yerda papkani foydalanuvchi o'zi qidirardi.
+
 ---
 
 ## denta7 dan nima olindi, nima olinmadi

@@ -6,11 +6,12 @@ import { toast } from '../services/toast';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
 import { UserRole, Doctor, Receptionist, Clinic, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
-import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History, ArrowRight } from 'lucide-react';
+import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History, ArrowRight, Wifi, Cloud, Check } from 'lucide-react';
 import { api, API_URL, getAuthToken, isDemoMode } from '../services/api';
 import type { AiSettingsResponse } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
+import { NetworkAccessTab } from '../components/NetworkAccessTab';
 import { ACCESS_MODULES, SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
 
 /** Bo'lim rangi — navbat tablosi va kalendar shu ranglarni ishlatadi */
@@ -82,7 +83,10 @@ export const Settings: React.FC<SettingsProps> = ({
 }) => {
    const { t } = useLanguage();
    const navigate = useNavigate();
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'maintenance' | 'departments' | 'ai'>('services');
+   /* Kompyuterdagi bulut papkalari — «Xizmat ko'rsatish» bo'limi ochilganda
+      bir marta so'raladi. Topilmasa oddiy papka tanlash qoladi. */
+   const [cloudFolders, setCloudFolders] = useState<{ path: string; label: string }[]>([]);
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'maintenance' | 'network' | 'departments' | 'ai'>('services');
 
    // Ruxsatlar (access control) formasi — klinika sozlamalaridan boshlang'ich qiymat
    const [accessForm, setAccessForm] = useState<AccessControl>(() => parseAccessControl(currentClinic));
@@ -826,6 +830,15 @@ export const Settings: React.FC<SettingsProps> = ({
       if (activeTab === 'maintenance' && userRole === UserRole.CLINIC_ADMIN) loadMaintenance();
    }, [activeTab, userRole, loadMaintenance]);
 
+   /* Bulut papkalari alohida so'raladi: ular topilmasa ham qolgan
+      sozlamalar ishlashi kerak. */
+   React.useEffect(() => {
+      if (activeTab !== 'maintenance' || userRole !== UserRole.CLINIC_ADMIN) return;
+      api.maintenance.cloudFolders()
+         .then(r => setCloudFolders(r.folders || []))
+         .catch(() => setCloudFolders([]));
+   }, [activeTab, userRole]);
+
    const handleCreateBackup = async () => {
       setBackupBusy(true);
       setMaintError('');
@@ -1239,6 +1252,9 @@ export const Settings: React.FC<SettingsProps> = ({
                      { id: 'labTechnicians', name: t('settings.tabs.labTechnicians'), icon: FlaskConical },
                      { id: 'nurses', name: 'Hamshiralar', icon: HeartPulse },
                   ] : []),
+                  /* Tarmoq havolasi — registrator ham ko'radi: telefonini
+                     ulash yoki ikkinchi kompyuterni sozlash uning ishi. */
+                  { id: 'network', name: t('net.tab'), icon: Wifi },
                   { id: 'messaging', name: "SMS va Telegram", icon: MessageSquare },
                   { id: 'dmed', name: "DMED (IT-MED)", icon: Activity },
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: 'Ruxsatlar', icon: Shield }] : []),
@@ -1641,6 +1657,11 @@ export const Settings: React.FC<SettingsProps> = ({
 
                {/* Services Tab */}
                {/* Access Control Tab — faqat klinika admini */}
+               {/* Tarmoq va kirish — havola, QR va internet tumbleri */}
+               {activeTab === 'network' && (
+                  <NetworkAccessTab canManageRemote={userRole === UserRole.CLINIC_ADMIN} />
+               )}
+
                {/* Bo'limlar — ko'p profilli klinikaning asosiy o'qi */}
                {activeTab === 'departments' && userRole === UserRole.CLINIC_ADMIN && (
                   <div className="space-y-6">
@@ -2028,9 +2049,48 @@ export const Settings: React.FC<SettingsProps> = ({
                                        Izohli nusxalar hech qachon o'chirilmaydi.
                                     </p>
 
+                                    {/* ── NUSXA BULUT PAPKASIGA ────────────────────────
+
+                                        Nima uchun Google API emas. Kalit dastur paketida
+                                        yotishi kerak bo'lardi va uni ochib olish mumkin;
+                                        internet uzilganda nusxa umuman olinmay qolardi;
+                                        Drive o'rniga OneDrive ishlatadigan klinikaga esa
+                                        yaramasdi. Papka esa hammasida bir xil ishlaydi:
+                                        biz faylni qo'yamiz, bulut dasturi o'zi ko'taradi.
+
+                                        dentalocal da ham aynan shu yo'l — u yerda faqat
+                                        matn «Google Drive papkasini tanlang» deb turardi
+                                        va papkani foydalanuvchi o'zi qidirardi. Bu yerda
+                                        dastur uni topib beradi. */}
+                                    <div className="p-3 rounded-lg border border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-900/20">
+                                       <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                                          <Cloud className="w-4 h-4 text-primary-600 dark:text-primary-300" />
+                                          {t('backup.cloudTitle')}
+                                       </p>
+                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('backup.cloudDesc')}</p>
+                                       {cloudFolders.length > 0 ? (
+                                          <div className="flex flex-wrap gap-2 mt-3">
+                                             {cloudFolders.map(f => {
+                                                const target = `${f.path}\XClinic\zaxira`;
+                                                const active = (cfgDraft.extraDir || '') === target;
+                                                return (
+                                                   <Button key={f.path} size="sm"
+                                                      variant={active ? 'primary' : 'secondary'}
+                                                      onClick={() => setCfgDraft((c: any) => ({ ...c, extraDir: target }))}>
+                                                      {active ? <Check className="w-4 h-4 mr-2" /> : <Cloud className="w-4 h-4 mr-2" />}
+                                                      {f.label}
+                                                   </Button>
+                                                );
+                                             })}
+                                          </div>
+                                       ) : (
+                                          <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">{t('backup.cloudNotFound')}</p>
+                                       )}
+                                    </div>
+
                                     <div>
                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
-                                          Ikkinchi manzil (ixtiyoriy) — flesh yoki tarmoq diski
+                                          Ikkinchi manzil (ixtiyoriy) — flesh, tarmoq diski yoki bulut papkasi
                                        </label>
                                        <div className="flex flex-col sm:flex-row gap-2">
                                           <Input

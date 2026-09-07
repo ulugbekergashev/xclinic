@@ -1037,8 +1037,14 @@ const DEMO_REFERRALS: any[] = [];
    Shuning uchun raqamlar o'ylab topilmaydi: ekran «nusxa hali olinmagan»
    holatini ko'rsatadi. Bu yolg'on emas va interfeys qanday ishlashini
    baribir ko'rsatadi. */
+/* Namoyishda ham o'zgartirib ko'rsatish mumkin bo'lsin — jadval
+   sozlamasi saqlanadigan qiymat. */
+let DEMO_BACKUP_CONFIG: any = {
+    enabled: true, hour: 23, minute: 30, keepDaily: 14, keepMonthly: 12, extraDir: null,
+};
+
 const DEMO_BACKUP_STATUS = {
-    config: { enabled: true, intervalHours: 24, keepCount: 7, includeUploads: true } as any,
+    get config() { return DEMO_BACKUP_CONFIG; },
     lastBackup: DEMO_BACKUPS[0],
     ageDays: 0,
     stale: false,
@@ -2843,6 +2849,37 @@ export const api = {
     // ─── Moliyaviy hisobot ──────────────────────────────────────────────────
     // ─── Ekspluatatsiya: sxema versiyasi va zaxira nusxa ────────────────────
     // Faqat klinika administratori uchun — backend ham shu rolni talab qiladi.
+    /* ─── TARMOQ VA MASOFAVIY KIRISH ────────────────────────────────────
+       Server bu ma'lumotni ALLAQACHON beradi (`/api/network-info`,
+       `server.ts` dagi izohda «Sozlamalar oynasi shu manzilni
+       ko'rsatadi» deb yozilgan ham), lekin uni chaqiradigan bironta
+       ekran yo'q edi: manzil faqat Electron oynasining sarlavhasida
+       ko'rinardi. */
+    network: {
+        info: () => {
+            if (isDemoMode()) {
+                return demoRead<{ ip: string; port: number; url: string; tunnelUrl: string | null }>({
+                    ip: '192.168.1.42', port: 3001, url: 'http://192.168.1.42:3001', tunnelUrl: null,
+                });
+            }
+            return fetchJson<{ ip: string; port: number; url: string; tunnelUrl: string | null }>('/network-info');
+        },
+        getRemoteAccess: () => {
+            if (isDemoMode()) {
+                return demoRead<{ enabled: boolean; defaultPasswordInUse: boolean; note: string }>({
+                    enabled: false, defaultPasswordInUse: false,
+                    note: "O'zgarish dastur qayta ishga tushganda kuchga kiradi.",
+                });
+            }
+            return fetchJson<{ enabled: boolean; defaultPasswordInUse: boolean; note: string }>('/admin/remote-access');
+        },
+        setRemoteAccess: (enabled: boolean) => {
+            if (isDemoMode()) return demoDone({ enabled, restartRequired: true });
+            return fetchJson<{ enabled: boolean; restartRequired: boolean }>(
+                '/admin/remote-access', { method: 'PUT', body: JSON.stringify({ enabled }) });
+        },
+    },
+
     maintenance: {
         schemaStatus: () => isDemoMode() ? demoRead<any>({ current: null, baseline: true, appliedCount: 0, applied: [], pending: [], pendingCount: 0 }) : fetchJson<{
             current: string | null;
@@ -2889,8 +2926,26 @@ export const api = {
             };
         }>('/admin/backup/status'),
 
-        saveBackupConfig: (cfg: Partial<BackupConfig>) => fetchJson<BackupConfig>(
-            '/admin/backup/config', { method: 'PUT', body: JSON.stringify(cfg) }),
+        /* NAMOYISHDA ISHLAYDI. Ilgari bu chaqiruv demo qo'riqchisisiz edi
+           va «Demo rejimida bu ma'lumot mavjud emas» xatosini berardi —
+           ya'ni namoyishda zaxira jadvalini ko'rsatib bo'lmasdi. */
+        saveBackupConfig: (cfg: Partial<BackupConfig>) => {
+            if (isDemoMode()) {
+                DEMO_BACKUP_CONFIG = { ...DEMO_BACKUP_CONFIG, ...cfg } as BackupConfig;
+                return demoDone(DEMO_BACKUP_CONFIG);
+            }
+            return fetchJson<BackupConfig>('/admin/backup/config', { method: 'PUT', body: JSON.stringify(cfg) });
+        },
+
+        /** Kompyuterdagi bulut papkalari — Google Drive, OneDrive va h.k. */
+        cloudFolders: () => {
+            if (isDemoMode()) {
+                return demoRead<{ folders: { path: string; label: string }[] }>({
+                    folders: [{ path: 'C:\Users\Klinika\Google Drive', label: 'Google Drive' }],
+                });
+            }
+            return fetchJson<{ folders: { path: string; label: string }[] }>('/admin/backup/cloud-folders');
+        },
 
         /* Yaxlitlik tekshiruvi. `severity`: 'error' — shubhasiz buzilish,
            'warn' — qarash kerak, 'info' — ma'lumot uchun (buzilish emas). */
