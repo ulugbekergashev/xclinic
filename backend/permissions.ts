@@ -207,6 +207,13 @@ export const RULES: Rule[] = [
     // Palata to'ri — sozlama.
     { method: 'POST', path: '/api/wards', roles: owner() },
     { method: 'PUT', path: '/api/wards/:id', roles: owner() },
+    /* Koyka qo'shish va ta'mirga chiqarish — registrator ham qiladi:
+       u palata to'rini kunlik boshqaradi. O'chirish faqat egada. */
+    { method: 'POST', path: '/api/wards/:id/beds', roles: owner(R) },
+    { method: 'PUT', path: '/api/beds/:id', roles: owner(R) },
+    { method: 'DELETE', path: '/api/beds/:id', roles: owner() },
+    /* Tayinlovni to'xtatish — shifokorning qarori, hamshiraning emas. */
+    { method: 'PUT', path: '/api/medication-orders/:id', roles: owner(D) },
 
     /* ─── Ombor ────────────────────────────────────────────────────────────
        Kirim/chiqim/ko'chirish — registrator yoki hamshira bajaradi.

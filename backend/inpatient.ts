@@ -656,6 +656,117 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         }));
     });
 
+    /* ─── KOYKA QO'SHISH VA BLOKLASH ────────────────────────────────────────
+
+       Koykalar FAQAT palata yaratilganda, `bedCount` orqali paydo bo'lardi.
+       Ya'ni palataga bitta koyka qo'shish, uni qayta nomlash yoki
+       ta'mirga chiqarish IMKONI YO'Q edi: buning uchun palatani o'chirib,
+       qaytadan yaratish kerak bo'lardi — birga yotgan bemorlar tarixi
+       bilan. `Bed.status` dagi `Blocked` qiymati sxemada bor edi, lekin
+       unga o'tadigan yo'l yo'q edi. */
+
+    route('post', '/api/wards/:id/beds', async (req, res, clinicId) => {
+        if (!hasRole(req, 'RECEPTIONIST', 'CLINIC_ADMIN')) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const ward = await prisma.ward.findUnique({
+            where: { id: req.params.id }, include: { beds: true },
+        });
+        if (!ward || ward.clinicId !== clinicId) return res.status(404).json({ error: 'Palata topilmadi' });
+
+        const label = String(req.body?.label || '').trim();
+        /* Nom berilmasa — keyingi raqam. Mavjud nomlardan eng kattasini
+           olamiz, sonini emas: koyka o'chirilgan bo'lsa nom takrorlanardi. */
+        const nextNum = ward.beds.reduce((max: number, b: any) => {
+            const m = /^(\d+)/.exec(b.label || '');
+            return m ? Math.max(max, Number(m[1])) : max;
+        }, 0) + 1;
+        const finalLabel = label || `${nextNum}-koyka`;
+
+        if (ward.beds.some((b: any) => b.label === finalLabel)) {
+            return res.status(409).json({ error: 'Bu nomdagi koyka allaqachon bor' });
+        }
+        const bed = await prisma.bed.create({ data: { wardId: ward.id, label: finalLabel } });
+        res.json(bed);
+    });
+
+    route('put', '/api/beds/:id', async (req, res, clinicId) => {
+        if (!hasRole(req, 'RECEPTIONIST', 'CLINIC_ADMIN')) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const bed = await prisma.bed.findUnique({ where: { id: req.params.id }, include: { ward: true } });
+        if (!bed || bed.ward?.clinicId !== clinicId) return res.status(404).json({ error: 'Koyka topilmadi' });
+
+        const { label, status } = req.body || {};
+        /* Bemor yotgan koykani na qayta nomlash, na bloklash mumkin —
+           u ish stolida boshqa bemorga bo'sh bo'lib ko'rinib qolardi. */
+        if (bed.status === 'Occupied' && (status !== undefined || label !== undefined)) {
+            return res.status(409).json({ error: 'Koyka band — bemor yotibdi' });
+        }
+        if (status !== undefined && !['Free', 'Blocked', 'Cleaning'].includes(String(status))) {
+            return res.status(400).json({ error: "Holat noto'g'ri" });
+        }
+        if (label !== undefined && String(label).trim() === '') {
+            return res.status(400).json({ error: "Koyka nomi bo'sh bo'lmasin" });
+        }
+        res.json(await prisma.bed.update({
+            where: { id: bed.id },
+            data: {
+                ...(label !== undefined && { label: String(label).trim() }),
+                ...(status !== undefined && { status: String(status) }),
+            },
+        }));
+    });
+
+    route('delete', '/api/beds/:id', async (req, res, clinicId) => {
+        if (!hasRole(req, 'CLINIC_ADMIN')) return res.status(403).json({ error: "Ruxsat yo'q" });
+        const bed = await prisma.bed.findUnique({
+            where: { id: req.params.id },
+            include: { ward: true, admissions: { select: { id: true } } },
+        });
+        if (!bed || bed.ward?.clinicId !== clinicId) return res.status(404).json({ error: 'Koyka topilmadi' });
+        /* Tarixi bor koyka O'CHIRILMAYDI: yotqizish yozuvlari unga
+           bog'langan va ular yo'qolib ketardi. Bunday koyka BLOKLANADI. */
+        if (bed.admissions.length) {
+            return res.status(409).json({
+                error: "Bu koykada yotqizish tarixi bor — o'chirib bo'lmaydi, bloklang",
+                code: 'BED_HAS_HISTORY',
+            });
+        }
+        await prisma.bed.delete({ where: { id: bed.id } });
+        res.json({ success: true });
+    });
+
+    /* ─── DORI TAYINLASHNI TO'XTATISH ───────────────────────────────────────
+
+       `MedicationOrder.status` va `endDate` sxemada bor edi, lekin
+       yaratilgandan keyin ularga HECH QACHON tegilmasdi: bekor qilingan
+       dori ham kunlik varaqda chiqib turaverardi va hamshira uni berishda
+       davom etardi. */
+    route('put', '/api/medication-orders/:id', async (req, res, clinicId) => {
+        if (!hasRole(req, 'DOCTOR', 'CLINIC_ADMIN')) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const order = await prisma.medicationOrder.findUnique({
+            where: { id: req.params.id }, include: { admission: true },
+        });
+        if (!order || order.admission?.clinicId !== clinicId) {
+            return res.status(404).json({ error: 'Tayinlov topilmadi' });
+        }
+        const { status, endDate } = req.body || {};
+        if (status !== undefined && !['Active', 'Stopped'].includes(String(status))) {
+            return res.status(400).json({ error: "Holat noto'g'ri" });
+        }
+        res.json(await prisma.medicationOrder.update({
+            where: { id: order.id },
+            data: {
+                ...(status !== undefined && { status: String(status) }),
+                ...(endDate !== undefined && { endDate: endDate ? new Date(endDate) : null }),
+                ...(status === 'Stopped' && endDate === undefined && { endDate: new Date() }),
+            },
+        }));
+    });
+
     // ═══ HAMSHIRALAR ═════════════════════════════════════════════════════════
 
     /* Nima uchun bu yerda, server.ts da emas: hamshira — statsionar xodimi,

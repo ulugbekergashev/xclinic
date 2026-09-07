@@ -3724,6 +3724,51 @@ export const api = {
             }
             return fetchJson<any>(`/beds/${bedId}/ready`, { method: 'POST' });
         },
+
+        /* ─── KOYKA VA TAYINLOVNI BOSHQARISH ────────────────────────────
+           Koykalar ilgari FAQAT palata yaratilganda, `bedCount` orqali
+           paydo bo'lardi: bitta koyka qo'shish yoki uni ta'mirga
+           chiqarish uchun palatani o'chirib qayta yaratish kerak edi. */
+        addBed: (wardId: string, label?: string) => {
+            if (isDemoMode()) {
+                const n = DEMO_BEDS.filter(b => b.wardId === wardId).length + 1;
+                const bed = { id: demoId('demo-bed'), wardId, label: label || `${n}-koyka`, status: 'Free' } as any;
+                DEMO_BEDS.push(bed);
+                return demoDone(bed);
+            }
+            return fetchJson<any>(`/wards/${wardId}/beds`, {
+                method: 'POST', body: JSON.stringify({ label: label || undefined }),
+            });
+        },
+        updateBed: (bedId: string, data: { label?: string; status?: string }) => {
+            if (isDemoMode()) {
+                const b = DEMO_BEDS.find(x => x.id === bedId);
+                if (!b) return Promise.reject(new Error('Koyka topilmadi'));
+                if (b.status === 'Occupied') return Promise.reject(new Error('Koyka band — bemor yotibdi'));
+                Object.assign(b, data);
+                return demoDone(b);
+            }
+            return fetchJson<any>(`/beds/${bedId}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
+        deleteBed: (bedId: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_BEDS.findIndex(x => x.id === bedId);
+                if (i !== -1) DEMO_BEDS.splice(i, 1);
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/beds/${bedId}`, { method: 'DELETE' });
+        },
+        /** Tayinlovni to'xtatish — kunlik varaqdan chiqadi */
+        stopMedication: (orderId: string) => {
+            if (isDemoMode()) {
+                const o = DEMO_MED_ORDERS.find(x => x.id === orderId);
+                if (o) { o.status = 'Stopped'; o.endDate = demoNow(); }
+                return demoDone(o || { id: orderId, status: 'Stopped' });
+            }
+            return fetchJson<any>(`/medication-orders/${orderId}`, {
+                method: 'PUT', body: JSON.stringify({ status: 'Stopped' }),
+            });
+        },
     },
 
     // ─── Retsept ────────────────────────────────────────────────────────────

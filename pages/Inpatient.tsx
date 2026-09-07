@@ -3,8 +3,9 @@ import { formatDate, formatFullName, formatNumber } from '../utils/format';
 import {
     BedDouble, Plus, X, AlertCircle, LogOut, Stethoscope,
     Pill, CalendarDays, Search, Check, Printer, ArrowRightLeft,
-    Sparkles, Activity, Wallet, Loader2, ClipboardList,
+    Sparkles, Activity, Wallet, Loader2, ClipboardList, Edit2, Ban,
 } from 'lucide-react';
+import { confirmAction } from '../services/confirm';
 import { Ward, Bed, Admission, Patient, Department, InventoryItem } from '../types';
 import { api } from '../services/api';
 import { EmptyState } from '../components/Common';
@@ -404,8 +405,14 @@ export const Inpatient: React.FC<Props> = ({
         finally { setSaving(false); }
     };
 
-    const addMedication = async () => {
-        if (!detail || !medForm.name.trim()) { setError('Dori nomini kiriting'); return; }
+    /* Dori tayinlash oynasi — bemor ro'yxatidan tanlanadi. Ilgari bu
+       faqat ochilgan bemor kartasi ichidan mumkin edi. */
+    const [assignOpen, setAssignOpen] = useState(false);
+    const [assignAdmId, setAssignAdmId] = useState('');
+
+    const addMedication = async (admissionId?: string) => {
+        const target = admissionId || detail?.id;
+        if (!target || !medForm.name.trim()) { setError('Dori nomini kiriting'); return; }
         setSaving(true); setError('');
         try {
             /* Nomni OMBORDAGI pozitsiya bilan bog'laymiz. Busiz `medicationId`
@@ -416,16 +423,84 @@ export const Inpatient: React.FC<Props> = ({
             const typed = medForm.name.trim().toLowerCase();
             const item = inventoryItems.find(i => (i.name || '').trim().toLowerCase() === typed);
 
-            await api.admissions.addMedication(detail.id, {
+            await api.admissions.addMedication(target, {
                 name: medForm.name.trim(), dosage: medForm.dosage || null,
                 route: medForm.route || null, frequency: medForm.frequency || null,
                 medicationId: item?.id || null,
             });
             const fresh = await api.admissions.getAll();
             setAdmissions(fresh);
-            setDetail(fresh.find(x => x.id === detail.id) || null);
+            if (detail) setDetail(fresh.find(x => x.id === detail.id) || null);
             setMedForm({ name: '', dosage: '', route: '', frequency: '' });
+            if (admissionId) { setAssignOpen(false); setAssignAdmId(''); await loadSchedule(); }
         } catch (e: any) { setError(e.message || 'Saqlanmadi'); }
+        finally { setSaving(false); }
+    };
+
+    /* ─── KOYKA VA PALATANI BOSHQARISH ────────────────────────────────────
+       Ilgari palatani yaratgandan keyin unga TEGIB bo'lmasdi: na nomini,
+       na narxini o'zgartirish, na koyka qo'shish. `api.wards.update` kodda
+       bor edi, lekin uni chaqiradigan tugma yo'q edi. */
+    const [editWard, setEditWard] = useState<Ward | null>(null);
+
+    const openWardEdit = (w: Ward) => {
+        setWardForm({
+            name: w.name, kind: w.kind || 'Umumiy', floor: w.floor || '',
+            dailyRate: String(w.dailyRate || ''), bedCount: '0',
+            departmentId: w.departmentId || '',
+        });
+        setEditWard(w);
+    };
+
+    const saveWardEdit = async () => {
+        if (!editWard) return;
+        if (!wardForm.name.trim()) { setError(t('inp.wardNameRequired')); return; }
+        setSaving(true); setError('');
+        try {
+            await api.wards.update(editWard.id, {
+                name: wardForm.name.trim(), kind: wardForm.kind, floor: wardForm.floor || null,
+                dailyRate: Number(wardForm.dailyRate) || 0,
+                departmentId: wardForm.departmentId || null,
+            } as any);
+            await reload();
+            setEditWard(null);
+        } catch (e: any) { setError(e?.message || t('inp.notSaved')); }
+        finally { setSaving(false); }
+    };
+
+    const addBed = async (wardId: string) => {
+        setSaving(true); setError('');
+        try { await api.inpatient.addBed(wardId); await reload(); }
+        catch (e: any) { setError(e?.message || t('inp.notSaved')); }
+        finally { setSaving(false); }
+    };
+
+    /* Ta'mirdagi koyka. Bemor yotgan koykani bloklab bo'lmaydi — server
+       ham buni 409 bilan rad etadi. */
+    const toggleBedBlock = async (bed: Bed) => {
+        setSaving(true); setError('');
+        try {
+            await api.inpatient.updateBed(bed.id, { status: bed.status === 'Blocked' ? 'Free' : 'Blocked' });
+            await reload();
+        } catch (e: any) { setError(e?.message || t('inp.notSaved')); }
+        finally { setSaving(false); }
+    };
+
+    /* Tayinlovni to'xtatish. `MedicationOrder.status` sxemada bor edi,
+       lekin yaratilgandan keyin unga hech qachon tegilmasdi: bekor
+       qilingan dori kunlik varaqda chiqib turaverardi. */
+    const stopMedication = async (orderId: string) => {
+        if (!await confirmAction({
+            title: t('inp.stopMedTitle'), body: t('inp.stopMedBody'), confirmLabel: t('inp.stopMed'),
+        })) return;
+        setSaving(true); setError('');
+        try {
+            await api.inpatient.stopMedication(orderId);
+            const fresh = await api.admissions.getAll();
+            setAdmissions(fresh);
+            if (detail) setDetail(fresh.find((x: any) => x.id === detail.id) || null);
+            await loadSchedule();
+        } catch (e: any) { setError(e?.message || t('inp.notSaved')); }
         finally { setSaving(false); }
     };
 
@@ -517,6 +592,24 @@ export const Inpatient: React.FC<Props> = ({
                                     <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">{w.kind}</span>
                                     {w.floor && <span className="text-xs text-gray-400">{w.floor}-qavat</span>}
                                     <span className="ml-auto text-sm text-gray-500 dark:text-gray-400 tabular-nums">{fmt(w.dailyRate)} so'm/kun</span>
+                                    {/* PALATANI TAHRIRLASH VA KOYKA QO'SHISH.
+
+                                        Ilgari koykalar FAQAT palata yaratilganda,
+                                        `bedCount` orqali paydo bo'lardi: bitta koyka
+                                        qo'shish yoki narxni o'zgartirish uchun palatani
+                                        o'chirib qayta yaratish kerak edi. */}
+                                    {canManageStay && (
+                                        <span className="flex items-center gap-1">
+                                            <button onClick={() => openWardEdit(w)} title={t('inp.editWard')} aria-label={t('inp.editWard')}
+                                                className="p-1.5 text-gray-400 hover:text-primary-600 rounded-lg">
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => addBed(w.id)} disabled={saving} title={t('inp.addBed')}
+                                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 disabled:opacity-50">
+                                                <Plus className="w-3.5 h-3.5" /> {t('inp.bed')}
+                                            </button>
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                                     {(w.beds || []).map(b => {
@@ -538,6 +631,15 @@ export const Inpatient: React.FC<Props> = ({
                                                     <button onClick={() => markBedReady(b.id)} disabled={saving}
                                                         className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-white/70 dark:bg-gray-900/40 text-amber-800 dark:text-amber-200 hover:bg-white disabled:opacity-50">
                                                         <Sparkles className="w-3 h-3" /> Koyka tayyor
+                                                    </button>
+                                                )}
+                                                {/* Ta'mirdagi yoki vaqtincha yopilgan koyka.
+                                                    `Blocked` qiymati sxemada bor edi, lekin
+                                                    unga o'tadigan yo'l YO'Q edi. */}
+                                                {canManageStay && (b.status === 'Free' || b.status === 'Blocked') && (
+                                                    <button onClick={() => toggleBedBlock(b)} disabled={saving}
+                                                        className="mt-2 w-full px-2 py-1 rounded text-[11px] font-medium bg-white/60 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 hover:bg-white disabled:opacity-50">
+                                                        {b.status === 'Blocked' ? t('inp.unblockBed') : t('inp.blockBed')}
                                                     </button>
                                                 )}
                                             </div>
@@ -673,6 +775,19 @@ export const Inpatient: React.FC<Props> = ({
                             {schedLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
                             Yangilash
                         </button>
+                        {/* DORI SHU YERDAN TAYINLANADI.
+
+                            Ilgari bu vkladkada faqat «Berildi» tugmasi bor edi,
+                            bo'sh holat esa foydalanuvchini BOSHQA ekranga
+                            yuborardi: «Yotganlar bo'limida bemorni ochib, Dori
+                            tayinlash». Ya'ni hamshira ko'rgan ro'yxatga dori
+                            qo'shib bo'lmasdi. */}
+                        {canGiveMeds && (
+                            <button onClick={() => setAssignOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+                                <Plus className="w-4 h-4" /> {t('inp.assignMed')}
+                            </button>
+                        )}
                     </div>
 
                     {schedLoading && !schedule ? (
@@ -686,7 +801,7 @@ export const Inpatient: React.FC<Props> = ({
                             <Pill className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
                             <p className="text-gray-500 dark:text-gray-400">{t('inp.noMedsToday')}</p>
                             <p className="text-xs text-gray-400 mt-1">
-                                Dori bemor kartasidan tayinlanadi: "Yotganlar" bo'limida bemorni ochib, "Dori tayinlash".
+                                {t('inp.assignMed')} — yuqoridagi tugma.
                             </p>
                         </div>
                     ) : (
@@ -1053,7 +1168,7 @@ export const Inpatient: React.FC<Props> = ({
                                         <input value={medForm.route} onChange={e => setMedForm(f => ({ ...f, route: e.target.value }))} className={inputCls} placeholder={t('inp.routePh')} />
                                         <input value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))} className={inputCls} placeholder="Kuniga 2 mahal" />
                                     </div>
-                                    <button onClick={addMedication} disabled={saving} className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50">
+                                    <button onClick={() => addMedication()} disabled={saving} className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50">
                                         Tayinlash
                                     </button>
                                 </div>
@@ -1063,14 +1178,28 @@ export const Inpatient: React.FC<Props> = ({
                                 <div>
                                     <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{t('inp.medOrders')}</h4>
                                     <div className="space-y-1.5">
-                                        {detail.medicationOrders.map(m => (
-                                            <div key={m.id} className="text-sm flex flex-wrap gap-x-2 text-gray-700 dark:text-gray-300">
-                                                <span className="font-medium">{m.name}</span>
-                                                {m.dosage && <span className="text-gray-500">{m.dosage}</span>}
-                                                {m.route && <span className="text-gray-500">· {m.route}</span>}
-                                                {m.frequency && <span className="text-gray-500">· {m.frequency}</span>}
-                                            </div>
-                                        ))}
+                                        {detail.medicationOrders.map(m => {
+                                            const stopped = (m as any).status === 'Stopped';
+                                            return (
+                                                <div key={m.id} className={`text-sm flex flex-wrap items-center gap-x-2 ${stopped
+                                                    ? 'text-gray-400 dark:text-gray-500 line-through'
+                                                    : 'text-gray-700 dark:text-gray-300'}`}>
+                                                    <span className="font-medium">{m.name}</span>
+                                                    {m.dosage && <span className="text-gray-500">{m.dosage}</span>}
+                                                    {m.route && <span className="text-gray-500">· {m.route}</span>}
+                                                    {m.frequency && <span className="text-gray-500">· {m.frequency}</span>}
+                                                    {stopped
+                                                        ? <span className="text-[10px] uppercase font-bold text-gray-400 no-underline">{t('inp.stopped')}</span>
+                                                        : canManageStay && (
+                                                            <button onClick={() => stopMedication(m.id)} disabled={saving}
+                                                                title={t('inp.stopMed')} aria-label={t('inp.stopMed')}
+                                                                className="ml-auto p-1 text-gray-300 hover:text-red-500 rounded disabled:opacity-50">
+                                                                <Ban className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -1107,13 +1236,65 @@ export const Inpatient: React.FC<Props> = ({
                 </div>
             )}
 
-            {/* ── Yangi palata ──────────────────────────────────────────────── */}
-            {showWard && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowWard(false)}>
+            {/* ── Dori tayinlash (kunlik varaq vkladkasidan) ───────────────── */}
+            {assignOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setAssignOpen(false)}>
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.newWard')}</h3>
-                            <button onClick={() => setShowWard(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.assignMed')}</h3>
+                            <button onClick={() => setAssignOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-5 space-y-3">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.pickPatient')}</label>
+                                <select value={assignAdmId} onChange={e => setAssignAdmId(e.target.value)} className={inputCls}>
+                                    <option value="">{t('inp.pickPatient')}</option>
+                                    {admissions.filter(a => a.status === 'Active').map(a => (
+                                        <option key={a.id} value={a.id}>
+                                            {a.patientName}{a.bed?.label ? ` — ${a.bed.label}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {admissions.filter(a => a.status === 'Active').length === 0 && (
+                                    <p className="mt-1 text-xs text-gray-400">{t('inp.noAdmitted')}</p>
+                                )}
+                            </div>
+                            {/* Dori nomi ombordan taklif qilinadi — bog'lanmagan
+                                nom bilan chiqim ham, hisob qatori ham yozilmaydi. */}
+                            {/* O'z `datalist` i: kartadagisi bu oyna ochilganda
+                                DOM da bo'lmaydi va taklif ro'yxati bo'sh chiqardi. */}
+                            <input value={medForm.name} list="xc-meds-assign"
+                                onChange={e => setMedForm(f => ({ ...f, name: e.target.value }))}
+                                className={inputCls} placeholder={t('visit.medName')} />
+                            <datalist id="xc-meds-assign">
+                                {inventoryItems.filter(i => (i as any).isMedication).map(i => <option key={i.id} value={i.name} />)}
+                            </datalist>
+                            <div className="grid grid-cols-3 gap-2">
+                                <input value={medForm.dosage} onChange={e => setMedForm(f => ({ ...f, dosage: e.target.value }))} className={inputCls} placeholder={t('inp.dosePh')} />
+                                <input value={medForm.route} onChange={e => setMedForm(f => ({ ...f, route: e.target.value }))} className={inputCls} placeholder={t('inp.routePh')} />
+                                <input value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))} className={inputCls} placeholder="Kuniga 2 mahal" />
+                            </div>
+                        </div>
+                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
+                            <button onClick={() => setAssignOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
+                            <button onClick={() => addMedication(assignAdmId)} disabled={saving || !assignAdmId || !medForm.name.trim()}
+                                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+                                {saving ? '...' : t('inp.assignMed')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Palata: yangi yoki tahrirlash ──────────────────────────────
+                Bitta oyna ikkalasi uchun: maydonlar bir xil, farq faqat
+                koyka soni (yangi palatada) va tugma nomida. */}
+            {(showWard || editWard) && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setShowWard(false); setEditWard(null); }}>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{editWard ? t('inp.editWard') : t('inp.newWard')}</h3>
+                            <button onClick={() => { setShowWard(false); setEditWard(null); }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-5 grid grid-cols-2 gap-4">
                             <div className="col-span-2">
@@ -1134,15 +1315,20 @@ export const Inpatient: React.FC<Props> = ({
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.dailyPrice')}</label>
                                 <input type="number" value={wardForm.dailyRate} onChange={e => setWardForm(f => ({ ...f, dailyRate: e.target.value }))} className={inputCls} placeholder="150000" />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.bedCount')}</label>
-                                <input type="number" value={wardForm.bedCount} onChange={e => setWardForm(f => ({ ...f, bedCount: e.target.value }))} className={inputCls} />
-                            </div>
+                            {/* Koyka soni FAQAT yaratishda: mavjud palatada
+                                koykalar alohida qo'shiladi, aks holda bu maydon
+                                borlarini o'chirib yuborgandek ko'rinardi. */}
+                            {!editWard && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.bedCount')}</label>
+                                    <input type="number" value={wardForm.bedCount} onChange={e => setWardForm(f => ({ ...f, bedCount: e.target.value }))} className={inputCls} />
+                                </div>
+                            )}
                         </div>
                         <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setShowWard(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
-                            <button onClick={createWard} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {saving ? '...' : 'Yaratish'}
+                            <button onClick={() => { setShowWard(false); setEditWard(null); }} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
+                            <button onClick={editWard ? saveWardEdit : createWard} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+                                {saving ? '...' : (editWard ? t('inp.saveWard') : 'Yaratish')}
                             </button>
                         </div>
                     </div>
