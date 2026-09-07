@@ -312,7 +312,19 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
             }
             return total;
         };
-        const fraction = monthlyFraction(from, to);
+        /* Davr oxiri BUGUNGI kundan narida bo'lolmaydi.
+
+           Aks holda kelasi oyga vedomost ochilsa, fix maoshli shifokorga
+           hali ishlanmagan oy uchun pul hisoblanardi — brauzer sinovi
+           aynan shuni topdi (kelasi yil tanlanganda ekran «bu davrda
+           ulush yo'q» deyish o'rniga ikkita fix qator ko'rsatib turardi).
+
+           To'lov ulushi bunday muammoga duch kelmaydi: to'lov o'tmishda
+           bo'ladi, kelajakdagi davrda esa yo'q. */
+        const todayStr = tashkentDateStr();
+        const fraction = to < todayStr ? monthlyFraction(from, to)
+            : from > todayStr ? 0
+                : monthlyFraction(from, todayStr);
 
         for (const doc of doctors) {
             const type = String(doc.salaryType || 'none');
@@ -320,6 +332,15 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
             if (!(type === 'fixed' || type === 'fixed_kpi') || fixedMonthly <= 0) continue;
             // Ishdan ketgan xodimga oylik hisoblanmaydi
             if (doc.status && doc.status !== 'Active') continue;
+
+            const part = round(fixedMonthly * fraction);
+
+            /* Davr hali boshlanmagan bo'lsa (`fraction` nol) va bu
+               shifokorda to'lov ham bo'lmasa — QATOR OCHILMAYDI. Aks
+               holda kelasi oyning vedomosti nol summali qatorlar bilan
+               to'lib ketardi va ekran «bu davrda ulush yo'q» deyish
+               o'rniga bo'sh ro'yxat ko'rsatardi. */
+            if (part <= 0 && !byDoctor.has(doc.id)) continue;
 
             if (!byDoctor.has(doc.id)) {
                 byDoctor.set(doc.id, {
@@ -336,14 +357,15 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
                «nega hisobda yo'q» degan savolga javob kerak. */
             if (type === 'fixed') g.accrued = 0;
 
-            const part = round(fixedMonthly * fraction);
-            g.fixed = round((g.fixed || 0) + part);
-            g.accrued = round(g.accrued + part);
-            g.items.push({
-                name: `Fix maosh (${Math.round(fraction * 100)}% davr)`,
-                paid: 0, percent: 0, basis: 'fix maosh', share: part,
-                source: 'Salary', kind: 'Fixed',
-            });
+            if (part > 0) {
+                g.fixed = round((g.fixed || 0) + part);
+                g.accrued = round(g.accrued + part);
+                g.items.push({
+                    name: `Fix maosh (${Math.round(fraction * 100)}% davr)`,
+                    paid: 0, percent: 0, basis: 'fix maosh', share: part,
+                    source: 'Salary', kind: 'Fixed',
+                });
+            }
         }
 
         /* Manfiyga tushib ketgan ulush nolga tenglashtiriladi: qaytarish

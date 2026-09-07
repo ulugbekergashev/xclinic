@@ -16,6 +16,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
 import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
+import { PatientFormModal } from '../components/PatientFormModal';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
 const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
@@ -53,6 +54,11 @@ interface Props {
        «Bemorlar» va bemor kartasiga uzatilardi — Registraturada esa
        raqam ochiq turardi, ya'ni cheklov aylanib o'tilardi. */
     showPatientPhone?: boolean;
+    /* Bemor yaratish — App dagi yagona yo'l orqali (`addPatient`).
+       Ilgari bu ekran `api.patients.create` ga TO'G'RIDAN-TO'G'RI yozardi
+       va shu sababli takror tekshiruvi (409) ham, maydon tekshiruvi ham
+       ishlamasdi: «abcdefg!!!» telefon sifatida o'tib ketardi. */
+    onCreatePatient: (data: Omit<Patient, 'id' | 'clinicId'>) => Promise<Patient | void>;
     onPatientAdded: (p: Patient) => void;
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
@@ -66,7 +72,8 @@ const today = () => todayISO();
 
 export const Today: React.FC<Props> = ({
     clinicId, patients, doctors, departments, services, currentClinic,
-    userRole, doctorId: myDoctorId, showPatientPhone = true, onPatientAdded, addToast,
+    userRole, doctorId: myDoctorId, showPatientPhone = true,
+    onCreatePatient, onPatientAdded, addToast,
 }) => {
     const showPhone = (v?: string) => showPatientPhone ? formatUzPhone(v || '') : maskPhone(v);
     const navigate = useNavigate();
@@ -88,7 +95,6 @@ export const Today: React.FC<Props> = ({
     const [error, setError] = useState('');
 
     const [showNewPatient, setShowNewPatient] = useState(false);
-    const [np, setNp] = useState({ firstName: '', lastName: '', phone: '', dob: '', gender: 'Male' });
 
     const [todayVisits, setTodayVisits] = useState<Visit[]>([]);
     const [lastTicket, setLastTicket] = useState<Visit | null>(null);
@@ -282,25 +288,6 @@ export const Today: React.FC<Props> = ({
         setServiceId(''); setComplaints(''); setError('');
     };
 
-    const createPatient = async () => {
-        if (!np.firstName.trim() || !np.lastName.trim() || !np.phone.trim()) {
-            setError('Ism, familiya va telefon majburiy');
-            return;
-        }
-        setSaving(true); setError('');
-        try {
-            const created = await api.patients.create({
-                firstName: np.firstName.trim(), lastName: np.lastName.trim(),
-                phone: np.phone.trim(), dob: np.dob || '', gender: np.gender,
-                clinicId, status: 'Active', medicalHistory: '', lastVisit: today(),
-            } as any);
-            onPatientAdded(created);
-            setPatient(created);
-            setShowNewPatient(false);
-            setNp({ firstName: '', lastName: '', phone: '', dob: '', gender: 'Male' });
-        } catch (e: any) { setError(e.message || 'Bemor qo\'shilmadi'); }
-        finally { setSaving(false); }
-    };
 
     /* ─────────────────────────────────────────────────────────────
        BUGUN YOZILGANLAR — Registratura bilan Kalendar orasidagi ko'prik.
@@ -924,51 +911,33 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 )}
             </div>
 
-            {/* Yangi bemor */}
-            {showNewPatient && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowNewPatient(false)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('reception.newPatient')}</h3>
-                            <button onClick={() => setShowNewPatient(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-                        </div>
-                        <div className="p-5 grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.lastName')}</label>
-                                <input value={np.lastName} onChange={e => setNp(f => ({ ...f, lastName: e.target.value }))} className={inputCls} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Ism</label>
-                                <input value={np.firstName} onChange={e => setNp(f => ({ ...f, firstName: e.target.value }))} className={inputCls} />
-                            </div>
-                            <div className="col-span-2">
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.phone')}</label>
-                                <input value={np.phone} onChange={e => setNp(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+998 90 123 45 67" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.dob')}</label>
-                                <input type="date" value={np.dob} onChange={e => setNp(f => ({ ...f, dob: e.target.value }))} className={inputCls} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.gender')}</label>
-                                <select value={np.gender} onChange={e => setNp(f => ({ ...f, gender: e.target.value }))} className={inputCls}>
-                                    <option value="Male">{t('reception.male')}</option>
-                                    <option value="Female">{t('reception.female')}</option>
-                                </select>
-                            </div>
-                            <p className="col-span-2 text-xs text-gray-400 dark:text-gray-500">
-                                Jins va tug'ilgan sana tahlil normalarini to'g'ri tanlash uchun kerak.
-                            </p>
-                        </div>
-                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setShowNewPatient(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('reception.cancel')}</button>
-                            <button onClick={createPatient} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {saving ? '...' : 'Qo\'shish'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Yangi bemor — YAGONA forma (`PatientFormModal`).
+
+                Ilgari bu yerda o'zining qisqa formasi turardi: tekshiruv
+                yo'q, JSHSHIR yo'q, karta raqami yo'q va takror bemor
+                haqidagi savol ham yo'q edi. Registratura kunning eng
+                shoshilinch nuqtasi — aynan shu yerdan bazaga
+                «abcdefg!!!» telefonli va ikkinchi nusxa kartalar
+                tushardi.
+
+                `compact` — avval faqat familiya, ism va telefon
+                ko'rinadi; qolgani tugma bilan ochiladi. */}
+            <PatientFormModal
+                isOpen={showNewPatient}
+                onClose={() => setShowNewPatient(false)}
+                onCreate={onCreatePatient}
+                doctors={doctors}
+                userRole={userRole}
+                doctorId={myDoctorId}
+                compact
+                onSaved={(p) => {
+                    onPatientAdded(p);
+                    /* Takrordan mavjud bemor tanlansa ham shu yerga
+                       tushadi — qabul o'sha bemorga ochiladi. */
+                    setPatient(p);
+                    setShowNewPatient(false);
+                }}
+            />
             {/* ── Takroriy qabul ────────────────────────────────────────────
                 Ilgari server tekshirmasdi: registratura ikki marta bosса,
                 o'sha bemorga o'sha bo'limda ikkinchi navbat raqami va ikkinchi

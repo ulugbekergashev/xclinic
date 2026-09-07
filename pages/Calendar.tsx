@@ -15,6 +15,7 @@ import {
   Search
 } from 'lucide-react';
 import { Appointment, Patient, Doctor, UserRole, Clinic, ServiceCategory, Service } from '../types';
+import { PatientFormModal } from '../components/PatientFormModal';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
@@ -395,19 +396,10 @@ export const Calendar: React.FC<CalendarProps> = ({
     notes: ''
   });
 
-  // Patient Creation State
+  /* Yangi bemor — yagona forma (`PatientFormModal`). Bu yerda o'zining
+     nusxasi bor edi: tekshiruvsiz, JSHSHIRsiz va takror bemor haqidagi
+     savolsiz. */
   const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
-  const [isSubmittingPatient, setIsSubmittingPatient] = useState(false);
-  const [patientFormData, setPatientFormData] = useState({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    dob: '',
-    gender: 'Male',
-    medicalHistory: '',
-    address: '',
-    secondaryPhone: ''
-  });
 
   // Handle Resize for Responsive View
   React.useEffect(() => {
@@ -799,55 +791,6 @@ Baribir yozilsinmi?`
       } else {
         toast.error(`Xatolik: ${error.message || 'Xabar yuborishda xatolik yuz berdi.'}`);
       }
-    }
-  };
-
-  const handlePatientSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!patientFormData.firstName || !patientFormData.lastName) {
-      toast.error("Iltimos, bemor ismi va familiyasini kiriting!");
-      return;
-    }
-
-    setIsSubmittingPatient(true);
-    try {
-      // Find the new patient after creation
-      // Note: onAddPatient doesn't return the patient in App.tsx but api.patients.create does.
-      // However, addPatient in App.tsx updates the state.
-      // We might need to handle selecting it after it's added to the patients list.
-      const currentPatientCount = patients.length;
-
-      const newPatient = await onAddPatient({
-        ...patientFormData,
-        status: 'Active',
-        lastVisit: 'Never',
-        gender: patientFormData.gender as 'Male' | 'Female'
-      });
-
-      setIsAddPatientModalOpen(false);
-
-      if (newPatient && newPatient.id) {
-        setFormData(prev => ({ ...prev, patientId: newPatient.id }));
-      }
-
-      // Reset form
-      setPatientFormData({
-        firstName: '',
-        lastName: '',
-        phone: '',
-        dob: '',
-        gender: 'Male',
-        medicalHistory: '',
-        address: '',
-        secondaryPhone: ''
-      });
-
-      // We'll need to wait for the patients list to update to find the new ID
-      // For now, the user can select from the dropdown which will include the new patient
-    } catch (error) {
-      console.error('Failed to create patient', error);
-    } finally {
-      setIsSubmittingPatient(false);
     }
   };
 
@@ -1610,99 +1553,24 @@ Baribir yozilsinmi?`
       </Modal>
 
       {/* Add Patient Modal */}
-      <Modal isOpen={isAddPatientModalOpen} onClose={() => setIsAddPatientModalOpen(false)} title={t('patients.modal.addTitle')}>
-        <form onSubmit={handlePatientSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label={t('patients.modal.lastName')}
-              value={patientFormData.lastName}
-              onChange={e => setPatientFormData({ ...patientFormData, lastName: e.target.value })}
-              required
-            />
-            <Input
-              label={t('patients.modal.firstName')}
-              value={patientFormData.firstName}
-              onChange={e => setPatientFormData({ ...patientFormData, firstName: e.target.value })}
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label={t('patients.modal.phone')}
-              value={patientFormData.phone}
-              onChange={e => setPatientFormData({ ...patientFormData, phone: e.target.value })}
-              placeholder="+998 XX XXX XX XX"
-              required
-            />
-            <Input
-              label={t('patients.modal.secondaryPhone')}
-              value={patientFormData.secondaryPhone}
-              onChange={e => setPatientFormData({ ...patientFormData, secondaryPhone: e.target.value })}
-              placeholder="+998 XX XXX XX XX"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label={t('patients.modal.dob')}
-              type="date"
-              value={patientFormData.dob}
-              onChange={e => setPatientFormData({ ...patientFormData, dob: e.target.value })}
-              required
-            />
-          </div>
-          <Input
-            label={t('patients.modal.address')}
-            value={patientFormData.address}
-            onChange={e => setPatientFormData({ ...patientFormData, address: e.target.value })}
-            placeholder="Toshkent sh., Chilonzor t..."
-          />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('patients.modal.gender')}</label>
-            <div className="flex gap-4">
-              <label className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
-                <input
-                  type="radio"
-                  name="calendar-gender"
-                  value="Male"
-                  checked={patientFormData.gender === 'Male'}
-                  onChange={e => setPatientFormData({ ...patientFormData, gender: e.target.value })}
-                  className="text-primary-600 focus:ring-primary-500"
-                /> <span>{t('patients.modal.male')}</span>
-              </label>
-              <label className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
-                <input
-                  type="radio"
-                  name="calendar-gender"
-                  value="Female"
-                  checked={patientFormData.gender === 'Female'}
-                  onChange={e => setPatientFormData({ ...patientFormData, gender: e.target.value })}
-                  className="text-primary-600 focus:ring-primary-500"
-                /> <span>{t('patients.modal.female')}</span>
-              </label>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('patients.modal.medicalHistory')}</label>
-            <textarea
-              value={patientFormData.medicalHistory}
-              onChange={e => setPatientFormData({ ...patientFormData, medicalHistory: e.target.value })}
-              className="w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm dark:border-gray-700 dark:text-white h-24 focus:ring-2 focus:ring-primary-500 focus:outline-none"
-              placeholder={t('patients.modal.medicalHistoryPlaceholder')}
-            ></textarea>
-          </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="secondary" onClick={() => setIsAddPatientModalOpen(false)} disabled={isSubmittingPatient}>{t('common.cancel')}</Button>
-            <Button type="submit" disabled={isSubmittingPatient}>
-              {isSubmittingPatient ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t('common.pleaseWait')}
-                </>
-              ) : t('common.save')}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      {/* Yangi bemor — yagona forma. Yaratilgach yozuv formasida
+          O'ZI TANLANADI: ilgari foydalanuvchi ro'yxatdan qaytadan
+          qidirishi kerak edi (eski kodda buni tan olgan izoh ham bor
+          edi: «for now, the user can select from the dropdown»). */}
+      <PatientFormModal
+        isOpen={isAddPatientModalOpen}
+        onClose={() => setIsAddPatientModalOpen(false)}
+        onCreate={onAddPatient}
+        doctors={doctors}
+        userRole={userRole}
+        doctorId={doctorId}
+        compact
+        onSaved={(p) => {
+          setIsAddPatientModalOpen(false);
+          setFormData(prev => ({ ...prev, patientId: p.id }));
+        }}
+      />
+
 
     </div>
   );

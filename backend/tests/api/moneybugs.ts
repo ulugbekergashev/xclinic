@@ -300,10 +300,16 @@ async function main() {
        tahrirlanardi, lekin vedomost ularni O'QIMASDI: fix maoshli
        shifokor faqat foizini ko'rardi, oylikni esa kassir qo'lda
        «Boshqa xarajat» bilan yozardi. */
-    const salaryMonth = new Date();
-    const mFrom = `${salaryMonth.getFullYear()}-${String(salaryMonth.getMonth() + 1).padStart(2, '0')}-01`;
-    const mLast = new Date(salaryMonth.getFullYear(), salaryMonth.getMonth() + 1, 0).getDate();
-    const mTo = `${salaryMonth.getFullYear()}-${String(salaryMonth.getMonth() + 1).padStart(2, '0')}-${String(mLast).padStart(2, '0')}`;
+    /* Davr — O'TGAN oy: u to'liq tugagan, ya'ni fix maosh to'liq
+       hisoblanadi. Joriy oy yaramaydi: hali ishlanmagan kunlar uchun pul
+       hisoblanmaydi (vedomost davr oxirini BUGUNGI kun bilan cheklaydi). */
+    const nowTk = new Date();
+    const prevMonth = new Date(nowTk.getFullYear(), nowTk.getMonth() - 1, 1);
+    const py = prevMonth.getFullYear();
+    const pm = String(prevMonth.getMonth() + 1).padStart(2, '0');
+    const mLast = new Date(py, prevMonth.getMonth() + 1, 0).getDate();
+    const mFrom = `${py}-${pm}-01`;
+    const mTo = `${py}-${pm}-${String(mLast).padStart(2, '0')}`;
 
     const salaryDoc = await api('POST', '/doctors', {
         firstName: 'Fix', lastName: `Maoshov${Date.now() % 100000}`,
@@ -330,6 +336,7 @@ async function main() {
         /* Yarim oy — yarim maosh. Davr kunlari bo'yicha taqsimlanadi. */
         const half = Math.floor(mLast / 2);
         const halfTo = `${mFrom.slice(0, 8)}${String(half).padStart(2, '0')}`;
+        // O'tgan oyning yarmi — u ham to'liq tugagan davr.
         const p2 = await api('GET', `/payroll/preview?from=${mFrom}&to=${halfTo}`);
         const row2 = (p2.data?.lines || []).find((l: any) => l.doctorId === salaryDocId);
         const expectHalf = Math.round(3000000 * (half / mLast));

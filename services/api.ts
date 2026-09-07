@@ -1381,7 +1381,29 @@ export const api = {
         },
         create: (data: Omit<Patient, 'id'>) => {
             if (isDemoMode()) {
+                /* TAKROR BEMOR — demoda ham. Server 409 va topilganlar
+                   ro'yxatini qaytaradi, forma esa TANLOV beradi: mavjud
+                   kartani ochish yoki baribir yangi yaratish. Demoda bu
+                   tekshiruv yo'q edi va namoyishda eng muhim qadam
+                   ko'rinmasdi. Qoida server bilan bir xil: telefonning
+                   oxirgi 9 raqami yoki ism+familiya+tug'ilgan sana. */
+                if (!(data as any).force) {
+                    const digits = String(data.phone || '').replace(/\D/g, '');
+                    const tail = digits.slice(-9);
+                    const matches = DEMO_PATIENTS.filter(p => p.status !== 'Archived' && (
+                        (tail.length === 9 && String(p.phone || '').replace(/\D/g, '').includes(tail))
+                        || (!!data.dob && p.firstName === data.firstName
+                            && p.lastName === data.lastName && p.dob === data.dob)
+                    )).slice(0, 5);
+                    if (matches.length) {
+                        return Promise.reject(Object.assign(
+                            new Error('Bunday bemor allaqachon bor'),
+                            { status: 409, data: { code: 'DUPLICATE_PATIENT', matches } },
+                        ));
+                    }
+                }
                 const newPatient = { ...data, id: `demo-patient-${Date.now()}-${Math.floor(Math.random() * 1000)}` } as Patient;
+                delete (newPatient as any).force;
                 DEMO_PATIENTS.push(newPatient);
                 saveDemoData();
                 return Promise.resolve(newPatient);
@@ -1458,19 +1480,49 @@ export const api = {
                 body: formData,
             });
         },
-        lookupPinfl: (pinfl: string) => {
+        /* JSHSHIR bo'yicha qidiruv — DMED (davlat tizimi).
+
+           Server FHIR javobini QANDAY BO'LSA shundayligicha uzatadi:
+           `{ success, data: { name: [{ family, given: [] }], birthDate,
+           gender: 'male', address: [{ text }] } }`.
+
+           Interfeys esa yassi shaklni kutardi (`firstName`, `dob`...) —
+           ikkala forma ham. Ya'ni tugma bosilardi, so'rov ketardi, javob
+           kelardi va HECH BIR MAYDON to'lmasdi: hamma qiymat `prev` ga
+           tushardi. Xato ham ko'rinmasdi, chunki `success: false` oddiy
+           javob bo'lib qaytardi.
+
+           O'girish SHU YERDA, bitta joyda: forma FHIR ni bilmasligi
+           kerak. */
+        lookupPinfl: async (pinfl: string): Promise<{
+            firstName: string; lastName: string; dob: string;
+            gender: 'Male' | 'Female' | ''; address: string;
+        }> => {
             if (isDemoMode()) {
-                // Mock DMED response for demo testing
-                return Promise.resolve({
+                return demoRead({
                     firstName: 'Eldor',
                     lastName: 'Abduqodirov',
                     dob: '1990-05-15',
-                    gender: 'Male',
-                    pinfl: pinfl,
-                    address: 'Toshkent sh., Yunusobod tumani'
+                    gender: 'Male' as const,
+                    address: 'Toshkent sh., Yunusobod tumani',
                 });
             }
-            return fetchJson<any>(`/patients/lookup/${pinfl}`);
+            const raw = await fetchJson<any>(`/patients/lookup/${pinfl}`);
+            if (raw?.success === false) {
+                throw new Error(raw.error || 'Bemor topilmadi');
+            }
+            const fhir = raw?.data ?? raw;
+            const name = Array.isArray(fhir?.name) ? fhir.name[0] : null;
+            const given = Array.isArray(name?.given) ? name.given.join(' ') : (name?.given || '');
+            const addr = Array.isArray(fhir?.address) ? fhir.address[0] : null;
+            const sex = String(fhir?.gender || '').toLowerCase();
+            return {
+                firstName: given || fhir?.firstName || '',
+                lastName: name?.family || fhir?.lastName || '',
+                dob: fhir?.birthDate || fhir?.dob || '',
+                gender: sex === 'male' ? 'Male' : sex === 'female' ? 'Female' : '',
+                address: addr?.text || fhir?.address || '',
+            };
         },
     },
     appointments: {

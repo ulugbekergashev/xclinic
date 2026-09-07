@@ -14,6 +14,7 @@ import { InstallmentsTab } from '../components/InstallmentsTab';
 import { VisitPanel, VISIT_STATUS_KEY } from '../components/VisitPanel';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import { AdvanceModal } from '../components/AdvanceModal';
+import { PatientFormModal } from '../components/PatientFormModal';
 import { printPrescription } from '../utils/printForms';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription, VisitCharge } from '../types';
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
@@ -109,7 +110,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const defaultDoctorId = myDoctor?.id || '';
 
    // Edit Form State
-   const [editFormData, setEditFormData] = useState<Partial<Patient>>({});
    // Payment Form State
 
    // Chegirmadan keyingi jami summa (asl narx ma'lum bo'lganda)
@@ -470,16 +470,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       return t.patientName === fullName || t.patientName === fullNameReverse;
    });
 
-   const handleEditOpen = () => {
-      setEditFormData(patient);
-      setIsEditModalOpen(true);
-   };
-
-   const handleEditSave = (e: React.FormEvent) => {
-      e.preventDefault();
-      onUpdatePatient(patient.id, editFormData);
-      setIsEditModalOpen(false);
-   };
+   const handleEditOpen = () => setIsEditModalOpen(true);
 
 
 
@@ -1371,23 +1362,24 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             />
 
             {/* Edit Modal */}
-            <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={t('patients.details.modals.editProfile')}>
-               <form onSubmit={handleEditSave} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                     <Input label={t('patients.modal.firstName')} value={editFormData.firstName || ''} onChange={e => setEditFormData({ ...editFormData, firstName: e.target.value })} />
-                     <Input label={t('patients.modal.lastName')} value={editFormData.lastName || ''} onChange={e => setEditFormData({ ...editFormData, lastName: e.target.value })} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                     <Input label={t('patients.modal.phone')} value={editFormData.phone || ''} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} required />
-                     <Input label={t('patients.modal.secondaryPhone')} value={editFormData.secondaryPhone || ''} onChange={(e) => setEditFormData({ ...editFormData, secondaryPhone: e.target.value })} />
-                  </div>
-                  <Input label={t('patients.modal.address')} value={editFormData.address || ''} onChange={e => setEditFormData({ ...editFormData, address: e.target.value })} placeholder="Bemor manzilini kiriting..." />
-                  <div className="flex justify-end gap-2 pt-4">
-                     <Button type="button" variant="secondary" onClick={() => setIsEditModalOpen(false)}>{t('common.cancel')}</Button>
-                     <Button type="submit">{t('common.save')}</Button>
-                  </div>
-               </form>
-            </Modal>
+            {/* Bemor ma'lumotlari — YAGONA forma (`PatientFormModal`).
+
+                Bu yerda o'zining oynasi turardi va unda ATIGI 5 maydon bor
+                edi: ism, familiya, ikki telefon va manzil. Ya'ni tug'ilgan
+                sanani ham, JINSNI ham kartadan o'zgartirib bo'lmasdi —
+                holbuki tahlil normalari aynan shu ikkisidan tanlanadi va
+                xato kiritilgan jins butun laboratoriya natijasini
+                «normadan chetda» deb ko'rsatib turardi.
+
+                JSHSHIR va karta raqami ham shu yerda. */}
+            <PatientFormModal
+               isOpen={isEditModalOpen}
+               onClose={() => setIsEditModalOpen(false)}
+               patient={patient}
+               onUpdate={onUpdatePatient}
+               doctors={doctors}
+               onSaved={() => setIsEditModalOpen(false)}
+            />
 
 
             {/* Material Usage Modal */}

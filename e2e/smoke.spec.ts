@@ -61,7 +61,7 @@ test.describe('XClinic — asosiy oqimlar', () => {
 
         await modal.getByLabel(/^familiya/i).fill('E2E' + tag);
         await modal.getByLabel(/^ism/i).fill('Sinov');
-        await modal.getByLabel(/asosiy telefon/i).fill('+99890' + tag.slice(0, 7));
+        await modal.getByLabel(/^telefon/i).fill('+99890' + tag.slice(0, 7));
         /* `Tug'ilgan sana` bu formada `required` — to'ldirilmasa brauzer
            submitni O'ZI to'sadi va JS validatsiyasi umuman ishlamaydi. */
         await modal.getByLabel(/tug'ilgan sana/i).fill('1990-05-15');
@@ -87,7 +87,7 @@ test.describe('XClinic — asosiy oqimlar', () => {
         const modal = page.locator('form').filter({
             has: page.getByLabel(/^familiya/i),
         }).first();
-        await expect(modal.getByLabel(/asosiy telefon/i)).toBeVisible({ timeout: 15000 });
+        await expect(modal.getByLabel(/^telefon/i)).toBeVisible({ timeout: 15000 });
 
         const tag = uniq();
         await modal.getByLabel(/^familiya/i).fill('Yomon' + tag);
@@ -95,7 +95,7 @@ test.describe('XClinic — asosiy oqimlar', () => {
         await modal.getByLabel(/tug'ilgan sana/i).fill('1990-05-15');
         /* `type="tel"` emas, oddiy matn — brauzer buni to'smaydi, ya'ni
            tekshiruv BIZNING validatsiyamizga tushadi. */
-        await modal.getByLabel(/asosiy telefon/i).fill('abcdefg!!!');
+        await modal.getByLabel(/^telefon/i).fill('abcdefg!!!');
         await modal.getByRole('button', { name: /saqlash/i }).click();
 
         /* Audit: «Ogohlantirish chiqadi, lekin bemor BARIBIR saqlanadi va

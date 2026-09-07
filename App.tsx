@@ -1759,7 +1759,8 @@ const sinceDate = (n: number) =>
                   userRole={userRole}
                   doctorId={doctorId}
                   showPatientPhone={showPatientPhoneForRole}
-                  onPatientAdded={(p: Patient) => setPatients(prev => [p, ...prev])}
+                  onCreatePatient={addPatient}
+                  onPatientAdded={(p: Patient) => setPatients(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev])}
                   addToast={addToast}
                 />
               )} />

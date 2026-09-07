@@ -2620,7 +2620,7 @@ app.put('/api/patients/:id', authenticateToken, async (req, res) => {
             action: 'Update', entityType: 'Patient',
             entityId: req.params.id, patientId: req.params.id,
         });
-        const { firstName, lastName, phone, dob, lastVisit, status, gender, medicalHistory, address, telegramChatId, secondaryPhone, clinicId, avatarUrl, portraitUrl, doctorId, pinfl } = req.body;
+        const { firstName, lastName, phone, dob, lastVisit, status, gender, medicalHistory, address, telegramChatId, secondaryPhone, clinicId, avatarUrl, portraitUrl, doctorId, pinfl, cardNumber } = req.body;
         const updateData: any = {};
         if (firstName !== undefined) updateData.firstName = firstName;
         if (lastName !== undefined) updateData.lastName = lastName;
@@ -2644,6 +2644,10 @@ app.put('/api/patients/:id', authenticateToken, async (req, res) => {
         if (portraitUrl !== undefined) updateData.portraitUrl = portraitUrl;
         if (doctorId !== undefined) updateData.doctorId = doctorId === "" ? null : doctorId;
         if (pinfl !== undefined) updateData.pinfl = pinfl;
+        /* Karta raqami. Yaratishda qabul qilinardi, TAHRIRLASHDA esa
+           tashlab yuborilardi: registratura xato yozgan raqamni keyin
+           to'g'rilay olmasdi va bemorga yangi karta ochib berardi. */
+        if (cardNumber !== undefined) updateData.cardNumber = String(cardNumber).trim() || null;
 
         const patient = await prisma.patient.update({
             where: { id: req.params.id },

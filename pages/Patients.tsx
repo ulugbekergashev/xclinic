@@ -2,14 +2,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { formatFullName } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
-import { validatePatient } from '../shared/validation';
-import { Card, Button, Input, Badge, Modal, Select } from '../components/Common';
+import { Card, Button, Badge, Modal } from '../components/Common';
 import { StatCard } from '../components/StatCard';
-import { Search, Plus, Eye, Trash2, Loader2, Download, Filter, UserCheck, AlertCircle, ChevronDown, Cake, Wallet, Users as UsersIcon, UserPlus as UserPlusIcon, Activity } from 'lucide-react';
+import { Search, Plus, Eye, Pencil, Trash2, Loader2, Download, Filter, UserCheck, AlertCircle, ChevronDown, Cake, Wallet, Users as UsersIcon, UserPlus as UserPlusIcon, Activity } from 'lucide-react';
 import { Patient, Doctor, Appointment, Transaction, Clinic } from '../types';
 import { api, getFileUrl } from '../services/api';
 import type { Snapshot } from '../services/api';
 import { usePatientSearch } from '../hooks/usePatientSearch';
+import { PatientFormModal } from '../components/PatientFormModal';
 import { useLanguage } from '../context/LanguageContext';
 import { calcAge, formatDay } from '../utils/dateUtils';
 import { maskPhone } from '../utils/accessControl';
@@ -58,22 +58,17 @@ export const Patients: React.FC<PatientsProps> = ({
   const [filterDateTo, setFilterDateTo] = useState('');
   const [activeStatFilter, setActiveStatFilter] = useState<string | null>(null);
 
-  // Form State
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    dob: '',
-    gender: 'Male',
-    medicalHistory: '',
-    address: '',
-    secondaryPhone: '',
-    doctorId: '',
-    pinfl: '',
-  });
-  const [isLookingUp, setIsLookingUp] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
+  /* BEMOR FORMASI — YAGONA (`PatientFormModal`).
+
+     Bu sahifada o'z nusxasi bor edi. Ikkalasi bir xil ishni qilardi, lekin
+     ular allaqachon ajralib ketgan edi: bu yerda rasm yuklash bor edi-yu,
+     karta raqami yo'q edi; takror bemor haqidagi 409 esa `catch {}` bilan
+     JIMGINA yutilardi — ya'ni takror bemorda tugma bosilardi va ekranda
+     mutlaqo hech narsa bo'lmasdi.
+
+     `editing` — tahrirlash uchun: ilgari bemorni faqat kartasidan, faqat
+     5 maydon bo'yicha tahrirlash mumkin edi. */
+  const [editing, setEditing] = useState<Patient | null>(null);
 
   /* Qidiruv SERVERDA, qolgan filtrlar brauzerda.
 
@@ -259,97 +254,6 @@ export const Patients: React.FC<PatientsProps> = ({
     } finally {
       setIsAssigning(false);
     }
-  };
-
-  const handleLookupPinfl = async () => {
-    if (!formData.pinfl || formData.pinfl.length !== 14) {
-      toast.error('JSHSHIR 14 ta raqamdan iborat bo\'lishi kerak');
-      return;
-    }
-    setIsLookingUp(true);
-    try {
-      const data = await api.patients.lookupPinfl(formData.pinfl);
-      if (data) {
-        setFormData(prev => ({
-          ...prev,
-          firstName: data.firstName || prev.firstName,
-          lastName: data.lastName || prev.lastName,
-          dob: data.birthDate || prev.dob,
-          gender: data.gender === 'male' ? 'Male' : data.gender === 'female' ? 'Female' : prev.gender,
-          address: data.address || prev.address,
-        }));
-      }
-    } catch (error: any) {
-      toast.error('DMED orqali topilmadi: ' + (error.message || 'Xatolik'));
-    } finally {
-      setIsLookingUp(false);
-    }
-  };
-
-  /* IKKINCHI BEMOR FORMASI (S3.1 davomi).
-
-     Bu sahifada `AddPatientModal` dan ALOHIDA, o'z formasi bor. Ikkalasi
-     bir xil ishni qiladi, lekin validatsiya faqat bittasiga qo'yilgan edi
-     — ya'ni «abcdefg!!!» bu yerdan baribir o'tib ketardi (audit B-13).
-
-     Bundan tashqari tekshiruv JIMGINA `return` qilardi: ism yoki familiya
-     bo'sh bo'lsa tugma bosiladi, hech narsa bo'lmaydi va sabab
-     ko'rsatilmaydi. Buni brauzer E2E sinovi topdi — so'rov umuman
-     ketmasdi va ekranda hech qanday belgi yo'q edi.
-
-     Endi ikkala forma ham `shared/validation.ts` dan o'qiydi. */
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const checked = validatePatient({
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      gender: formData.gender,
-      phone: formData.phone,
-      dob: formData.dob,
-      pinfl: (formData as any).pinfl,
-    });
-    if (!checked.ok) {
-      setFormErrors((checked as any).errors || {});
-      return;
-    }
-    setFormErrors({});
-
-    setIsSubmitting(true);
-    try {
-      const doctor = doctors.find((d) => d.id === formData.doctorId);
-      const newPatient = await onAddPatient({
-        ...formData,
-        status: 'Active',
-        lastVisit: 'Never',
-        gender: formData.gender as 'Male' | 'Female',
-        doctorId: formData.doctorId || undefined,
-        doctorName: doctor ? `${formatFullName(doctor)}` : undefined,
-      });
-
-      // Upload photo if selected
-      if (newPatient && newPatient.id && selectedPhoto) {
-        await Promise.all([
-          api.patients.uploadAvatar(newPatient.id, selectedPhoto),
-          api.patients.uploadPortrait(newPatient.id, selectedPhoto)
-        ]);
-      }
-
-      setIsAddModalOpen(false);
-      setFormData({ firstName: '', lastName: '', phone: '', dob: '', gender: 'Male', medicalHistory: '', address: '', secondaryPhone: '', doctorId: '', pinfl: '' });
-      setSelectedPhoto(null);
-    } catch {
-      // handled by parent
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const activeFiltersCount = [
@@ -625,6 +529,17 @@ export const Patients: React.FC<PatientsProps> = ({
                       >
                         <Eye className="w-4 h-4" />
                       </button>
+                      {/* Tahrirlash — ro'yxatdan ham. Ilgari bemor
+                          ma'lumotini o'zgartirish uchun uning kartasiga
+                          kirish shart edi, u yerda esa atigi 5 maydon
+                          bor edi. */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditing(patient); }}
+                        className="text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 p-1.5 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                        title="Tahrirlash"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
@@ -692,133 +607,28 @@ export const Patients: React.FC<PatientsProps> = ({
         )}
       </Modal>
 
-      {/* Add Patient Modal */}
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Yangi Bemor Qo'shish">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Familiya" name="lastName" value={formData.lastName} onChange={handleInputChange}
-                   error={formErrors.lastName} required />
-            <Input label="Ism" name="firstName" value={formData.firstName} onChange={handleInputChange}
-                   error={formErrors.firstName} required />
-          </div>
-          
-          <div className="space-y-1">
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <Input 
-                  label="JSHSHIR (PINFL)" 
-                  name="pinfl" 
-                  value={formData.pinfl} 
-                  onChange={handleInputChange} 
-                  placeholder="14 ta raqam" 
-                  maxLength={14}
-                />
-              </div>
-              {currentClinic?.dmedEnabled && (
-                <Button 
-                  type="button" 
-                  variant="secondary" 
-                  className="mb-1"
-                  onClick={handleLookupPinfl}
-                  disabled={isLookingUp || formData.pinfl.length !== 14}
-                >
-                  {isLookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
-                </Button>
-              )}
-            </div>
-            <p className="text-[10px] text-gray-500">Bemorning pasportidagi 14 raqamli shaxsiy identifikatsiya raqami.</p>
-          </div>
+      {/* Bemor formasi — YAGONA. Yaratish va tahrirlash bitta oynada. */}
+      <PatientFormModal
+        isOpen={isAddModalOpen || !!editing}
+        onClose={() => { setIsAddModalOpen(false); setEditing(null); }}
+        patient={editing}
+        onCreate={onAddPatient}
+        onUpdate={onUpdatePatient}
+        doctors={doctors}
+        userRole={userRole as any}
+        allowPhoto
+        onSaved={(p, kind) => {
+          setIsAddModalOpen(false);
+          setEditing(null);
+          /* Takror ro'yxatidan MAVJUD karta tanlansa — uni ochamiz: odam
+             aynan shuni qidirayotgan edi. Ilgari 409 bu yerda jimgina
+             yutilardi (`catch {}`) va ekranda hech narsa bo'lmasdi.
 
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Asosiy Telefon" name="phone" value={formData.phone} onChange={handleInputChange}
-                   error={formErrors.phone} placeholder="+998 XX XXX XX XX" required />
-            <Input label="Qo'shimcha Telefon" name="secondaryPhone" value={formData.secondaryPhone} onChange={handleInputChange} placeholder="+998 XX XXX XX XX" />
-          </div>
-          <Input label="Tug'ilgan sana" type="date" name="dob" value={formData.dob} onChange={handleInputChange} required helperText="Sanani qo'lda kiritish uchun maydonga bosing" />
-          <Input label="Manzil (Ixtiyoriy)" name="address" value={formData.address} onChange={handleInputChange} placeholder="Toshkent sh., Chilonzor t..." />
-
-          <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-primary-200 dark:border-primary-800 rounded-xl bg-primary-50/50 dark:bg-primary-900/20 hover:bg-primary-100/50 dark:hover:bg-primary-900/30 transition-colors group cursor-pointer relative overflow-hidden">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setSelectedPhoto(e.target.files?.[0] || null)}
-              className="absolute inset-0 opacity-0 cursor-pointer z-10"
-              id="patient-photo-upload"
-            />
-            {selectedPhoto ? (
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-primary-500 shadow-lg">
-                  <img src={URL.createObjectURL(selectedPhoto)} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-                <span className="text-xs font-semibold text-primary-600 dark:text-primary-400 bg-primary-100 dark:bg-primary-900/40 px-3 py-1 rounded-full">
-                  {selectedPhoto.name}
-                </span>
-                <button 
-                  type="button" 
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedPhoto(null); }}
-                  className="text-xs text-red-500 hover:text-red-600 font-medium"
-                >
-                  {t('common.delete')}
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center text-center gap-2">
-                <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-800 shadow-sm flex items-center justify-center text-primary-500 group-hover:scale-110 transition-transform">
-                  <Plus className="w-6 h-6" />
-                </div>
-                <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t('patients.modal.uploadPhoto')}</span>
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">JPG, PNG or WEBP</span>
-              </div>
-            )}
-          </div>
-
-          {userRole !== 'DOCTOR' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('patients.modal.doctor')}</label>
-              <select
-                name="doctorId"
-                value={formData.doctorId}
-                onChange={handleInputChange}
-                className="w-full h-10 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white px-3 focus:ring-2 focus:ring-primary-500"
-              >
-                <option value="">— Keyinroq biriktirish —</option>
-                {doctors.filter((d) => d.status === 'Active').map((d) => (
-                  <option key={d.id} value={d.id}>{formatFullName(d)} ({d.specialty})</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Jins</label>
-            <div className="flex gap-4">
-              <label className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
-                <input type="radio" name="gender" value="Male" checked={formData.gender === 'Male'} onChange={handleInputChange} className="text-primary-600 focus:ring-primary-500" /> <span>Erkak</span>
-              </label>
-              <label className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
-                <input type="radio" name="gender" value="Female" checked={formData.gender === 'Female'} onChange={handleInputChange} className="text-primary-600 focus:ring-primary-500" /> <span>Ayol</span>
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tibbiy Tarix</label>
-            <textarea
-              name="medicalHistory"
-              value={formData.medicalHistory}
-              onChange={handleInputChange}
-              className="w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm dark:border-gray-700 dark:text-white h-24 focus:ring-2 focus:ring-primary-500 focus:outline-none"
-              placeholder="Allergiya, surunkali kasalliklar..."
-            />
-          </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="secondary" onClick={() => setIsAddModalOpen(false)} disabled={isSubmitting}>Bekor qilish</Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saqlanmoqda...</> : 'Saqlash'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+             Yangi bemor yaratilganda ro'yxatda qolamiz — ketma-ket bir
+             necha bemor kiritish odatiy ish. */
+          if (kind === 'existing') onPatientClick(p.id);
+        }}
+      />
 
     </div>
   );
