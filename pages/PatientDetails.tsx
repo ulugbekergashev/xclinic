@@ -13,6 +13,7 @@ import { LabDynamics } from '../components/LabDynamics';
 import { InstallmentsTab } from '../components/InstallmentsTab';
 import { VisitPanel, VISIT_STATUS_KEY } from '../components/VisitPanel';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
+import { AdvanceModal } from '../components/AdvanceModal';
 import { printPrescription } from '../utils/printForms';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription, VisitCharge } from '../types';
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
@@ -53,8 +54,6 @@ interface PatientDetailsProps {
    showPatientPhone?: boolean; // Ruxsatlar: bemor telefon raqamini ko'rsatish
    onBack: () => void;
    onUpdatePatient: (id: string, data: Partial<Patient>) => void;
-   onAddTransaction: (data: Omit<Transaction, 'id' | 'clinicId'>) => Promise<Transaction | void>;
-   onUpdateTransaction: (id: string, data: Partial<Transaction>) => void;
    onAddAppointment: (appt: Omit<Appointment, 'id' | 'clinicId'>) => Promise<void>;
    onUpdateAppointment: (id: string, data: Partial<Appointment>) => Promise<void>;
 }
@@ -71,7 +70,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    userRole,
    doctorId: loggedDoctorId,
    showPatientPhone = true,
-   onBack, onUpdatePatient, onAddTransaction, onUpdateTransaction, onAddAppointment, onUpdateAppointment
+   onBack, onUpdatePatient, onAddAppointment, onUpdateAppointment
 }) => {
    const { patientId: patientIdParam } = useParams<{ patientId: string }>();
    const patientId = patientIdProp || patientIdParam || null;
@@ -98,8 +97,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       Ilgari karta buni kalendar yozuvlaridan taxmin qilardi. */
    const [unpaidCharges, setUnpaidCharges] = useState<VisitCharge[]>([]);
    const [isChargeModalOpen, setIsChargeModalOpen] = useState(false);
+   /* Avans — alohida, kichik oyna. Xizmat uchun to'lov EMAS. */
+   const [isAdvanceOpen, setIsAdvanceOpen] = useState(false);
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
 
    const patient = patients.find(p => String(p.id).trim() === String(patientId).trim());
@@ -111,18 +111,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    // Edit Form State
    const [editFormData, setEditFormData] = useState<Partial<Patient>>({});
    // Payment Form State
-   const [paymentData, setPaymentData] = useState({ amount: '', paidAmount: '', debtAmount: '', service: '', type: 'Cash', status: 'Paid', doctorId: defaultDoctorId, appointmentDate: '', discountPercent: '' });
-   const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent'); // Chegirma turi: foiz yoki summa
 
    // Chegirmadan keyingi jami summa (asl narx ma'lum bo'lganda)
-   const getDiscountedTotal = (): number => {
-      const baseAmount = Number(paymentData.amount) || 0;
-      if (baseAmount <= 0) return 0;
-      const discountVal = Number(paymentData.discountPercent) || 0;
-      return discountType === 'percent'
-         ? Math.round(baseAmount * (1 - discountVal / 100))
-         : Math.max(0, baseAmount - discountVal);
-   };
 
    // Installment quick-open state (from appointment row)
    const [installmentQuickOpen, setInstallmentQuickOpen] = useState<{ service: string; amount: number; doctorId: string } | null>(null);
@@ -171,11 +161,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const [templates, setTemplates] = useState<EncounterTemplate[]>([]);
 
    // Payment Edit State
-   const [isPaymentEditModalOpen, setIsPaymentEditModalOpen] = useState(false);
-   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-   const [editPaymentAmount, setEditPaymentAmount] = useState('');
-   const [editPaymentStatus, setEditPaymentStatus] = useState('Paid');
-   const [editPaymentMethod, setEditPaymentMethod] = useState('Cash');
 
    // Material Usage State
    const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
@@ -184,12 +169,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const [materialData, setMaterialData] = useState({ itemId: '', quantity: '', note: '' });
 
    // Prevents double submission
-   const [isPaymentSubmitting, setIsPaymentSubmitting] = useState(false);
-   const isSubmittingRef = React.useRef(false);
 
    // Manual Payment Selection State
-   const [manualPaymentCategoryId, setManualPaymentCategoryId] = useState<string>('');
-   const [manualPaymentServiceId, setManualPaymentServiceId] = useState<number | null>(null);
 
    // Receipt Modal State
    const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -434,61 +415,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    };
 
 
-   const handleEditPaymentOpen = (transaction: Transaction) => {
-      setEditingTransaction(transaction);
-      setEditPaymentAmount(transaction.amount.toString());
-      setIsPaymentEditModalOpen(true);
-   };
 
-   const handleEditPaymentSave = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!editingTransaction) return;
-
-      const newAmount = Number(editPaymentAmount);
-      const originalAmount = editingTransaction.amount;
-      const isNowPaid = editPaymentStatus === 'Paid';
-
-      // Repayment logic: if marking a pending debt as paid
-      if (editingTransaction.status === 'Pending' && isNowPaid) {
-         // Case 1: Partial Repayment
-         if (newAmount < originalAmount) {
-            // 1. Create a new Paid transaction for the partial amount
-            await onAddTransaction({
-               ...editingTransaction,
-               amount: newAmount,
-               status: 'Paid',
-               type: editPaymentMethod as any,
-               service: `${editingTransaction.service} (Qarzdorlik yopildi)`,
-               date: todayISO()
-            });
-
-            // 2. Reduce the original Pending amount
-            await onUpdateTransaction(editingTransaction.id, {
-               amount: originalAmount - newAmount
-            });
-         }
-         // Case 2: Full Repayment
-         else {
-            await onUpdateTransaction(editingTransaction.id, {
-               status: 'Paid',
-               amount: newAmount,
-               type: editPaymentMethod as any,
-               date: todayISO()
-            });
-         }
-      } else {
-         // Simple edit for other scenarios
-         await onUpdateTransaction(editingTransaction.id, {
-            amount: newAmount,
-            status: editPaymentStatus as any,
-            type: editPaymentMethod as any
-         });
-      }
-
-      setIsPaymentEditModalOpen(false);
-      setEditingTransaction(null);
-      setEditPaymentAmount('');
-   };
 
    const handleMaterialSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -555,164 +482,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       setIsEditModalOpen(false);
    };
 
-   const handlePaymentModalOpen = () => {
-      // Check if current plan is individual
-      const isIndividualPlan = currentClinic?.planId === 'individual';
 
-      // Defolt shifokor: kirgan shifokor → bemorga biriktirilgan → individual planda birinchi → bo'sh
-      const assignedDoctorId = patient?.doctorId && doctors.some(d => d.id === patient.doctorId) ? patient.doctorId : '';
-      const autoDoctorId = defaultDoctorId || assignedDoctorId || (isIndividualPlan && doctors.length > 0 ? doctors[0].id : '');
-      setPaymentData({ amount: '', paidAmount: '', debtAmount: '', service: '', type: 'Cash', status: 'Paid', doctorId: autoDoctorId, appointmentDate: '', discountPercent: '' });
 
-      setDiscountType('percent');
-      setManualPaymentCategoryId('');
-      setManualPaymentServiceId(null);
-
-      setIsPaymentModalOpen(true);
-   };
-
-   const handleManualServiceChange = (serviceId: number) => {
-      setManualPaymentServiceId(serviceId);
-      const service = services.find(s => s.id === serviceId);
-      if (service) {
-         setPaymentData({
-            ...paymentData,
-            service: service.name,
-            amount: service.price.toString(),
-            paidAmount: service.price.toString(),
-            debtAmount: '0',
-            discountPercent: ''
-         });
-      }
-   };
-
-   const handlePaymentSave = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (isSubmittingRef.current) return;
-      isSubmittingRef.current = true;
-      setIsPaymentSubmitting(true);
-
-      // Calculate amounts early for validation
-      const paidAmount = Number(paymentData.paidAmount.toString().replace(/,/g, '')) || 0;
-      const debtAmount = Number(paymentData.debtAmount.toString().replace(/,/g, '')) || 0;
-      const totalAmount = paidAmount + debtAmount;
-
-      // Validate balance if using from-account payment
-      if (paymentData.type === 'Balance' && paidAmount > (patient.balance || 0)) {
-         toast.error(t('patients.details.alerts.insufficientBalance'));
-         isSubmittingRef.current = false;
-         setIsPaymentSubmitting(false);
-         return;
-      }
-
-      // Check if current plan is individual
-      const isIndividualPlan = currentClinic?.planId === 'individual';
-
-      // Validate doctor selection - required for multi-doctor plans, optional for individual with no doctors
-      if (!paymentData.doctorId) {
-         if (!isIndividualPlan || (isIndividualPlan && doctors.length > 0)) {
-            toast.error(t('patients.details.alerts.selectDoctorReq'));
-            isSubmittingRef.current = false;
-            setIsPaymentSubmitting(false);
-            return;
-         }
-      }
-
-      const doctor = doctors.find(d => d.id === paymentData.doctorId);
-      // Calculate discount percent and amount based on discount type
-      const rawDiscountVal = Number(paymentData.discountPercent) || 0;
-      const discountPercent = discountType === 'percent'
-         ? rawDiscountVal
-         : (totalAmount > 0 ? Math.round((rawDiscountVal / totalAmount) * 100) : 0);
-      const discountAmount = discountType === 'percent'
-         ? Math.round(totalAmount * (rawDiscountVal / 100))
-         : rawDiscountVal;
-
-      try {
-         let finalTransaction: Transaction | null | void = null;
-
-         // Scenario 1: Full Payment (Debt == 0)
-         if (debtAmount <= 0) {
-            finalTransaction = await onAddTransaction({
-               patientId: patient.id,
-               patientName: `${formatFullName(patient)}`,
-               date: paymentData.appointmentDate || todayISO(),
-               amount: totalAmount,
-               service: paymentData.service,
-               type: paymentData.type as any,
-               status: 'Paid',
-               doctorId: paymentData.doctorId || '',
-               doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
-               discountPercent,
-               discountAmount: discountAmount
-            });
-         }
-         // Scenario 2: No Payment (Paid == 0)
-         else if (paidAmount <= 0) {
-            finalTransaction = await onAddTransaction({
-               patientId: patient.id,
-               patientName: `${formatFullName(patient)}`,
-               date: paymentData.appointmentDate || todayISO(),
-               amount: totalAmount,
-               service: paymentData.service,
-               type: paymentData.type as any,
-               status: 'Pending',
-               doctorId: paymentData.doctorId || '',
-               doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
-               discountPercent,
-               discountAmount: discountAmount
-            });
-         }
-         // Scenario 3: Partial Payment (Paid > 0 && Debt > 0)
-         else {
-            // 1. Paid Part
-            finalTransaction = await onAddTransaction({
-               patientId: patient.id,
-               patientName: `${formatFullName(patient)}`,
-               date: paymentData.appointmentDate || todayISO(),
-               amount: paidAmount,
-               service: `${paymentData.service} (Qisman to'lov)`,
-               type: paymentData.type as any,
-               status: 'Paid',
-               doctorId: paymentData.doctorId || '',
-               doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
-               discountPercent,
-               discountAmount: Math.round(paidAmount * (discountPercent / 100)) || 0
-            });
-
-            // 2. Pending Part (Debt)
-            await onAddTransaction({
-               patientId: patient.id,
-               patientName: `${formatFullName(patient)}`,
-               date: paymentData.appointmentDate || todayISO(),
-               amount: debtAmount,
-               service: `${paymentData.service} (Qarz)`,
-               type: paymentData.type as any,
-               status: 'Pending',
-               doctorId: paymentData.doctorId || '',
-               doctorName: doctor ? `${formatDoctorName(doctor)}` : '',
-               discountPercent,
-               discountAmount: Math.round(debtAmount * (discountPercent / 100)) || 0
-            });
-         }
-
-         // Verify if clinic has receipt enabled
-         if (finalTransaction && currentClinic?.enableReceipts) {
-            setReceiptTransaction(finalTransaction as Transaction);
-            setIsReceiptModalOpen(true);
-         }
-
-         // Cleanup only on SUCCESS
-         setIsPaymentModalOpen(false);
-         setPaymentData({ amount: '', paidAmount: '', debtAmount: '', service: '', type: 'Cash', status: 'Paid', doctorId: defaultDoctorId, appointmentDate: '', discountPercent: '' });
-      } catch (error: any) {
-         console.error('Payment processing failed', error);
-         toast.error(`${t('patients.details.alerts.paymentError')} ${error.message || t('common.error')}`);
-      } finally {
-         isSubmittingRef.current = false;
-         setIsPaymentSubmitting(false);
-      }
-   };
 
 
    const handleSendMessage = async (e: React.FormEvent) => {
@@ -860,20 +631,26 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         </p>
                         <div className="pt-2 flex items-center gap-3">
                            <Badge status={patient.status} />
-                           {patient.balance !== undefined && (
-                              <div className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                                 patient.balance > 0 
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
-                                    : patient.balance < 0
-                                       ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
-                                       : 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
-                              }`}>
-                                 {patient.balance > 0 
-                                    ? `Avans: ${formatMoney(patient.balance)} UZS` 
-                                    : patient.balance < 0 
-                                       ? `Qarz: ${formatMoney(Math.abs(patient.balance))} UZS`
-                                       : `Hisob: 0 UZS`}
+                           {/* AVANS va QARZ — ikki BOSHQA narsa.
+
+                               Ilgari bitta chipda edi: musbat balans «avans»,
+                               manfiy «qarz». Lekin `Patient.balance` MANFIY
+                               BO'LMAYDI — u faqat avans (`backend/snapshot.ts`
+                               dagi izoh ham shuni aytadi), ya'ni «Qarz»
+                               shoxobchasi hech qachon ishlamagan.
+
+                               Haqiqiy qarz — to'lanmagan hisob qatorlari
+                               yig'indisi, u shu yerda alohida ko'rsatiladi. */}
+                           {(patient.balance || 0) > 0 && (
+                              <div className="px-3 py-1 rounded-full text-xs font-bold border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800">
+                                 {t('advance.title')}: {formatMoney(patient.balance || 0)} UZS
                               </div>
+                           )}
+                           {unpaidTotal > 0 && (
+                              <button type="button" onClick={() => setOpenSec('payments')}
+                                 className="px-3 py-1 rounded-full text-xs font-bold border bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/50">
+                                 {t('visit.due')}: {formatMoney(unpaidTotal)} UZS
+                              </button>
                            )}
                         </div>
                      </div>
@@ -1424,36 +1201,24 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                     {formatMoney((patient.balance || 0))} UZS
                                  </p>
                               </div>
-                              <div className="flex gap-2">
-                                 <Button 
-                                    size="sm" 
-                                    variant="secondary"
+                              {/* Faqat AVANS. «Yangi to'lov» tugmasi olib
+                                  tashlandi: xizmat uchun to'lov yuqoridagi
+                                  «To'lov qabul qilish» orqali, hisob qatorlari
+                                  bilan ketadi — shundagina shifokor ulushi
+                                  hisoblanadi. */}
+                              {userRole !== UserRole.DOCTOR && (
+                                 <Button size="sm" variant="secondary"
                                     className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200"
-                                    onClick={() => {
-                                       setPaymentData({
-                                          amount: '',
-                                          paidAmount: '',
-                                          debtAmount: '0',
-                                          service: 'Avans',
-                                          type: 'Cash',
-                                          status: 'Paid',
-                                          doctorId: doctors.length > 0 ? doctors[0].id : '',
-                                          appointmentDate: todayISO(),
-                                          discountPercent: ''
-                                       });
-                                       setIsPaymentModalOpen(true);
-                                    }}
-                                 >
-                                    <Plus className="w-4 h-4 mr-2" /> {t('patients.details.modals.advanceTitle')}
+                                    onClick={() => setIsAdvanceOpen(true)}>
+                                    <Plus className="w-4 h-4 mr-2" /> {t('advance.title')}
                                  </Button>
-                                 <Button size="sm" onClick={handlePaymentModalOpen}>{t('patients.details.payments.newPayment')}</Button>
-                              </div>
+                              )}
                            </div>
                         </div>
                         <div className="overflow-x-auto">
                            <table className="w-full text-left text-sm">
                               <thead className="bg-gray-50 dark:bg-gray-800">
-                                 <tr><th className="p-4 font-medium text-gray-500">{t('finance.table.date')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.service')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.method')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.amount')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.discount')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.status')}</th><th className="p-4 font-medium text-gray-500">{t('common.actions')}</th></tr>
+                                 <tr><th className="p-4 font-medium text-gray-500">{t('finance.table.date')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.service')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.method')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.amount')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.discount')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.status')}</th><th className="p-4 font-medium text-gray-500">{t('patients.details.payments.receivedBy')}</th></tr>
                               </thead>
                               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                  {(patientTransactions || []).map(transaction => (
@@ -1473,25 +1238,22 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                           )}
                                        </td>
                                        <td className="p-4"><Badge status={transaction.status} /></td>
-                                       <td className="p-4 flex gap-2">
-                                          {userRole !== UserRole.DOCTOR && transaction.status === 'Pending' && (
-                                             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => {
-                                                setEditingTransaction(transaction);
-                                                setEditPaymentAmount(transaction.amount.toString());
-                                                setEditPaymentStatus('Paid');
-                                                setEditPaymentMethod('Cash');
-                                                setIsPaymentEditModalOpen(true);
-                                             }}>{t('patients.details.payments.payAction')}</Button>
-                                          )}
-                                          {userRole !== UserRole.DOCTOR && (
-                                             <Button size="sm" variant="secondary" onClick={() => {
-                                                setEditingTransaction(transaction);
-                                                setEditPaymentAmount(transaction.amount.toString());
-                                                setEditPaymentStatus(transaction.status);
-                                                setEditPaymentMethod(transaction.type);
-                                                setIsPaymentEditModalOpen(true);
-                                             }}><Edit className="w-4 h-4" /></Button>
-                                          )}
+                                       {/* Chek TAHRIRLANMAYDI, lekin CHOP
+                                           ETILADI. Ilgari bu yerda summani va
+                                           usulni o'zgartirish tugmasi turardi —
+                                           kassadagi hujjatni keyin qayta yozish
+                                           klassik teshik. Xato chek kassada
+                                           qaytarish bilan yopiladi, u esa iz
+                                           qoldiradi. */}
+                                       <td className="p-4">
+                                          <div className="flex items-center gap-2">
+                                             <span className="text-xs text-gray-400">{transaction.receivedByName || '—'}</span>
+                                             <button type="button" title={t('common.print')} aria-label={t('common.print')}
+                                                onClick={() => { setReceiptTransaction(transaction); setIsReceiptModalOpen(true); }}
+                                                className="p-1 text-gray-300 hover:text-primary-600 rounded">
+                                                <Printer className="w-4 h-4" />
+                                             </button>
+                                          </div>
                                        </td>
                                     </tr>
                                  ))}
@@ -1593,6 +1355,15 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                 chegirma va qaytarish. Ilgari kartada o'zining alohida
                 oynasi bor edi va u `Transaction` ga to'g'ridan-to'g'ri
                 yozardi — ya'ni hisob qatori to'lanmagan bo'lib qolaverardi. */}
+            <AdvanceModal
+               isOpen={isAdvanceOpen}
+               onClose={() => setIsAdvanceOpen(false)}
+               patient={patient}
+               receivedByName={myDoctor ? formatDoctorName(myDoctor) : undefined}
+               addToast={(type, msg) => type === 'error' ? toast.error(msg) : toast.success(msg)}
+               onDone={() => reloadClinical()}
+            />
+
             <ChargePaymentModal
                isOpen={isChargeModalOpen}
                onClose={() => setIsChargeModalOpen(false)}
@@ -1663,315 +1434,25 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             </Modal>
 
             {/* Payment Modal */}
-            <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title={paymentData.service === 'Avans' ? t('patients.details.modals.advanceTitle') : t('patients.details.modals.paymentTitle')}>
-               <form onSubmit={handlePaymentSave} className="space-y-4">
-                  {/* Only show doctor field for non-individual plans OR individual plans with doctors - AND NOT for Avans */}
-                  {paymentData.service !== 'Avans' && !(currentClinic?.planId === 'individual' && doctors.length === 0) && (
-                     <Select
-                        label={t('finance.table.doctor')}
-                        value={paymentData.doctorId}
-                        onChange={e => setPaymentData({ ...paymentData, doctorId: e.target.value })}
-                        options={[
-                           { value: '', label: 'Shifokorni tanlang' },
-                           ...doctors.map(d => ({ value: d.id, label: `${formatDoctorName(d)}` }))
-                        ]}
-                        required
-                     />
-                  )}
-                  {paymentData.service !== 'Avans' && (
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📋 {t('patients.details.modals.doneServices')}</label>
-                        <div className="border-2 border-primary-100 dark:border-primary-800 rounded-lg bg-gradient-to-br from-primary-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 p-4 space-y-0.5">
-                           {paymentData.service && paymentData.service.includes('|') ? (
-                              paymentData.service.split('||').filter(Boolean).map((item, idx) => {
-                                 const parts = item.split('|');
-                                 if (parts[0] === 'TOTAL') {
-                                    return (
-                                       <div key={idx} className="pt-3 mt-3 border-t-2 border-primary-300 dark:border-primary-700">
-                                          <div className="flex justify-between items-center bg-primary-600 dark:bg-primary-700 text-white px-4 py-2.5 rounded-md font-bold text-base">
-                                             <span className="flex items-center gap-2">💰 JAMI:</span>
-                                             <span className="text-lg">{parts[1]} UZS</span>
-                                          </div>
-                                       </div>
-                                    );
-                                 }
-                                 return (
-                                    <div key={idx} className="flex justify-between items-center bg-white dark:bg-gray-800 px-3 py-2 rounded border border-primary-100 dark:border-gray-700">
-                                       <span className="text-gray-700 dark:text-gray-200 font-medium">{parts[0]}</span>
-                                       <span className="text-primary-600 dark:text-primary-400 font-semibold">{parts[1]} UZS</span>
-                                    </div>
-                                 );
-                              })
-                           ) : (
-                              <div className="space-y-4">
-                                 {categories && categories.length > 0 && (
-                                    <Select
-                                       label="Kategoriya"
-                                       value={manualPaymentCategoryId}
-                                       onChange={(e) => {
-                                          setManualPaymentCategoryId(e.target.value);
-                                          setManualPaymentServiceId(null);
-                                          setPaymentData({ ...paymentData, service: '', paidAmount: '' });
-                                       }}
-                                    >
-                                       <option value="">Barcha kategoriyalar</option>
-                                       {categories.map(cat => (
-                                          <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                       ))}
-                                    </Select>
-                                 )}
+            {/* TO'LOV OYNALARI OLIB TASHLANDI.
 
-                                 <Select
-                                    label="Xizmat"
-                                    value={manualPaymentServiceId?.toString() || ''}
-                                    onChange={(e) => handleManualServiceChange(parseInt(e.target.value))}
-                                 >
-                                    <option value="">Xizmatni tanlang...</option>
-                                    {(services || [])
-                                       .filter(s => {
-                                          if (!manualPaymentCategoryId) return true;
-                                          const serviceCatId = (s as any).categoryId?.toString();
-                                          return serviceCatId === manualPaymentCategoryId.toString();
-                                       })
-                                       .map(service => (
-                                          <option key={service.id} value={service.id}>
-                                             {service.name} - {formatMoney(service.price)} UZS
-                                          </option>
-                                       ))}
-                                 </Select>
-                              </div>
-                           )}
-                        </div>
-                     </div>
-                  )}
-                  {paymentData.service !== 'Avans' && (
-                     <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Chegirma</label>
-                        <div className="flex gap-2">
-                           {/* Discount type selector */}
-                           <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden shrink-0">
-                              <button
-                                 type="button"
-                                 className={`px-3 py-2 text-sm font-medium transition-colors ${
-                                    discountType === 'percent'
-                                       ? 'bg-primary-600 text-white'
-                                       : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                 }`}
-                                 onClick={() => {
-                                    setDiscountType('percent');
-                                    setPaymentData({ ...paymentData, discountPercent: '' });
-                                 }}
-                              >Foiz (%)</button>
-                              <button
-                                 type="button"
-                                 className={`px-3 py-2 text-sm font-medium transition-colors ${
-                                    discountType === 'amount'
-                                       ? 'bg-primary-600 text-white'
-                                       : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                 }`}
-                                 onClick={() => {
-                                    setDiscountType('amount');
-                                    setPaymentData({ ...paymentData, discountPercent: '' });
-                                 }}
-                              >Summa</button>
-                           </div>
-                           {/* Discount input */}
-                           <div className="flex-1">
-                              <Input
-                                 label=""
-                                 type="number"
-                                 min="0"
-                                 max={discountType === 'percent' ? 100 : undefined}
-                                 value={paymentData.discountPercent}
-                                 onChange={e => {
-                                    const val = Number(e.target.value);
-                                    const baseTotal = Number(paymentData.amount) || 0;
-                                    if (discountType === 'percent') {
-                                       if (val < 0 || val > 100) return;
-                                       const discountedTotal = baseTotal > 0 ? Math.round(baseTotal * (1 - val / 100)) : 0;
-                                       setPaymentData({
-                                          ...paymentData,
-                                          discountPercent: e.target.value,
-                                          paidAmount: baseTotal > 0 ? discountedTotal.toString() : paymentData.paidAmount,
-                                          debtAmount: '0'
-                                       });
-                                    } else {
-                                       // Fixed amount discount
-                                       if (val < 0) return;
-                                       const discountedTotal = baseTotal > 0 ? Math.max(0, baseTotal - val) : 0;
-                                       // Store equivalent percent for data consistency
-                                       const equivalentPercent = baseTotal > 0 ? Math.round((val / baseTotal) * 100) : 0;
-                                       setPaymentData({
-                                          ...paymentData,
-                                          discountPercent: e.target.value, // store raw discount amount as string
-                                          paidAmount: baseTotal > 0 ? discountedTotal.toString() : paymentData.paidAmount,
-                                          debtAmount: '0'
-                                       });
-                                    }
-                                 }}
-                                 placeholder={discountType === 'percent' ? '0' : 'Summa kiriting'}
-                              />
-                           </div>
-                        </div>
-                        {/* Discount info box */}
-                        {paymentData.discountPercent && Number(paymentData.discountPercent) > 0 && (
-                           <div className="p-2.5 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-xs text-yellow-800 dark:text-yellow-200">
-                              {discountType === 'percent' ? (
-                                 <>Chegirma summasi: <strong>{formatMoney((Number(paymentData.amount) || 0) * (Number(paymentData.discountPercent) || 0) / 100)} UZS</strong> ({paymentData.discountPercent}%)</>
-                              ) : (
-                                 <>Chegirma: <strong>{formatNumber(Number(paymentData.discountPercent))} UZS</strong> &nbsp;(Umumiy {(Number(paymentData.amount)||0) > 0 ? Math.round((Number(paymentData.discountPercent)/(Number(paymentData.amount)||1))*100) : 0}%)</>
-                              )}
-                           </div>
-                        )}
-                     </div>
-                  )}
+                Bu yerda o'zining to'lov oynasi va chekni tahrirlash oynasi
+                bor edi. Ikkalasi `POST /api/transactions` ga to'g'ridan-
+                to'g'ri yozardi — hisob qatorisiz va `ChargePayment` siz.
+                Oqibati: shifokor ulushi (`backend/payroll.ts`) va
+                «Shifokorlar» hisoboti FAQAT `ChargePayment` ni o'qiydi,
+                ya'ni shu oynadan olingan pul bo'yicha ulush NOL bo'lardi.
+                Jimgina.
 
-                  {paymentData.service !== 'Avans' && (patient?.balance || 0) > 0 && (
-                     <div className="mb-4">
-                        <Button 
-                           type="button" 
-                           variant="secondary" 
-                           className="w-full bg-primary-50 text-primary-700 hover:bg-primary-100 border-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:border-primary-800 flex items-center justify-center gap-2"
-                           onClick={() => {
-                              const baseAmount = Number(paymentData.amount) || 0;
-                              const discountVal = Number(paymentData.discountPercent) || 0;
-                              let finalTotal = baseAmount;
-                              
-                              if (discountType === 'percent') {
-                                 finalTotal = Math.round(baseAmount * (1 - discountVal / 100));
-                              } else {
-                                 finalTotal = Math.max(0, baseAmount - discountVal);
-                              }
+                Qisman to'lovda oyna ikkita chek yozardi, ikkinchisi
+                `status: 'Pending'` bilan — qarzning UCHINCHI ta'rifi
+                (qolgan ikkitasi: to'lanmagan qatorlar va yozuv izohidagi
+                matn).
 
-                              setPaymentData({ 
-                                 ...paymentData, 
-                                 type: 'Balance',
-                                 paidAmount: finalTotal.toString(),
-                                 debtAmount: '0'
-                              });
-                           }}
-                        >
-                           <CreditCard className="w-4 h-4" /> Bemor avansidan to'lash (Mavjud: {formatMoney(patient.balance)} UZS)
-                        </Button>
-                     </div>
-                  )}
+                Endi xizmat uchun to'lov faqat `ChargePaymentModal` orqali
+                (yuqoridagi «To'lov qabul qilish»), avans esa
+                `AdvanceModal` orqali ketadi. */}
 
-                  <div className={paymentData.service === 'Avans' ? "grid grid-cols-1" : "grid grid-cols-2 gap-4"}>
-                     <Input
-                        label="To'lanayotgan Summa"
-                        type="number"
-                        value={paymentData.paidAmount}
-                        onChange={e => {
-                           // Asl narx ma'lum bo'lsa: qarz = jami - to'lanayotgan (qarz to'lovga qo'shilib ketmasligi uchun)
-                           const total = getDiscountedTotal();
-                           const paid = Number(e.target.value) || 0;
-                           setPaymentData({
-                              ...paymentData,
-                              paidAmount: e.target.value,
-                              debtAmount: total > 0 ? String(Math.max(0, total - paid)) : paymentData.debtAmount,
-                           });
-                        }}
-                        placeholder="0.00"
-                        required
-                     />
-                     {paymentData.service !== 'Avans' && (
-                        <Input
-                           label="Qolgan Qarzdorlik"
-                           type="number"
-                           value={paymentData.debtAmount}
-                           onChange={e => {
-                              // Asl narx ma'lum bo'lsa: to'lanayotgan = jami - qarz (avtomatik ayriladi)
-                              const total = getDiscountedTotal();
-                              const debt = Number(e.target.value) || 0;
-                              setPaymentData({
-                                 ...paymentData,
-                                 debtAmount: e.target.value,
-                                 paidAmount: total > 0 ? String(Math.max(0, total - debt)) : paymentData.paidAmount,
-                              });
-                           }}
-                           placeholder="0.00"
-                        />
-                     )}
-                  </div>
-
-                  {/* Total Calculator Display - Only for non-Avans */}
-                  {paymentData.service !== 'Avans' && (
-                     <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg flex justify-between items-center">
-                        <span className="text-gray-700 dark:text-gray-300 font-medium">Jami Summa:</span>
-                        <span className="text-gray-900 dark:text-white font-bold text-lg">
-                           {formatMoney(((Number(paymentData.paidAmount) || 0) + (Number(paymentData.debtAmount) || 0)))} UZS
-                        </span>
-                     </div>
-                  )}
-
-                  <div className="grid grid-cols-1 gap-4">
-                     <Select
-                        label="To'lov Usuli"
-                        value={paymentData.type}
-                        onChange={e => setPaymentData({ ...paymentData, type: e.target.value })}
-                        options={paymentData.service === 'Avans'
-                           // Avans — bu kassaga pul kiritish; sug'urta ham, hisobdan yechish ham bu yerda ma'nosiz
-                           ? INCOMING_PAYMENT_METHODS
-                              .filter(m => m !== 'Insurance')
-                              .map(m => ({ value: m, label: getPaymentMethodLabel(m) }))
-                           : [
-                              ...INCOMING_PAYMENT_METHODS.map(m => ({ value: m, label: getPaymentMethodLabel(m) })),
-                              { value: 'Balance', label: getPaymentMethodLabel('Balance'), disabled: (patient?.balance || 0) <= 0 }
-                           ]
-                        }
-                     />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-4">
-                     <Button type="button" variant="secondary" onClick={() => setIsPaymentModalOpen(false)} disabled={isPaymentSubmitting}>Bekor qilish</Button>
-                     <Button type="submit" disabled={isPaymentSubmitting}>
-                        {isPaymentSubmitting ? 'Saqlanmoqda...' : 'Saqlash'}
-                     </Button>
-                  </div>
-               </form>
-            </Modal>
-
-            {/* Payment Edit Modal */}
-            <Modal isOpen={isPaymentEditModalOpen} onClose={() => setIsPaymentEditModalOpen(false)} title="To'lovni Tahrirlash">
-               <form onSubmit={handleEditPaymentSave} className="space-y-4">
-                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg mb-4">
-                     <p className="text-sm text-gray-500">Xizmat:</p>
-                     <p className="font-medium text-gray-900 dark:text-white">{editingTransaction?.service}</p>
-                     <p className="text-sm text-gray-500 mt-2">Sana:</p>
-                     <p className="font-medium text-gray-900 dark:text-white">{editingTransaction?.date}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                     <Input
-                        label="Summa"
-                        type="number"
-                        value={editPaymentAmount}
-                        onChange={e => setEditPaymentAmount(e.target.value)}
-                        placeholder="0.00"
-                        required
-                     />
-                     <Select
-                        label="Status"
-                        value={editPaymentStatus}
-                        onChange={e => setEditPaymentStatus(e.target.value)}
-                        options={[
-                           { value: 'Paid', label: 'To\'landi' },
-                           { value: 'Pending', label: 'Kutilmoqda' }
-                        ]}
-                     />
-                  </div>
-                  <Select
-                     label="To'lov Usuli"
-                     value={editPaymentMethod}
-                     onChange={e => setEditPaymentMethod(e.target.value)}
-                     options={INCOMING_PAYMENT_METHODS.map(m => ({ value: m, label: getPaymentMethodLabel(m) }))}
-                  />
-                  <div className="flex justify-end gap-2 pt-4">
-                     <Button type="button" variant="secondary" onClick={() => setIsPaymentEditModalOpen(false)}>Bekor qilish</Button>
-                     <Button type="submit">Saqlash</Button>
-                  </div>
-               </form>
-            </Modal>
-
-            {/* Message Modal */}
             <Modal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} title={t('patients.details.modals.messageTitle')}>
                <form onSubmit={handleSendMessage} className="space-y-4">
                   <Select

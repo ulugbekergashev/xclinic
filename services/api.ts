@@ -2710,6 +2710,34 @@ export const api = {
         },
     },
     payments: {
+        /* AVANS TO'LDIRISH — xizmat uchun to'lov EMAS.
+
+           Chek va bemor balansi bitta tranzaksiyada yoziladi. Ilgari bu
+           `POST /api/transactions` orqali ketardi va balans alohida,
+           chekdan keyin yangilanardi: yiqilsa pul kassada bor, bemor
+           hisobida yo'q edi. */
+        advance: (data: { patientId: string; amount: number; method?: string; receivedByName?: string; note?: string }) => {
+            if (isDemoMode()) {
+                const p = DEMO_PATIENTS.find(x => x.id === data.patientId);
+                if (!p) return Promise.reject(new Error('Bemor topilmadi.'));
+                if ((data.method || 'Cash') === 'Balance') {
+                    return Promise.reject(new Error("Avansni avans hisobidan to'ldirib bo'lmaydi"));
+                }
+                const tx = {
+                    id: demoId('demo-tx'), clinicId: 'demo-clinic-1',
+                    patientId: p.id, patientName: `${p.lastName} ${p.firstName}`.trim(),
+                    date: todayISO(), amount: data.amount, type: data.method || 'Cash',
+                    service: 'Avans', status: 'Paid', createdAt: demoNow(),
+                } as any;
+                DEMO_TRANSACTIONS.unshift(tx);
+                p.balance = (p.balance || 0) + data.amount;
+                saveDemoData();
+                return demoDone({ transaction: tx, balance: p.balance });
+            }
+            return fetchJson<{ transaction: Transaction; balance: number }>(
+                '/payments/advance', { method: 'POST', body: JSON.stringify(data) });
+        },
+
         /** `perCharge` — qaysi qatorga qancha (tanlab to'lash).
          *  `payments` — bir to'lovni naqd + karta deb bo'lish.
          *  Ikkisi ham ixtiyoriy: berilmasa eski xatti-harakat. */

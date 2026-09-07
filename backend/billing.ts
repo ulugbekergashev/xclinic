@@ -715,6 +715,88 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
         res.json(outcome.payload);
     });
 
+    /* ═══ AVANS TO'LDIRISH ════════════════════════════════════════════════
+
+       Bemor oldindan pul qoldiradi. Bu XIZMAT UCHUN TO'LOV EMAS: hisob
+       qatori yo'q, shifokor ulushi ham yo'q — pul shunchaki bemor hisobida
+       turadi va keyin qatorlarni to'lashda `method: 'Balance'` bilan
+       sarflanadi.
+
+       NIMA UCHUN ALOHIDA ENDPOINT. Ilgari avans `POST /api/transactions`
+       orqali yozilardi va u yerda balans O'ZGARISHI chek yaratilgandan
+       KEYIN, alohida so'rov bilan bajarilardi:
+
+           await prisma.patient.update(...).catch(err => console.error(...))
+
+       Ya'ni balansni yangilash yiqilsa, chek qolib ketardi va pul BEMOR
+       HISOBIGA TUSHMASDI — kassada bor, bemorda yo'q. Xato faqat jurnalga
+       yozilardi. Bu yerda ikkalasi bitta tranzaksiyada: yo ikkisi ham, yo
+       hech biri.
+
+       Ikkinchi sabab: `POST /api/transactions` istalgan shakldagi chek
+       yozadigan umumiy yo'l edi va uni interfeysdan chaqirish har xil
+       joyda har xil natija berardi. Endi u faqat shu maqsad uchun. */
+    route('post', '/api/payments/advance', async (req, res, clinicId) => {
+        const { patientId, amount, method, receivedByName, note } = req.body || {};
+        if (!patientId) return res.status(400).json({ error: "Bemor ko'rsatilishi kerak" });
+
+        const sum = round(Number(amount));
+        if (!(sum > 0)) return res.status(400).json({ error: "Summa noto'g'ri" });
+
+        /* Avansni avansdan to'ldirib bo'lmaydi — bu o'z-o'ziga pul
+           ko'chirish bo'lardi va balans ikki marta oshardi. */
+        const payMethod = String(method || 'Cash');
+        if (payMethod === 'Balance') {
+            return res.status(400).json({ error: "Avansni avans hisobidan to'ldirib bo'lmaydi" });
+        }
+
+        const outcome = await prisma.$transaction(async (tx: any) => {
+            const patient = await tx.patient.findUnique({
+                where: { id: String(patientId) },
+                select: { id: true, clinicId: true, firstName: true, lastName: true, balance: true },
+            });
+            if (!patient || patient.clinicId !== clinicId) {
+                throw new HttpError(404, 'Bemor topilmadi');
+            }
+
+            const patientName = `${patient.lastName || ''} ${patient.firstName || ''}`.trim();
+            const receipt = await tx.transaction.create({
+                data: {
+                    clinicId,
+                    patientId: patient.id,
+                    patientName,
+                    date: nowDate(),
+                    amount: sum,
+                    type: payMethod,
+                    /* 'Avans' — balans formulasining kaliti (`advanceFromRows`).
+                       Matn o'zgarsa balans hisobi buziladi. */
+                    service: 'Avans',
+                    status: 'Paid',
+                    receivedByName: receivedByName || null,
+                },
+            });
+
+            const updated = await tx.patient.update({
+                where: { id: patient.id },
+                data: { balance: { increment: sum } },
+                select: { id: true, balance: true },
+            });
+
+            return { receipt, patientName, balance: updated.balance };
+        }, { timeout: 15000, maxWait: 10000 });
+
+        await writeAudit({
+            clinicId, date: nowDate(), action: 'Advance', entityType: 'Transaction',
+            entityId: outcome.receipt.id,
+            summary: `${outcome.patientName}: avans +${Math.round(sum)} (${payMethod})`
+                + (note ? ` — ${String(note).slice(0, 80)}` : ''),
+            byName: receivedByName || null,
+        });
+
+        emitEvent(clinicId, 'charge.paid', { patientId: String(patientId) });
+        res.json({ transaction: outcome.receipt, balance: outcome.balance });
+    });
+
     /**
      * Qator bo'yicha QAYTARISH.
      *

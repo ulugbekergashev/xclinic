@@ -150,6 +150,72 @@ async function main() {
     ok('to\'langan qatorni bekor qilib bo\'lmaydi (409)', delPaid.status === 409,
         `status: ${delPaid.status}`);
 
+    console.log('\n=== AVANS: CHEK VA BALANS BITTA TRANZAKSIYADA ===');
+    /* Ilgari avans `POST /api/transactions` orqali yozilardi va balans
+       chekdan KEYIN, alohida so'rov bilan oshirilardi:
+
+           await prisma.patient.update(...).catch(err => console.error(...))
+
+       Ya'ni balans yangilanishi yiqilsa chek qolib ketardi va pul bemor
+       hisobiga TUSHMASDI — kassada bor, bemorda yo'q, xato esa faqat
+       jurnalda. Endi ikkalasi bitta tranzaksiyada. */
+    const advBefore = await balanceOf();
+
+    const adv = await api('POST', '/payments/advance', {
+        patientId, amount: 250000, method: 'Cash', receivedByName: 'Sinov kassiri',
+    });
+    ok('avans qabul qilindi', adv.status === 200,
+        `status: ${adv.status}, ${JSON.stringify(adv.data).slice(0, 140)}`);
+    ok('javobdagi balans 250 000 ga oshdi',
+        Math.round(adv.data?.balance ?? -1) === Math.round(advBefore) + 250000,
+        `${advBefore} -> ${adv.data?.balance}`);
+
+    /* Chek AYNAN 'Avans' xizmati bilan yoziladi: balansni qayta hisoblash
+       formulasi (`advanceFromRows`) shu matnga qaraydi. Matn o'zgarsa
+       balans hisobi jimgina buziladi. */
+    ok("chek 'Avans' xizmati bilan", adv.data?.transaction?.service === 'Avans',
+        String(adv.data?.transaction?.service));
+    ok('chek Paid holatida', adv.data?.transaction?.status === 'Paid',
+        String(adv.data?.transaction?.status));
+
+    ok('bemor kartasida ham o\'sha balans',
+        Math.round(await balanceOf()) === Math.round(advBefore) + 250000);
+
+    console.log('\n=== AVANSNI AVANSDAN TO\'LDIRIB BO\'LMAYDI ===');
+    /* O'z-o'ziga pul ko'chirish bo'lardi va balans ikki marta oshardi. */
+    const selfPay = await api('POST', '/payments/advance', {
+        patientId, amount: 1000, method: 'Balance',
+    });
+    ok('Balance usuli RAD ETILDI', selfPay.status === 400, `status: ${selfPay.status}`);
+
+    console.log('\n=== AVANS: NOTO\'G\'RI KIRISH ===');
+    const zero = await api('POST', '/payments/advance', { patientId, amount: 0 });
+    ok('nol summa rad etildi', zero.status === 400, `status: ${zero.status}`);
+    const neg = await api('POST', '/payments/advance', { patientId, amount: -5000 });
+    ok('manfiy summa rad etildi', neg.status === 400, `status: ${neg.status}`);
+    const noPatient = await api('POST', '/payments/advance', { amount: 1000 });
+    ok('bemorsiz rad etildi', noPatient.status === 400, `status: ${noPatient.status}`);
+    const alien = await api('POST', '/payments/advance', { patientId: 'yoq-bemor', amount: 1000 });
+    ok('mavjud bo\'lmagan bemor 404', alien.status === 404, `status: ${alien.status}`);
+    ok('xato urinishlardan keyin balans o\'zgarmadi',
+        Math.round(await balanceOf()) === Math.round(advBefore) + 250000);
+
+    console.log('\n=== AVANSDAN TO\'LASH BALANSNI KAMAYTIRADI ===');
+    /* Zanjirning ikkinchi yarmi: avans qatorlarni to'lashda sarflanadi. */
+    const cAdv = await newCharge(100000);
+    ok('avansdan to\'lanadigan qator yaratildi', !!cAdv);
+    if (cAdv) {
+        const paid = await api('POST', '/payments', {
+            chargeIds: [cAdv], amount: 100000,
+            payments: [{ method: 'Balance', amount: 100000 }],
+        });
+        ok('avansdan to\'lov o\'tdi', paid.status === 200,
+            `status: ${paid.status}, ${JSON.stringify(paid.data).slice(0, 140)}`);
+        ok('balans 100 000 ga kamaydi',
+            Math.round(await balanceOf()) === Math.round(advBefore) + 150000,
+            `kutilgan ${Math.round(advBefore) + 150000}, bor ${await balanceOf()}`);
+    }
+
     console.log('\n═══ 8. YAXLITLIK — ChargePayment = paidAmount ═════');
     const allCharges = (await api('GET', `/charges?patientId=${patientId}`)).data || [];
     let bad = 0;
@@ -157,7 +223,7 @@ async function main() {
         const sum = (c.payments || []).reduce((s: number, p: any) => s + p.amount, 0);
         if (c.payments && Math.abs(sum - (c.paidAmount || 0)) > 0.01) {
             bad++;
-            console.log(`     ✗ ${c.name}: ChargePayment yig'indisi ${sum}, paidAmount ${c.paidAmount}`);
+            console.log(`     x ${c.name}: ChargePayment yig'indisi ${sum}, paidAmount ${c.paidAmount}`);
         }
     }
     ok('hamma qatorda ChargePayment yig\'indisi paidAmount ga teng', bad === 0, `nomuvofiq: ${bad}`);

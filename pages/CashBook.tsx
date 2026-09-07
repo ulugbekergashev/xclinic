@@ -7,7 +7,7 @@ import {
     Plus, Loader2, Printer, Trash2, ArrowDownToLine, Undo2, ListOrdered, Pencil, History, ChevronDown,
 } from 'lucide-react';
 import { Card, Button, Modal, Input, Select } from '../components/Common';
-import { QuickPaymentModal } from '../components/QuickPaymentModal';
+import { AdvanceModal } from '../components/AdvanceModal';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import {
     Transaction, Expense, ExpenseCategory, Doctor, Clinic, Patient, Appointment,
@@ -30,7 +30,6 @@ import {
 import { exportCashBookDay, exportCashBookMonth } from '../utils/cashbookExport';
 import { PAYMENT_METHODS, EXPENSE_PAYMENT_METHODS, INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { formatDateToISO } from '../utils/dateUtils';
-import { calculateAppointmentTotal, isAppointmentPaid } from '../utils/financialCalculations';
 import { api } from '../services/api';
 
 // Kassada kundalik chiqimlar yoziladi. Oylik va shifokor ulushi ataylab yo'q —
@@ -478,7 +477,9 @@ export const CashBook: React.FC<CashBookProps> = ({
     const [closeSaving, setCloseSaving] = useState(false);
 
     // Kassaga to'lov qabul qilish / xarajat yozish
-    const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+    /* Avans oynasi. Bemor yuqoridagi qidiruvdan yoki qatordan tanlanadi. */
+    const [isAdvanceOpen, setIsAdvanceOpen] = useState(false);
+    const [advancePatient, setAdvancePatient] = useState<Patient | null>(null);
     const [isExpenseOpen, setIsExpenseOpen] = useState(false);
     const [expenseSaving, setExpenseSaving] = useState(false);
     const [expenseForm, setExpenseForm] = useState({
@@ -819,58 +820,33 @@ export const CashBook: React.FC<CashBookProps> = ({
         }
     };
 
-    // Kassirning kun oxiridagi asosiy savoli: kimdan pul olinmadi.
-    // Ikki manba: qarzga yozilgan to'lovlar va to'lov yozilmagan yakunlangan qabullar.
-    const unpaidItems = useMemo(() => {
-        const pendingTx = transactions
-            .filter(t => t && (t.date || '').split('T')[0] === date && t.status !== 'Paid')
-            .map(t => ({
-                kind: 'debt' as const,
-                id: t.id,
-                patientName: t.patientName,
-                patientId: t.patientId,
-                doctorName: t.doctorName || '',
-                doctorId: t.doctorId,
-                service: t.service || '',
-                amount: t.amount || 0,
-                tx: t,
-            }));
+    /* Kassirning kun oxiridagi asosiy savoli: kimdan pul olinmadi.
 
-        const unpaidAppts = appointments
-            .filter(a => a && a.date === date && a.status === 'Completed' && !isAppointmentPaid(a, transactions))
-            .map(a => {
-                const { total } = calculateAppointmentTotal(a.notes || '', services as any);
-                return {
-                    kind: 'appointment' as const,
-                    id: a.id,
-                    patientName: a.patientName,
-                    patientId: a.patientId,
-                    doctorName: a.doctorName || '',
-                    doctorId: a.doctorId,
-                    service: a.type || '',
-                    amount: total,
-                    tx: undefined,
-                };
-            });
+       YAGONA MANBA — hisob qatorlari (`VisitCharge`). Ilgari bu ro'yxat
+       UCH manbadan yig'ilardi va uchalasi qarzni boshqacha ta'riflardi:
 
-        // Shifokor tahlil yoki xizmat buyurganda avtomatik yaratilgan qatorlar.
-        // Ilgari bular hech qayerda ko'rinmasdi — kassir ularni qo'lda kiritishi kerak edi.
-        const unpaidCharges = charges
-            .filter(c => c.status === 'Unpaid' && (c.visit?.date || c.createdAt.split('T')[0]) === date)
-            .map(c => ({
-                kind: 'charge' as const,
-                id: c.id,
-                patientName: c.patientName,
-                patientId: c.patientId || undefined,
-                doctorName: '',
-                doctorId: undefined,
-                service: c.name,
-                amount: c.total - (c.paidAmount || 0),
-                tx: undefined,
-            }));
+         1. `Transaction.status !== 'Paid'` — bemor kartasidagi to'lov
+            oynasi yozadigan "qarz chek". O'sha oyna olib tashlandi;
+         2. yakunlangan yozuvning izohidan REGEXP bilan ajratilgan summa
+            (`calculateAppointmentTotal`) — denta7 merosi. Ustiga ustak
+            yozuvning `Completed` holatini kod HECH QAYERDA qo'ymaydi,
+            ya'ni bu manba jonli ma'lumotda hech qachon ishlamagan ham;
+         3. to'lanmagan qatorlar — to'g'ri manba.
 
-        return [...pendingTx, ...unpaidAppts, ...unpaidCharges];
-    }, [transactions, appointments, services, date, charges]);
+       Uchtasi bir ro'yxatda turgani uchun bitta qarz ikki marta
+       ko'rinishi ham mumkin edi. */
+    const unpaidItems = useMemo(() => charges
+        .filter(c => c.status === 'Unpaid' && (c.visit?.date || c.createdAt.split('T')[0]) === date)
+        .map(c => ({
+            kind: 'charge' as const,
+            id: c.id,
+            patientName: c.patientName,
+            patientId: c.patientId || undefined,
+            doctorName: c.doctorName || '',
+            doctorId: c.doctorId || undefined,
+            service: c.name,
+            amount: c.total - (c.paidAmount || 0),
+        })), [date, charges]);
 
     const unpaidTotal = unpaidItems.reduce((sum, i) => sum + i.amount, 0);
 
@@ -903,53 +879,6 @@ export const CashBook: React.FC<CashBookProps> = ({
             : c.patientName === payingPatient.name);
     }, [charges, payingPatient]);
 
-    // Qarzni yopish — Dashboard'dagi mantiq bilan bir xil:
-    // qisman to'lansa yangi Paid yozuv, qoldiq eskisida qoladi
-    const [payingDebt, setPayingDebt] = useState<Transaction | null>(null);
-    const [debtAmount, setDebtAmount] = useState('');
-    const [debtMethod, setDebtMethod] = useState<PaymentMethod>('Cash');
-    const [debtSaving, setDebtSaving] = useState(false);
-
-    const openDebt = (tx: Transaction) => {
-        setPayingDebt(tx);
-        setDebtAmount(String(tx.amount));
-        setDebtMethod('Cash');
-    };
-
-    const handlePayDebt = async () => {
-        if (!payingDebt || !onUpdateTransaction) return;
-        const paid = Math.min(Number(debtAmount) || 0, payingDebt.amount);
-        if (paid <= 0) return;
-        setDebtSaving(true);
-        try {
-            if (paid < payingDebt.amount) {
-                if (!onAddTransaction) return;
-                await onAddTransaction({
-                    patientName: payingDebt.patientName,
-                    patientId: payingDebt.patientId,
-                    doctorId: payingDebt.doctorId,
-                    doctorName: payingDebt.doctorName,
-                    clinicId: payingDebt.clinicId,
-                    amount: paid,
-                    status: 'Paid',
-                    type: debtMethod,
-                    service: `${payingDebt.service} (Qarzdorlik yopildi)`,
-                    date,
-                } as Omit<Transaction, 'id' | 'clinicId'>);
-                await onUpdateTransaction(payingDebt.id, { amount: payingDebt.amount - paid });
-            } else {
-                await onUpdateTransaction(payingDebt.id, { status: 'Paid', type: debtMethod, date });
-            }
-            setPayingDebt(null);
-        } catch {
-            // xatolik toast orqali
-        } finally {
-            setDebtSaving(false);
-        }
-    };
-
-    // To'lanmagan qabul uchun — tayyor to'lov modali oldindan to'ldiriladi
-    const [presetPayment, setPresetPayment] = useState<{ patientId?: string; doctorId?: string; service?: string; amount?: number } | null>(null);
 
     const openExpenseModal = () => {
         setExpenseForm({ category: 'Other', title: '', amount: '', method: 'Cash', note: '', departmentId: '' });
@@ -1005,15 +934,17 @@ export const CashBook: React.FC<CashBookProps> = ({
                     {/* Kassaga pul kirishi va chiqishi — kundalik amallar */}
                     {view === 'day' && (onAddTransaction || onAddExpense) && (
                         <div className="flex items-center gap-2">
-                            {onAddTransaction && (
-                                <button
-                                    onClick={() => setIsPaymentOpen(true)}
-                                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
-                                >
-                                    <Plus className="w-3.5 h-3.5" />
-                                    To'lov
-                                </button>
-                            )}
+                            {/* "To'lov" -> "Avans". Eski tugma ixtiyoriy chek
+                                yozardi: hisob qatorisiz, ya'ni shifokor
+                                ulushisiz. Xizmat uchun to'lov endi faqat
+                                pastdagi ro'yxatlardan, qatorlar bilan. */}
+                            <button
+                                onClick={() => setIsAdvanceOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                {t('advance.title')}
+                            </button>
                             {onAddExpense && (
                                 <button
                                     onClick={openExpenseModal}
@@ -1396,11 +1327,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 {item.patientName}
                                             </p>
                                             <p className="text-[11px] text-gray-400 truncate">
-                                                {item.kind === 'debt'
-                                                    ? <span className="text-amber-600 dark:text-amber-400 font-bold">{t('finance.cash.onCredit')}</span>
-                                                    : item.kind === 'charge'
-                                                        ? <span className="text-primary-600 dark:text-primary-400 font-bold">{t('finance.cash.orderedByDoctor')}</span>
-                                                        : <span className="text-gray-500">{t('finance.cash.visitDoneUnpaid')}</span>}
+                                                <span className="text-primary-600 dark:text-primary-400 font-bold">{t('finance.cash.orderedByDoctor')}</span>
                                                 {item.doctorName && <><span className="mx-1.5">.</span>{item.doctorName}</>}
                                                 {item.service && <><span className="mx-1.5">.</span>{item.service}</>}
                                             </p>
@@ -1409,19 +1336,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             {item.amount ? num(item.amount) : '—'}
                                         </span>
                                         <button
-                                            onClick={() => {
-                                                if (item.kind === 'charge') openChargePayment(item.patientName, item.patientId);
-                                                else if (item.kind === 'debt' && item.tx) openDebt(item.tx);
-                                                else {
-                                                    setPresetPayment({
-                                                        patientId: item.patientId,
-                                                        doctorId: item.doctorId,
-                                                        service: item.service,
-                                                        amount: item.amount || undefined,
-                                                    });
-                                                    setIsPaymentOpen(true);
-                                                }
-                                            }}
+                                            onClick={() => openChargePayment(item.patientName, item.patientId)}
                                             className="shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
                                         >{t('finance.cash.pay')}</button>
                                     </li>
@@ -1765,24 +1680,17 @@ export const CashBook: React.FC<CashBookProps> = ({
                 />
             )}
 
-            {/* ── To'lov qabul qilish ── */}
-            {onAddTransaction && (
-                <QuickPaymentModal
-                    isOpen={isPaymentOpen}
-                    onClose={() => { setIsPaymentOpen(false); setPresetPayment(null); }}
-                    presetPatientId={presetPayment?.patientId}
-                    presetDoctorId={presetPayment?.doctorId}
-                    presetService={presetPayment?.service}
-                    presetAmount={presetPayment?.amount}
-                    patients={patients}
-                    doctors={doctors}
-                    services={services}
-                    clinicId={clinicId}
-                    onAddTransaction={onAddTransaction}
-                    // Ko'rilayotgan kunga yoziladi, bugungi kunga emas
-                    presetDate={date}
-                />
-            )}
+            {/* ── Avans to'ldirish ──────────────────────────────────────
+                Xizmat uchun to'lov EMAS: pul bemor hisobida turadi. Xizmat
+                to'lovi «To'lanmaganlar» ro'yxatidan, qatorlar bilan. */}
+            <AdvanceModal
+                isOpen={isAdvanceOpen}
+                onClose={() => { setIsAdvanceOpen(false); setAdvancePatient(null); }}
+                patient={advancePatient}
+                receivedByName={currentUserName}
+                addToast={addToast}
+                onDone={() => onChargesChanged?.()}
+            />
 
             {/* ── Xarajat yozish ── */}
             <Modal
@@ -2011,71 +1919,16 @@ export const CashBook: React.FC<CashBookProps> = ({
                 </div>
             </Modal>
 
-            {/* -- Qarzni yopish -- */}
-            <Modal
-                isOpen={payingDebt !== null}
-                onClose={() => setPayingDebt(null)}
-                title={t('finance.cash.closeDebt')}
-                className="max-w-md"
-            >
-                <div className="space-y-4">
-                    <div className="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{payingDebt?.patientName}</p>
-                        <p className="text-[11px] text-gray-400">{payingDebt?.service}</p>
-                        <p className="text-lg font-black tabular-nums text-amber-600 dark:text-amber-400 mt-1">
-                            {num(payingDebt?.amount || 0)} UZS
-                        </p>
-                    </div>
+            {/* QARZNI YOPISH OYNASI OLIB TASHLANDI.
 
-                    <Input
-                        label="To'lanayotgan summa (UZS)"
-                        type="number"
-                        value={debtAmount}
-                        onChange={e => setDebtAmount(e.target.value)}
-                        onWheel={e => e.currentTarget.blur()}
-                        autoFocus
-                    />
-                    {Number(debtAmount) > 0 && Number(debtAmount) < (payingDebt?.amount || 0) && (
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                            Qisman to'lov: {num((payingDebt?.amount || 0) - Number(debtAmount))} UZS qarz bo'lib qoladi.
-                        </p>
-                    )}
+                U `Transaction.status === 'Pending'` qatorlarini yopardi —
+                qarzning eski, uchinchi ta'rifi. Bunday qatorlarni faqat
+                bemor kartasidagi to'lov oynasi yaratardi va u endi yo'q.
+                Qarz — to'lanmagan hisob qatori, u yuqoridagi ro'yxatdan
+                `ChargePaymentModal` bilan yopiladi.
 
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('finance.cash.paymentMethod')}</label>
-                        <div className="flex gap-2 flex-wrap">
-                            {INCOMING_PAYMENT_METHODS.map(m => (
-                                <button
-                                    key={m}
-                                    type="button"
-                                    onClick={() => setDebtMethod(m)}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${debtMethod === m
-                                        ? 'bg-emerald-600 text-white border-emerald-600'
-                                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-emerald-400'}`}
-                                >
-                                    {getPaymentMethodLabel(m)}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                Eski ma'lumotdagi `Pending` cheklar tarixda qoladi. */}
 
-                    <p className="text-[11px] text-gray-400">
-                        To'lov ko'rilayotgan kunga ({formatDateLabel(date)}) yoziladi.
-                    </p>
-
-                    <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1" onClick={() => setPayingDebt(null)}>Bekor</Button>
-                        <button
-                            onClick={handlePayDebt}
-                            disabled={debtSaving || !(Number(debtAmount) > 0)}
-                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 transition-all"
-                        >
-                            {debtSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {debtSaving ? 'Saqlanmoqda...' : 'To\'lovni qabul qilish'}
-                        </button>
-                    </div>
-                </div>
-            </Modal>
 
             {/* -- To'lovni tuzatish -- */}
             <Modal

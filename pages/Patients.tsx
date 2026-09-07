@@ -130,18 +130,20 @@ export const Patients: React.FC<PatientsProps> = ({
         // Actually, let's use lastVisit as a proxy for "New" if it's within 7 days and they are new.
         const lastVisitDate = p.lastVisit === 'Never' ? null : new Date(p.lastVisit);
         matchesStat = lastVisitDate ? lastVisitDate >= sevenDaysAgo : true;
-      } else if (activeStatFilter === 'debtor') {
-        const patientTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${formatFullName(p)}`);
-        const totalDebt = patientTxs.filter(t => t.status === 'Pending').reduce((sum, t) => sum + t.amount, 0);
-        matchesStat = totalDebt > 0;
-      } else if (activeStatFilter === 'waiting') {
-        const patientAppts = appointments.filter(a => a.patientId === p.id || a.patientName === `${formatFullName(p)}`);
-        const patientTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${formatFullName(p)}`);
-        const hasUnpaid = patientAppts.some(app => {
-          const hasTransaction = patientTxs.some(t => t.date === app.date);
-          return (app.status === 'Completed' || app.status === 'Checked-In') && !hasTransaction;
-        });
-        matchesStat = hasUnpaid;
+      } else if (activeStatFilter === 'debtor' || activeStatFilter === 'waiting') {
+        /* QARZ SERVERDAN. Ilgari bu yerda ikkita mustaqil hisob turardi va
+           ikkalasi ham noto'g'ri edi:
+
+             · «qarzdor» — `Transaction.status === 'Pending'` cheklari
+               bo'yicha. Bunday chek faqat bemor kartasidagi to'lov oynasi
+               yaratardi va u olib tashlandi;
+             · «to'lov kutmoqda» — yakunlangan yozuvga o'sha SANADA chek
+               yo'qligi bo'yicha. Yozuvning `Completed` holatini esa kod
+               hech qayerda qo'ymaydi, ya'ni filtr hech qachon ishlamagan.
+
+           Endi ikkalasi ham bitta manbadan: to'lanmagan hisob qatorlari
+           (`GET /api/reports/debtors`). */
+        matchesStat = debtorIds.has(p.id);
       }
 
       return matchesSearch && matchesStatus && matchesGender && matchesDoctor && matchesDateFrom && matchesDateTo && matchesStat;
@@ -164,9 +166,18 @@ export const Patients: React.FC<PatientsProps> = ({
      Endi uchalasi ham `/api/reports/snapshot` dan, ya'ni bosh sahifadagi
      raqamlar bilan AYNAN bir xil. */
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  /* Qarzdorlar ro'yxati — serverdan, to'lanmagan qatorlardan yig'ilgan. */
+  const [debtorIds, setDebtorIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let alive = true;
     api.reports.snapshot().then(s => { if (alive) setSnapshot(s); }).catch(() => {});
+    api.reports.debtors()
+      .then((d: any) => {
+        if (!alive) return;
+        setDebtorIds(new Set((d?.patients || [])
+          .map((x: any) => x.patientId).filter(Boolean)));
+      })
+      .catch(() => { });
     return () => { alive = false; };
   }, []);
 

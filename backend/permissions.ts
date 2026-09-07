@@ -141,6 +141,8 @@ export const RULES: Rule[] = [
     { method: 'PUT', path: '/api/transactions/:id', roles: owner() },
     { method: 'DELETE', path: '/api/transactions/:id', roles: owner() },
     { method: 'POST', path: '/api/payments', roles: owner(R) },
+    /* Avans to'ldirish — kassirning ishi, xuddi to'lov kabi. */
+    { method: 'POST', path: '/api/payments/advance', roles: owner(R) },
     { method: 'POST', path: '/api/cash-register/open', roles: owner(R) },
     { method: 'POST', path: '/api/cash-register/close', roles: owner(R) },
     { method: 'DELETE', path: '/api/cash-register/:date', roles: owner() },

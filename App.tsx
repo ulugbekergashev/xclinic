@@ -1670,8 +1670,6 @@ const sinceDate = (n: number) =>
                   showPatientPhone={showPatientPhoneForRole}
                   onBack={() => navigate('/patients')}
                   onUpdatePatient={updatePatient}
-                  onAddTransaction={addTransaction}
-                  onUpdateTransaction={updateTransaction}
                   onAddAppointment={addAppointment}
                   onUpdateAppointment={updateAppointment}
                 />
