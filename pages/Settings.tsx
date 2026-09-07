@@ -12,6 +12,7 @@ import type { AiSettingsResponse } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
 import { NetworkAccessTab } from '../components/NetworkAccessTab';
+import { LabCatalogTab } from '../components/LabCatalogTab';
 import { ACCESS_MODULES, SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
 
 /** Bo'lim rangi — navbat tablosi va kalendar shu ranglarni ishlatadi */
@@ -86,7 +87,7 @@ export const Settings: React.FC<SettingsProps> = ({
    /* Kompyuterdagi bulut papkalari — «Xizmat ko'rsatish» bo'limi ochilganda
       bir marta so'raladi. Topilmasa oddiy papka tanlash qoladi. */
    const [cloudFolders, setCloudFolders] = useState<{ path: string; label: string }[]>([]);
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'maintenance' | 'network' | 'departments' | 'ai'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'ai'>('services');
 
    // Ruxsatlar (access control) formasi — klinika sozlamalaridan boshlang'ich qiymat
    const [accessForm, setAccessForm] = useState<AccessControl>(() => parseAccessControl(currentClinic));
@@ -1260,6 +1261,10 @@ export const Settings: React.FC<SettingsProps> = ({
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: 'Ruxsatlar', icon: Shield }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'accessLog', name: 'Kirish jurnali', icon: History }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: 'Bo’limlar', icon: Building2 }] : []),
+                  /* Tahlillar katalogi. Laboratoriya ekrani katalog bo'sh
+                     bo'lganda AYNAN shu yerga yuborardi, lekin bunday
+                     vkladka mavjud emas edi. */
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'labCatalog', name: t('lab.tab'), icon: FlaskConical }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: 'Xizmat ko’rsatish', icon: HardDrive }] : []),
                   // AI kalitlari pul turadigan resurs — faqat klinika egasi ko'radi.
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'ai', name: 'AI yordamchi', icon: Bot }] : []),
@@ -1657,6 +1662,10 @@ export const Settings: React.FC<SettingsProps> = ({
 
                {/* Services Tab */}
                {/* Access Control Tab — faqat klinika admini */}
+               {activeTab === 'labCatalog' && userRole === UserRole.CLINIC_ADMIN && (
+                  <LabCatalogTab departments={[]} />
+               )}
+
                {/* Tarmoq va kirish — havola, QR va internet tumbleri */}
                {activeTab === 'network' && (
                   <NetworkAccessTab canManageRemote={userRole === UserRole.CLINIC_ADMIN} />

@@ -6238,6 +6238,55 @@ app.get('/api/inventory/logs', authenticateToken, async (req, res) => {
     }
 });
 
+/* ─── POZITSIYANI TAHRIRLASH ─────────────────────────────────────────────
+
+   Ilgari mahsulotni yaratgandan keyin unga TEGIB bo'lmasdi: na nomini
+   to'g'rilash, na o'lchov birligini, na minimal qoldiqni, na tannarxni.
+   Xato yozilgan nom bilan yashash yoki mahsulotni O'CHIRIB, qaytadan
+   yaratish kerak edi — harakatlar tarixi bilan birga.
+
+   QOLDIQQA TEGILMAYDI. U harakatlar yig'indisi (0028) va faqat kirim,
+   chiqim yoki inventarizatsiya orqali o'zgaradi. Bu yerdan uni
+   o'zgartirsak, invariant birinchi tahrirdayoq buzilardi. */
+app.put('/api/inventory/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!(await assertOwnership(req, res, 'inventoryItem', req.params.id))) return;
+        const clinicId = getScopedClinicId(req);
+        const { name, unit, minQuantity, initialCost, price,
+                isMedication, isConsumable, form, activeIngredient, departmentId } = req.body;
+
+        if (name !== undefined && !String(name).trim()) {
+            return res.status(400).json({ error: "Nom bo'sh bo'lmasin" });
+        }
+        if (departmentId) {
+            const dep = await prisma.department.findUnique({ where: { id: departmentId } });
+            if (!dep || dep.clinicId !== clinicId) {
+                return res.status(400).json({ error: "Bo'lim topilmadi yoki boshqa klinikaga tegishli" });
+            }
+        }
+
+        const item = await prisma.inventoryItem.update({
+            where: { id: req.params.id },
+            data: {
+                ...(name !== undefined && { name: String(name).trim() }),
+                ...(unit !== undefined && { unit }),
+                ...(minQuantity !== undefined && { minQuantity: parseFloat(minQuantity) || 0 }),
+                ...(initialCost !== undefined && { initialCost: parseFloat(initialCost) || 0 }),
+                ...(price !== undefined && { price: parseFloat(price) || 0 }),
+                ...(isMedication !== undefined && { isMedication: !!isMedication }),
+                ...(isConsumable !== undefined && { isConsumable: !!isConsumable }),
+                ...(form !== undefined && { form: form || null }),
+                ...(activeIngredient !== undefined && { activeIngredient: activeIngredient || null }),
+                ...(departmentId !== undefined && { departmentId: departmentId || null }),
+            },
+        });
+        res.json(item);
+    } catch (error: any) {
+        console.error('[PUT /api/inventory/:id]', error?.message || error);
+        res.status(500).json({ error: "Mahsulotni saqlab bo'lmadi" });
+    }
+});
+
 app.delete('/api/inventory/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'inventoryItem', req.params.id))) return;

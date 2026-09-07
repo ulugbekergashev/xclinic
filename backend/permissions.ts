@@ -220,6 +220,7 @@ export const RULES: Rule[] = [
        Inventarizatsiya tuzatishi (`adjust`) va qaytarish (`reverse`) —
        egada: ular qoldiqni sababsiz o'zgartira oladi. */
     { method: 'POST', path: '/api/inventory', roles: owner(R) },
+    { method: 'PUT', path: '/api/inventory/:id', roles: owner(R) },
     { method: 'DELETE', path: '/api/inventory/:id', roles: owner() },
     { method: 'PUT', path: '/api/inventory/:id/stock', roles: owner(R) },
     { method: 'DELETE', path: '/api/inventory/logs/:id', roles: owner() },

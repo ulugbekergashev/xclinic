@@ -10,6 +10,7 @@ import { api } from '../services/api';
 import { EmptyState } from '../components/Common';
 import { useLanguage } from '../context/LanguageContext';
 import { printLabResult } from '../utils/printForms';
+import { useNavigate } from 'react-router-dom';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Laboratoriya — tahlillar.
@@ -71,6 +72,7 @@ export const LabOrders: React.FC<Props> = ({
     onExpensesChanged, defaultDoctorName, currentUserName, currentClinic,
 }) => {
     const { t } = useLanguage();
+    const navigate = useNavigate();
     const [tests, setTests] = useState<LabTest[]>([]);
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
@@ -223,7 +225,17 @@ export const LabOrders: React.FC<Props> = ({
                     <Settings2 className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     <div className="text-sm text-amber-800 dark:text-amber-200">
                         <p className="font-medium">{t('lab.catalogEmpty')}</p>
-                        <p className="mt-0.5 opacity-90">Yo'llanma yaratishdan oldin tahlillarni qo'shing (Sozlamalar → Laboratoriya).</p>
+                        {/* Ilgari bu matn «Sozlamalar → Laboratoriya» ga
+                            yuborardi, LEKIN bunday vkladka mavjud emas edi:
+                            dastur foydalanuvchini yo'q joyga jo'natardi.
+                            Endi vkladka bor va bu HAVOLA. */}
+                        <p className="mt-0.5 opacity-90">
+                            Yo'llanma yaratishdan oldin tahlillarni qo'shing.{' '}
+                            <button type="button" onClick={() => navigate('/settings')}
+                                className="underline font-medium hover:opacity-80">
+                                Sozlamalar → {t('lab.tab')}
+                            </button>
+                        </p>
                     </div>
                 </div>
             )}

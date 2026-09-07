@@ -4173,6 +4173,20 @@ export const api = {
             if (isDemoMode()) return Promise.resolve(DEMO_INVENTORY);
             return fetchJson<InventoryItem[]>(`/inventory?clinicId=${clinicId}`);
         },
+        /* TAHRIRLASH. Ilgari bu metod UMUMAN yo'q edi — na bu yerda, na
+           serverda: mahsulotni yaratgandan keyin nomini ham, o'lchov
+           birligini ham, tannarxini ham o'zgartirib bo'lmasdi. Qoldiqqa
+           tegilmaydi: u harakatlar yig'indisi (0028). */
+        update: (id: string, data: Partial<InventoryItem>) => {
+            if (isDemoMode()) {
+                const i = DEMO_INVENTORY.findIndex(x => x.id === id);
+                if (i === -1) return Promise.reject(new Error('Mahsulot topilmadi'));
+                DEMO_INVENTORY[i] = { ...DEMO_INVENTORY[i], ...data, quantity: DEMO_INVENTORY[i].quantity };
+                saveDemoData();
+                return demoDone(DEMO_INVENTORY[i]);
+            }
+            return fetchJson<InventoryItem>(`/inventory/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        },
         create: (data: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'> & { initialCost?: number }) => {
             if (isDemoMode()) {
                 const { initialCost, ...rest } = data;

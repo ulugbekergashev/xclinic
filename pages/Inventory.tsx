@@ -6,7 +6,7 @@ import { Card, Button, Input, Modal, Select } from '../components/Common';
 import { InventoryItem, UserRole } from '../types';
 import {
     Package, Plus, Trash2, AlertCircle, ArrowDownToLine, ArrowUpFromLine,
-    History, ClipboardCheck, CalendarClock, RefreshCw, AlertTriangle, ArrowLeftRight,
+    History, ClipboardCheck, CalendarClock, RefreshCw, AlertTriangle, ArrowLeftRight, Pencil,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { todayISO } from '../utils/dateUtils';
@@ -312,6 +312,43 @@ export const Inventory: React.FC<InventoryProps> = ({
         } finally { setBusy(false); }
     };
 
+    /* ── POZITSIYANI TAHRIRLASH ────────────────────────────────────────
+       Ilgari mahsulotni yaratgandan keyin unga TEGIB bo'lmasdi: xato
+       yozilgan nom bilan yashash yoki mahsulotni o'chirib, qaytadan
+       yaratish kerak edi — harakatlar tarixi bilan birga. */
+    const [editTarget, setEditTarget] = useState<InventoryItem | null>(null);
+    const [editForm, setEditForm] = useState({ name: '', unit: '', minQuantity: '', price: '', isMedication: false });
+
+    const openEdit = (it: InventoryItem) => {
+        setEditForm({
+            name: it.name, unit: it.unit || '',
+            minQuantity: String(it.minQuantity ?? ''),
+            price: String(it.price ?? ''),
+            isMedication: !!(it as any).isMedication,
+        });
+        setEditTarget(it);
+    };
+
+    const handleEditSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editTarget) return;
+        setBusy(true); setError('');
+        try {
+            /* Qoldiq YUBORILMAYDI: u harakatlar yig'indisi va faqat kirim,
+               chiqim yoki inventarizatsiya orqali o'zgaradi. */
+            await api.inventory.update(editTarget.id, {
+                name: editForm.name.trim(), unit: editForm.unit.trim(),
+                minQuantity: Number(editForm.minQuantity) || 0,
+                price: editForm.price ? Number(editForm.price) : 0,
+                isMedication: editForm.isMedication,
+            } as any);
+            setEditTarget(null);
+            reloadItems();
+        } catch (err: any) {
+            setError(err?.message || 'Saqlanmadi');
+        } finally { setBusy(false); }
+    };
+
     const handleAdd = (e: React.FormEvent) => {
         e.preventDefault();
         onAddItem({
@@ -466,6 +503,11 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                         </Button>
                                                     )}
                                                 </>
+                                            )}
+                                            {!readOnly && (
+                                                <Button variant="secondary" size="sm" onClick={() => openEdit(it)} title={t('inventory.ui.edit')}>
+                                                    <Pencil className="w-4 h-4" />
+                                                </Button>
                                             )}
                                             <Button variant="secondary" size="sm" onClick={() => openHistory(it)} title={t('inventory.ui.history')}>
                                                 <History className="w-4 h-4" />
@@ -679,6 +721,37 @@ export const Inventory: React.FC<InventoryProps> = ({
                     </div>
                 </form>
             </Modal>
+
+            {/* ─── Tahrirlash ─────────────────────────────────────────────── */}
+            {editTarget && (
+                <Modal isOpen={true} onClose={() => setEditTarget(null)} title={`${t('inventory.ui.edit')} — ${editTarget.name}`}>
+                    <form onSubmit={handleEditSave} className="space-y-4">
+                        <Input label="Nomi" value={editForm.name} required
+                            onChange={(e: any) => setEditForm(f => ({ ...f, name: e.target.value }))} />
+                        <div className="grid grid-cols-2 gap-3">
+                            <Input label="O'lchov birligi" value={editForm.unit} required placeholder="dona, ml, quti"
+                                onChange={(e: any) => setEditForm(f => ({ ...f, unit: e.target.value }))} />
+                            <Input label={t('inventory.ui.minQty')} type="number" value={editForm.minQuantity}
+                                onChange={(e: any) => setEditForm(f => ({ ...f, minQuantity: e.target.value }))} />
+                        </div>
+                        <Input label={t('inventory.ui.costPerUnit')} type="number" value={editForm.price}
+                            helperText="Xizmat retsepti tannarxni shu narxdan hisoblaydi"
+                            onChange={(e: any) => setEditForm(f => ({ ...f, price: e.target.value }))} />
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <input type="checkbox" checked={editForm.isMedication} className="w-4 h-4 rounded"
+                                onChange={(e) => setEditForm(f => ({ ...f, isMedication: e.target.checked }))} />
+                            {t('inventory.ui.isMedicationHint')}
+                        </label>
+                        <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <p className="text-xs text-gray-600 dark:text-gray-300">{t('inventory.ui.qtyNotHere')}</p>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="secondary" onClick={() => setEditTarget(null)}>{t('inventory.ui.cancel')}</Button>
+                            <Button type="submit" disabled={busy}>{busy ? '...' : t('common.save')}</Button>
+                        </div>
+                    </form>
+                </Modal>
+            )}
 
             {/* ─── Kirim ──────────────────────────────────────────────────── */}
             {inTarget && (
