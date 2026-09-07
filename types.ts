@@ -162,6 +162,10 @@ export interface Expense {
   receptionistId?: string | null; // reception xodimiga 'Salary' uchun
   labOrderId?: string | null;    // avtomatik Laboratoriya xarajati bog'lami
   inventoryItemId?: string | null; // avtomatik Ombor xarajati bog'lami
+  /* Qaysi bo'limga tegishli. NULL — umumiy xarajat. Bazada 0022 dan beri
+     bor edi, turda esa yo'q edi: kassa uni `as Omit<Expense,'id'>` kasti
+     bilan yuborardi va kast boshqa xatolarni ham yashirardi. */
+  departmentId?: string | null;
   createdAt?: string;
 }
 
@@ -947,6 +951,12 @@ export interface DiagnosticStudy {
   files?: DiagnosticFile[];
   /** Shifokor natijani ochib ko'rgan payt. Migratsiya 0009. */
   seenByDoctorAt?: string | null;
+  /* TO'LOV HOLATI — serverdan, hisob qatoridan hisoblanadi
+     (`billing.ts`, `payStateBySource`). Bazada bunday maydon YO'Q va
+     bo'lmasligi ham kerak: pul holati bitta joyda — qatorda.
+     `null` — qator topilmadi (eski yozuv), holat noma'lum. */
+  paid?: boolean | null;
+  due?: number | null;
 }
 
 export interface DiagnosticFile {

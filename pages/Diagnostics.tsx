@@ -131,7 +131,17 @@ export const Diagnostics: React.FC<Props> = ({
             });
             await reload();
             if (markCompleted) setEditing(null);
-        } catch (e: any) { setError(e.message || 'Saqlanmadi'); }
+        } catch (e: any) {
+            /* 402 — to'lanmagan. Bu xato EMAS, ish tartibi: xulosa
+               to'lovdan keyin beriladi. Shuning uchun alohida, aniq
+               matn bilan ko'rsatiladi. */
+            if (e?.status === 402) {
+                const due = e?.data?.due ?? e?.due;
+                setError(`Tekshiruv to'lanmagan${due ? ` — ${fmt(due)} so'm qarz` : ''}. Bemorni kassaga yo'naltiring.`);
+            } else {
+                setError(e.message || 'Saqlanmadi');
+            }
+        }
         finally { setSaving(false); }
     };
 
@@ -246,6 +256,20 @@ export const Diagnostics: React.FC<Props> = ({
                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${st.cls}`}>
                                                 <st.Icon className="w-3 h-3" /> {st.label}
                                             </span>
+                                            {/* TO'LANDIMI — laboratoriya ro'yxatidagi bilan
+                                                bir xil yorliq. Diagnostda bu savolga javob
+                                                yo'q edi: xulosani yozib bergandan keyingina
+                                                qator to'lanmagan ekani ma'lum bo'lardi. */}
+                                            {s.paid === true && (
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                                    To'langan
+                                                </span>
+                                            )}
+                                            {s.paid === false && (
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                                    To'lanmagan{s.due ? ` · ${fmt(s.due)}` : ''}
+                                                </span>
+                                            )}
                                             {!!s.files?.length && (
                                                 <span className="inline-flex items-center gap-1 text-xs text-gray-400">
                                                     <ImageIcon className="w-3 h-3" /> {s.files.length}

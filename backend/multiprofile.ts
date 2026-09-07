@@ -12,7 +12,7 @@
 import type express from 'express';
 import { emitEvent } from './events';
 import { validateEncounterField } from '../shared/validation';
-import { createCharge, cancelChargesBySource } from './billing';
+import { createCharge, cancelChargesBySource, payStateBySource, unpaidGate } from './billing';
 import { applyServiceRecipe } from './inventory';
 import { tashkentDateStr } from './tashkentTime';
 import { logAccess } from './compliance';
@@ -913,7 +913,18 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             include: { files: true },
             orderBy: { orderedAt: 'desc' },
         });
-        res.json(items);
+
+        /* TO'LANDIMI — laboratoriya ro'yxatidagi bilan AYNAN bir xil
+           hisob (`payStateBySource`). Diagnostikada bu yo'q edi: UZI ni
+           kim to'lagan, kim to'lamagan — ekrandan bilib bo'lmasdi. */
+        const pay = await payStateBySource(
+            prisma, clinicId, 'Study', items.map((s: any) => s.id));
+
+        res.json(items.map((s: any) => {
+            const p = pay.get(s.id);
+            // Qator umuman yo'q bo'lsa (eski yozuv) — holat noma'lum
+            return { ...s, paid: p ? p.paid : null, due: p ? p.due : null };
+        }));
     });
 
     route('post', '/api/studies', async (req, res, clinicId) => {
@@ -957,6 +968,27 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     route('put', '/api/studies/:id', async (req, res, clinicId) => {
         if (!(await owns('diagnosticStudy', req.params.id, clinicId))) return res.status(403).json({ error: "Ruxsat yo'q" });
         const { status, findings, conclusion, performedById, performedByName, price } = req.body;
+
+        /* ─── NATIJA TO'LOVDAN KEYIN ──────────────────────────────
+
+           Laboratoriyada bu to'siq bor edi (402), diagnostikada esa YO'Q:
+           UZI xulosasini to'lovsiz yozib, chop etib berish mumkin edi va
+           qator «To'lanmagan» bo'lib qolaverardi. Bemor natijani olib
+           ketgach, pulni undirish deyarli imkonsiz.
+
+           To'siq faqat NATIJAGA: holatni «Bajarilmoqda» ga o'tkazish,
+           narxni tuzatish yoki bekor qilish — to'lovsiz ham mumkin. */
+        const writesResult = conclusion !== undefined || findings !== undefined
+            || status === 'Completed';
+        if (writesResult) {
+            const gate = await unpaidGate(prisma, clinicId, 'Study', req.params.id);
+            if (gate) {
+                return res.status(402).json({
+                    error: "Tekshiruv to'lanmagan. Bemorni kassaga yo'naltiring.",
+                    ...gate,
+                });
+            }
+        }
         const study = await prisma.diagnosticStudy.update({
             where: { id: req.params.id },
             data: {

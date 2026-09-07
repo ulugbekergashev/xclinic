@@ -72,6 +72,8 @@ interface CashBookProps {
     charges?: VisitCharge[];
     onChargesChanged?: () => void;
     onAddExpense?: (expense: Omit<Expense, 'id'>) => Promise<any>;
+    onUpdateExpense?: (id: string, data: Partial<Expense>) => Promise<void>;
+    onDeleteExpense?: (id: string) => Promise<void>;
     movements?: CashMovement[];
     onAddCashMovement?: (data: Omit<CashMovement, 'id' | 'clinicId' | 'createdAt' | 'createdByName'>) => Promise<any>;
     onDeleteCashMovement?: (id: string) => Promise<void>;
@@ -123,7 +125,7 @@ const Tile: React.FC<{
     );
 };
 
-const SummaryTiles: React.FC<{ totals: CashBookTotals }> = ({ totals }) => {
+const SummaryTiles: React.FC<{ totals: CashBookTotals; drawer?: number }> = ({ totals, drawer }) => {
     const { t } = useLanguage();
     return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -131,7 +133,7 @@ const SummaryTiles: React.FC<{ totals: CashBookTotals }> = ({ totals }) => {
         <Tile label={t('finance.cash.cash')} value={totals.cashIn} icon={Banknote} tone="cash" />
         <Tile label={t('finance.cash.cashless')} value={totals.nonCashIn} icon={CreditCard} tone="card" hint="Karta / Click / o'tkazma" />
         <Tile label={t('finance.cash.expense')} value={totals.expenseTotal} icon={TrendingDown} tone="expense" hint={`naqd: ${num(totals.cashExpense)}`} />
-        <Tile label={t('finance.cash.leftInDrawer')} value={totals.drawer} icon={Wallet} tone="drawer" hint="naqd yashik" />
+        <Tile label={t('finance.cash.leftInDrawer')} value={drawer ?? totals.drawer} icon={Wallet} tone="drawer" hint="naqd yashik" />
         <Tile label={t('finance.cash.creditGiven')} value={totals.unpaid} icon={AlertCircle} hint="to'lanmagan" />
     </div>
 );
@@ -236,8 +238,10 @@ const Operator: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 const CashFlowPanel: React.FC<{
     day: ReturnType<typeof buildCashBookDay>;
     closure: ReturnType<typeof getClosureStatus>;
+    /** Yashiqdagi kutilgan naqd - SERVER raqami. Berilmasa ekran hisobi. */
+    drawer?: number;
     onClose?: () => void;
-}> = ({ day, closure, onClose }) => {
+}> = ({ day, closure, drawer, onClose }) => {
     /* `totals` deb nomlandi (S4.1): `t` — tarjima funksiyasining odatiy
        nomi va u bilan to'qnashardi. FinanceReport da aynan shu joy
        avtomatik ko'chirishda jimgina buzilgan edi. */
@@ -321,7 +325,7 @@ const CashFlowPanel: React.FC<{
                     <div>
                         <p className="text-[11px] text-gray-400 uppercase tracking-wide">{t('finance.cash.shouldBeInDrawer')}</p>
                         <p className="text-3xl font-black tabular-nums text-amber-600 dark:text-amber-400 leading-tight mt-1">
-                            {num(totals.drawer)}
+                            {num(drawer ?? totals.drawer)}
                         </p>
                         <p className="text-[10px] text-gray-400">UZS</p>
 
@@ -459,7 +463,7 @@ const ClosureBanner: React.FC<{
 export const CashBook: React.FC<CashBookProps> = ({
     transactions, expenses, doctors, currentClinic, onPatientClick,
     closures = [], canReopen = false, onCloseDay, onReopenDay, embedded = false,
-    patients = [], appointments = [], services = [], clinicId = '', onAddTransaction, onAddExpense,
+    patients = [], appointments = [], services = [], clinicId = '', onAddTransaction, onAddExpense, onUpdateExpense, onDeleteExpense,
     charges = [], onChargesChanged,
     movements = [], onAddCashMovement, onDeleteCashMovement,
     onUpdateTransaction, onDeleteTransaction,
@@ -481,7 +485,13 @@ export const CashBook: React.FC<CashBookProps> = ({
     const [isAdvanceOpen, setIsAdvanceOpen] = useState(false);
     const [advancePatient, setAdvancePatient] = useState<Patient | null>(null);
     const [isExpenseOpen, setIsExpenseOpen] = useState(false);
+    /* Tuzatilayotgan xarajat. `null` — yangi yoziladi. Ilgari xarajatni
+       yozgandan keyin unga TEGIB BO'LMASDI: adashib 500 000 yozilsa
+       kassa kun oxirigacha noto'g'ri turardi va kassir farqni
+       inkassatsiya bilan «to'g'rilardi». */
+    const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
     const [expenseSaving, setExpenseSaving] = useState(false);
+    const [expenseDeleting, setExpenseDeleting] = useState(false);
     const [expenseForm, setExpenseForm] = useState({
         category: 'Other' as ExpenseCategory,
         title: '',
@@ -602,9 +612,22 @@ export const CashBook: React.FC<CashBookProps> = ({
 
     const clinicName = currentClinic?.name;
 
+    /* KASSADA QANCHA BO‘LISHI KERAK — BITTA RAQAM.
+
+       Ilgari bu raqam IKKI joyda hisoblanardi: ekranda (`day.totals.drawer`,
+       yuklab olingan cheklar bo‘yicha) va serverda (bazadagi hamma to‘lov
+       bo‘yicha). Ekran cheklarning faqat bir qismini oladi, shuning uchun
+       ikkalasi tez-tez farq qilardi — kassir kun bo‘yi bitta raqamni
+       ko‘rib, yopish oynasida boshqasini uchratardi va «qaysinisi
+       to‘g‘ri?» degan savol bilan qolardi.
+
+       Endi ekranda ham server raqami turadi. Server javob bermasa
+       (oflayn) ekran hisobiga qaytamiz — kassa ishlashdan to‘xtamasin. */
+    const drawerNow = serverExpected ? serverExpected.expectedCash : day.totals.drawer;
+
     const closureStatus = useMemo(
-        () => getClosureStatus(date, day.totals.drawer, closures, multiShift ? activeShift : undefined),
-        [date, day.totals.drawer, closures, multiShift, activeShift]
+        () => getClosureStatus(date, drawerNow, closures, multiShift ? activeShift : undefined),
+        [date, drawerNow, closures, multiShift, activeShift]
     );
 
     // Oylik ko'rinishda har bir kunning yopilish holati
@@ -652,8 +675,8 @@ export const CashBook: React.FC<CashBookProps> = ({
         loadExpected();
     };
 
-    /** Serverning kutilayotgan naqd hisobi. Yopish oynasi ochilganda olinadi. */
-    const loadExpected = async () => {
+    /** Serverning kutilayotgan naqd hisobi — ekrandagi yagona manba. */
+    const loadExpected = useCallback(async () => {
         setExpectedLoading(true);
         setExpectedError('');
         try {
@@ -664,7 +687,15 @@ export const CashBook: React.FC<CashBookProps> = ({
         } finally {
             setExpectedLoading(false);
         }
-    };
+    }, [date]);
+
+    /* Kun ko‘rinishi ochilganda va pul harakati o‘zgarganda qayta so‘raladi:
+       to‘lov qabul qilingandan keyin yashiq darhol yangi raqamni ko‘rsatsin.
+       Oylik ko‘rinishda server hisobi yo‘q — u yerda ekran hisobi qoladi. */
+    useEffect(() => {
+        if (view !== 'day') return;
+        loadExpected();
+    }, [view, loadExpected, transactions, expenses, movements, closures]);
 
     /* ── Smenani ochish ──────────────────────────────────────────────────────
        Ochilgan smena — yopilmagan qator (isClosed === false). Kun boshida
@@ -702,11 +733,8 @@ export const CashBook: React.FC<CashBookProps> = ({
     const countedClickValue = parseOptional(countedClickInput);
 
     const countedValue = Number(countedInput.replace(/\s/g, ''));
-    // Farq SERVER raqamiga nisbatan ko'rsatiladi — yopilganda ham shu yoziladi.
-    // Server javob bermasa interfeys hisobiga qaytamiz (offline rejim buzilmasin).
-    const expectedForClose = serverExpected ? serverExpected.expectedCash : day.totals.drawer;
+    const expectedForClose = drawerNow;
     const previewDifference = isFinite(countedValue) ? countedValue - expectedForClose : 0;
-    const expectedDrift = serverExpected ? Math.abs(serverExpected.expectedCash - day.totals.drawer) : 0;
 
     const handleCloseDay = async () => {
         if (!onCloseDay || !isFinite(countedValue) || countedInput.trim() === '') return;
@@ -861,6 +889,11 @@ export const CashBook: React.FC<CashBookProps> = ({
        to'g'ridan-to'g'ri hamma summani NAQD deb yozib qo'yardi. */
     // Qaytarishni faqat klinika admini qiladi — server ham shuni talab qiladi
     const canRefundCharges = userRole === 'CLINIC_ADMIN';
+    /* Xarajat — faqat ega. Server ham shunday (`permissions.ts`):
+       registrator xarajat yozib kassa farqini yopib qo'ymasin. Ilgari
+       tugma HAMMAGA ko'rinardi va bosilganda jimgina 403 qaytardi —
+       registrator xarajatni yozdim deb o'ylab qolardi. */
+    const canEditExpenses = userRole === 'CLINIC_ADMIN';
 
     const openChargePayment = (patientName: string, patientId?: string) => {
         setPayingPatient({ name: patientName, patientId });
@@ -881,17 +914,85 @@ export const CashBook: React.FC<CashBookProps> = ({
 
 
     const openExpenseModal = () => {
+        setEditingExpense(null);
         setExpenseForm({ category: 'Other', title: '', amount: '', method: 'Cash', note: '', departmentId: '' });
         setIsExpenseOpen(true);
+    };
+
+    /* ─── QAYSI XARAJATGA QO'L TEGMAYDI ─────────────────────────────────
+       Bir qismi xarajatlar QO'LDA emas, boshqa amaldan tug'iladi:
+       laboratoriya buyurtmasi, ombor kirimi, oylik vedomosti. Ularni
+       kassada tuzatish manbasi bilan aloqani uzadi — summa bu yerda
+       o'zgaradi, buyurtmada esa eskisi qoladi. Ular manbasidan
+       tuzatiladi. */
+    const expenseSource = (e: Expense): string | null => {
+        if (e.labOrderId) return 'Laboratoriya buyurtmasi';
+        if (e.inventoryItemId) return 'Ombor kirimi';
+        if (e.category === 'DoctorShare') return 'Shifokor ulushi';
+        if (e.category === 'Salary') return 'Oylik vedomosti';
+        return null;
+    };
+
+    const openExpenseEdit = (e: Expense) => {
+        setEditingExpense(e);
+        setExpenseForm({
+            category: e.category,
+            title: e.title,
+            amount: String(e.amount),
+            method: (e.method || 'Cash') as PaymentMethod,
+            note: e.note || '',
+            departmentId: e.departmentId || '',
+        });
+        setIsExpenseOpen(true);
+    };
+
+    const handleDeleteExpense = async () => {
+        if (!editingExpense || !onDeleteExpense) return;
+        if (!window.confirm(`«${editingExpense.title}» xarajati o'chirilsinmi? Kassa qoldig'i qayta hisoblanadi.`)) return;
+        setExpenseDeleting(true);
+        try {
+            await onDeleteExpense(editingExpense.id);
+            setIsExpenseOpen(false);
+            setEditingExpense(null);
+        } catch {
+            // xatolik toast orqali
+        } finally {
+            setExpenseDeleting(false);
+        }
     };
 
     const expenseAmount = Number(expenseForm.amount);
     const canSaveExpense = expenseForm.title.trim() !== '' && isFinite(expenseAmount) && expenseAmount > 0;
     /** Ayni damdagi naqd yashiq — xarajat oynasidagi ogohlantirish uchun. */
-    const cashOnHand = day.totals.drawer;
+    const cashOnHand = drawerNow;
 
     const handleSaveExpense = async () => {
-        if (!onAddExpense || !canSaveExpense) return;
+        if (!canSaveExpense) return;
+
+        // Tuzatish
+        if (editingExpense) {
+            if (!onUpdateExpense) return;
+            setExpenseSaving(true);
+            try {
+                await onUpdateExpense(editingExpense.id, {
+                    amount: expenseAmount,
+                    category: expenseForm.category,
+                    title: expenseForm.title.trim(),
+                    method: expenseForm.method,
+                    note: expenseForm.note.trim() || null,
+                    departmentId: expenseForm.departmentId || null,
+                });
+                setIsExpenseOpen(false);
+                setEditingExpense(null);
+            } catch {
+                // xatolik toast orqali
+            } finally {
+                setExpenseSaving(false);
+            }
+            return;
+        }
+
+        if (!onAddExpense) return;
         setExpenseSaving(true);
         try {
             await onAddExpense({
@@ -907,7 +1008,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                    qoladi va hisobotda alohida qatorda ko'rinadi. */
                 departmentId: expenseForm.departmentId || undefined,
                 clinicId,
-            } as Omit<Expense, 'id'>);
+            });
             setIsExpenseOpen(false);
         } catch {
             // xatolik toast orqali ko'rsatiladi
@@ -932,7 +1033,7 @@ export const CashBook: React.FC<CashBookProps> = ({
 
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Kassaga pul kirishi va chiqishi — kundalik amallar */}
-                    {view === 'day' && (onAddTransaction || onAddExpense) && (
+                    {view === 'day' && (onAddTransaction || (onAddExpense && canEditExpenses)) && (
                         <div className="flex items-center gap-2">
                             {/* "To'lov" -> "Avans". Eski tugma ixtiyoriy chek
                                 yozardi: hisob qatorisiz, ya'ni shifokor
@@ -945,7 +1046,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 <Plus className="w-3.5 h-3.5" />
                                 {t('advance.title')}
                             </button>
-                            {onAddExpense && (
+                            {onAddExpense && canEditExpenses && (
                                 <button
                                     onClick={openExpenseModal}
                                     className="flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
@@ -1085,14 +1186,14 @@ export const CashBook: React.FC<CashBookProps> = ({
             {view === 'day' && closureStatus.closed && closureStatus.closure && (
                 <ClosureBanner
                     status={closureStatus}
-                    currentDrawer={day.totals.drawer}
+                    currentDrawer={drawerNow}
                     canReopen={canReopen && !!onReopenDay}
                     onReopen={handleReopen}
                     onRecount={openCloseModal}
                 />
             )}
 
-            <SummaryTiles totals={totals} />
+            <SummaryTiles totals={totals} drawer={view === 'day' ? drawerNow : undefined} />
             <MethodStrip totals={totals} />
 
             {view === 'day' ? (
@@ -1360,7 +1461,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                         {day.expenses.length === 0 ? (
                             <div className="px-5 py-8 text-center">
                                 <p className="text-sm text-gray-500 dark:text-gray-400">{t('finance.cash.noExpenses')}</p>
-                                {onAddExpense && (
+                                {onAddExpense && canEditExpenses && (
                                     <button
                                         onClick={openExpenseModal}
                                         className="mt-2 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
@@ -1371,21 +1472,38 @@ export const CashBook: React.FC<CashBookProps> = ({
                             </div>
                         ) : (
                             <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-                                {day.expenses.map(e => (
-                                    <li key={e.id} className="px-5 py-3 flex items-center justify-between gap-4">
-                                        <div className="min-w-0">
+                                {day.expenses.map(e => {
+                                    const src = expenseSource(e);
+                                    const editable = !src && !!onUpdateExpense && canEditExpenses && !closureStatus.closed;
+                                    return (
+                                    <li key={e.id} className="px-5 py-3 flex items-center justify-between gap-3">
+                                        <div className="min-w-0 flex-1">
                                             <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{e.title}</p>
-                                            <p className="text-[11px] text-gray-400">
+                                            <p className="text-[11px] text-gray-400 truncate">
                                                 {EXPENSE_CATEGORY_LABELS[e.category] || e.category}
                                                 <span className="mx-1.5">·</span>
                                                 {getPaymentMethodLabel(e.method)}
+                                                {/* Avtomatik xarajat qayerdan kelgani ko'rinib tursin —
+                                                    kassir uni qidirib yurmasin. */}
+                                                {src && <><span className="mx-1.5">·</span><span className="text-gray-400">{src}</span></>}
                                             </p>
                                         </div>
                                         <span className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums shrink-0">
                                             −{num(e.amount)}
                                         </span>
+                                        {editable ? (
+                                            <button
+                                                onClick={() => openExpenseEdit(e)}
+                                                title="Tuzatish"
+                                                aria-label={`${e.title} — tuzatish`}
+                                                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                            ><Pencil className="w-3.5 h-3.5" /></button>
+                                        ) : (
+                                            <span className="shrink-0 w-[26px]" />
+                                        )}
                                     </li>
-                                ))}
+                                    );
+                                })}
                             </ul>
                         )}
                     </Card>
@@ -1570,6 +1688,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     <CashFlowPanel
                         day={day}
                         closure={closureStatus}
+                        drawer={drawerNow}
                         onClose={onCloseDay ? openCloseModal : undefined}
                     />
                 </>
@@ -1695,8 +1814,8 @@ export const CashBook: React.FC<CashBookProps> = ({
             {/* ── Xarajat yozish ── */}
             <Modal
                 isOpen={isExpenseOpen}
-                onClose={() => setIsExpenseOpen(false)}
-                title={`Xarajat — ${formatDateLabel(date)}`}
+                onClose={() => { setIsExpenseOpen(false); setEditingExpense(null); }}
+                title={`${editingExpense ? 'Xarajatni tuzatish' : 'Xarajat'} — ${formatDateLabel(date)}`}
                 className="max-w-md"
             >
                 <div className="space-y-4">
@@ -1794,10 +1913,23 @@ export const CashBook: React.FC<CashBookProps> = ({
                     </p>
 
                     <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1" onClick={() => setIsExpenseOpen(false)}>Bekor</Button>
+                        {/* O'chirish faqat tuzatishda va faqat qo'lda yozilgan
+                            xarajatda: avtomatiklar bu oynaga umuman
+                            tushmaydi. */}
+                        {editingExpense && onDeleteExpense && (
+                            <button
+                                onClick={handleDeleteExpense}
+                                disabled={expenseDeleting || expenseSaving}
+                                title="O'chirish"
+                                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-bold text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-all"
+                            >
+                                {expenseDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                        )}
+                        <Button variant="secondary" className="flex-1" onClick={() => { setIsExpenseOpen(false); setEditingExpense(null); }}>Bekor</Button>
                         <button
                             onClick={handleSaveExpense}
-                            disabled={expenseSaving || !canSaveExpense}
+                            disabled={expenseSaving || expenseDeleting || !canSaveExpense}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm text-white bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed transition-all"
                         >
                             {expenseSaving && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -1818,7 +1950,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     <div className="rounded-xl bg-gray-50 dark:bg-gray-800 p-4 flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-300">{t('finance.cash.expectedNow')}</span>
                         <span className="font-black tabular-nums text-amber-600 dark:text-amber-400">
-                            {num(day.totals.drawer)}
+                            {num(drawerNow)}
                         </span>
                     </div>
 
@@ -1835,10 +1967,10 @@ export const CashBook: React.FC<CashBookProps> = ({
                     {movementType === 'Encashment' && (
                         <button
                             type="button"
-                            onClick={() => setMovementForm(f => ({ ...f, amount: String(Math.max(0, Math.round(day.totals.drawer))) }))}
+                            onClick={() => setMovementForm(f => ({ ...f, amount: String(Math.max(0, Math.round(drawerNow))) }))}
                             className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
                         >
-                            Hammasini olish ({num(day.totals.drawer)})
+                            Hammasini olish ({num(drawerNow)})
                         </button>
                     )}
 
@@ -2030,12 +2162,6 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 Server hisobi: {serverExpected.sources?.paymentCount ?? 0} to'lov,
                                 boshlang'ich {num(serverExpected.openingCash)}
                                 {serverExpected.sources?.openingFrom ? ` (${formatDateLabel(String(serverExpected.sources.openingFrom))} yopilishidan)` : ''}
-                            </p>
-                        )}
-                        {expectedDrift > 1 && (
-                            <p className="text-[11px] text-amber-700 dark:text-amber-300 pt-1">
-                                Diqqat: ekrandagi hisob {num(day.totals.drawer)}, server hisobi {num(serverExpected!.expectedCash)}.
-                                Yopilishda server raqami yoziladi. Sahifani yangilab ko'ring.
                             </p>
                         )}
                         {expectedError && (

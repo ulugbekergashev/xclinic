@@ -249,6 +249,53 @@ async function main() {
         ok('bekor qilingani belgilangan', row?.reversed === true);
     }
 
+    console.log('\n═══ 7. KIRIM XARAJATGA TUSHADI ═════════════════════');
+    /* Ilgari ombor kirimi partiya, harakat va qoldiqni yozardi, xarajat
+       esa YO'Q edi: sotib olingan dori foyda hisobiga umuman tushmasdi.
+       U faqat material sarflanganda, tannarx sifatida ko'rinardi — ya'ni
+       omborda turgan tovar hech qayerda hisoblanmasdi. */
+    const expensesOf = async () =>
+        ((await api('GET', '/expenses')).data || [])
+            .filter((e: any) => e.category === 'Inventory');
+
+    const expItem = await api('POST', '/inventory', {
+        name: `Xarajat sinovi ${Date.now() % 100000}`, unit: 'dona',
+        quantity: 0, minQuantity: 0, price: 0, isConsumable: true,
+    });
+    const expItemId = expItem.data?.id;
+    ok('xarajat sinovi uchun material yaratildi', !!expItemId);
+
+    if (expItemId) {
+        const before = await expensesOf();
+        const inRes = await api('POST', '/stock-movements/in', {
+            itemId: expItemId, quantity: 4, cost: 12500, note: 'Sinov kirimi',
+        });
+        ok('kirim o\'tdi', inRes.status === 200, `status: ${inRes.status}`);
+        ok('javobda xarajat summasi bor', inRes.data?.expenseAmount === 50000,
+            String(inRes.data?.expenseAmount));
+
+        const after = await expensesOf();
+        const mine = after.filter((e: any) => e.inventoryItemId === expItemId);
+        ok('kirim uchun BITTA xarajat yozildi', mine.length === 1, `topildi: ${mine.length}`);
+        ok('summa = miqdor × narx', Math.round(mine[0]?.amount || 0) === 50000,
+            String(mine[0]?.amount));
+        ok('toifa \'Inventory\'', mine[0]?.category === 'Inventory', String(mine[0]?.category));
+        ok('xarajatlar soni bittaga oshdi', after.length === before.length + 1,
+            `${before.length} → ${after.length}`);
+
+        /* Narxsiz kirim (bepul kelgan yoki narxi noma'lum tovar) nol
+           summali qator yaratmasligi kerak — u faqat aralashtiradi. */
+        const free = await api('POST', '/stock-movements/in', {
+            itemId: expItemId, quantity: 3, cost: 0,
+        });
+        ok('narxsiz kirim ham o\'tdi', free.status === 200, `status: ${free.status}`);
+        ok('narxsiz kirim xarajat YOZMADI',
+            (await expensesOf()).filter((e: any) => e.inventoryItemId === expItemId).length === 1);
+
+        const fin = await itemById(expItemId);
+        ok('qoldiq 7 (4 + 3)', Math.round(fin?.quantity) === 7, `qoldiq: ${fin?.quantity}`);
+    }
+
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);
 }

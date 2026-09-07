@@ -36,6 +36,39 @@ type Deps = {
    o'zining nusxasi turardi va modullar orasida aniqlik farq qilardi. */
 const round = som;
 
+/* ─── STAVKA TANLASH — YAGONA NUSXA ────────────────────────────────────────
+
+   Aniqroq stavka umumiyroqni yengadi: xizmat > bo'lim > umumiy stavka >
+   shifokorning kartasidagi foiz.
+
+   NIMA UCHUN EKSPORT QILINADI. Bu tartib IKKI JOYDA kerak: vedomost
+   (shu fayl) va «Shifokorlar» hisoboti (`reports.ts`). Ilgari ular
+   alohida-alohida yozilgan edi — `pickRate` va `rateFor`, qatorma-qator
+   nusxa. Bitta joyda tuzatilgan xato ikkinchisida qolib ketardi va ikki
+   ekran bitta shifokor uchun boshqa-boshqa foiz ko'rsatishi mumkin edi.
+
+   `basis` — qaysi qoida ishlagani. Vedomost uni foydalanuvchiga
+   ko'rsatadi: "nega aynan bu foiz?" degan savol javobsiz qolmasin. */
+export type RateBasis = 'xizmat' | "bo'lim" | 'umumiy stavka' | 'shifokor foizi';
+
+export function pickRate(
+    rates: any[], doctorId: string, serviceId: number | null,
+    departmentId: string | null, fallback: number, role = 'Doctor',
+): { percent: number; basis: RateBasis } {
+    const mine = rates.filter(r => r.doctorId === doctorId && r.role === role);
+    if (serviceId != null) {
+        const s = mine.find(r => r.serviceId === serviceId);
+        if (s) return { percent: s.percent, basis: 'xizmat' };
+    }
+    if (departmentId) {
+        const d = mine.find(r => r.serviceId == null && r.departmentId === departmentId);
+        if (d) return { percent: d.percent, basis: "bo'lim" };
+    }
+    const g = mine.find(r => r.serviceId == null && r.departmentId == null);
+    if (g) return { percent: g.percent, basis: 'umumiy stavka' };
+    return { percent: fallback, basis: 'shifokor foizi' };
+}
+
 export function registerPayrollRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId } = deps;
 
@@ -141,22 +174,6 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
 
     // ═══ VEDOMOST ════════════════════════════════════════════════════════════
 
-    /** Stavka tanlash: aniqroq umumiyroqni yengadi */
-    function pickRate(rates: any[], doctorId: string, serviceId: number | null,
-        departmentId: string | null, fallback: number, role = 'Doctor') {
-        const mine = rates.filter(r => r.doctorId === doctorId && r.role === role);
-        if (serviceId != null) {
-            const s = mine.find(r => r.serviceId === serviceId);
-            if (s) return { percent: s.percent, basis: 'xizmat' };
-        }
-        if (departmentId) {
-            const d = mine.find(r => r.serviceId == null && r.departmentId === departmentId);
-            if (d) return { percent: d.percent, basis: "bo'lim" };
-        }
-        const g = mine.find(r => r.serviceId == null && r.departmentId == null);
-        if (g) return { percent: g.percent, basis: 'umumiy stavka' };
-        return { percent: fallback, basis: 'shifokor foizi' };
-    }
 
     /**
      * Davr uchun hisob.

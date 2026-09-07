@@ -16,6 +16,17 @@ import type express from 'express';
 import { som } from './money';
 import { tashkentDateStr, tashkentMonthStart, tashkentRangeBounds, TASHKENT_OFFSET_MS } from './tashkentTime';
 import { financialSnapshot } from './snapshot';
+import { pickRate } from './payroll';
+
+/* ─── XARAJATNI QAYSI HISOB QABUL QILADI ───────────────────────────────────
+   'Lab' — meros toifa. denta7 da laboratoriya tashqi pudratchi edi va unga
+   to'lov haqiqiy xarajat edi. Bu yerda laboratoriya O'Z bo'limimiz va
+   daromad keltiradi: uni yana xarajat deb yozish bir pulni ikki marta
+   yeydi.
+
+   Qoida BITTA joyda turadi: umumiy hisobot ham, bo'limlar hisoboti ham
+   shundan o'qiydi. Ilgari faqat umumiy hisobot istisno qilardi. */
+export const isCountedExpense = (category: string): boolean => category !== 'Lab';
 
 type Deps = {
     prisma: any;
@@ -163,16 +174,13 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
         }
 
         // ─── Xarajatlar ─────────────────────────────────────────────────────
-        // DIQQAT: 'Lab' kategoriyasi endi xarajat sifatida HISOBLANMAYDI.
-        // denta7 da laboratoriya tashqi pudratchi edi; bu yerda u o'z bo'limimiz
-        // va daromad keltiradi. Eski yozuvlar bo'lsa ular alohida ko'rsatiladi.
         let doctorShare = 0, otherExpenses = 0, legacyLabExpense = 0;
         const expenseByCategory = new Map<string, number>();
 
         for (const e of expenses) {
             const amt = e.amount || 0;
             if (e.category === 'DoctorShare') { doctorShare += amt; continue; }
-            if (e.category === 'Lab') { legacyLabExpense += amt; continue; }
+            if (!isCountedExpense(e.category)) { legacyLabExpense += amt; continue; }
             otherExpenses += amt;
             expenseByCategory.set(e.category, round((expenseByCategory.get(e.category) || 0) + amt));
         }
@@ -407,19 +415,11 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             }),
         ]);
 
-        /* Stavkani tanlash tartibi ATAYLAB shunday: aniqroq stavka
-           umumiyroqni yengadi. Xizmat > bo'lim > shifokorning umumiy foizi. */
-        const rateFor = (doctorId: string, serviceId: number | null, departmentId: string | null, role = 'Doctor') => {
-            const mine = rates.filter((r: any) => r.doctorId === doctorId && r.role === role);
-            const byService = serviceId != null ? mine.find((r: any) => r.serviceId === serviceId) : null;
-            if (byService) return { percent: byService.percent, from: 'service' };
-            const byDept = departmentId ? mine.find((r: any) => r.serviceId == null && r.departmentId === departmentId) : null;
-            if (byDept) return { percent: byDept.percent, from: 'department' };
-            const general = mine.find((r: any) => r.serviceId == null && r.departmentId == null);
-            if (general) return { percent: general.percent, from: 'general' };
-            const doc = doctors.find((d: any) => d.id === doctorId);
-            return { percent: doc?.percentage ?? 0, from: 'doctor' };
-        };
+        /* Stavka tanlash `payroll.ts` dan — VEDOMOST BILAN BIR XIL
+           funksiya. Ilgari bu yerda uning qatorma-qator nusxasi turardi
+           (`rateFor`) va ikkalasi ayri ketishi mumkin edi: bitta joyda
+           tuzatilgan xato ikkinchisida qolib, hisobot va vedomost bitta
+           shifokor uchun boshqa-boshqa foiz ko'rsatardi. */
 
         const rows = new Map<string, any>();
         const UNASSIGNED = 'unassigned';
@@ -466,9 +466,10 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             }
             const r = rows.get(c.doctorId);
             const doc = doctors.find((d: any) => d.id === c.doctorId);
-            const { percent } = rateFor(
-                c.doctorId, c.serviceId ?? null,
+            const { percent } = pickRate(
+                rates, c.doctorId, c.serviceId ?? null,
                 c.visit?.departmentId || doc?.departmentId || null,
+                doc?.percentage ?? 0,
             );
             r.accrued = round(r.accrued + (p.amount || 0) * (percent / 100));
         }
@@ -566,6 +567,10 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             r.paid = round(r.paid + (c.paidAmount || 0));
         }
         for (const e of expenses) {
+            /* Umumiy hisobot bilan BITTA qoida. Ilgari bu yer hamma
+               xarajatni qo'shardi va meros 'Lab' qatorlari tufayli bir xil
+               davr uchun ikki ekran ikki xil foyda ko'rsatardi. */
+            if (!isCountedExpense(e.category)) continue;
             const r = ensure(e.departmentId || null);
             r.expense = round(r.expense + (e.amount || 0));
         }

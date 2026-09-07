@@ -1,10 +1,50 @@
 import { Transaction, Expense, Doctor, PaymentMethod, CashRegisterDay, CashMovement } from '../types';
-import { findDoctorForTransaction } from './financialCalculations';
 import {
     PAYMENT_METHODS,
     isCashDrawerMethod,
     isMoneyInMethod,
 } from './paymentMethods';
+
+/* ─── CHEKNI SHIFOKORGA BIRIKTIRISH ────────────────────────────
+
+   Bu uchta funksiya `utils/financialCalculations.ts` da turardi — o'sha
+   fayl butunlay o'lik edi (denta7 dan ko'chirilgan ikkinchi moliya
+   modeli: shifokor ulushi, sof foyda, qabul summasi — hammasi endi
+   SERVERDA hisoblanadi). Fayl o'chirildi, tirik qismi esa yagona
+   foydalanuvchisiga — shu yerga ko'chdi.
+
+   Bu yerda ular faqat kassa jadvalining USTUNINI tanlaydi: qaysi
+   shifokorning katagiga tushsin. Pul hisobi emas. */
+
+// "Dr. Alisher Atajanov" === "Atajanov Alisher": prefiks, tartib va
+// tinish belgilaridan qat'i nazar. Qism-satr moslashtirish YO'Q —
+// aks holda turli shifokorlar aralashib ketardi.
+function normalizeDoctorName(name: string): string {
+    return name
+        .toLowerCase()
+        .replace(/\bdr[._]?\s*/g, '')
+        .replace(/[.,_]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean)
+        .sort()
+        .join(' ');
+}
+
+// doctorId bor bo'lsa faqat id tengligi; yo'q bo'lsa (eski yozuvlar)
+// faqat ANIQ ism tengligi.
+function transactionBelongsToDoctor(tx: Transaction, doctor: Doctor): boolean {
+    if (tx.doctorId) return tx.doctorId === doctor.id;
+    const txDocName = (tx.doctorName || '').trim();
+    if (!txDocName) return false;
+    return normalizeDoctorName(txDocName) === normalizeDoctorName(`${doctor.lastName} ${doctor.firstName}`);
+}
+
+function findDoctorForTransaction(tx: Transaction, doctors: Doctor[]): Doctor | undefined {
+    const doctor = doctors.find(d => transactionBelongsToDoctor(tx, d));
+    // Yagona shifokorli klinikada barcha kirim o'sha shifokorga tegishli
+    if (!doctor && doctors.length === 1) return doctors[0];
+    return doctor;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KASSA KITOBI — faqat haqiqiy pul harakati.

@@ -95,7 +95,7 @@ app.get('/api/tts', async (req: any, res: any) => {
 
 // Load everything else
 import { registerMultiprofileRoutes } from './multiprofile';
-import { registerBillingRoutes, createCharge, findBalanceMismatches } from './billing';
+import { registerBillingRoutes, createCharge, findBalanceMismatches, payStateBySource } from './billing';
 import { registerInventoryRoutes } from './inventory';
 import { registerPatientMergeRoutes } from './patientMerge';
 import { registerEventRoutes, emitEvent } from './events';
@@ -4457,29 +4457,11 @@ app.get('/api/lab-orders', authenticateToken, async (req: any, res: any) => {
            laborant har buyurtmani ochib tekshirardi yoki kassaga qo'ng'iroq
            qilardi (GAP-ANALYSIS, 1-sahna, 3-band).
 
-           Manba — hisob qatori: `source: 'Lab'`, `sourceId` = buyurtma id si.
-           Alohida maydon qo'shmaymiz: pul holati bitta joyda turishi kerak,
-           aks holda ikkisi bir-biridan uzoqlashadi. */
-        const chargeRows = orders.length > 0
-            ? await prisma.visitCharge.findMany({
-                where: {
-                    clinicId: clinicId as string,
-                    source: 'Lab',
-                    sourceId: { in: orders.map((o: any) => o.id) },
-                    status: { not: 'Cancelled' },
-                },
-                select: { sourceId: true, total: true, paidAmount: true, status: true },
-            })
-            : [];
-        const payByOrder = new Map<string, { paid: boolean; due: number }>();
-        for (const c of chargeRows) {
-            const prev = payByOrder.get(String(c.sourceId)) || { paid: true, due: 0 };
-            const due = Math.round(((c.total || 0) - (c.paidAmount || 0)) * 100) / 100;
-            payByOrder.set(String(c.sourceId), {
-                paid: prev.paid && c.status === 'Paid',
-                due: Math.round((prev.due + Math.max(0, due)) * 100) / 100,
-            });
-        }
+           Hisob `billing.ts` da, diagnostika bilan BITTA funksiyada: qoida
+           ikki joyda yozilgan bo'lsa, biri o'zgarganda ikkinchisi ortda
+           qoladi. */
+        const payByOrder = await payStateBySource(
+            prisma, clinicId as string, 'Lab', orders.map((o: any) => o.id));
 
         res.json(orders.map((o: any) => {
             const pay = payByOrder.get(o.id);
@@ -6146,7 +6128,10 @@ app.post('/api/inventory', authenticateToken, async (req, res) => {
         if (cost > 0) {
             await prisma.expense.create({
                 data: {
-                    date: new Date().toISOString().split('T')[0],
+                    /* Toshkent kuni. `toISOString()` UTC beradi: soat 19:00 dan
+                       keyingi xarid kechagi kunga tushib, kunlik hisobotdan
+                       chiqib ketardi. */
+                    date: tashkentDateStr(),
                     amount: cost,
                     category: 'Inventory',
                     title: `Ombor: ${item.name}`,

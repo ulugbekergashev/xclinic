@@ -15,7 +15,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
-import { qty } from './money';
+import { qty, som } from './money';
 import { tashkentDateStr, tashkentRangeBounds } from './tashkentTime';
 
 type Deps = {
@@ -298,8 +298,21 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
         const qty = Number(quantity);
         if (!(qty > 0)) return res.status(400).json({ error: "Miqdor noto'g'ri" });
 
-        /* Uchta yozuv — bitta tranzaksiyada. Ilgari alohida edi: o'rtada
-           uzilsa partiya yaratilib, qoldiq oshmay qolardi yoki teskarisi. */
+        /* ─── KIRIM XARAJAT HAM YOZADI ──────────────────────────────────
+
+           Ilgari kirim faqat partiya, harakat va qoldiqni yozardi. Ya'ni
+           OMBORGA SARFLANGAN PUL foyda hisobiga UMUMAN tushmasdi: klinika
+           dori sotib oladi, hisobotda esa xarajat yo'q. U faqat material
+           SARFLANGANDA, tannarx sifatida ko'rinardi — sotib olingan, lekin
+           hali ishlatilmagan tovar esa hech qayerda.
+
+           Kassir buni qo'lda «Ombor» toifasidagi xarajat bilan
+           qoplashi kerak edi va tabiiyki qoplamasdi.
+
+           Narx berilmasa (0) xarajat yozilmaydi: bepul kelgan yoki narxi
+           noma'lum tovar uchun nol summali qator faqat aralashtiradi. */
+        const totalCost = som((Number(cost) || 0) * qty);
+
         const { batch, move } = await withRetry<any>('Ombor kirimi', () =>
             prisma.$transaction(async (tx: any) => {
                 const batch = await tx.inventoryBatch.create({
@@ -318,10 +331,32 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
                 await tx.inventoryItem.update({
                     where: { id: itemId }, data: { quantity: { increment: qty } },
                 });
+                if (totalCost > 0) {
+                    await tx.expense.create({
+                        data: {
+                            clinicId,
+                            date: tashkentDateStr(),
+                            category: 'Inventory',
+                            title: `Ombor: ${item.name}`,
+                            amount: totalCost,
+                            /* Usul ko'rsatilmasa kassa yashig'iga ta'sir
+                               qilmaydi — ko'pincha tovar o'tkazma bilan
+                               olinadi. Kassir naqd bergan bo'lsa, kassada
+                               tuzatadi. */
+                            method: String(req.body?.method || 'Transfer'),
+                            note: note || null,
+                            inventoryItemId: itemId,
+                            /* Mahsulot bo'limga biriktirilgan bo'lsa xarajat ham
+                               o'sha bo'limga tushadi — «qaysi bo'lim foydali»
+                               hisoboti shundagina to'g'ri bo'ladi. */
+                            departmentId: item.departmentId || null,
+                        },
+                    });
+                }
                 return { batch, move };
             }, { timeout: 15000, maxWait: 10000 }),
         );
-        res.json({ batch, move });
+        res.json({ batch, move, expenseAmount: totalCost });
     });
 
     /**

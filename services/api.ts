@@ -2853,13 +2853,25 @@ export const api = {
         /** Kutilayotgan naqd — SERVER hisobi, tahrirlanmaydi */
         expected: (date: string) => {
             if (isDemoMode()) {
-                /* Demoda «kutilayotgan» summa shu kundagi to'lovlardan
-                   yig'iladi — kassa ekrani tirik raqam bilan ochiladi. */
+                /* Demo hisobi ham USUL bo‘yicha ajratiladi.
+
+                   Ilgari bu yerda shu kunning HAMMA to‘lovi «naqd» deb
+                   qaytarilardi va xarajatlar umuman hisobga olinmasdi.
+                   Kassa ekranidagi «Kassada qoldi» endi aynan shu raqamni
+                   ko‘rsatgani uchun demo yolg‘on son ko‘rsatib turardi. */
+                const paidToday = DEMO_TRANSACTIONS.filter(
+                    t => t.status === 'Paid' && String(t.date).slice(0, 10) === date);
+                const sumBy = (m: string) => paidToday
+                    .filter(t => (t.type || 'Cash') === m)
+                    .reduce((acc, t) => acc + (t.amount || 0), 0);
+                const cashExpense = DEMO_EXPENSES
+                    .filter(e => String(e.date).slice(0, 10) === date && (e.method || 'Cash') === 'Cash')
+                    .reduce((acc, e) => acc + (e.amount || 0), 0);
                 const day = demoSnapshot(date, date);
                 return demoRead({
                     date, openingCash: 0,
-                    expectedCash: day.period.collected,
-                    expectedCard: 0, expectedClick: 0,
+                    expectedCash: sumBy('Cash') - cashExpense,
+                    expectedCard: sumBy('Card'), expectedClick: sumBy('Click'),
                     openCharges: { count: 0, patients: 0, due: day.period.due },
                     sources: {} as Record<string, any>,
                 });
@@ -3462,9 +3474,23 @@ export const api = {
             if (isDemoMode()) {
                 /* Filtrlar demoda E'TIBORSIZ qolardi: bemor kartasi
                    klinikadagi HAMMA tekshiruvni ko'rsatardi. */
+                const dueOf = (studyId: string) => DEMO_CHARGES
+                    .filter(c => c.source === 'Study' && c.sourceId === studyId && c.status !== 'Cancelled');
                 return demoRead<DiagnosticStudy[]>(DEMO_STUDIES.filter(s =>
                     (!params?.patientId || s.patientId === params.patientId)
-                    && (!params?.status || s.status === params.status)));
+                    && (!params?.status || s.status === params.status))
+                    .map(s => {
+                        /* Demo ham serverning shartnomasini bajaradi, aks
+                           holda namoyishda «To'langan» yorlig'i umuman
+                           ko'rinmasdi. */
+                        const rows = dueOf(s.id);
+                        if (rows.length === 0) return { ...s, paid: null, due: null };
+                        return {
+                            ...s,
+                            paid: rows.every(c => c.status === 'Paid'),
+                            due: rows.reduce((acc, c) => acc + Math.max(0, (c.total || 0) - (c.paidAmount || 0)), 0),
+                        };
+                    }));
             }
             const q = new URLSearchParams();
             if (params?.patientId) q.set('patientId', params.patientId);
@@ -3504,6 +3530,18 @@ export const api = {
             if (isDemoMode()) {
                 const i = DEMO_STUDIES.findIndex(s => s.id === id);
                 if (i === -1) return Promise.reject(new Error('Tekshiruv topilmadi.'));
+                /* Natija to'lovdan keyin — server bilan bir xil qoida
+                   (402). Demoda ham shunday bo'lmasa, namoyishda
+                   «to'lovsiz xulosa» ko'rsatib qo'yardik. */
+                if (data.conclusion !== undefined || data.findings !== undefined || data.status === 'Completed') {
+                    const unpaid = DEMO_CHARGES.find(c => c.source === 'Study' && c.sourceId === id && c.status === 'Unpaid');
+                    if (unpaid) {
+                        return Promise.reject(Object.assign(
+                            new Error("Tekshiruv to'lanmagan. Bemorni kassaga yo'naltiring."),
+                            { status: 402, due: (unpaid.total || 0) - (unpaid.paidAmount || 0) },
+                        ));
+                    }
+                }
                 DEMO_STUDIES[i] = { ...DEMO_STUDIES[i], ...data } as DiagnosticStudy;
                 /* Xulosa yozilsa tekshiruv tugallangan hisoblanadi —
                    ro'yxatdagi holat o'zi o'zgarishi kerak. */

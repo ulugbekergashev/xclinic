@@ -157,6 +157,8 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                     clinicId={props.clinicId || currentClinic?.id || ''}
                     onAddTransaction={props.onAddTransaction}
                     onAddExpense={props.onAddExpense}
+                    onUpdateExpense={props.onUpdateExpense}
+                    onDeleteExpense={props.onDeleteExpense}
                     movements={props.movements}
                     onAddCashMovement={props.onAddCashMovement}
                     onDeleteCashMovement={props.onDeleteCashMovement}

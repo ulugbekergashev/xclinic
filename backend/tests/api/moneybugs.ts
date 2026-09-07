@@ -173,6 +173,72 @@ async function main() {
         }
     }
 
+    console.log('\n═══ DIAGNOSTIKA: NATIJA TO\'LOVDAN KEYIN ══════════════');
+    /* Laboratoriyada bu to'siq bor edi (402), diagnostikada YO'Q: UZI
+       xulosasini to'lovsiz yozib, chop etib berish mumkin edi va qator
+       «To'lanmagan» bo'lib qolaverardi. Bemor natijani olib ketgach,
+       pulni undirish deyarli imkonsiz. */
+    const stRes = await api('POST', '/studies', {
+        patientId, patientName: 'Bemorov Sinov',
+        modality: 'UZI', name: 'Qorin bo\'shlig\'i UZI', price: 180000,
+    });
+    const studyId = stRes.data?.id;
+    ok('tekshiruv yaratildi', !!studyId, JSON.stringify(stRes.data).slice(0, 120));
+
+    if (studyId) {
+        const studyRow = async () =>
+            ((await api('GET', '/studies')).data || []).find((x: any) => x.id === studyId);
+
+        const before = await studyRow();
+        ok('ro\'yxatda to\'lov holati bor: to\'lanmagan', before?.paid === false,
+            `paid: ${before?.paid}`);
+        ok('qarz summasi ko\'rsatilgan', Math.round(before?.due || 0) === 180000,
+            `due: ${before?.due}`);
+
+        const blocked = await api('PUT', `/studies/${studyId}`, {
+            conclusion: 'Patologiya aniqlanmadi', status: 'Completed',
+        });
+        ok('TO\'LOVSIZ XULOSA RAD ETILDI (402)', blocked.status === 402,
+            `status: ${blocked.status}`);
+        ok('402 javobida qarz summasi bor', Math.round(blocked.data?.due || 0) === 180000,
+            String(blocked.data?.due));
+
+        const stillEmpty = await studyRow();
+        ok('xulosa yozilmagan', !stillEmpty?.conclusion, String(stillEmpty?.conclusion));
+
+        /* To'siq faqat NATIJAGA. Holatni «bajarilmoqda» ga o'tkazish
+           to'lovsiz ham mumkin: bemor apparatga kirdi, pulni esa
+           kassada keyinroq to'laydi. */
+        const inProgress = await api('PUT', `/studies/${studyId}`, { status: 'InProgress' });
+        ok('holatni o\'zgartirish to\'siqsiz o\'tdi', inProgress.status === 200,
+            `status: ${inProgress.status}`);
+
+        // Endi to'laymiz
+        const chargeRow = ((await api('GET', `/charges?patientId=${patientId}`)).data || [])
+            .find((c: any) => c.source === 'Study' && c.sourceId === studyId);
+        ok('tekshiruv uchun hisob qatori yaratilgan', !!chargeRow);
+
+        if (chargeRow) {
+            const paidRes = await api('POST', '/payments', {
+                chargeIds: [chargeRow.id], amount: 180000,
+                payments: [{ method: 'Cash', amount: 180000 }],
+            });
+            ok('tekshiruv to\'landi', paidRes.status === 200,
+                `status: ${paidRes.status}, ${JSON.stringify(paidRes.data).slice(0, 120)}`);
+
+            const afterPay = await studyRow();
+            ok('ro\'yxatda endi to\'langan', afterPay?.paid === true, `paid: ${afterPay?.paid}`);
+            ok('qarz nolga tushdi', Math.round(afterPay?.due || 0) === 0, `due: ${afterPay?.due}`);
+
+            const allowed = await api('PUT', `/studies/${studyId}`, {
+                conclusion: 'Patologiya aniqlanmadi', status: 'Completed',
+            });
+            ok('to\'lovdan keyin xulosa yozildi', allowed.status === 200,
+                `status: ${allowed.status}`);
+            ok('xulosa saqlandi', (await studyRow())?.conclusion === 'Patologiya aniqlanmadi');
+        }
+    }
+
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);
 }

@@ -102,6 +102,56 @@ export async function cancelChargesBySource(prisma: any, source: ChargeSource, s
     });
 }
 
+/* ─── BUYURTMA TO‘LANDIMI ───────────────────────────────────
+
+   Laborant ham, diagnost ham bir xil savolni beradi: «bu odam to‘laganmi?»
+   Javob bitta joyda — hisob qatorida (`source` + `sourceId`). Alohida
+   «isPaid» maydoni QO‘SHILMAYDI: u kassadagi haqiqatdan uzoqlashib
+   ketardi.
+
+   Ilgari bu hisob faqat laboratoriya ro‘yxatida, qo‘lda yozilgan edi;
+   diagnostikada esa umuman yo‘q edi — UZI xulosasini to‘lovsiz ham
+   yozib berish mumkin edi. */
+
+export interface PayState { paid: boolean; due: number }
+
+/** Bir nechta buyurtmaning to'lov holati — bitta so'rovda */
+export async function payStateBySource(
+    prisma: any, clinicId: string, source: ChargeSource, ids: string[],
+): Promise<Map<string, PayState>> {
+    const map = new Map<string, PayState>();
+    if (ids.length === 0) return map;
+    const rows = await prisma.visitCharge.findMany({
+        where: { clinicId, source, sourceId: { in: ids }, status: { not: 'Cancelled' } },
+        select: { sourceId: true, total: true, paidAmount: true, status: true },
+    });
+    for (const c of rows) {
+        const key = String(c.sourceId);
+        const prev = map.get(key) || { paid: true, due: 0 };
+        const due = round((c.total || 0) - (c.paidAmount || 0));
+        map.set(key, {
+            paid: prev.paid && c.status === 'Paid',
+            due: round(prev.due + Math.max(0, due)),
+        });
+    }
+    return map;
+}
+
+/**
+ * To'lanmagan qatorni topadi. Natija berishdan OLDIN chaqiriladi:
+ * `null` — yo'l ochiq, aks holda 402 uchun tayyor ma'lumot.
+ */
+export async function unpaidGate(
+    prisma: any, clinicId: string, source: ChargeSource, sourceId: string,
+): Promise<{ due: number; chargeId: string } | null> {
+    const unpaid = await prisma.visitCharge.findFirst({
+        where: { clinicId, source, sourceId, status: 'Unpaid' },
+        select: { id: true, total: true, paidAmount: true },
+    });
+    if (!unpaid) return null;
+    return { due: round((unpaid.total || 0) - (unpaid.paidAmount || 0)), chargeId: unpaid.id };
+}
+
 /** Qabulning pul holati — ish stoli va kassa shuni ko'rsatadi */
 export function summarize(charges: any[]) {
     const active = charges.filter(c => c.status !== 'Cancelled');
