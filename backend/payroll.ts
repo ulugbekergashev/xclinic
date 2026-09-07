@@ -215,7 +215,12 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
             }),
             prisma.doctor.findMany({
                 where: { clinicId },
-                select: { id: true, firstName: true, lastName: true, percentage: true, departmentId: true },
+                select: {
+                    id: true, firstName: true, lastName: true, percentage: true,
+                    departmentId: true, status: true,
+                    // Fix maosh (0033 dan keyin vedomost buni O'QIYDI)
+                    salaryType: true, fixedSalary: true,
+                },
             }),
             prisma.doctorServiceRate.findMany({ where: { clinicId } }),
         ]);
@@ -270,11 +275,82 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
             });
         }
 
+        /* ─── FIX MAOSH ───────────────────────────────────────
+
+           `salaryType` va `fixedSalary` shifokor formasida ANCHADAN BERI
+           tahrirlanardi, lekin hech qayerda O'QILMASDI: fix maoshli
+           shifokor vedomostda faqat foizini ko'rardi va oylikni kassir
+           qo'lda «Boshqa xarajat» bilan yozardi.
+
+           Qoidalar:
+             fixed      — faqat qat'iy summa, foiz yo'q;
+             fixed_kpi  — qat'iy summa + foiz;
+             kpi, none  — faqat foiz (bugungi xatti-harakat).
+
+           `none` ATAYLAB foiz bo'lib qoladi: u standart qiymat va uni
+           «hech narsa» deb talqin qilish ishlab turgan klinikalarning
+           vedomostini birdan nolga tushirardi.
+
+           Davr bir oydan qisqa yoki uzun bo'lishi mumkin, shuning uchun
+           qat'iy summa KUNLAR bo'yicha taqsimlanadi: davr har bir
+           kalendar oyi bilan kesishgan kunlar / o'sha oydagi kunlar
+           soni. To'liq oy uchun bu aynan 1 beradi. */
+        const monthlyFraction = (fromDay: string, toDay: string): number => {
+            const a = new Date(`${fromDay}T00:00:00Z`);
+            const b = new Date(`${toDay}T00:00:00Z`);
+            if (isNaN(a.getTime()) || isNaN(b.getTime()) || b < a) return 0;
+            let total = 0;
+            let y = a.getUTCFullYear(), m = a.getUTCMonth();
+            while (y < b.getUTCFullYear() || (y === b.getUTCFullYear() && m <= b.getUTCMonth())) {
+                const monthStart = Date.UTC(y, m, 1);
+                const monthEnd = Date.UTC(y, m + 1, 0);
+                const days = new Date(monthEnd).getUTCDate();
+                const s = Math.max(monthStart, a.getTime());
+                const e = Math.min(monthEnd, b.getTime());
+                if (e >= s) total += ((e - s) / 864e5 + 1) / days;
+                m++; if (m > 11) { m = 0; y++; }
+            }
+            return total;
+        };
+        const fraction = monthlyFraction(from, to);
+
+        for (const doc of doctors) {
+            const type = String(doc.salaryType || 'none');
+            const fixedMonthly = Number(doc.fixedSalary) || 0;
+            if (!(type === 'fixed' || type === 'fixed_kpi') || fixedMonthly <= 0) continue;
+            // Ishdan ketgan xodimga oylik hisoblanmaydi
+            if (doc.status && doc.status !== 'Active') continue;
+
+            if (!byDoctor.has(doc.id)) {
+                byDoctor.set(doc.id, {
+                    doctorId: doc.id,
+                    staffName: `${doc.lastName} ${doc.firstName}`,
+                    paidBase: 0, accrued: 0, refunded: 0, fixed: 0,
+                    items: [] as any[],
+                });
+            }
+            const g = byDoctor.get(doc.id);
+
+            /* `fixed` da foiz TO'LANMAYDI — shu paytgacha yig'ilgan
+               ulushni bekor qilamiz, lekin qatorlar ko'rinib turadi:
+               «nega hisobda yo'q» degan savolga javob kerak. */
+            if (type === 'fixed') g.accrued = 0;
+
+            const part = round(fixedMonthly * fraction);
+            g.fixed = round((g.fixed || 0) + part);
+            g.accrued = round(g.accrued + part);
+            g.items.push({
+                name: `Fix maosh (${Math.round(fraction * 100)}% davr)`,
+                paid: 0, percent: 0, basis: 'fix maosh', share: part,
+                source: 'Salary', kind: 'Fixed',
+            });
+        }
+
         /* Manfiyga tushib ketgan ulush nolga tenglashtiriladi: qaytarish
            o'tgan oyning to'lovidan ko'p bo'lsa, shifokordan pul talab
            qilish — bu tizimning ishi emas. Raqam ko'rinib turadi. */
         const lines = Array.from(byDoctor.values())
-            .map((g: any) => ({ ...g, accrued: Math.max(0, g.accrued) }))
+            .map((g: any) => ({ ...g, fixed: g.fixed || 0, accrued: Math.max(0, g.accrued) }))
             .sort((a, b) => b.accrued - a.accrued);
 
         return {
@@ -375,7 +451,12 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
                         accrued: l.accrued,
                         paid: 0,
                         // Hisob qanday chiqqani — keyin "nega bunday" degan savolga javob
-                        detail: JSON.stringify({ paidBase: l.paidBase, items: l.items.slice(0, 200) }),
+                        detail: JSON.stringify({
+                            paidBase: l.paidBase,
+                            // Fix qismi alohida: «nega bunday» savoliga javob
+                            fixed: l.fixed || 0,
+                            items: l.items.slice(0, 200),
+                        }),
                     })),
                 },
             },

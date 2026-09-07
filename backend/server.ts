@@ -4244,7 +4244,11 @@ app.post('/api/doctors', authenticateToken, STAFF, async (req, res) => {
             passwordData = await bcrypt.hash(password, salt);
         }
         const data: any = {
-            firstName, lastName, specialty, phone, status, clinicId, username, password: passwordData,
+            firstName, lastName, specialty, phone, clinicId, username, password: passwordData,
+            /* Sxemada `status` MAJBURIY va standart qiymati yo'q. Forma uni
+               har doim yuboradi, lekin bot yoki import yubormasa Prisma
+               tushunarsiz 500 qaytarardi. Yangi xodim — ishlaydigan xodim. */
+            status: status || 'Active',
             percentage: percentage || 0,
             salaryType: salaryType || 'none',
             fixedSalary: fixedSalary ? Number(fixedSalary) : 0,

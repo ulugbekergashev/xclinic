@@ -333,6 +333,10 @@ export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clini
                                             <span className="text-xs text-gray-400">
                                                 to'langan {fmt(l.paidBase)}
                                                 {l.refunded > 0 ? ` · qaytarilgan ${fmt(l.refunded)}` : ''}
+                                                {/* Fix maosh alohida ko'rinadi: aks holda
+                                                    «foiz nega bunchalik ko'p» degan savol
+                                                    tug'ilardi. */}
+                                                {l.fixed > 0 ? ` · fix ${fmt(l.fixed)}` : ''}
                                                 {' · '}{l.items.length} qator
                                             </span>
                                             <span className="ml-auto font-semibold tabular-nums text-gray-900 dark:text-white">
@@ -541,7 +545,9 @@ export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clini
                                             <p className="text-sm font-medium text-gray-900 dark:text-white">{l.staffName}</p>
                                             {l.detail?.paidBase != null && (
                                                 <p className="text-[11px] text-gray-400">
-                                                    baza: to'langan {fmt(l.detail.paidBase)} · {(l.detail.items || []).length} qator
+                                                    baza: to'langan {fmt(l.detail.paidBase)}
+                                                    {l.detail.fixed > 0 ? ` · fix ${fmt(l.detail.fixed)}` : ''}
+                                                    {' · '}{(l.detail.items || []).length} qator
                                                 </p>
                                             )}
                                         </div>

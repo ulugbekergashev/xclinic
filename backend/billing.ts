@@ -522,6 +522,68 @@ export async function applyChargePayment(tx: any, clinicId: string, input: Charg
     };
 }
 
+/* ═══ AVANSNING YADROSI ══════════════════════════════════════
+
+   Chek va balans BITTA tranzaksiyada. Ikki chaqiruvchisi bor:
+
+     * `POST /api/payments/advance` — kassadagi avans;
+     * Telegram bot — bron uchun kartaga to'langan oldindan to'lov,
+       admin tasdiqlaganda.
+
+   Bot ilgari PULNI UMUMAN YOZMASDI: qabul «tasdiqlandi» bo'lardi,
+   bemor kartaga pul yuborgan bo'lardi, klinikaning hisobida esa
+   hech narsa qolmasdi. */
+
+export async function applyAdvance(tx: any, clinicId: string, input: {
+    patientId: string;
+    amount: number;
+    method?: string | null;
+    receivedByName?: string | null;
+}) {
+    const sum = round(input.amount);
+    if (!(sum > 0)) throw new HttpError(400, "Summa noto'g'ri");
+
+    /* Avansni avansdan to'ldirib bo'lmaydi — bu o'z-o'ziga pul
+       ko'chirish bo'lardi va balans ikki marta oshardi. */
+    const payMethod = String(input.method || 'Cash');
+    if (payMethod === 'Balance') {
+        throw new HttpError(400, "Avansni avans hisobidan to'ldirib bo'lmaydi");
+    }
+
+    const patient = await tx.patient.findUnique({
+        where: { id: String(input.patientId) },
+        select: { id: true, clinicId: true, firstName: true, lastName: true, balance: true },
+    });
+    if (!patient || patient.clinicId !== clinicId) {
+        throw new HttpError(404, 'Bemor topilmadi');
+    }
+
+    const patientName = `${patient.lastName || ''} ${patient.firstName || ''}`.trim();
+    const receipt = await tx.transaction.create({
+        data: {
+            clinicId,
+            patientId: patient.id,
+            patientName,
+            date: nowDate(),
+            amount: sum,
+            type: payMethod,
+            /* 'Avans' — balans formulasining kaliti (`advanceFromRows`).
+               Matn o'zgarsa balans hisobi buziladi. */
+            service: 'Avans',
+            status: 'Paid',
+            receivedByName: input.receivedByName || null,
+        },
+    });
+
+    const updated = await tx.patient.update({
+        where: { id: patient.id },
+        data: { balance: { increment: sum } },
+        select: { id: true, balance: true },
+    });
+
+    return { receipt, patientName, balance: updated.balance };
+}
+
 export function registerBillingRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId } = deps;
 
@@ -845,40 +907,13 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             return res.status(400).json({ error: "Avansni avans hisobidan to'ldirib bo'lmaydi" });
         }
 
-        const outcome = await prisma.$transaction(async (tx: any) => {
-            const patient = await tx.patient.findUnique({
-                where: { id: String(patientId) },
-                select: { id: true, clinicId: true, firstName: true, lastName: true, balance: true },
-            });
-            if (!patient || patient.clinicId !== clinicId) {
-                throw new HttpError(404, 'Bemor topilmadi');
-            }
-
-            const patientName = `${patient.lastName || ''} ${patient.firstName || ''}`.trim();
-            const receipt = await tx.transaction.create({
-                data: {
-                    clinicId,
-                    patientId: patient.id,
-                    patientName,
-                    date: nowDate(),
-                    amount: sum,
-                    type: payMethod,
-                    /* 'Avans' — balans formulasining kaliti (`advanceFromRows`).
-                       Matn o'zgarsa balans hisobi buziladi. */
-                    service: 'Avans',
-                    status: 'Paid',
-                    receivedByName: receivedByName || null,
-                },
-            });
-
-            const updated = await tx.patient.update({
-                where: { id: patient.id },
-                data: { balance: { increment: sum } },
-                select: { id: true, balance: true },
-            });
-
-            return { receipt, patientName, balance: updated.balance };
-        }, { timeout: 15000, maxWait: 10000 });
+        const outcome = await prisma.$transaction(
+            (tx: any) => applyAdvance(tx, clinicId, {
+                patientId: String(patientId), amount: sum,
+                method: payMethod, receivedByName,
+            }),
+            { timeout: 15000, maxWait: 10000 },
+        );
 
         await writeAudit({
             clinicId, date: nowDate(), action: 'Advance', entityType: 'Transaction',

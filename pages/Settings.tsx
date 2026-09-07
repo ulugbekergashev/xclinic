@@ -1378,6 +1378,14 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div>
                               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Oldindan To'lov (Bron uchun)</h2>
                               <p className="text-sm text-gray-500">Bemor bot orqali qabulga yozilganda oldindan to'lov talab qilish.</p>
+                              {/* Ilgari tasdiq faqat qabul holatini o'zgartirardi va pul
+                                  hech qayerda qolmasdi. Endi u bemor hisobiga avans
+                                  bo'lib tushadi — buni sozlamada aytib qo'yamiz, aks
+                                  holda kassir uni ikkinchi marta undirardi. */}
+                              <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                                 Admin chekni tasdiqlaganda summa bemor hisobiga AVANS bo'lib yoziladi
+                                 va xizmat to'lovida shundan yechiladi.
+                              </p>
                            </div>
                         </div>
 
@@ -3106,10 +3114,13 @@ export const Settings: React.FC<SettingsProps> = ({
                         ))}
                      </div>
                      <p className="text-xs text-gray-500 mt-1.5">
-                        {doctorForm.salaryType === 'none' && "Maosh turi belgilanmagan — Xarajat bo'limida qo'lda kiritiladi."}
-                        {doctorForm.salaryType === 'fixed' && "Har oy belgilangan qat'iy summa to'lanadi."}
-                        {doctorForm.salaryType === 'fixed_kpi' && "Qat'iy summa + sof foydadan foiz — ikkalasi ham to'lanadi."}
-                        {doctorForm.salaryType === 'kpi' && "Faqat sof foydadan foiz (hisoblangan ulush) to'lanadi."}
+                        {/* Matn VEDOMOST nima qilishini aytadi. Ilgari bu
+                            maydonlar hech qayerda o'qilmasdi va izoh ham
+                            haqiqatga mos emas edi. */}
+                        {doctorForm.salaryType === 'none' && "Belgilanmagan — vedomost faqat xizmat foizini hisoblaydi."}
+                        {doctorForm.salaryType === 'fixed' && "Faqat qat'iy summa. Xizmat foizi hisoblanmaydi."}
+                        {doctorForm.salaryType === 'fixed_kpi' && "Qat'iy summa + xizmat foizi — ikkalasi ham vedomostga tushadi."}
+                        {doctorForm.salaryType === 'kpi' && "Faqat xizmat foizi (to'langan qatorlardan)."}
                      </p>
 
                      {(doctorForm.salaryType === 'fixed' || doctorForm.salaryType === 'fixed_kpi') && (

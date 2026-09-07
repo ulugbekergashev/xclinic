@@ -1,6 +1,7 @@
 import { Telegraf } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { prisma } from './db';
+import { applyAdvance } from './billing';
 
 class BotManager {
     private bots: Map<string, Telegraf> = new Map(); // token -> Telegraf
@@ -700,16 +701,64 @@ class BotManager {
             bot.action(/^confirm_pay_([\w-]+)$/, async (ctx) => {
                 const appointmentId = ctx.match[1];
                 try {
-                    const appointment = await prisma.appointment.update({
-                        where: { id: appointmentId },
-                        data: { status: 'Confirmed', notes: 'Telegram bot orqali yozildi (to\'lov tasdiqlandi)' },
-                        include: { patient: true, doctor: true }
-                    });
+                    /* ─── TASDIQ = PUL YOZILADI ──────────────────────────────
+
+                       Ilgari admin «Tasdiqlash» bosganda faqat qabul holati
+                       o'zgarardi. Bemor kartaga HAQIQIY pul yuborgan bo'lardi,
+                       klinikaning hisobida esa hech narsa qolmasdi: kassada
+                       yo'q, bemor balansida yo'q, hisobotda yo'q. Kelganda
+                       bemor «men to'laganman» derdi va buni tekshirishning
+                       yo'li yo'q edi.
+
+                       Endi tasdiq bemor hisobiga AVANS yozadi — kassadagi
+                       avans bilan aynan bir yo'ldan (`applyAdvance`).
+                       Kelganda u xizmat to'lovida «Avansdan» usuli bilan
+                       sarflanadi.
+
+                       Qabul holati va pul bitta tranzaksiyada: yarim holat
+                       qolmasin. */
+                    const { appointment, advanceSum } = await prisma.$transaction(async (tx: any) => {
+                        /* Tasdiq FAQAT kutayotgan qabulni o'zgartiradi.
+                           Telegram tugmasi o'chmaydi va admin uni ikki marta
+                           bosishi mumkin — u holda avans ikki marta
+                           yozilardi. `updateMany` nechta qator o'zgarganini
+                           aytadi: nol bo'lsa pul yozilmaydi. */
+                        const changed = await tx.appointment.updateMany({
+                            where: { id: appointmentId, status: 'Pending' },
+                            data: { status: 'Confirmed', notes: 'Telegram bot orqali yozildi (to\'lov tasdiqlandi)' },
+                        });
+                        const appt = await tx.appointment.findUnique({
+                            where: { id: appointmentId },
+                            include: { patient: true, doctor: true },
+                        });
+                        if (!appt) throw new Error('Qabul topilmadi');
+                        if (changed.count === 0) return { appointment: appt, advanceSum: 0 };
+
+                        const clinic = await tx.clinic.findUnique({
+                            where: { id: appt.clinicId },
+                            select: { prepaymentAmount: true },
+                        });
+                        const sum = Math.round(Number(clinic?.prepaymentAmount) || 0);
+                        if (sum > 0 && appt.patientId) {
+                            await applyAdvance(tx, appt.clinicId, {
+                                patientId: appt.patientId,
+                                amount: sum,
+                                // Bron uchun to'lov kartaga yuboriladi
+                                method: 'Card',
+                                receivedByName: 'Telegram bot',
+                            });
+                        }
+                        return { appointment: appt, advanceSum: sum };
+                    }, { timeout: 15000, maxWait: 10000 });
+
                     await ctx.editMessageCaption(
                         `✅ *TASDIQLANDI*\n\n` +
                         `👤 Bemor: ${appointment.patient.firstName} ${appointment.patient.lastName}\n` +
                         `👨‍⚕️ Shifokor: ${appointment.doctorName}\n` +
-                        `📅 ${appointment.date} soat ${appointment.time}`,
+                        `📅 ${appointment.date} soat ${appointment.time}` +
+                        (advanceSum > 0
+                            ? `\n\n💰 Bemor hisobiga avans yozildi: ${advanceSum.toLocaleString()} so'm`
+                            : ''),
                         { parse_mode: 'Markdown' }
                     );
                     await ctx.answerCbQuery("✅ Qabul tasdiqlandi");
@@ -717,7 +766,11 @@ class BotManager {
                     if (appointment.patient.telegramChatId) {
                         await bot.telegram.sendMessage(
                             appointment.patient.telegramChatId,
-                            `✅ *Qabulingiz tasdiqlandi!*\n\n👨‍⚕️ Shifokor: ${appointment.doctorName}\n📅 Sana: ${appointment.date}\n⏰ Vaqt: ${appointment.time}\n\nKlinikada kutib qolamiz!`,
+                            `✅ *Qabulingiz tasdiqlandi!*\n\n👨‍⚕️ Shifokor: ${appointment.doctorName}\n📅 Sana: ${appointment.date}\n⏰ Vaqt: ${appointment.time}`
+                            + (advanceSum > 0
+                                ? `\n\n💰 To'lovingiz hisobingizga yozildi: ${advanceSum.toLocaleString()} so'm. Xizmat to'lovida shundan yechiladi.`
+                                : '')
+                            + `\n\nKlinikada kutib qolamiz!`,
                             { parse_mode: 'Markdown' }
                         ).catch(() => {});
                     }

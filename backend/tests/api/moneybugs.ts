@@ -295,6 +295,65 @@ async function main() {
         }
     }
 
+    console.log('\n═══ FIX MAOSH VEDOMOSTGA TUSHADI ═════════════════');
+    /* `salaryType` va `fixedSalary` shifokor formasida anchadan beri
+       tahrirlanardi, lekin vedomost ularni O'QIMASDI: fix maoshli
+       shifokor faqat foizini ko'rardi, oylikni esa kassir qo'lda
+       «Boshqa xarajat» bilan yozardi. */
+    const salaryMonth = new Date();
+    const mFrom = `${salaryMonth.getFullYear()}-${String(salaryMonth.getMonth() + 1).padStart(2, '0')}-01`;
+    const mLast = new Date(salaryMonth.getFullYear(), salaryMonth.getMonth() + 1, 0).getDate();
+    const mTo = `${salaryMonth.getFullYear()}-${String(salaryMonth.getMonth() + 1).padStart(2, '0')}-${String(mLast).padStart(2, '0')}`;
+
+    const salaryDoc = await api('POST', '/doctors', {
+        firstName: 'Fix', lastName: `Maoshov${Date.now() % 100000}`,
+        specialty: 'Terapevt', phone: '+998900000777', status: 'Active',
+        username: `fixdoc${Date.now() % 1000000}`, password: 'testpass123',
+        percentage: 0, salaryType: 'fixed', fixedSalary: 3000000,
+    });
+    const salaryDocId = salaryDoc.data?.id;
+    ok('fix maoshli shifokor yaratildi', !!salaryDocId,
+        `status: ${salaryDoc.status}, ${JSON.stringify(salaryDoc.data).slice(0, 140)}`);
+
+    if (salaryDocId) {
+        const preview = await api('GET', `/payroll/preview?from=${mFrom}&to=${mTo}`);
+        ok('vedomost oldindan hisobi olindi', preview.status === 200, `status: ${preview.status}`);
+
+        const row = (preview.data?.lines || []).find((l: any) => l.doctorId === salaryDocId);
+        ok('TO\'LOVSIZ ham vedomostda qatori bor', !!row,
+            `qatorlar: ${(preview.data?.lines || []).length}`);
+        ok('to\'liq oyga fix maosh to\'liq hisoblandi',
+            Math.round(row?.fixed || 0) === 3000000, String(row?.fixed));
+        ok('hisoblangan summa fix maoshga teng',
+            Math.round(row?.accrued || 0) === 3000000, String(row?.accrued));
+
+        /* Yarim oy — yarim maosh. Davr kunlari bo'yicha taqsimlanadi. */
+        const half = Math.floor(mLast / 2);
+        const halfTo = `${mFrom.slice(0, 8)}${String(half).padStart(2, '0')}`;
+        const p2 = await api('GET', `/payroll/preview?from=${mFrom}&to=${halfTo}`);
+        const row2 = (p2.data?.lines || []).find((l: any) => l.doctorId === salaryDocId);
+        const expectHalf = Math.round(3000000 * (half / mLast));
+        ok('yarim davrga maosh KUNLAR bo\'yicha bo\'lindi',
+            Math.abs((row2?.fixed || 0) - expectHalf) <= 1,
+            `kutilgan ~${expectHalf}, bor ${row2?.fixed}`);
+
+        /* `none` — standart qiymat. Uni «hech narsa» deb talqin qilish
+           ishlab turgan klinikalarning vedomostini nolga tushirardi,
+           shuning uchun u foiz bo'lib qoladi. */
+        const plainDoc = await api('POST', '/doctors', {
+            firstName: 'Foiz', lastName: `Ulushov${Date.now() % 100000}`,
+            specialty: 'Terapevt', phone: '+998900000778', status: 'Active',
+            username: `pctdoc${Date.now() % 1000000}`, password: 'testpass123',
+            percentage: 40,
+        });
+        if (plainDoc.data?.id) {
+            const p3 = await api('GET', `/payroll/preview?from=${mFrom}&to=${mTo}`);
+            const row3 = (p3.data?.lines || []).find((l: any) => l.doctorId === plainDoc.data.id);
+            ok('foizli shifokorga fix maosh QO\'SHILMADI', !row3 || (row3.fixed || 0) === 0,
+                String(row3?.fixed));
+        }
+    }
+
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);
 }
