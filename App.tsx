@@ -16,15 +16,12 @@ import { IS_DEMO_BUILD } from './services/demoBuild';
      • `QueueBoard` — kiosk rejimida alohida oynada ochiladi va u yerda
        yuklash indikatori xunuk;
      • `NotFound` — kichkina, ajratishning foydasi yo'q. */
-const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+
 const Patients = React.lazy(() => import('./pages/Patients').then(m => ({ default: m.Patients })));
 const PatientDetails = React.lazy(() => import('./pages/PatientDetails').then(m => ({ default: m.PatientDetails })));
 const Calendar = React.lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
 const FinanceHub = React.lazy(() => import('./pages/FinanceHub').then(m => ({ default: m.FinanceHub })));
-const Leads = React.lazy(() => import('./pages/Leads').then(m => ({ default: m.Leads })));
 const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const DoctorsAnalytics = React.lazy(() => import('./pages/DoctorsAnalytics').then(m => ({ default: m.DoctorsAnalytics })));
-const DoctorDetails = React.lazy(() => import('./pages/DoctorDetails').then(m => ({ default: m.DoctorDetails })));
 const Inventory = React.lazy(() => import('./pages/Inventory').then(m => ({ default: m.Inventory })));
 const LabOrders = React.lazy(() => import('./pages/LabOrders').then(m => ({ default: m.LabOrders })));
 const Diagnostics = React.lazy(() => import('./pages/Diagnostics').then(m => ({ default: m.Diagnostics })));
@@ -42,6 +39,7 @@ import { SignIn } from './pages/SignIn';
 import { FirstRunSetup } from './pages/FirstRunSetup';
 import { QueueBoard } from './pages/QueueBoard';
 import { UserRole, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, Service, InventoryItem, ServiceCategory, Lead, LabTechnician, LabOrder, CashRegisterDay, CashMovement, Department, VisitCharge } from './types';
+import { AiOverlay } from './components/AiOverlay';
 import { ToastContainer, ToastMessage } from './components/Common';
 import { InstallPWAButton } from './components/InstallPWAButton';
 import { BottomNav } from './components/BottomNav';
@@ -59,50 +57,19 @@ import { NotFound } from './pages/NotFound';
 import { confirmAction } from './services/confirm';
 import { api } from './services/api';
 import type { CashCloseInput } from './services/api';
-import { parseAccessControl, isModuleHidden, canSeeFinance, canSeePatientPhone } from './utils/accessControl';
+import { parseAccessControl, canSeeFinance, canSeePatientPhone } from './utils/accessControl';
+import { visibleNavigation as buildNavigation, canOpenModule, homeFor } from './utils/navigation';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { Language } from './i18n/translations';
 
-// Navigation config for Clinic Admin and Doctors
-const CLINIC_NAVIGATION = [
-  { id: 'dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-  /* «Bugun» — ilgari IKKITA punkt edi: «Registratura» va «Mening
-     navbatim». Ikkalasi bir xil `Visit` jadvalini ko'rsatardi, faqat
-     boshqacha guruhlab. Endi bitta ekran, rolga qarab boshqacha
-     ko'rinadi. Hamshira ham ko'radi: dori berish uchun kimga nima
-     buyurilganini bilishi kerak. */
-  { id: 'today', labelKey: 'today.title', icon: Stethoscope, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
-  { id: 'leads', labelKey: 'nav.leads', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  { id: 'patients', labelKey: 'nav.patients', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
-  { id: 'calendar', labelKey: 'nav.calendar', icon: CalendarIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-  /* Moliya registratorda qoladi — u kassada ishlaydi. Hisobot va Ulush
-     tablari FinanceHub ichida allaqachon egaga cheklangan. */
-  { id: 'finance', labelKey: 'nav.finance', icon: Wallet, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  /* Shifokorlar analitikasi har shifokorning hisoblangan ULUSHINI va
-     tushumini ko'rsatadi (`DoctorsAnalytics` → `calculateDoctorShare`).
-     Bu oylik ma'lumoti — registrator uni ko'rmasligi kerak. Sahifaning
-     o'zida rol tekshiruvi yo'q edi, shuning uchun cheklov shu yerda va
-     marshrut qo'riqchisida qo'yiladi. */
-  { id: 'doctors', labelKey: 'nav.doctors', icon: Activity, roles: [UserRole.CLINIC_ADMIN] },
-  { id: 'inventory', labelKey: 'inventory.title', icon: Package, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  { id: 'board', labelKey: 'nav.board', icon: ListOrdered, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  { id: 'lab', labelKey: 'nav.lab', icon: FlaskConical, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.LAB_TECHNICIAN] },
-  { id: 'diagnostics', labelKey: 'nav.diagnostics', icon: Scan, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-  // Hamshiraning yagona ish o'rni — statsionar (dori varag'i, harorat varag'i)
-  { id: 'inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE] },
-  { id: 'messages', labelKey: 'nav.messages', icon: MessageSquare, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-  { id: 'settings', labelKey: 'nav.settings', icon: SettingsIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-];
 
 // Helper: get page label key from path
 const getPageLabelKey = (pathname: string): any => {
-  if (pathname === '/' || pathname === '/dashboard') return 'nav.dashboard';
-  if (pathname === '/leads') return 'nav.leads';
+  if (pathname === '/' || pathname === '/dashboard') return 'today.title';
   if (pathname.startsWith('/patients/')) return 'nav.patients'; // Will translate as "Patients", detail page handles own title
   if (pathname === '/patients') return 'nav.patients';
   if (pathname === '/calendar') return 'nav.calendar';
   if (pathname === '/finance') return 'nav.finance';
-  if (pathname === '/doctors') return 'nav.doctors';
   if (pathname === '/inventory') return 'inventory.title';
   if (pathname === '/today') return 'today.title';
   if (pathname.startsWith('/visit/')) return 'nav.visit';
@@ -112,7 +79,7 @@ const getPageLabelKey = (pathname: string): any => {
   if (pathname === '/lab') return 'nav.lab';
   if (pathname === '/messages') return 'nav.messages';
   if (pathname === '/settings') return 'nav.settings';
-  return 'nav.dashboard';
+  return 'today.title';
 };
 
 const AppContent: React.FC = () => {
@@ -121,6 +88,10 @@ const AppContent: React.FC = () => {
   const { t, language, setLanguage } = useLanguage();
 
   // --- Global State ---
+  /* AI yordamchi sahifa USTIDA ochiladi — turgan joyingizni tashlab
+     ketmasdan savol berish uchun. Ilgari u boshqaruv paneli ichidagi
+     vkladka edi va tugma o'sha sahifaga olib o'tardi. */
+  const [aiOpen, setAiOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>(UserRole.CLINIC_ADMIN);
@@ -154,7 +125,6 @@ const AppContent: React.FC = () => {
   const [cashClosures, setCashClosures] = useState<CashRegisterDay[]>([]);
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
   const [currentClinic, setCurrentClinic] = useState<Clinic | undefined>();
-  const [leads, setLeads] = useState<Lead[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [receptionists, setReceptionists] = useState<Receptionist[]>([]);
@@ -293,7 +263,6 @@ const sinceDate = (n: number) =>
           setLabTechnicians(DEMO_LAB_TECHNICIANS || []);
           setLabOrders(DEMO_LAB_ORDERS || []);
           setReceptionists(DEMO_RECEPTIONISTS || []);
-          setLeads(DEMO_LEADS || []);
           /* HISOB QATORLARI VA BO'LIMLAR — demo tarmog'ida TUSHIB QOLGAN edi.
              Pastdagi haqiqiy tarmoqda ular yuklanadi, bu yerda esa yo'q edi,
              ya'ni `charges` bo'sh massiv bo'lib qolardi.
@@ -311,7 +280,7 @@ const sinceDate = (n: number) =>
           setCharges(demoCharges || []);
           setDepartments(demoDepts || []);
         } else if (clinicId) {
-          const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs, leadsData, clinicData, labTechs, labOrds, closures, movements, depts, chrgs] = await Promise.all([
+          const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs, clinicData, labTechs, labOrds, closures, movements, depts, chrgs] = await Promise.all([
             // Butun klinika bo'yicha: shifokor boshqa bo'lim ko'rgan bemorning
             // kartasini ocha olishi kerak (ko'p profilli klinikaning asosi).
             /* ─── KIRISHDA CHEKLANGAN OYNA (FIX-PLAN 10.3) ───────────────
@@ -338,7 +307,6 @@ const sinceDate = (n: number) =>
             api.inventory.getAll(clinicId),
             api.categories.getAll(clinicId),
             api.reviews.getAll(clinicId),
-            api.leads.getAll(clinicId),
             api.clinics.getById(clinicId),
             api.labTechnicians.getAll(clinicId),
             api.labOrders.getAll(clinicId),
@@ -361,7 +329,6 @@ const sinceDate = (n: number) =>
           // @ts-ignore
           setCategories(cats);
           setReviews(revs || []);
-          setLeads(leadsData || []);
           setLabTechnicians(labTechs || []);
           setLabOrders(labOrds || []);
           setCashClosures(closures || []);
@@ -468,7 +435,7 @@ const sinceDate = (n: number) =>
     setError(null);
     try {
       if (clinicId) {
-        const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs, leadsData] = await Promise.all([
+        const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs] = await Promise.all([
           api.patients.getAllForClinic(clinicId),
           api.appointments.getAll(clinicId),
           api.transactions.getAll(clinicId),
@@ -479,7 +446,6 @@ const sinceDate = (n: number) =>
           api.inventory.getAll(clinicId),
           api.categories.getAll(clinicId),
           api.reviews.getAll(clinicId),
-          api.leads.getAll(clinicId)
         ]);
         setPatients(pts);
         setAppointments(appts);
@@ -492,7 +458,6 @@ const sinceDate = (n: number) =>
         setCategories(cats);
         // @ts-ignore
         setReviews(revs || []);
-        setLeads(leadsData || []);
       }
       addToast('success', 'Ma\'lumotlar muvaffaqiyatli yuklandi!');
     } catch (error) {
@@ -803,137 +768,6 @@ const sinceDate = (n: number) =>
     }
   };
 
-  // Leads Actions
-  const addLead = async (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const create = async (force: boolean) => {
-      const newLead = await api.leads.create({ ...lead, clinicId, ...(force ? { force: true } : {}) } as any);
-      setLeads(prev => [newLead, ...prev]);
-      addToast('success', 'Yangi lid qo\'shildi.');
-    };
-
-    try {
-      await create(false);
-    } catch (e: any) {
-      /* TAKROR LID (409, S3.4). Bloklamaydi, TANLOV beradi: reklama bir
-         odamni ikki marta yuborishi mumkin, lekin operator buni bilishi
-         kerak — aks holda bitta odamga ikki marta qo'ng'iroq qilinadi. */
-      if (e?.data?.code === 'DUPLICATE_LEAD') {
-        const m = (e.data.matches || [])[0];
-        const okToAdd = await confirmAction({
-          title: 'Bu raqam bilan lid allaqachon bor',
-          body: m ? `${m.name} — ${m.phone}. Baribir yangisini yaratasizmi?` : undefined,
-          confirmLabel: 'Baribir yaratish',
-        });
-        if (okToAdd) {
-          try { await create(true); } catch (e2: any) { addToast('error', e2.message || 'Xatolik yuz berdi'); }
-        }
-        return;
-      }
-      addToast('error', e.message || 'Xatolik yuz berdi');
-    }
-  };
-
-  const updateLead = async (id: string, data: Partial<Lead>) => {
-    try {
-      const updated = await api.leads.update(id, data);
-      setLeads(prev => prev.map(l => l.id === id ? updated : l));
-    } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
-    }
-  };
-
-  /* LIDNI O'CHIRISH — QAYTARISH IMKONI BILAN (S3.6, audit B-05).
-
-     «Lid bitta tugma bosilishi bilan yo'qoladi» degan e'tiroz ikki
-     qismdan iborat edi: tasdiq yo'qligi (endi `confirmAction`,
-     `Leads.tsx` da) va qaytarib bo'lmasligi.
-
-     NIMA UCHUN AYNAN LID. Qaytarish bu yerda XAVFSIZ: lidga hech narsa
-     bog'lanmagan, ya'ni uni qayta yaratish hech qanday havolani buzmaydi.
-     Bemor yoki to'lov bilan bunday qilib bo'lmaydi — yangi `id` eski
-     havolalarni yetim qoldiradi. Ular uchun javobgarlik boshqa yo'ldan:
-     har o'chirish kirish jurnaliga tushadi (S1.4).
-
-     `id` o'zgaradi — bu ataylab: tiklash emas, QAYTA YARATISH. */
-  const deleteLead = async (id: string) => {
-    const removed = leads.find(l => l.id === id);
-    try {
-      await api.leads.delete(id);
-      setLeads(prev => prev.filter(l => l.id !== id));
-
-      if (removed) {
-        const { id: _oldId, createdAt: _c, updatedAt: _u, ...payload } = removed as any;
-        const toastId = Math.random().toString(36).substr(2, 9);
-        setToasts(prev => [...prev, {
-          id: toastId,
-          type: 'info',
-          message: `Lid o'chirildi: ${removed.name || ''}`.trim(),
-          action: { label: 'Bekor qilish', run: () => { void addLead(payload); } },
-        }]);
-      } else {
-        addToast('info', 'Lid o\'chirildi.');
-      }
-    } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
-    }
-  };
-
-  const convertLeadToPatient = async (leadId: string, appointmentData: Partial<Appointment>) => {
-    try {
-      const lead = leads.find(l => l.id === leadId);
-      if (!lead) return;
-
-      // 1. Create Patient
-      const nameParts = lead.name.split(' ');
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-
-      // Tashqi manbadan kelgan lidda manzil va tug'ilgan sana bo'lishi mumkin —
-      // ular bemor kartasidagi o'z maydoniga tushadi, izohlar ichida qolib ketmaydi.
-      const newPatient = await api.patients.create({
-        firstName,
-        lastName,
-        phone: lead.phone,
-        dob: lead.dob || '',
-        address: lead.address || undefined,
-        gender: 'Male',
-        status: 'Active',
-        lastVisit: 'Never',
-        medicalHistory: lead.notes || '',
-        clinicId,
-      });
-
-      setPatients(prev => {
-        if (prev.find(p => p.id === newPatient.id)) return prev;
-        return [newPatient, ...prev];
-      });
-
-      // 2. Schedule Appointment
-      const doctor = doctors.find(d => d.id === appointmentData.doctorId);
-      if (doctor) {
-        await addAppointment({
-          patientId: newPatient.id,
-          patientName: `${newPatient.lastName} ${newPatient.firstName}`,
-          doctorId: doctor.id,
-          doctorName: `Dr. ${doctor.lastName} ${doctor.firstName}`,
-          type: appointmentData.type || 'Konsultatsiya',
-          date: appointmentData.date || todayISO(),
-          time: appointmentData.time || '12:00',
-          duration: appointmentData.duration || 60,
-          status: 'Pending',
-          notes: lead.service ? `Qiziqish bildirdi: ${lead.service}` : '',
-        });
-      }
-
-      // 3. Update Lead Status
-      await updateLead(leadId, { status: 'Booked' });
-
-      addToast('success', 'Lid mijozga aylantirildi va qabulga yozildi!');
-    } catch (e: any) {
-      addToast('error', e.message || 'Lidni aylantirishda xatolik yuz berdi');
-    }
-  };
-
   // Settings Actions
   const addService = async (service: Omit<Service, 'id' | 'clinicId'>) => {
     try {
@@ -1097,12 +931,20 @@ const sinceDate = (n: number) =>
   // Ruxsatlar (Sozlamalar в†’ Ruxsatlar): rol bo'yicha modul/moliya/telefon ko'rinishi
   const accessControl = parseAccessControl(currentClinic);
   const showFinanceForRole = canSeeFinance(accessControl, userRole);
-  const visibleNavigation = CLINIC_NAVIGATION.filter(nav =>
-    nav.roles.includes(userRole)
-    && !isModuleHidden(accessControl, userRole, nav.id)
-    // Moliya — pul ma'lumoti; "Moliyani ko'rsatish" o'chirilgan rol uni ko'rmasligi kerak
-    && (nav.id !== 'finance' || showFinanceForRole)
-  );
+  /* Menyu `utils/navigation.ts` dan. Ilgari ro'yxat shu yerda va
+     `BottomNav.tsx` da ALOHIDA yozilgan edi va ular ajralib ketgan. */
+  const visibleNavigation = buildNavigation(userRole, accessControl);
+
+  /* MARSHRUT QO'RIQCHISI.
+
+     «Ruxsatlar» dagi filtr ilgari FAQAT menyuga qo'llanardi: modul
+     yashirilgan bo'lsa ham `#/inventory` ni qo'lda yozib kirish mumkin
+     edi. Endi sahifaning o'zi ham tekshiradi va ruxsat bo'lmasa rolning
+     bosh sahifasiga qaytaradi. */
+  const guard = (moduleId: string, element: React.ReactNode) =>
+    canOpenModule(userRole, accessControl, moduleId)
+      ? element
+      : <Navigate to={homeFor(userRole)} replace />;
   const showPatientPhoneForRole = canSeePatientPhone(accessControl, userRole);
 
   /* ⚠️ QUYIDAGI HOOKLAR HAR RENDERDA CHAQIRILISHI SHART.
@@ -1602,7 +1444,7 @@ const sinceDate = (n: number) =>
                   shuning uchun unga tugma ham chiqmaydi. */}
               {userRole !== UserRole.NURSE && (
                 <button
-                  onClick={() => navigate('/?tab=ai')}
+                  onClick={() => setAiOpen(true)}
                   className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white
                              bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500
                              shadow-sm hover:shadow-md transition-all shrink-0"
@@ -1741,37 +1583,22 @@ const sinceDate = (n: number) =>
           <Routes>
 
             <>
+              {/* BOSH SAHIFA — «Bugun».
+
+                  Ilgari bu «Boshqaruv paneli» edi: oltita bosilmaydigan
+                  plitka, ikkita diagramma va bugungi qabullar jadvali.
+                  Raqamlar u yerda BRAUZERDA qayta hisoblanardi, Moliya
+                  bo'limidagi hisobot esa serverda — ya'ni bitta savolga
+                  ikkita javob bor edi. Kunlik ish uchun kerak bo'lgani
+                  («bugun kim keldi») «Bugun» ekraniga o'tdi, raqamlar esa
+                  Moliya → Hisobotda qoladi. */}
               <Route path="/" element={
-                /* Hamshira bosh panelni ko'rmaydi — unda butun klinikaning
-                   moliyasi turadi. Fallback ham shu manzilga tushadi, shuning
-                   uchun qayta yo'naltirish aynan marshrutning o'zida. */
-                userRole === UserRole.NURSE ? <Navigate to="/inpatient" replace /> : (
-                  <Dashboard
-                    patients={patients}
-                    appointments={appointments}
-                    transactions={transactions}
-                    reviews={reviews}
-                    userRole={userRole}
-                    doctorId={doctorId}
-                    doctors={doctors}
-                    leads={leads}
-                    labOrders={labOrders}
-                    services={services}
-                    currentClinic={currentClinic}
-                    clinicId={clinicId}
-                    showFinance={showFinanceForRole}
-                    onPatientClick={handlePatientClick}
-                    onUpdateAppointment={updateAppointment}
-                    onUpdateTransaction={updateTransaction}
-                    onAddPatient={addPatient}
-                    onAddTransaction={addTransaction}
-                    onAddAppointment={addAppointment}
-                    addToast={addToast}
-                  />
-                )
+                <Navigate to={userRole === UserRole.NURSE ? '/inpatient'
+                  : userRole === UserRole.LAB_TECHNICIAN ? '/lab' : '/today'} replace />
               } />
 
               <Route path="/patients" element={
+                guard('patients',
                 <Patients
                   userRole={userRole}
                   patients={patients}
@@ -1785,25 +1612,10 @@ const sinceDate = (n: number) =>
                   onUpdatePatient={updatePatient}
                   currentClinic={currentClinic}
                 />
-              } />
-
-              {(userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST) && (
-                <Route path="/leads" element={
-                  <Leads
-                    leads={leads}
-                    doctors={doctors}
-                    categories={categories}
-                    services={services}
-                    currentClinic={currentClinic}
-                    onAddLead={addLead}
-                    onUpdateLead={updateLead}
-                    onDeleteLead={deleteLead}
-                    onConvertLead={convertLeadToPatient}
-                  />
-                } />
-              )}
+              )} />
 
               <Route path="/patients/:patientId" element={
+                guard('patients',
                 <PatientDetails
                   patients={patients}
                   appointments={appointments}
@@ -1822,9 +1634,10 @@ const sinceDate = (n: number) =>
                   onAddAppointment={addAppointment}
                   onUpdateAppointment={updateAppointment}
                 />
-              } />
+              )} />
 
               <Route path="/calendar" element={
+                guard('calendar',
                 <Calendar
                   appointments={appointments}
                   patients={patients}
@@ -1840,7 +1653,7 @@ const sinceDate = (n: number) =>
                   currentClinic={currentClinic}
                   onPatientClick={handlePatientClick}
                 />
-              } />
+              )} />
 
               {/* Eski manzil — zakladkalar buzilmasligi uchun yo'naltiriladi */}
               <Route path="/cashbook" element={<Navigate to="/finance" replace />} />
@@ -1896,6 +1709,7 @@ const sinceDate = (n: number) =>
               <Route path="/board/:clinicId" element={<QueueBoard />} />
 
               <Route path="/today" element={
+                guard('today',
                 <Today
                   clinicId={clinicId}
                   patients={patients}
@@ -1905,10 +1719,11 @@ const sinceDate = (n: number) =>
                   currentClinic={currentClinic}
                   userRole={userRole}
                   doctorId={doctorId}
+                  showPatientPhone={showPatientPhoneForRole}
                   onPatientAdded={(p: Patient) => setPatients(prev => [p, ...prev])}
                   addToast={addToast}
                 />
-              } />
+              )} />
 
               {/* Eski manzillar — talonlar, xatcho'plar va odat uchun */}
               <Route path="/reception" element={<Navigate to="/today" replace />} />
@@ -1922,6 +1737,7 @@ const sinceDate = (n: number) =>
               <Route path="/visit/:visitId" element={<VisitWorkspace />} />
 
               <Route path="/diagnostics" element={
+                guard('diagnostics',
                 <Diagnostics
                   clinicId={clinicId}
                   patients={patients}
@@ -1932,9 +1748,10 @@ const sinceDate = (n: number) =>
                   currentClinic={currentClinic}
                   token={getAuthToken() ?? undefined}
                 />
-              } />
+              )} />
 
               <Route path="/inpatient" element={
+                guard('inpatient',
                 <Inpatient
                   clinicId={clinicId}
                   patients={patients}
@@ -1945,9 +1762,10 @@ const sinceDate = (n: number) =>
                   currentClinic={currentClinic}
                   userRole={userRole}
                 />
-              } />
+              )} />
 
               <Route path="/lab" element={
+                guard('lab',
                 <LabOrders
                   clinicId={clinicId}
                   labOrders={labOrders}
@@ -1964,38 +1782,22 @@ const sinceDate = (n: number) =>
                     return d ? `Dr. ${d.lastName} ${d.firstName}` : undefined;
                   })()}
                 />
-              } />
+              )} />
 
               {(userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST) && (
                 <>
-                  {/* Shifokor ulushi va tushumi — faqat klinika egasiga.
-                      Menyudan olib tashlash yetarli emas: `#/doctors` ni
-                      qo'lda yozib kirish mumkin edi. */}
-                  {userRole === UserRole.CLINIC_ADMIN && <>
-                  <Route path="/doctors" element={
-                    <DoctorsAnalytics
-                      doctors={doctors}
-                      appointments={appointments}
-                      services={services}
-                      transactions={transactions}
-                      reviews={reviews}
-                    />
-                  } />
+                  {/* SHIFOKORLAR ANALITIKASI OLIB TASHLANDI.
 
-                  <Route path="/doctors/:doctorId" element={
-                    <DoctorDetails
-                      doctors={doctors}
-                      appointments={appointments}
-                      transactions={transactions}
-                      patients={patients}
-                      services={services}
-                      onBack={() => navigate('/doctors')}
-                      onPatientClick={handlePatientClick}
-                    />
-                  } />
-                  </>}
+                      U shifokor ulushini BRAUZERDA qayta hisoblardi
+                      (`calculateDoctorShare`), holbuki server buni ikki
+                      joyda allaqachon hisoblaydi: Moliya → Hisobot →
+                      «Shifokorlar» va Moliya → «Ulush» (vedomost). Uch xil
+                      hisob — uch xil raqam; oylik to'lanadigan yagona
+                      raqam esa vedomostdagisi. Sahifada birorta ham amal
+                      yo'q edi. */}
 
                   <Route path="/inventory" element={
+                    guard('inventory',
                     <Inventory
                       items={inventoryItems}
                       userName={userName}
@@ -2005,7 +1807,7 @@ const sinceDate = (n: number) =>
                       onDeleteItem={deleteInventoryItem}
                       onRefreshItems={refreshInventory}
                     />
-                  } />
+                  )} />
 
                   <Route path="/messages" element={
                     <MessagesManagement
@@ -2017,6 +1819,7 @@ const sinceDate = (n: number) =>
                   } />
 
                   <Route path="/settings" element={
+                    guard('settings',
                     <Settings
                       userRole={userRole}
                       services={services}
@@ -2041,7 +1844,7 @@ const sinceDate = (n: number) =>
                       currentClinic={currentClinic}
                           reviews={reviews}
                     />
-                  } />
+                  )} />
                 </>
               )}
 
@@ -2069,6 +1872,9 @@ const sinceDate = (n: number) =>
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
+
+      {/* Sahifa ustidan ochiladi — turgan joyingiz saqlanadi */}
+      <AiOverlay open={aiOpen} onClose={() => setAiOpen(false)} userRole={userRole} />
     </div>
   );
 };

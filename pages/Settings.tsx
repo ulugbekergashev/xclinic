@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { formatMoney, formatFullName } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
 import { UserRole, Doctor, Receptionist, Clinic, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
-import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History } from 'lucide-react';
+import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History, ArrowRight } from 'lucide-react';
 import { api, API_URL, getAuthToken, isDemoMode } from '../services/api';
 import type { AiSettingsResponse } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -80,63 +81,8 @@ export const Settings: React.FC<SettingsProps> = ({
    userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, reviews
 }) => {
    const { t } = useLanguage();
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'leadApi' | 'maintenance' | 'departments' | 'ai'>('services');
-
-   // Tashqi lid manbalari (yuboraman.uz va h.k.) uchun integratsiya kaliti
-   const [leadApiInfo, setLeadApiInfo] = useState<LeadApiKeyInfo | null>(null);
-   const [leadApiLoading, setLeadApiLoading] = useState(false);
-   const [leadKeyVisible, setLeadKeyVisible] = useState(false);
-   const [leadCopied, setLeadCopied] = useState<string | null>(null);
-   const [leadDocsOpen, setLeadDocsOpen] = useState(false);
-
-   React.useEffect(() => {
-      if (activeTab !== 'leadApi' || !currentClinic?.id) return;
-      let cancelled = false;
-      setLeadApiLoading(true);
-      api.leads.getApiKey(currentClinic.id)
-         .then(info => { if (!cancelled) setLeadApiInfo(info); })
-         .catch(err => console.error('Lid API kalitini yuklab bo\'lmadi', err))
-         .finally(() => { if (!cancelled) setLeadApiLoading(false); });
-      return () => { cancelled = true; };
-   }, [activeTab, currentClinic?.id]);
-
-   const copyLeadValue = async (value: string, marker: string) => {
-      try {
-         await navigator.clipboard.writeText(value);
-         setLeadCopied(marker);
-         setTimeout(() => setLeadCopied(null), 1800);
-      } catch {
-         toast.error('Nusxalab bo\'lmadi. Qo\'lda belgilab oling.');
-      }
-   };
-
-   const handleGenerateLeadKey = async () => {
-      if (!currentClinic?.id) return;
-      if (leadApiInfo?.apiKey && !await confirmAction({ title: 'Yangi kalit yaratilsa, eski kalit darhol ishlamay qoladi. Davom etasizmi?', danger: true, confirmLabel: "O'chirish" })) return;
-      setLeadApiLoading(true);
-      try {
-         setLeadApiInfo(await api.leads.generateApiKey(currentClinic.id));
-         setLeadKeyVisible(true);
-      } catch (err: any) {
-         toast.error(err?.message || 'Kalit yaratishda xatolik');
-      } finally {
-         setLeadApiLoading(false);
-      }
-   };
-
-   const handleRevokeLeadKey = async () => {
-      if (!currentClinic?.id) return;
-      if (!await confirmAction({ title: 'Kalit o\'chirilsa, tashqi manbadan lid tushishi to\'xtaydi. Davom etasizmi?' })) return;
-      setLeadApiLoading(true);
-      try {
-         await api.leads.revokeApiKey(currentClinic.id);
-         setLeadApiInfo(prev => prev ? { ...prev, apiKey: null, createdAt: null } : prev);
-      } catch (err: any) {
-         toast.error(err?.message || 'Kalitni o\'chirishda xatolik');
-      } finally {
-         setLeadApiLoading(false);
-      }
-   };
+   const navigate = useNavigate();
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'maintenance' | 'departments' | 'ai'>('services');
 
    // Ruxsatlar (access control) formasi — klinika sozlamalaridan boshlang'ich qiymat
    const [accessForm, setAccessForm] = useState<AccessControl>(() => parseAccessControl(currentClinic));
@@ -1295,8 +1241,6 @@ export const Settings: React.FC<SettingsProps> = ({
                   ] : []),
                   { id: 'messaging', name: "SMS va Telegram", icon: MessageSquare },
                   { id: 'dmed', name: "DMED (IT-MED)", icon: Activity },
-                  // Kalitni faqat klinika egasi ko'radi — backend ham shu rolni talab qiladi.
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'leadApi', name: 'Lid integratsiyasi', icon: Link2 }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: 'Ruxsatlar', icon: Shield }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'accessLog', name: 'Kirish jurnali', icon: History }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: 'Bo’limlar', icon: Building2 }] : []),
@@ -1697,139 +1641,6 @@ export const Settings: React.FC<SettingsProps> = ({
 
                {/* Services Tab */}
                {/* Access Control Tab — faqat klinika admini */}
-               {activeTab === 'leadApi' && userRole === UserRole.CLINIC_ADMIN && (
-                  <div className="space-y-6">
-                     <Card className="p-6">
-                        <div className="flex items-center gap-3 mb-2">
-                           <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
-                              <Link2 className="w-5 h-5 text-primary-600 dark:text-primary-300" />
-                           </div>
-                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Lid integratsiyasi</h2>
-                        </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                           yuboraman.uz va shunga o'xshash manbalar lidlarni to'g'ridan-to'g'ri CRM'ga yuborishi uchun
-                           quyidagi manzil va kalitni ularga bering. Lid tushishi bilan «Lidlar» bo'limida paydo bo'ladi
-                           va Telegram bot orqali xabar keladi.
-                        </p>
-
-                        {/* Endpoint */}
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">So'rov manzili (endpoint)</label>
-                        <div className="flex gap-2 mb-5">
-                           <code className="flex-1 px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-gray-100 break-all">
-                              POST {leadApiInfo?.endpoint || '—'}
-                           </code>
-                           <Button
-                              variant="secondary"
-                              onClick={() => leadApiInfo?.endpoint && copyLeadValue(leadApiInfo.endpoint, 'endpoint')}
-                              disabled={!leadApiInfo?.endpoint}
-                           >
-                              {leadCopied === 'endpoint' ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                           </Button>
-                        </div>
-
-                        {/* API kalit */}
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API kalit (X-API-Key)</label>
-                        {leadApiInfo?.apiKey ? (
-                           <>
-                              <div className="flex gap-2">
-                                 <code className="flex-1 px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-gray-100 break-all">
-                                    {leadKeyVisible
-                                       ? leadApiInfo.apiKey
-                                       : `${leadApiInfo.apiKey.slice(0, 8)}${'•'.repeat(24)}${leadApiInfo.apiKey.slice(-4)}`}
-                                 </code>
-                                 <Button variant="secondary" onClick={() => setLeadKeyVisible(v => !v)}>
-                                    {leadKeyVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                 </Button>
-                                 <Button variant="secondary" onClick={() => copyLeadValue(leadApiInfo.apiKey as string, 'key')}>
-                                    {leadCopied === 'key' ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                 </Button>
-                              </div>
-                              {leadApiInfo.createdAt && (
-                                 <p className="text-xs text-gray-400 mt-2">
-                                    Yaratilgan: {new Date(leadApiInfo.createdAt).toLocaleString('uz-UZ')}
-                                 </p>
-                              )}
-                              <div className="flex flex-wrap gap-2 mt-4">
-                                 <Button variant="secondary" onClick={handleGenerateLeadKey} disabled={leadApiLoading}>
-                                    <RefreshCw className={`w-4 h-4 mr-2 ${leadApiLoading ? 'animate-spin' : ''}`} />
-                                    Yangi kalit yaratish
-                                 </Button>
-                                 <Button variant="danger" onClick={handleRevokeLeadKey} disabled={leadApiLoading}>
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                    Kalitni o'chirish
-                                 </Button>
-                              </div>
-                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-3">
-                                 ⚠️ Kalitni faqat ishonchli hamkorga bering — u bilan klinikangizga lid yozish mumkin.
-                              </p>
-                           </>
-                        ) : (
-                           <div className="p-5 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg text-center">
-                              <KeyRound className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                                 Kalit hali yaratilmagan.
-                              </p>
-                              <Button onClick={handleGenerateLeadKey} disabled={leadApiLoading}>
-                                 <Plus className="w-4 h-4 mr-2" />
-                                 Kalit yaratish
-                              </Button>
-                           </div>
-                        )}
-                     </Card>
-
-                     {/* Texnik ma'lumot — odatda kerak emas, shuning uchun yig'ib qo'yilgan.
-                         yuboraman.uz'da XClinic allaqachon ulangan, kalitni kiritish yetarli.
-                         Bu bo'lim klinikaning o'z dasturchisi yoki boshqa xizmat uchun qoldirilgan. */}
-                     <Card className="p-6">
-                        <button
-                           onClick={() => setLeadDocsOpen(v => !v)}
-                           className="w-full flex items-center justify-between gap-3 text-left"
-                        >
-                           <div>
-                              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Texnik ma'lumot</h3>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
-                                 Odatda kerak emas — kalitni kiritish yetarli. Boshqa xizmat ulanmoqchi bo'lsa kerak bo'ladi.
-                              </p>
-                           </div>
-                           <ChevronDown className={`w-5 h-5 text-gray-400 flex-shrink-0 transition-transform ${leadDocsOpen ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {leadDocsOpen && (<>
-                        <pre className="mt-4 p-4 bg-gray-900 text-gray-100 rounded-lg text-xs overflow-x-auto leading-relaxed">
-{`POST ${leadApiInfo?.endpoint || 'https://<server>/api/public/leads'}
-Content-Type: application/json
-X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizga berilgan kalit>'}
-
-{
-  "name": "Ali Valiyev",
-  "phone": "+998901234567",
-  "service": "Implantatsiya",
-  "manzil": "Toshkent, Chilonzor 5",
-  "yosh": "34"
-}`}
-                        </pre>
-
-                        <div className="mt-5 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                           <p><b className="text-gray-900 dark:text-white">phone</b> — yagona majburiy maydon. Qolgani ixtiyoriy.</p>
-                           <p>
-                              <b className="text-gray-900 dark:text-white">Tanish maydonlar:</b> name/ism/fio, phone/telefon,
-                              service/xizmat, source/manba, address/manzil, dob/tug'ilgan sana, notes/izoh.
-                           </p>
-                           <p>
-                              <b className="text-gray-900 dark:text-white">Boshqa har qanday maydon</b> ham qabul qilinadi —
-                              u lid kartasida alohida qator bo'lib ko'rinadi. Ya'ni target formasidagi savollar
-                              o'zgarsa ham, bizga qayta sozlash kerak emas.
-                           </p>
-                           <p>
-                              Javob: muvaffaqiyatli bo'lsa <code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">201</code> va lid <code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">id</code> si.
-                              15 daqiqa ichida shu raqamdan takroriy lid kelsa, <code className="px-1 bg-gray-100 dark:bg-gray-800 rounded">duplicate: true</code> qaytadi va yangi yozuv yaratilmaydi.
-                           </p>
-                        </div>
-                        </>)}
-                     </Card>
-                  </div>
-               )}
-
                {/* Bo'limlar — ko'p profilli klinikaning asosiy o'qi */}
                {activeTab === 'departments' && userRole === UserRole.CLINIC_ADMIN && (
                   <div className="space-y-6">
@@ -2883,6 +2694,24 @@ X-API-Key: ${leadKeyVisible && leadApiInfo?.apiKey ? leadApiInfo.apiKey : '<sizg
                {/* SMS va Telegram Tab (birlashtirilgan) */}
                {activeTab === 'messaging' && (
                   <div className="space-y-6">
+                  {/* XABARLAR MENYUDAN CHIQDI.
+
+                      Shablon, avtomatik qoida va ommaviy jo'natish oyiga
+                      bir-ikki marta kerak bo'ladi, menyuda esa u har kuni
+                      joy egallab turardi. Endi sozlamalar ichida — kalitlar
+                      ham shu yerda, ya'ni bir joyda. */}
+                  <Card className="p-5 flex flex-wrap items-center gap-4">
+                     <div className="p-2.5 bg-primary-50 dark:bg-primary-900/30 rounded-lg text-primary-600 dark:text-primary-300">
+                        <MessageSquare className="w-5 h-5" />
+                     </div>
+                     <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold text-gray-900 dark:text-white">{t('settings.messagesLinkTitle')}</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('settings.messagesLinkDesc')}</p>
+                     </div>
+                     <Button variant="secondary" onClick={() => navigate('/messages')}>
+                        {t('settings.messagesLinkBtn')} <ArrowRight className="w-4 h-4 ml-2" />
+                     </Button>
+                  </Card>
                   <Card className="p-6">
                      <div className="flex items-center gap-4 mb-6">
                         <div className="p-3 bg-primary-100 dark:bg-primary-900/40 rounded-xl text-primary-600 dark:text-primary-400">

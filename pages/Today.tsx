@@ -11,6 +11,7 @@ import {
 import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole } from '../types';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
+import { maskPhone } from '../utils/accessControl';
 import { useLanguage } from '../context/LanguageContext';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
@@ -48,6 +49,10 @@ interface Props {
     userRole: UserRole;
     /** Kirgan shifokor — navbat faqat unga tegishli bo'ladi */
     doctorId?: string;
+    /* Ruxsatlar: telefon raqamini ko'rsatish. Ilgari bu bayroq FAQAT
+       «Bemorlar» va bemor kartasiga uzatilardi — Registraturada esa
+       raqam ochiq turardi, ya'ni cheklov aylanib o'tilardi. */
+    showPatientPhone?: boolean;
     onPatientAdded: (p: Patient) => void;
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
@@ -61,8 +66,9 @@ const today = () => todayISO();
 
 export const Today: React.FC<Props> = ({
     clinicId, patients, doctors, departments, services, currentClinic,
-    userRole, doctorId: myDoctorId, onPatientAdded, addToast,
+    userRole, doctorId: myDoctorId, showPatientPhone = true, onPatientAdded, addToast,
 }) => {
+    const showPhone = (v?: string) => showPatientPhone ? formatUzPhone(v || '') : maskPhone(v);
     const navigate = useNavigate();
     const { t, language } = useLanguage();
 
@@ -703,7 +709,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             <div className="min-w-0 flex-1">
                                 <p className="font-medium text-gray-900 dark:text-white truncate">{formatFullName(patient)}</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                                    <Phone className="w-3 h-3" /> {formatUzPhone(patient.phone)}
+                                    <Phone className="w-3 h-3" /> {showPhone(patient.phone)}
                                 </p>
                             </div>
                             <button onClick={() => { setPatient(null); setSearch(''); }}
@@ -735,7 +741,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                             className="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3">
                                             <div className="min-w-0 flex-1">
                                                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{formatFullName(p)}</p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400">{formatUzPhone(p.phone)}</p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400">{showPhone(p.phone)}</p>
                                             </div>
                                             <ArrowRight className="w-4 h-4 text-gray-300" />
                                         </button>

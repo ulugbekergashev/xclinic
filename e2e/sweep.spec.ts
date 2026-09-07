@@ -24,19 +24,17 @@ import { login, go } from './helpers';
    patients/:id) bu yerda yo'q — ular uchun haqiqiy yozuv kerak va ular
    `smoke.spec.ts` da alohida qaralgan. */
 const ROUTES: { path: string; name: string }[] = [
-    { path: '/', name: 'Boshqaruv paneli' },
+    { path: '/', name: 'Bosh sahifa' },
     { path: '/today', name: 'Bugun' },
     /* Eski manzillar — «Bugun» ga yo'naltiriladi. Ular ham ochilishi
        kerak: talonlarda va xatcho'plarda o'shalar qolgan. */
     { path: '/reception', name: 'Registratura (eski manzil)' },
     { path: '/myqueue', name: 'Mening navbatim (eski manzil)' },
-    { path: '/leads', name: 'Lidlar' },
     { path: '/patients', name: 'Bemorlar' },
     { path: '/calendar', name: 'Kalendar' },
     { path: '/finance', name: 'Moliya' },
     { path: '/cashbook', name: 'Kassa daftari' },
     { path: '/cashier', name: 'Kassir' },
-    { path: '/doctors', name: 'Shifokorlar' },
     { path: '/inventory', name: 'Ombor' },
     { path: '/board', name: 'Navbat tablosi' },
     { path: '/lab', name: 'Laboratoriya' },

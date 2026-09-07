@@ -1,10 +1,9 @@
 import React from 'react';
-import type { TranslationKey } from '../i18n/translations';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Calendar, DollarSign, Activity, Package, Settings, MoreHorizontal, MessageSquare, Wallet, BedDouble } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { UserRole, AccessControl } from '../types';
 import { useLanguage } from '../context/LanguageContext';
-import { isModuleHidden, canSeeFinance } from '../utils/accessControl';
+import { visibleNavigation, NavItemDef } from '../utils/navigation';
 
 interface BottomNavProps {
     userRole: UserRole;
@@ -18,35 +17,23 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
     const { t } = useLanguage();
     const location = useLocation();
 
-    // Full list of available items for clinic roles
-    const allItems = [
-        { id: 'dashboard', path: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-        { id: 'patients', path: '/patients', labelKey: 'nav.patients', icon: Users, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-        { id: 'calendar', path: '/calendar', labelKey: 'nav.calendar', icon: Calendar, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-        { id: 'finance', path: '/finance', labelKey: 'nav.finance', icon: Wallet, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-        { id: 'doctors', path: '/doctors', labelKey: 'nav.doctors', icon: Activity, roles: [UserRole.CLINIC_ADMIN] },
-        { id: 'inventory', path: '/inventory', labelKey: 'nav.inventory', icon: Package, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-        { id: 'messages', path: '/messages', labelKey: 'nav.messages', icon: MessageSquare, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-        { id: 'settings', path: '/settings', labelKey: 'nav.settings', icon: Settings, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-        /* Pastki menyu — qisqartirilgan ro'yxat, statsionar unga kirmagan.
-           Hamshira uchun esa bu yagona ekran: qo'shmasak, telefonda pastki
-           menyu umuman bo'sh bo'lib qoladi. Boshqa rollarda o'zgarish yo'q. */
-        { id: 'inpatient', path: '/inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: [UserRole.NURSE] },
-    ];
+    /* Ro'yxat `utils/navigation.ts` dan — yon panel bilan BITTA manba.
 
-    // Filter items based on role + ruxsatlar (Sozlamalar → Ruxsatlar)
-    const allowedItems = allItems.filter(item =>
-        item.roles.includes(userRole)
-        && !isModuleHidden(accessControl, userRole, item.id)
-        && (item.id !== 'finance' || canSeeFinance(accessControl, userRole))
-    );
+       Ilgari bu yerda o'z ro'yxati yozilgan edi va u ajralib ketgan edi:
+       Registratura, navbat, laboratoriya va diagnostika unda umuman
+       yo'q edi, ya'ni registratorning va shifokorning asosiy ekranlari
+       telefonda pastki menyuda ko'rinmasdi. Laborantga esa bironta ham
+       punkt to'g'ri kelmasdi — pastki panel bo'sh chiziq bo'lib turardi
+       va «Barchasi» tugmasi ham chiqmasdi. */
+    const allowedItems = visibleNavigation(userRole, accessControl);
 
-    // If items <= 5, show all. If > 5, show first 4 and a "More" button.
-    const showMore = allowedItems.length > 5;
+    /* Beshtadan ko'p bo'lsa — birinchi to'rttasi va «Barchasi».
+       Bironta punkt yo'q bo'lsa ham «Barchasi» chiqadi: chiqish va til
+       tanlash o'sha panelda. */
+    const showMore = allowedItems.length > 5 || allowedItems.length === 0;
     const visibleItems = showMore ? allowedItems.slice(0, 4) : allowedItems;
 
-    const isActive = (item: typeof allItems[0]) => {
-        if (item.id === 'dashboard') return location.pathname === '/';
+    const isActive = (item: NavItemDef) => {
         if (item.id === 'patients') return location.pathname.startsWith('/patients');
         return location.pathname === item.path;
     };
@@ -70,7 +57,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
                             <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-primary-50 dark:bg-primary-900/30 scale-110' : ''}`}>
                                 <Icon className={`w-5 h-5 ${active ? 'fill-current' : ''}`} />
                             </div>
-                            <span className="text-[10px] font-medium mt-1 truncate max-w-full px-1">{t(item.labelKey as TranslationKey)}</span>
+                            <span className="text-[10px] font-medium mt-1 truncate max-w-full px-1">{t(item.labelKey)}</span>
                             {active && (
                                 <div className="absolute bottom-1 w-1 h-1 bg-primary-600 dark:bg-primary-400 rounded-full" />
                             )}
