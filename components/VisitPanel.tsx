@@ -357,7 +357,12 @@ export const VisitPanel: React.FC<Props> = ({
         setBusy(true);
         try {
             await api.visits.update(visit!.id, { status: 'Completed' });
-            await reload(); onVisitChanged(null);
+            /* Yakunlangan qabul PANELDA QOLADI. Ilgari u darhol tozalanardi
+               va o'rniga «Ochiq qabul yo'q» chiqardi — shifokor endigina
+               nima yopganini ko'ra olmasdi va «bosildimi?» degan savol
+               qolardi. Endi u faqat o'qish uchun ko'rinadi; keyingi bemor
+               boshqa kartada ochiladi. */
+            await reload(); onVisitChanged(visitId);
             addToast('success', t('visit.completedOk'));
             setPanel(null);
         } catch (e: any) {
@@ -375,7 +380,7 @@ export const VisitPanel: React.FC<Props> = ({
                             status: 'Completed', force: true,
                             closeReason: t('visit.closedWith') + ' ' + reasons.map(r => r.text).join('; '),
                         } as any);
-                        await reload(); onVisitChanged(null);
+                        await reload(); onVisitChanged(visitId);
                         addToast('success', t('visit.completedOk'));
                         setPanel(null);
                     } catch (e2: any) { addToast('error', e2?.message || 'Xatolik'); }
