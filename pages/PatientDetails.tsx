@@ -15,6 +15,7 @@ import { VisitPanel, VISIT_STATUS_KEY } from '../components/VisitPanel';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import { AdvanceModal } from '../components/AdvanceModal';
 import { PatientFormModal } from '../components/PatientFormModal';
+import { AppointmentFormModal } from '../components/AppointmentFormModal';
 import { printPrescription } from '../utils/printForms';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription, VisitCharge } from '../types';
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
@@ -130,17 +131,12 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const [messageText, setMessageText] = useState('');
    const [messageType, setMessageType] = useState('Custom'); // Custom, Tomorrow, Debt, Missed
 
-   // New Appointment Modal State
+   /* Keyingi tashrif — YAGONA forma (`AppointmentFormModal`). Bu yerda
+      o'zining nusxasi va O'ZINING to'qnashuv tekshiruvi bor edi; u
+      brauzerga yuklangan ro'yxatga qarab ishlardi va boshlanish vaqtini
+      AYNAN solishtirardi, ya'ni 08:30 dagi bir soatlik qabul ustiga
+      09:00 ni yozib bo'laverardi. Tekshiruv endi faqat serverda. */
    const [isApptModalOpen, setIsApptModalOpen] = useState(false);
-   const [apptData, setApptData] = useState({
-      doctorId: defaultDoctorId,
-      date: todayISO(),
-      time: '09:00',
-      type: 'Konsultatsiya',
-      categoryId: '',
-      duration: 60,
-      notes: ''
-   });
 
 
    // Diagnosis State
@@ -494,74 +490,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       }
    };
 
-   const handleApptSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-
-      if (!apptData.doctorId) {
-         toast.error(t('patients.details.alerts.selectDoctorReq'));
-         return;
-      }
-
-      const doctor = doctors.find(d => d.id === apptData.doctorId);
-      if (!doctor) {
-         toast.error(t('patients.details.alerts.doctorNotFound'));
-         return;
-      }
-
-      // Doctor Conflict Validation
-      const doctorConflict = appointments.some(appt =>
-         appt.doctorId === doctor.id &&
-         appt.date === apptData.date &&
-         appt.time === apptData.time &&
-         appt.status !== 'Cancelled'
-      );
-
-      if (doctorConflict) {
-         toast.error(t('patients.details.alerts.doctorConflict'));
-         return;
-      }
-
-      // Patient Conflict Validation
-      // Bemor kesimi — to'liq tarixdan (o'sha kun boshqa kartada band bo'lishi mumkin)
-      const patientConflict = effAppointments.some(appt =>
-         appt.patientId === patient.id &&
-         appt.date === apptData.date &&
-         appt.time === apptData.time &&
-         appt.status !== 'Cancelled'
-      );
-
-      if (patientConflict) {
-         toast.error(t('patients.details.alerts.patientConflict'));
-         return;
-      }
-
-      onAddAppointment({
-         patientId: patient.id,
-         patientName: `${formatFullName(patient)}`,
-         doctorId: doctor.id,
-         doctorName: `${formatDoctorName(doctor)}`,
-         type: apptData.type,
-         date: apptData.date,
-         time: apptData.time,
-         duration: Number(apptData.duration),
-         status: 'Pending',
-         notes: apptData.notes
-      });
-      setIsApptModalOpen(false);
-      setApptData({ doctorId: defaultDoctorId, date: todayISO(), time: '09:00', type: 'Konsultatsiya', categoryId: '', duration: 60, notes: '' });
-   };
-
-   const openApptModal = () => {
-      const assignedDoctorId = patient?.doctorId && doctors.some(d => d.id === patient.doctorId) ? patient.doctorId : '';
-      setApptData(prev => ({
-         ...prev,
-         doctorId: defaultDoctorId || assignedDoctorId || (doctors.length > 0 ? doctors[0].id : ''),
-         categoryId: categories.length > 0 ? categories[0].id : '', // Set default category
-      }));
-      setIsApptModalOpen(true);
-   };
-
-
+   const openApptModal = () => setIsApptModalOpen(true);
 
    return (
       <>
@@ -1507,62 +1436,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             </Modal>
 
             {/* New Appointment Modal */}
-            <Modal isOpen={isApptModalOpen} onClose={() => setIsApptModalOpen(false)} title={t('patients.details.modals.newAppt')}>
-               <form onSubmit={handleApptSubmit} className="space-y-4">
-                  <Select
-                     label={t('patients.details.modals.doctor')}
-                     options={doctors.map(d => ({ value: d.id, label: `${formatDoctorName(d)}` }))}
-                     value={apptData.doctorId}
-                     onChange={(e) => setApptData({ ...apptData, doctorId: e.target.value })}
-                  />
-                  <div className="grid grid-cols-2 gap-4">
-                     <Input label={t('patients.details.modals.date')} type="date" value={apptData.date} onChange={e => setApptData({ ...apptData, date: e.target.value })} required />
-                     <Input label={t('patients.details.modals.time')} type="time" value={apptData.time} onChange={e => setApptData({ ...apptData, time: e.target.value })} required />
-                  </div>
-                  {categories.length > 0 && (
-                     <Select
-                        label={t('patients.details.modals.serviceCategory')}
-                        options={[
-                           { value: '', label: t('patients.details.modals.serviceAllCategories') },
-                           ...categories.map(c => ({ value: c.id, label: c.name }))
-                        ]}
-                        value={apptData.categoryId}
-                        onChange={(e) => setApptData({ ...apptData, categoryId: e.target.value, type: '' })}
-                     />
-                  )}
-                  <div className="grid grid-cols-2 gap-4">
-                     <Select
-                        label={t('patients.details.modals.procedureType')}
-                        options={services
-                           .filter(s => !apptData.categoryId || (s as any).categoryId === apptData.categoryId)
-                           .map(s => ({ value: s.name, label: s.name }))}
-                        value={apptData.type}
-                        onChange={e => {
-                           const service = services.find(s => s.name === e.target.value);
-                           setApptData({
-                              ...apptData,
-                              type: e.target.value,
-                              duration: service?.duration || apptData.duration
-                           });
-                        }}
-                     />
-                     <Input label={t('patients.details.modals.duration')} type="number" value={apptData.duration} onChange={e => setApptData({ ...apptData, duration: Number(e.target.value) })} required />
-                  </div>
-                  <div>
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('patients.details.modals.notes')}</label>
-                     <textarea
-                        className="w-full border rounded-md p-3 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                        rows={3}
-                        value={apptData.notes}
-                        onChange={(e) => setApptData({ ...apptData, notes: e.target.value })}
-                     />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-4">
-                     <Button type="button" variant="secondary" onClick={() => setIsApptModalOpen(false)}>{t('common.cancel')}</Button>
-                     <Button type="submit">{t('patients.details.modals.book')}</Button>
-                  </div>
-               </form>
-            </Modal>
+            <AppointmentFormModal
+               isOpen={isApptModalOpen}
+               onClose={() => setIsApptModalOpen(false)}
+               patient={patient}
+               doctors={doctors}
+               services={services}
+               categories={categories}
+               defaultDoctorId={defaultDoctorId || patient?.doctorId || undefined}
+               onCreate={onAddAppointment}
+            />
 
             {/* Diagnosis Modal */}
             <Modal isOpen={isDiagnosisModalOpen} onClose={() => setIsDiagnosisModalOpen(false)} title={t('patients.details.modals.addDiagnosis')}>

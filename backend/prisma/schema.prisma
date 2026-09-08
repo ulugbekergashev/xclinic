@@ -138,7 +138,12 @@ model Appointment {
   notes        String?
   clinicId     String
   departmentId String?
+  /// Qaysi xizmatga yozilgan. `type` — o'sha paytdagi NOM (snimok), bu esa
+  /// bog'lam: nom o'zgarsa ham bemor kelganda xizmat topiladi.
+  /// Migratsiya 0034.
+  serviceId    Int?
   reminderSent Boolean     @default(false)
+  service      Service?    @relation(fields: [serviceId], references: [id])
   department   Department? @relation(fields: [departmentId], references: [id])
   clinic       Clinic      @relation(fields: [clinicId], references: [id])
   doctor       Doctor      @relation(fields: [doctorId], references: [id])
@@ -157,6 +162,7 @@ model Appointment {
   /// so'rov butun jadvalni sana indeksi bo'ylab skan qilardi.
   @@index([clinicId, date])
   @@index([doctorId])
+  @@index([serviceId])
 }
 
 /// Qabul — butun tizimning markaziy tuguni. Har bir modul (tahlil, diagnostika,
@@ -330,6 +336,7 @@ model Service {
   recipe       ServiceRecipe[]
   charges      VisitCharge[]
   rates        DoctorServiceRate[]
+  appointments Appointment[]
 }
 
 /// O'LIK MEROS — obuna tarifi. Ilova darajasida BUTUNLAY olib tashlangan:

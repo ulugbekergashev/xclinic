@@ -110,6 +110,10 @@ export interface Appointment {
      ISHLATADI, lekin bu yerda e'lon qilinmagani uchun kod `any` bilan
      ishlashga majbur edi — ya'ni typecheck xatoni ushlamasdi. */
   departmentId?: string | null;
+  /* Qaysi xizmatga yozilgan. `type` — o'sha paytdagi NOM (snimok), bu esa
+     bog'lam: prayslistda nom o'zgarsa ham bemor kelganda xizmat topiladi.
+     Migratsiya 0034. */
+  serviceId?: number | null;
   /** Serverdan yozuv bemor bilan birga so'ralganda keladi */
   patient?: Patient;
 }

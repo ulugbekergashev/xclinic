@@ -129,6 +129,84 @@ async function main() {
         ok('ikkinchi shifokor topildi', false, 'bazada bitta shifokor');
     }
 
+    console.log('\n═══ 4. YOZUV HOLATI QABUL BILAN BIRGA YURADI ═════');
+    /* `Appointment.status === 'Completed'` ni HECH QANDAY kod
+       qo'ymasdi. Ya'ni unga tayanadigan hamma narsa jonli ma'lumotda
+       o'lik edi: davomat hisoboti, qabuldan keyingi eslatma, baho
+       so'rovi. Kalendarda yozuv «Cheked-In» holatida abadiy qolardi. */
+    const svcList = (await call('GET', '/services?clinicId=x', undefined, token)).data || [];
+    const svc = svcList[0];
+    ok('katalogdan xizmat topildi', !!svc, String(svc?.name));
+
+    const d2 = new Date(); d2.setDate(d2.getDate() + 120);
+    const date2 = d2.toISOString().slice(0, 10);
+
+    const booked = await call('POST', '/appointments', {
+        patientId: p1.id, patientName: `${p1.lastName} ${p1.firstName}`,
+        doctorId: withDept.id, doctorName: 'Dr',
+        // Nom ATAYLAB berilmaydi — server uni katalogdan olishi kerak
+        serviceId: svc?.id,
+        date: date2, time: '11:00', duration: 30, status: 'Pending',
+    }, token);
+    ok('xizmat identifikatori bilan yozildi', booked.status === 200,
+        `status: ${booked.status}, ${JSON.stringify(booked.data).slice(0, 140)}`);
+    ok('xizmat bog\'lami saqlandi', Number(booked.data?.serviceId) === Number(svc?.id),
+        String(booked.data?.serviceId));
+    ok('nom katalogdan snimok qilindi', booked.data?.type === svc?.name,
+        `${booked.data?.type} / ${svc?.name}`);
+
+    /* Begona xizmatga ulab bo'lmaydi. */
+    const alienSvc = await call('POST', '/appointments', {
+        patientId: p2.id, patientName: 'x', doctorId: withDept.id, doctorName: 'Dr',
+        serviceId: 999999, date: date2, time: '15:00', duration: 30, status: 'Pending',
+    }, token);
+    ok('mavjud bo\'lmagan xizmat RAD ETILDI', alienSvc.status === 400,
+        `status: ${alienSvc.status}`);
+
+    const apptId = booked.data?.id;
+    if (apptId) {
+        // Qabul ochamiz va yozuvga bog'laymiz
+        const visit = await call('POST', '/visits', {
+            patientId: p1.id, appointmentId: apptId,
+            departmentId: withDept.departmentId, doctorId: withDept.id,
+            date: new Date().toISOString().slice(0, 10), status: 'Waiting',
+        }, token);
+        ok('yozuv bo\'yicha qabul ochildi', visit.status === 200,
+            `status: ${visit.status}, ${JSON.stringify(visit.data).slice(0, 140)}`);
+
+        const visitId = visit.data?.id;
+        if (visitId) {
+            /* Bog'langan yozuvni O'CHIRIB bo'lmaydi: qabul «qayerdan
+               kelgani» noma'lum bo'lib qolardi. */
+            const delAppt = await call('DELETE', `/appointments/${apptId}`, undefined, token);
+            ok('qabuli bor yozuv O\'CHIRILMADI (409)', delAppt.status === 409,
+                `status: ${delAppt.status}`);
+
+            // Yakunlaymiz — tekshiruvlarni `force` bilan chetlab
+            const done = await call('PUT', `/visits/${visitId}`, {
+                status: 'Completed', force: true, closeReason: 'sinov',
+            }, token);
+            ok('qabul yakunlandi', done.status === 200, `status: ${done.status}`);
+
+            const after = (await call('GET', `/appointments?clinicId=x&from=${date2}&to=${date2}`,
+                undefined, token)).data || [];
+            const row = after.find((a: any) => a.id === apptId);
+            ok('YOZUV HAM YOPILDI (Completed)', row?.status === 'Completed',
+                `holat: ${row?.status}`);
+        }
+    }
+
+    /* Bo'sh, hech narsaga bog'lanmagan yozuv esa o'chadi. */
+    const spare = await call('POST', '/appointments', {
+        patientId: p2.id, patientName: `${p2.lastName} ${p2.firstName}`,
+        doctorId: withDept.id, doctorName: 'Dr', type: 'Konsultatsiya',
+        date: date2, time: '17:00', duration: 30, status: 'Pending',
+    }, token);
+    if (spare.data?.id) {
+        const delSpare = await call('DELETE', `/appointments/${spare.data.id}`, undefined, token);
+        ok('bo\'sh yozuv o\'chdi', delSpare.status === 200, `status: ${delSpare.status}`);
+    }
+
     finish();
 }
 

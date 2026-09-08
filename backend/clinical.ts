@@ -368,6 +368,28 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
                 ...(req.body?.disposition ? { disposition: String(req.body.disposition) } : {}),
             },
         });
+
+        /* ─── KALENDARDAGI YOZUV HAM YOPILADI ─────────────────────
+
+           `Appointment.status === 'Completed'` ni HECH QANDAY kod
+           qo'ymasdi. Ya'ni unga tayanadigan hamma narsa jonli
+           ma'lumotda o'lik edi: davomat hisoboti, qabuldan keyingi
+           eslatma va baho so'rovi. Kalendarda yozuv «Cheked-In»
+           holatida abadiy qolib ketardi.
+
+           Yozuv bog'lanmagan bo'lsa (qabul qo'lda ochilgan) — hech
+           narsa qilinmaydi. */
+        if (updated.appointmentId) {
+            await prisma.appointment.updateMany({
+                where: {
+                    id: updated.appointmentId,
+                    clinicId,
+                    status: { notIn: ['Completed', 'Cancelled'] },
+                },
+                data: { status: 'Completed' },
+            });
+        }
+
         res.json(updated);
     });
 

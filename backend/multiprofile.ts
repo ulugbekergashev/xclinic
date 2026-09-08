@@ -597,6 +597,28 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             },
             include: { procedures: true, department: true },
         });
+        /* ─── KALENDARDAGI YOZUV QABUL BILAN BIRGA YURADI ────────────────
+
+           `Appointment.status === 'Completed'` ni hech qanday kod
+           qo'ymasdi: davomat hisoboti, qabuldan keyingi eslatma va baho
+           so'rovi — hammasi jonli ma'lumotda o'lik edi.
+
+           Bekor qilishda yozuv KUTISHGA qaytadi: qabul xato ochilgan
+           bo'lishi mumkin va bemor baribir kutayotgan bo'ladi. Yozuvni
+           butunlay bekor qilish — kalendarning o'z ishi. */
+        if (visit.appointmentId && (status === 'Completed' || status === 'Cancelled')) {
+            await prisma.appointment.updateMany({
+                where: {
+                    id: visit.appointmentId,
+                    clinicId,
+                    ...(status === 'Completed'
+                        ? { status: { notIn: ['Completed', 'Cancelled'] } }
+                        : { status: 'Checked-In' }),
+                },
+                data: { status: status === 'Completed' ? 'Completed' : 'Pending' },
+            });
+        }
+
         emitEvent(clinicId, 'visit.status', { visitId: visit.id, status: visit.status });
         res.json(visit);
     });
@@ -671,7 +693,26 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         if (proc + tx + lab > 0) {
             return res.status(409).json({ error: "Qabulga xizmat, to'lov yoki tahlil bog'langan — o'chirib bo'lmaydi" });
         }
-        await prisma.visit.delete({ where: { id: req.params.id } });
+
+        /* Qabul o'chirilsa kalendardagi yozuv KUTISHGA qaytadi.
+
+           Ilgari u «Cheked-In» bo'lib qolardi: bemor «kelgan», qabuli
+           esa yo'q. Registratura uni ro'yxatda ko'rmasdi va ikkinchi
+           marta belgilay ham olmasdi — yozuv boshi berk ko'chada
+           qolardi. */
+        const visitRow = await prisma.visit.findUnique({
+            where: { id: req.params.id },
+            select: { appointmentId: true },
+        });
+        await prisma.$transaction(async (tx: any) => {
+            await tx.visit.delete({ where: { id: req.params.id } });
+            if (visitRow?.appointmentId) {
+                await tx.appointment.updateMany({
+                    where: { id: visitRow.appointmentId, clinicId, status: 'Checked-In' },
+                    data: { status: 'Pending' },
+                });
+            }
+        });
         res.json({ success: true });
     });
 

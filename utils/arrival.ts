@@ -79,10 +79,20 @@ export async function markAppointmentArrived(
             e?.message || "Qabulni ochib bo'lmadi");
     }
 
-    /* Yozuvdagi xizmat nomiga ko'ra narxni topamiz. Topilmasa qabul
-       baribir ochiladi — xizmatni keyin qo'shish mumkin. */
+    /* Yozuvdagi xizmat. AVVAL identifikator bo'yicha (migratsiya 0034),
+       topilmasa — eski yozuvlar uchun nom bo'yicha.
+
+       Ilgari FAQAT nom bo'yicha qidirilardi. Prayslistda nom ozgina
+       o'zgarsa — «UZI» → «Qorin UZI si» — moslik yo'qolardi va qabul
+       XIZMATSIZ ochilardi: kassada hech narsa ko'rinmasdi va bemor
+       pul to'lamasdan ketardi. Nom o'zgarishi esa odatiy ish.
+
+       Topilmasa qabul baribir ochiladi — xizmatni keyin qo'shish
+       mumkin. */
     let serviceNotFound = false;
-    const svc = ctx.services.find(x => x.name === appt.type);
+    const svc = appt.serviceId
+        ? ctx.services.find(x => Number(x.id) === Number(appt.serviceId))
+        : ctx.services.find(x => x.name === appt.type);
     if (svc) {
         try { await api.visits.addProcedure(visit.id, { serviceId: Number(svc.id) }); }
         catch { serviceNotFound = true; }

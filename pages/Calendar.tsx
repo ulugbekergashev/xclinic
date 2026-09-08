@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Appointment, Patient, Doctor, UserRole, Clinic, ServiceCategory, Service } from '../types';
 import { PatientFormModal } from '../components/PatientFormModal';
+import { AppointmentFormModal } from '../components/AppointmentFormModal';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
@@ -566,172 +567,6 @@ export const Calendar: React.FC<CalendarProps> = ({
     setCurrentDate(newDate);
   };
 
-  const handleAddSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Check if clinic is on individual plan
-    const isIndividualPlan = currentClinic?.planId === 'individual';
-
-    // Validation check
-    if (!formData.patientId) {
-      toast.error("Iltimos, avval bemorni tanlang!");
-      return;
-    }
-
-    let finalDoctorId = formData.doctorId;
-    let finalDoctorName = '';
-
-    // Special handling for individual plan or if doctor is missing
-    if (!finalDoctorId) {
-      if (isIndividualPlan && doctors.length === 0) {
-        // Auto-create doctor logic
-        try {
-          // Use admin name or default
-          const adminNameParts = currentClinic?.adminName?.split(' ') || ['Admin'];
-          const firstName = adminNameParts[0];
-          const lastName = adminNameParts.slice(1).join(' ') || 'Doctor';
-
-          const newDoctor = await api.doctors.create({
-            firstName,
-            lastName,
-            specialty: 'Stomatolog',
-            phone: currentClinic?.phone || '',
-            status: 'Active',
-            clinicId: currentClinic?.id || ''
-          });
-
-          finalDoctorId = newDoctor.id;
-          finalDoctorName = `Dr. ${newDoctor.lastName}`;
-
-          // Notify user (optional, but good for context)
-          // toast.error("Individual tarif bo'yicha shifokor profili avtomatik yaratildi.");
-        } catch (err) {
-          /* Shifokor yaratish faqat klinika EGASIDA (reliz 4). Registrator
-             shu yerga tushsa 403 oladi — xabar shuni aytishi kerak, aks
-             holda "nimadir ishlamadi" degan tuyuq ko'chaga olib boradi. */
-          console.error('Failed to auto-create doctor', err);
-          toast.error("Shifokor profili yo'q. Uni klinika egasi Sozlamalar bo'limida qo'shadi.");
-          return;
-        }
-      } else if (doctors.length > 0) {
-        // Auto-select first doctor
-        finalDoctorId = doctors[0].id;
-        finalDoctorName = `Dr. ${doctors[0].lastName}`;
-      } else {
-        toast.error("Tizimda shifokor mavjud emas! Iltimos, 'Sozlamalar' bo'limiga o'tib, kamida bitta shifokor profilini yarating.");
-        return;
-      }
-    }
-
-    if (!isIndividualPlan && !finalDoctorId) {
-      toast.error("Iltimos, shifokorni tanlang!");
-      return;
-    }
-
-    // Past Time Validation - REMOVED per user request
-    // const selectedDateTime = new Date(`${formData.date}T${formData.time}`);
-    // const now = new Date();
-    // if (selectedDateTime < now) { ... }
-
-    const patient = patients.find(p => p.id === formData.patientId);
-
-    // Check if we found the doctor in existing list (might be new if we just created)
-    let doctor = doctors.find(d => d.id === finalDoctorId);
-
-    // If not in list (newly created), mock it for immediate UI usage if needed, 
-    // but we have finalDoctorId and finalDoctorName now.
-
-    if (!patient) {
-      toast.error("Bemor topilmadi.");
-      return;
-    }
-
-    // Only check for doctor object if we didn't just create it
-    if (!doctor && !finalDoctorName) {
-      // Should not match here if we handled creation
-      toast.error("Shifokor topilmadi.");
-      return;
-    }
-
-    // Set names if we found existing doctor
-    if (doctor) {
-      finalDoctorName = `Dr. ${doctor.lastName}`;
-    }
-
-    /* SHIFOKOR BANDLIGI — endi SERVERDA tekshiriladi (S2.4).
-
-       Bu yerda ilgari ikkita tekshiruv turardi va ikkalasi ham
-       `appt.time === formData.time` bilan solishtirardi — ya'ni faqat
-       AYNAN bir xil boshlanish vaqtini topardi. 08:30 dagi 60 daqiqalik
-       qabul ustiga 09:00 ni yozib bo'laverardi (audit B-19).
-
-       Ikkinchi kamchiligi: `appointments` — brauzerga yuklangan qism,
-       butun jadval emas. Ya'ni tekshiruv ko'rmagan qabulni "yo'q" deb
-       hisoblardi.
-
-       Server 409 va `code: 'DOCTOR_BUSY'` qaytaradi, quyidagi `catch`
-       esa foydalanuvchidan tasdiq so'raydi. Bemorning o'zi bilan
-       to'qnashuv ham server tomonda: bemor + sana + shifokor bo'yicha
-       dublikat tekshiruvi allaqachon bor.
-
-       Bemorni ikki shifokorga bir vaqtda yozish esa TAQIQLANMAYDI: bu
-       xato emas, klinikada odatiy hol (tahlil va konsultatsiya bir
-       vaqtda buyurilishi mumkin). */
-
-    /* Yozishning o'zi alohida funksiyada: 409 dan keyin AYNAN shu
-       so'rovni `force` bilan takrorlash kerak, ya'ni tanani ikki joyda
-       yozib qo'ymaslik uchun. */
-    const submit = async (force: boolean) => {
-      const payload = {
-        patientId: patient.id,
-        patientName: `${formatFullName(patient)}`,
-        doctorId: finalDoctorId,
-        doctorName: finalDoctorName,
-        type: formData.type || 'Konsultatsiya',
-        date: formData.date,
-        time: formData.time,
-        duration: Number(formData.duration),
-        notes: formData.notes,
-        ...(force ? { force: true } : {}),
-      };
-      if (editingApptId) {
-        await onUpdateAppointment(editingApptId, payload);
-      } else {
-        await onAddAppointment({ ...payload, status: 'Pending' });
-      }
-      setIsAddModalOpen(false);
-      setEditingApptId(null);
-    };
-
-    try {
-      await submit(false);
-    } catch (error: any) {
-      /* SHIFOKOR BAND (409). Server TO'SMAYDI, TANLOV beradi — bu
-         loyihadagi mavjud naqsh (bemor dublikatida ham shunday).
-         Shoshilinch holatda registrator ustiga yozishi kerak bo'lishi
-         mumkin. */
-      const code = error?.data?.code || error?.code;
-      if (code === 'DOCTOR_BUSY') {
-        const busy = error?.data?.conflict;
-        const when = busy ? `${busy.time} — ${busy.patientName || 'bemor'}` : '';
-        const msg = when
-          ? `Bu vaqtda shifokor band: ${when}.
-
-Baribir yozilsinmi?`
-          : 'Bu vaqtda shifokor band. Baribir yozilsinmi?';
-        if (await confirmAction({ title: msg })) {
-          try { await submit(true); } catch { /* xatoni App.tsx toast ko'rsatadi */ }
-        }
-        return;
-      }
-      /* Boshqa xato: App.tsx toast ko'rsatadi va qayta uloqtiradi.
-         Oyna OCHIQ qoladi — kiritilgan ma'lumot yo'qolmasin. */
-    }
-  };
-
-
-  /* Kelgan bemorni navbatga qo'yish. Mantiq `utils/arrival.ts` da —
-     Registratura ham xuddi shu funksiyani chaqiradi. */
   const [arriving, setArriving] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -1304,94 +1139,25 @@ Baribir yozilsinmi?`
       </div>
       )}
 
-      {/* Add Appointment Modal */}
-      <Modal isOpen={isAddModalOpen} onClose={() => { setIsAddModalOpen(false); setEditingApptId(null); }} title={editingApptId ? t('calendar.editAppointment') : t('calendar.newAppointment')}>
-        <form onSubmit={handleAddSubmit} className="space-y-4">
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <SearchableSelect
-                label={t('calendar.patient')}
-                options={patients.map(p => ({ value: p.id, label: `${formatFullName(p)}` }))}
-                value={formData.patientId}
-                onChange={(val) => setFormData({ ...formData, patientId: val })}
-              />
-            </div>
-            {!editingApptId && (
-              <Button
-                type="button"
-                variant="secondary"
-                className="mb-1 p-2 h-10 w-10 flex items-center justify-center"
-                onClick={() => setIsAddPatientModalOpen(true)}
-                title={t('patients.modal.addTitle')}
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
-          {/* Hide doctor selection for individual plan clinics */}
-          {currentClinic?.planId !== 'individual' && (
-            <Select
-              label={t('calendar.doctor')}
-              options={doctors.map(d => ({ value: d.id, label: `${formatDoctorName(d)}` }))}
-              value={formData.doctorId}
-              onChange={(e) => setFormData({ ...formData, doctorId: e.target.value })}
-            />
-          )}
-          {categories.length > 0 && (
-            <Select
-              label={t('calendar.serviceCategory')}
-              options={[
-                { value: '', label: t('calendar.allCategories') },
-                ...categories.map(c => ({ value: c.id, label: c.name }))
-              ]}
-              value={formData.categoryId}
-              onChange={(e) => setFormData({ ...formData, categoryId: e.target.value, type: '' })}
-            />
-          )}
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label={t('calendar.serviceType')}
-              options={[
-                { value: '', label: t('common.select') },
-                ...services
-                  .filter(s => !formData.categoryId || (s as any).categoryId === formData.categoryId)
-                  .map(s => ({ value: s.name, label: s.name }))
-              ]}
-              value={formData.type}
-              onChange={e => {
-                const service = services.find(s => s.name === e.target.value);
-                setFormData({
-                  ...formData,
-                  type: e.target.value,
-                  duration: service?.duration || formData.duration
-                });
-              }}
-            />
-            <Input label={t('calendar.duration')} type="number" value={formData.duration} onChange={e => setFormData({ ...formData, duration: Number(e.target.value) })} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label={t('calendar.date')}
-              type="date"
-              value={formData.date}
-              onChange={e => setFormData({ ...formData, date: e.target.value })}
-            />
-            <Input label={t('calendar.time')} type="time" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('calendar.notes')}</label>
-            <textarea
-              className="w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm h-20 dark:border-gray-700 dark:text-white"
-              value={formData.notes}
-              onChange={e => setFormData({ ...formData, notes: e.target.value })}
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button type="button" variant="secondary" onClick={() => { setIsAddModalOpen(false); setEditingApptId(null); }}>{t('common.cancel')}</Button>
-            <Button type="submit">{editingApptId ? t('common.save') : t('calendar.book')}</Button>
-          </div>
-        </form>
-      </Modal>
+      {/* Yozuv formasi — YAGONA (`AppointmentFormModal`). Bemor
+          kartasidagi nusxa ham shu komponentga o'tdi: u yerda o'zining
+          to'qnashuv tekshiruvi bor edi va u brauzerga yuklangan
+          ro'yxatga qarab ishlardi. */}
+      <AppointmentFormModal
+        isOpen={isAddModalOpen}
+        onClose={() => { setIsAddModalOpen(false); setEditingApptId(null); }}
+        appointment={editingApptId ? appointments.find(a => a.id === editingApptId) || null : null}
+        patients={patients}
+        doctors={doctors}
+        services={services}
+        categories={categories}
+        defaultDate={formData.date}
+        defaultTime={formData.time}
+        defaultDoctorId={formData.doctorId}
+        onAddPatientClick={() => setIsAddPatientModalOpen(true)}
+        onCreate={onAddAppointment}
+        onUpdate={onUpdateAppointment}
+      />
 
       {/* Appointment Details Modal */}
       {selectedAppointment && (
@@ -1465,6 +1231,28 @@ Baribir yozilsinmi?`
                     >
                       <XCircle className="w-4 h-4 mr-2 text-red-500" />
                       {t('calendar.noShow')}
+                    </button>
+
+                    {/* BEKOR QILISH. Ilgari bunday tugma UMUMAN yo'q edi:
+                        bemor oldindan qo'ng'iroq qilib bekor qilsa,
+                        registratorda ikki yo'l bor edi — «Kelmadi» deb
+                        belgilash (bu yolg'on) yoki yozuvni butunlay
+                        o'chirish (bu tarixni yo'q qiladi).
+
+                        Endi holat `Cancelled` bo'lib qoladi: kim, qachon
+                        va nima bo'lgani ko'rinib turadi. */}
+                    <button
+                      onClick={async () => {
+                        if (await confirmAction({
+                          title: 'Yozuv bekor qilinsinmi?',
+                          body: "Yozuv tarixda qoladi — o'chirilmaydi.",
+                          confirmLabel: 'Bekor qilish',
+                        })) handleStatusUpdate('Cancelled');
+                      }}
+                      className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 flex-1"
+                    >
+                      <XCircle className="w-4 h-4 mr-2 text-gray-400" />
+                      Bekor qilish
                     </button>
 
                     {/* «KELDI» — ilgari bu yerda «Yakunlash» turardi va u

@@ -2758,6 +2758,29 @@ app.post('/api/appointments', authenticateToken, async (req, res) => {
         // 2. If no existing appointment, create a new one
         const { patientName, doctorId, doctorName, type, duration, status, reminderSent } = req.body;
 
+        /* ─── XIZMAT: BOG'LAM + SNIMOK ──────────────────────────────
+
+           Ilgari yozuvda faqat `type` — xizmat NOMI — saqlanardi va bemor
+           kelganda xizmat aynan shu nom bo'yicha qidirilardi. Prayslistda
+           nom ozgina o'zgarsa moslik yo'qolardi va qabul XIZMATSIZ
+           ochilardi: kassada hech narsa ko'rinmasdi.
+
+           Endi `serviceId` — bog'lam, `type` esa o'sha paytdagi nom
+           (migratsiya 0034). Xizmat boshqa klinikaniki bo'lsa — rad
+           etamiz. */
+        const rawServiceId = req.body?.serviceId;
+        let serviceId: number | null = null;
+        let typeSnapshot = type;
+        if (rawServiceId !== undefined && rawServiceId !== null && rawServiceId !== '') {
+            const svc = await prisma.service.findUnique({ where: { id: Number(rawServiceId) } });
+            if (!svc || svc.clinicId !== clinicId) {
+                return res.status(400).json({ error: 'Xizmat topilmadi yoki boshqa klinikaga tegishli' });
+            }
+            serviceId = svc.id;
+            // Nom ko'rsatilmagan bo'lsa katalogdan olamiz
+            if (!typeSnapshot) typeSnapshot = svc.name;
+        }
+
         /* Shifokorning vaqti bandmi (S2.4). `force: true` bilan baribir
            yozish mumkin — bu loyihadagi mavjud naqsh (bemor dublikatida
            ham shunday): server TO'SMAYDI, TANLOV beradi. Shoshilinch
@@ -2779,7 +2802,8 @@ app.post('/api/appointments', authenticateToken, async (req, res) => {
                 patientName,
                 doctorId,
                 doctorName,
-                type,
+                type: typeSnapshot,
+                serviceId,
                 date: date,
                 time: time,
                 duration,
@@ -2803,7 +2827,7 @@ app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
         // `clinicId` ATAYLAB ro'yxatda yo'q: ilgari uni o'zgartirish mumkin edi
         // va mavjud yozuvni BOSHQA klinikaga ko'chirib yuborish mumkin bo'lardi.
         // Yozuv qaysi klinikada tug'ilgan bo'lsa, o'sha yerda qoladi.
-        const { patientId, patientName, doctorId, doctorName, type, date, time, duration, status, reminderSent, notes } = req.body;
+        const { patientId, patientName, doctorId, doctorName, type, date, time, duration, status, reminderSent, notes, serviceId } = req.body;
 
         // Yozuvni begona bemorga yoki begona shifokorga ulab qo'yish mumkin emas
         if (patientId !== undefined && patientId && !(await assertPatientOwnership(req, res, patientId))) return;
@@ -2851,6 +2875,21 @@ app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
         if (status !== undefined) updateData.status = status;
         if (reminderSent !== undefined) updateData.reminderSent = reminderSent;
         if (notes !== undefined) updateData.notes = notes;
+        /* Xizmat bog'lami (0034). Bo'sh satr — bog'lamni yechish. Begona
+           klinikaning xizmatiga ulab qo'yish mumkin emas. */
+        if (serviceId !== undefined) {
+            if (serviceId === null || serviceId === '') {
+                updateData.serviceId = null;
+            } else {
+                const svc = await prisma.service.findUnique({ where: { id: Number(serviceId) } });
+                const scoped = getScopedClinicId(req);
+                if (!svc || (scoped && svc.clinicId !== scoped)) {
+                    return res.status(400).json({ error: 'Xizmat topilmadi yoki boshqa klinikaga tegishli' });
+                }
+                updateData.serviceId = svc.id;
+                if (type === undefined) updateData.type = svc.name;
+            }
+        }
 
         // Update appointment and fetch necessary data for notification
         const appointment = await prisma.appointment.update({
@@ -2909,9 +2948,27 @@ app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
     }
 });
 
+/* Yozuvni O'CHIRISH — faqat xato kiritilgan, hech narsaga bog'lanmagan
+   yozuv uchun.
+
+   «Kelmadi» yoki «bekor qildi» — bu o'chirish EMAS: interfeys endi
+   `PUT ... { status: 'Cancelled' }` yuboradi. Ilgari kalendardagi
+   «Bekor qilish» yozuvni bazadan yo'q qilardi va «kim kelmadi» degan
+   savolga javob berish imkoni yo'q edi — sabab ham, kim bekor
+   qilgani ham qolmasdi.
+
+   Qabul ochilgan yozuv esa umuman o'chmaydi: qabul «qayerdan kelgani»
+   noma'lum bo'lib qolardi. */
 app.delete('/api/appointments/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'appointment', req.params.id))) return;
+        const visits = await prisma.visit.count({ where: { appointmentId: req.params.id } });
+        if (visits > 0) {
+            return res.status(409).json({
+                error: "Bu yozuv bo'yicha qabul ochilgan — o'chirib bo'lmaydi. Bekor qilish uchun holatini o'zgartiring.",
+                code: 'APPOINTMENT_HAS_VISIT',
+            });
+        }
         await prisma.appointment.delete({
             where: { id: req.params.id }
         });
