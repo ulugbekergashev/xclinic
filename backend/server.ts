@@ -3001,6 +3001,15 @@ app.post('/api/appointments/:id/remind', authenticateToken, async (req, res) => 
 
         await sendUnified(clinic, appointment.patient, message, { channel: 'auto', source: 'manual', refId: appointment.id, type: 'Reminder' });
 
+        /* Kalendardagi qo'ng'iroqcha belgisi shu bayroqdan o'qiydi.
+           Ilgari u faqat ommaviy yuborishda qo'yilardi, ya'ni qo'lda
+           yuborilgan eslatma ko'rinmasdi va registrator bir bemorga
+           ikki marta yuborardi. */
+        await prisma.appointment.update({
+            where: { id: appointment.id },
+            data: { reminderSent: true },
+        });
+
         res.json({ success: true });
     } catch (error) {
         console.error('Reminder error:', error);
@@ -6601,90 +6610,6 @@ function processTemplate(template: string, data: { [key: string]: any }) {
     return result;
 }
 
-async function sendAppointmentReminders(clinicId?: string, customMessage?: string) {
-    try {
-        console.log(`🔔 Running appointment reminder job${clinicId ? ` for clinic ${clinicId}` : ''}...`);
-
-        // Get tomorrow's date in YYYY-MM-DD format (database standard)
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowFormatted = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-
-        console.log(`Checking appointments for date: ${tomorrowFormatted}`);
-
-        // Find all appointments for tomorrow with confirmed/pending status
-        const whereClause: any = {
-            date: tomorrowFormatted,
-            status: { in: ['Confirmed', 'Pending'] }
-        };
-
-        if (clinicId) {
-            whereClause.patient = { clinicId: clinicId };
-        }
-
-        const appointments = await prisma.appointment.findMany({
-            where: whereClause,
-            include: {
-                patient: {
-                    include: {
-                        clinic: true
-                    }
-                },
-                doctor: true
-            }
-        });
-
-        console.log(`Found ${appointments.length} appointments for tomorrow.`);
-
-        let sentCount = 0;
-        let withTelegramCount = 0;
-
-        for (const appointment of appointments) {
-            const clinic = appointment.patient.clinic as any;
-            const doctorName = `${appointment.doctor.firstName} ${appointment.doctor.lastName}`;
-            
-            let message = '';
-            if (customMessage) {
-                message = processTemplate(customMessage, {
-                    patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
-                    time: appointment.time,
-                    date: appointment.date,
-                    clinicName: clinic.name,
-                    doctorName: doctorName
-                });
-            } else {
-                message = `🔔 Eslatma!\n\nHurmatli ${appointment.patient.firstName}, sizning ertaga ${appointment.date} kuni soat ${appointment.time} da ${doctorName} qabuliga yozilganingizni eslatamiz.\n\nIltimos, kechikmasdan keling!`;
-            }
-
-            try {
-                await sendUnified(clinic, appointment.patient, message, { channel: 'auto', source: 'bulk', refId: appointment.id, type: 'Reminder' });
-
-                // Mark as reminded
-                await prisma.appointment.update({
-                    where: { id: appointment.id },
-                    data: { reminderSent: true }
-                });
-
-                sentCount++;
-                if (clinic.botToken && appointment.patient.telegramChatId) withTelegramCount++;
-            } catch (e) {
-                console.error(`Failed to notify ${appointment.patient.firstName}:`, e);
-            }
-        }
-
-        console.log(`🔔 Appointment reminder job completed. Sent ${sentCount} reminders.`);
-        return {
-            date: tomorrowFormatted,
-            found: appointments.length,
-            withTelegram: withTelegramCount,
-            sent: sentCount
-        };
-    } catch (error) {
-        console.error('❌ Appointment reminder job error:', error);
-        return { date: '', found: 0, withTelegram: 0, sent: 0, error: error };
-    }
-}
-
 console.log('✅ Automated reminder cron jobs initialized');
 
 // Barcha avtomatika qoidalari bitta dvigatelda - har 10 daqiqada.
@@ -6759,38 +6684,17 @@ async function sendDailyClinicReports() {
 // BATCH NOTIFICATION ENDPOINTS
 // ============================================
 
-// Batch: Send reminders for tomorrow's appointments
-/* Qo'lda ommaviy eslatma yuborish.
+/* «ERTANGI QABULLARGA OMMAVIY ESLATMA» OLIB TASHLANDI.
 
-   Ilgari `clinicId` mijoz tanasidan olinardi, va u bo'lmasa
-   `sendAppointmentReminders(undefined)` BARCHA klinikalar bo'yicha ishlardi
-   (log satrida shu ko'rinib turardi: `${clinicId || 'ALL'}`). Rol tekshiruvi
-   ham yo'q edi — ya'ni shifokor yoki laborant o'z tokeni bilan butun bazaga
-   SMS yuborib, klinikalarning Eskiz balansini sarflay olardi.
+   `POST /api/batch/remind-appointments` va uning `sendAppointmentReminders`
+   funksiyasi HECH QAYERDAN chaqirilmasdi: interfeysda tugma yo'q edi,
+   cron ham uni ishlatmasdi. Avtomatik eslatmalar boshqa dvigateldan
+   ketadi — `triggers.ts` dagi `before_appointment` qoidasi, u har 10
+   daqiqada ishlaydi va sozlamadagi qoidaga bo'ysunadi.
 
-   Endi klinika TOKENDAN aniqlanadi va rol klinika administratoridan past
-   bo'lmasligi kerak. "Hammasi bo'yicha" degan yo'l umuman qolmadi. */
-app.post('/api/batch/remind-appointments', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
-    try {
-        const clinicId = getScopedClinicId(req);
-        if (!clinicId) {
-            return res.status(400).json({ error: 'clinicId is required' });
-        }
-        const { message } = req.body;
-        console.log(`🔔 Manual trigger: Sending appointment reminders for clinic ${clinicId}...`);
-
-        const result = await sendAppointmentReminders(clinicId, message);
-
-        res.json({
-            success: true,
-            count: result.sent,
-            message: `${result.date} sanasi uchun ${result.found} ta qabul topildi. ${result.sent} ta xabar yuborildi.`
-        });
-    } catch (error: any) {
-        console.error('Batch appointment reminder error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
+   Qo'lda yuborish esa endi bitta yozuv uchun: `POST /appointments/:id/remind`.
+   Ikkita parallel yo'lni saqlab turish — matnlar ajralib ketishining
+   eng qisqa yo'li. */
 
 // Batch: Send debt reminders
 // Batch: Send debt reminders

@@ -1,9 +1,10 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Wallet, BarChart3, Percent } from 'lucide-react';
+import { Wallet, BarChart3, Percent, CalendarCheck } from 'lucide-react';
 import { CashBook } from './CashBook';
 import { FinanceReport } from './FinanceReport';
 import { Payroll } from './Payroll';
+import { AttendanceTab } from '../components/AttendanceReport';
 import { UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
     LabOrder, Receptionist, CashRegisterDay, CashMovement, VisitCharge, Department, Service } from '../types';
 import type { CashCloseArgs } from './CashBook';
@@ -16,7 +17,7 @@ import type { CashCloseArgs } from './CashBook';
 // "To'lanmagan" ro'yxatiga qo'shiladi — alohida ekran QURILMAGAN, chunki
 // CashBook allaqachon to'lov qabul qiladi va qarz yopadi.
 
-type TabKey = 'kassa' | 'hisobot' | 'ulush';
+type TabKey = 'kassa' | 'hisobot' | 'ulush' | 'davomat';
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType; subtitle: string }[] = [
     {
@@ -36,6 +37,20 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType; subtitle: str
         label: 'Ulush',
         icon: Percent,
         subtitle: 'Shifokor stavkalari va oylik vedomost',
+    },
+    {
+        /* DAVOMAT KALENDARDAN KO'CHDI.
+
+           U kalendarning uchinchi ko'rinishi edi va kalendar bilan bitta
+           tugmalar qatorida turardi. Kalendar esa ISH ekrani: registrator
+           unda yozadi va «keldi» deb belgilaydi. Uch oylik grafik egaga
+           oyda bir marta kerak — va u kassa, foyda, ulush bilan bir
+           qatorda turgani mantiqiyroq: hammasi «klinika qanday
+           ishlayapti» degan savolning javobi. */
+        key: 'davomat',
+        label: 'Davomat',
+        icon: CalendarCheck,
+        subtitle: 'Kimlar keldi, kimlar kelmadi — va qaysi kunlar gavjum',
     },
 ];
 
@@ -87,7 +102,8 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
     const requested = searchParams.get('tab') as TabKey | null;
     /* Hisobot va ulush — faqat egaga. Registrator kassada ishlaydi va
        manzilga qo'lda `?tab=ulush` yozib kirib olmasligi kerak. */
-    const activeTab: TabKey = canSeeReports && (requested === 'hisobot' || requested === 'ulush')
+    const activeTab: TabKey = canSeeReports
+        && (requested === 'hisobot' || requested === 'ulush' || requested === 'davomat')
         ? requested
         : 'kassa';
 
@@ -132,7 +148,9 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                 )}
             </div>
 
-            {activeTab === 'ulush' ? (
+            {activeTab === 'davomat' ? (
+                <AttendanceTab />
+            ) : activeTab === 'ulush' ? (
                 <Payroll
                     doctors={doctors}
                     departments={props.departments}

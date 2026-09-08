@@ -4094,14 +4094,6 @@ export const api = {
         },
     },
     batch: {
-        remindAppointments: (clinicId: string, message?: string) => {
-            if (isDemoMode()) return Promise.resolve({ success: true as const, message: 'Demo rejim: xabarlar yuborilmadi' });
-            return fetchJson<{ success: true; message: string }>('/batch/remind-appointments', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ clinicId, message }),
-            });
-        },
         remindDebts: (clinicId: string, debtors: any[], message?: string) => {
             if (isDemoMode()) return Promise.resolve({ success: true as const, count: 0, message: 'Demo rejim: xabarlar yuborilmadi' });
             return fetchJson<{ success: true; count: number; message?: string }>('/batch/remind-debts?clinicId=' + clinicId, {

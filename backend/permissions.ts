@@ -301,7 +301,6 @@ export const RULES: Rule[] = [
     { method: 'PUT', path: '/api/messages/settings', roles: owner() },
     { method: 'POST', path: '/api/messages/test-send', roles: owner() },
     { method: 'POST', path: '/api/messages/retry', roles: owner() },
-    { method: 'POST', path: '/api/batch/remind-appointments', roles: owner() },
     { method: 'POST', path: '/api/batch/remind-debts', roles: owner() },
 
     /* ─── Integratsiyalar va API kalitlari — faqat ega ─────────────────────── */
