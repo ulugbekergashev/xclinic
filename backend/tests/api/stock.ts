@@ -327,6 +327,57 @@ async function main() {
             `status: ${empty.status}, ${(empty.data || []).length} qator`);
     }
 
+    console.log('\n═══ 9. BEMORGA BERILGAN MATERIAL KASSAGA TUSHADI ═══');
+    /* Statsionarda dori berilganda hisob qatori yaratilardi, bemor
+       kartasidan berilganda esa — YO'Q: material omborda kamayardi, pul
+       hech qayerda ko'rinmasdi. Ya'ni shifokor material beradi, kassada
+       hech narsa yo'q va bemor to'lamasdan ketadi. */
+    const billItem = await api('POST', '/inventory', {
+        name: `Pullik material ${Date.now() % 100000}`, unit: 'dona',
+        quantity: 0, minQuantity: 0, price: 35000, isConsumable: true,
+    });
+    const billItemId = billItem.data?.id;
+    ok('narxli material yaratildi', !!billItemId);
+
+    if (billItemId && patientId) {
+        await api('POST', '/stock-movements/in', { itemId: billItemId, quantity: 10, cost: 20000 });
+
+        const before = ((await api('GET', `/charges?patientId=${patientId}`)).data || []).length;
+        const issue = await api('POST', '/stock-movements/out', {
+            itemId: billItemId, quantity: 2, reason: 'Manual', patientId,
+        });
+        ok('material bemorga berildi', issue.status === 200, `status: ${issue.status}`);
+        ok('HISOB QATORI YARATILDI', !!issue.data?.charge,
+            JSON.stringify(issue.data?.charge || {}).slice(0, 120));
+        ok('summa = miqdor × narx',
+            Math.round(issue.data?.charge?.total || 0) === 70000,
+            String(issue.data?.charge?.total));
+
+        const after = ((await api('GET', `/charges?patientId=${patientId}`)).data || []).length;
+        ok('bemor qatorlari bittaga oshdi', after === before + 1, `${before} → ${after}`);
+
+        /* Chiqim bekor qilinsa qator ham bekor bo'ladi — aks holda
+           material qaytarilgan, pul esa «to'lanmagan» ro'yxatida
+           abadiy qolardi. */
+        const moveId = (issue.data?.moves || [])[0]?.id;
+        if (moveId) {
+            const rev = await api('POST', `/stock-movements/${moveId}/reverse`, {});
+            ok('chiqim bekor qilindi', rev.status === 200, `status: ${rev.status}`);
+            ok('QATOR HAM BEKOR QILINDI', rev.data?.chargesCancelled === 1,
+                String(rev.data?.chargesCancelled));
+        }
+
+        /* Narxsiz materialga qator ochilmaydi: nol summali qator kassani
+           chalg'itadi. */
+        if (expItemId) {
+            const free = await api('POST', '/stock-movements/out', {
+                itemId: expItemId, quantity: 1, reason: 'Manual', patientId,
+            });
+            ok('narxsiz materialga qator OCHILMADI', free.status === 200 && !free.data?.charge,
+                JSON.stringify(free.data?.charge || null));
+        }
+    }
+
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);
 }

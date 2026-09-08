@@ -17,6 +17,8 @@
 import type express from 'express';
 import { qty, som } from './money';
 import { tashkentDateStr, tashkentRangeBounds } from './tashkentTime';
+import { createCharge } from './billing';
+import { emitEvent } from './events';
 
 type Deps = {
     prisma: any;
@@ -408,7 +410,48 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
             }
             throw e;
         }
-        res.json({ moves });
+
+        /* ─── BEMORGA BERILGAN MATERIAL KASSAGA HAM TUSHADI ─────────
+
+           Statsionarda dori berilganda hisob qatori YARATILADI
+           (`inpatient.ts`, `source: 'Medication'`). Bemor kartasidan
+           berilganda esa — YO'Q edi: material omborda kamayardi, pul esa
+           hech qayerda ko'rinmasdi. Ya'ni shifokor bemorga plomba
+           materialini beradi, kassada hech narsa yo'q va bemor
+           to'lamasdan ketadi.
+
+           Farq mantiqiy emas edi — ikki ekran har xil vaqtda yozilgani
+           uchun shunday chiqqan.
+
+           Qoidalar:
+             · faqat BEMORGA berilganda (`patientId` bor);
+             · faqat narxi ko'rsatilgan materialda — narxsizga nol
+               summali qator ochish kassani chalg'itadi;
+             · `skipCharge: true` bilan chetlab o'tish mumkin: xizmat
+               retseptiga kiruvchi material xizmat narxida allaqachon
+               hisoblangan, uni ikkinchi marta yozib bo'lmaydi. */
+        let charge = null;
+        const unitPrice = Number(item.price) || 0;
+        if (patientId && unitPrice > 0 && req.body?.skipCharge !== true) {
+            const p = await prisma.patient.findUnique({
+                where: { id: String(patientId) },
+                select: { firstName: true, lastName: true },
+            });
+            charge = await createCharge(prisma, {
+                clinicId,
+                patientId: String(patientId),
+                patientName: `${p?.lastName || ''} ${p?.firstName || ''}`.trim(),
+                visitId: visitId || null,
+                source: 'Medication',
+                sourceId: moves[0]?.id || null,
+                name: item.name,
+                unitPrice,
+                quantity: qty,
+                createdByName: userName || req.user?.name || null,
+            });
+        }
+
+        res.json({ moves, charge });
     });
 
     /**
@@ -455,14 +498,28 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
                         userName: userName || req.user?.name || null,
                     },
                 });
-                return { code: 200, move: created };
+                /* Chiqim bekor qilinsa, u tug'dirgan hisob qatori ham
+                   bekor bo'ladi — aks holda material qaytarilgan, pul esa
+                   kassaning «to'lanmagan» ro'yxatida abadiy qolardi.
+
+                   TO'LANGAN qatorga tegilmaydi: pul allaqachon olingan va
+                   uni faqat kassadagi qaytarish amali yechadi. */
+                const cancelled = await tx.visitCharge.updateMany({
+                    where: { clinicId, source: 'Medication', sourceId: id, status: 'Unpaid' },
+                    data: { status: 'Cancelled' },
+                });
+
+                return { code: 200, move: created, chargesCancelled: cancelled.count };
             }, { timeout: 15000, maxWait: 10000 }),
         );
 
         if (result.code !== 200) {
             return res.status(result.code).json({ error: result.error || "Ruxsat yo'q" });
         }
-        res.json({ move: result.move });
+        if (result.chargesCancelled > 0) {
+            emitEvent(clinicId, 'charge.changed', { reason: 'material-reversed' });
+        }
+        res.json({ move: result.move, chargesCancelled: result.chargesCancelled });
     });
 
     /**
