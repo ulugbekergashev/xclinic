@@ -31,6 +31,7 @@ const DEPT_COLORS = [
 ];
 
 import { StaffTab } from '../components/StaffTab';
+import { ServiceRecipeEditor } from '../components/ServiceRecipeEditor';
 
 const DOCTOR_COLORS = [
    { name: 'Ko\'k', value: '#3B82F6' },
@@ -178,7 +179,16 @@ export const Settings: React.FC<SettingsProps> = ({
    // Service Modal State
    const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
    const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
-   const [serviceForm, setServiceForm] = useState({ name: '', price: '', cost: '', categoryId: '' });
+   /* `cost` («Texniklar xarajati») OLIB TASHLANDI: u qo'lda kiritilardi
+      va hech qayerda o'qilmasdi. Hisobotdagi tannarx RETSEPTDAN
+      hisoblanadi (`reports.ts`), ya'ni bu maydon shunchaki chalg'itardi.
+
+      O'rniga BO'LIM va DAVOMIYLIK qo'shildi. Davomiylik hamma xizmatda
+      qattiq 60 daqiqa edi — kalendar aynan shundan slot uzunligini
+      oladi, ya'ni 15 daqiqalik ko'rik ham bir soatni band qilardi. */
+   const [serviceForm, setServiceForm] = useState({
+      name: '', price: '', categoryId: '', departmentId: '', duration: '60',
+   });
 
    /* XODIM FORMALARINING HOLATI OLIB TASHLANDI — «Xodimlar» ekrani
       (`components/StaffTab.tsx`) o'zi boshqaradi. */
@@ -363,12 +373,16 @@ export const Settings: React.FC<SettingsProps> = ({
          setServiceForm({
             name: service.name,
             price: service.price.toString(),
-            cost: (service.cost || 0).toString(),
-            categoryId: service.categoryId || ''
+            categoryId: service.categoryId || '',
+            departmentId: (service as any).departmentId || '',
+            duration: String(service.duration || 60),
          });
       } else {
          setEditingServiceId(null);
-         setServiceForm({ name: '', price: '', cost: '', categoryId: selectedCategory || '' });
+         setServiceForm({
+            name: '', price: '', categoryId: selectedCategory || '',
+            departmentId: '', duration: '60',
+         });
       }
       setIsServiceModalOpen(true);
    };
@@ -378,9 +392,9 @@ export const Settings: React.FC<SettingsProps> = ({
       const data = {
          name: serviceForm.name,
          price: Number(serviceForm.price),
-         cost: Number(serviceForm.cost) || 0,
-         duration: 60,
-         categoryId: serviceForm.categoryId || undefined
+         duration: Number(serviceForm.duration) || 60,
+         categoryId: serviceForm.categoryId || undefined,
+         departmentId: serviceForm.departmentId || null,
       };
 
       if (editingServiceId !== null) {
@@ -748,6 +762,9 @@ export const Settings: React.FC<SettingsProps> = ({
       Ilgari bo'limlarni faqat seed yaratardi: klinika yangi bo'lim qo'sha
       olmasdi, nomini tuzata olmasdi, yopilganini o'chira olmasdi. */
    const [deptList, setDeptList] = useState<any[]>([]);
+   /* Ombor ro'yxati — xizmat retsepti uchun. Faqat «Xizmatlar» bo'limi
+      ochilganda so'raladi. */
+   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
    const [deptLoading, setDeptLoading] = useState(false);
    const [deptError, setDeptError] = useState('');
    const [deptBusy, setDeptBusy] = useState(false);
@@ -769,8 +786,11 @@ export const Settings: React.FC<SettingsProps> = ({
    React.useEffect(() => {
       /* Bo'lim ro'yxati «Xodimlar» da ham kerak: forma bo'limni
          tanlaydi va ro'yxatda bo'lim nomi ko'rinadi. */
-      if ((activeTab === 'departments' || activeTab === 'staff')
+      if ((activeTab === 'departments' || activeTab === 'staff' || activeTab === 'services')
          && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
+      if (activeTab === 'services' && inventoryItems.length === 0 && currentClinic?.id) {
+         api.inventory.getAll(currentClinic.id).then(setInventoryItems).catch(() => setInventoryItems([]));
+      }
    }, [activeTab, userRole, loadDepartments]);
 
    /* ─── Kirish jurnali (reliz 6) ─────────────────────────────────────────
@@ -2617,9 +2637,47 @@ export const Settings: React.FC<SettingsProps> = ({
                   />
                </div>
                <div className="grid grid-cols-2 gap-4">
-                  <Input label={t('settings.services.thPrice')} type="number" value={serviceForm.price} onChange={e => setServiceForm({ ...serviceForm, price: e.target.value })} required />
-                  <Input label="Texniklar xarajati" type="number" value={serviceForm.cost} onChange={e => setServiceForm({ ...serviceForm, cost: e.target.value })} placeholder="0" />
+                  <Input label={t('settings.services.thPrice')} type="number" value={serviceForm.price}
+                     onChange={e => setServiceForm({ ...serviceForm, price: e.target.value })} required />
+                  {/* Davomiylik kalendardagi slot uzunligini belgilaydi.
+                      Ilgari u qattiq 60 daqiqa edi. */}
+                  <Input label="Davomiyligi (daqiqa)" type="number" value={serviceForm.duration}
+                     onChange={e => setServiceForm({ ...serviceForm, duration: e.target.value })}
+                     placeholder="60" />
                </div>
+
+               {/* Bo'lim: qabul panelida va «Bugun» da xizmatlar aynan shu
+                   bo'yicha filtrlanadi. Ilgari uni formadan berib
+                   bo'lmasdi. */}
+               <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bo'lim</label>
+                  <Select
+                     value={serviceForm.departmentId}
+                     onChange={e => setServiceForm({ ...serviceForm, departmentId: e.target.value })}
+                     options={[
+                        { value: '', label: "Bo'limsiz — hamma joyda ko'rinadi" },
+                        ...deptList.filter((d: any) => d.isActive).map((d: any) => ({ value: d.id, label: d.name })),
+                     ]}
+                  />
+               </div>
+
+               {/* ── Materiallar retsepti ── Server buni allaqachon biladi va
+                   hisobotdagi TANNARX aynan shundan hisoblanadi, lekin
+                   kiritadigan ekran yo'q edi: tannarx har doim nol
+                   chiqardi va «qaysi xizmat foydali» degan savolga javob
+                   yo'q edi. */}
+               <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                     Sarflanadigan materiallar
+                  </p>
+                  <ServiceRecipeEditor
+                     serviceId={editingServiceId}
+                     price={Number(serviceForm.price) || 0}
+                     items={inventoryItems}
+                     addToast={(type, msg) => type === 'error' ? toast.error(msg) : toast.success(msg)}
+                  />
+               </div>
+
                <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="secondary" onClick={() => setIsServiceModalOpen(false)}>{t('common.cancel')}</Button>
                   <Button type="submit">{t('common.save')}</Button>

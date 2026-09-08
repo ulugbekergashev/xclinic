@@ -296,6 +296,37 @@ async function main() {
         ok('qoldiq 7 (4 + 3)', Math.round(fin?.quantity) === 7, `qoldiq: ${fin?.quantity}`);
     }
 
+    console.log('\n═══ 8. XIZMAT RETSEPTI VA TANNARX ═══════════════');
+    /* Server retseptni ALLAQACHON bilardi va hisobotdagi tannarx aynan
+       shundan hisoblanadi, lekin uni KIRITADIGAN ekran yo'q edi: tannarx
+       har doim nol chiqardi va «qaysi xizmat foydali» degan savolga
+       javob berib bo'lmasdi. */
+    const svcRes = await api('POST', '/services', {
+        name: `Retsept sinovi ${Date.now() % 100000}`, price: 200000, duration: 30,
+    });
+    const svcId = svcRes.data?.id;
+    ok('xizmat yaratildi', !!svcId, JSON.stringify(svcRes.data).slice(0, 120));
+
+    if (svcId && expItemId) {
+        const put = await api('PUT', `/service-recipes/${svcId}`, {
+            lines: [{ itemId: expItemId, quantity: 2 }],
+        });
+        ok('retsept saqlandi', put.status === 200, `status: ${put.status}`);
+        ok('bitta qator qaytdi', (put.data || []).length === 1, String((put.data || []).length));
+
+        const cost = await api('GET', `/service-recipes/${svcId}/cost`);
+        ok('tannarx hisobi javob berdi', cost.status === 200, `status: ${cost.status}`);
+        ok('narx javobda bor', Math.round(cost.data?.price) === 200000, String(cost.data?.price));
+        ok('retsept qatorlari sanaldi', cost.data?.lines === 1, String(cost.data?.lines));
+
+        /* Saqlash ALMASHTIRADI, qo'shmaydi: forma butun ro'yxatni yuboradi
+           va o'chirilgan qator ham shunda bilinadi. */
+        const empty = await api('PUT', `/service-recipes/${svcId}`, { lines: [] });
+        ok('bo\'sh ro\'yxat retseptni tozaladi',
+            empty.status === 200 && (empty.data || []).length === 0,
+            `status: ${empty.status}, ${(empty.data || []).length} qator`);
+    }
+
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);
 }

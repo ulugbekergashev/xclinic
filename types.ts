@@ -480,8 +480,14 @@ export interface Service {
   id?: number; // Optional because it might be auto-generated or missing in some contexts
   name: string;
   price: number;
-  cost?: number; // Service cost (e.g., technician fee)
-  duration?: number; // Optional, defaults to 60 minutes
+  /* `cost` — MEROS ustun. U formadan qo'lda kiritilardi va HECH QAYERDA
+     o'qilmasdi: hisobotdagi tannarx `ServiceRecipe` dan hisoblanadi
+     (`backend/reports.ts`). Forma maydoni olib tashlandi; ustunni
+     sxemadan olib tashlash SQLite da jadvalni qayta yozishni talab
+     qiladi, shuning uchun u bo'sh turadi. */
+  cost?: number;
+  /** Kalendardagi slot uzunligi. Ilgari forma har doim 60 yozardi. */
+  duration?: number;
 
   clinicId: string;
   categoryId?: string;
