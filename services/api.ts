@@ -3312,6 +3312,7 @@ export const api = {
                     },
                     month: { revenue: month.period.collected },
                     debt: all.debt,
+                    debtors: { patients: 0, overdue30: 0, overdue30Sum: 0 },
                     period: month.period,
                 });
             }
@@ -3321,8 +3322,22 @@ export const api = {
                 today: { appointments: number; visits: number; revenue: number; payments: number };
                 month: { revenue: number };
                 debt: Snapshot['debt'];
+                debtors: { patients: number; overdue30: number; overdue30Sum: number };
                 period: Snapshot['period'];
             }>('/reports/dashboard');
+        },
+
+        /* «Bugun hal qilinsin» — faqat egaga. Bo'sh ro'yxat ham javob:
+           demo rejimda ham shunday, o'ylab topilgan band qo'shilmaydi. */
+        attention: () => {
+            if (isDemoMode()) return demoRead<any>({ date: '', total: 0, high: 0, items: [] });
+            return fetchJson<{
+                date: string; total: number; high: number;
+                items: {
+                    key: string; level: 'high' | 'medium' | 'low';
+                    title: string; hint?: string; count: number; link: string;
+                }[];
+            }>('/reports/attention');
         },
 
         debtors: () => isDemoMode() ? demoRead<any>({ total: 0, patients: [] }) : fetchJson<any>('/reports/debtors'),
@@ -3582,6 +3597,15 @@ export const api = {
             return fetchJson<any>(`/hr/staff/${role}/${id}/pay`, {
                 method: 'POST', body: JSON.stringify(data),
             });
+        },
+        attendanceSummary: (period: string) => {
+            if (isDemoMode()) {
+                return demoRead<any>({
+                    period, staffTotal: 0, trackedStaff: 0, avgPercent: null,
+                    best: null, markedDays: 0, rows: [],
+                });
+            }
+            return fetchJson<any>(`/hr/attendance-summary?period=${period}`);
         },
         attendance: (role: string, id: string, period: string) => {
             if (isDemoMode()) {

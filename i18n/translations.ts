@@ -405,6 +405,8 @@ export const translations = {
     'common.error': 'Xatolik yuz berdi',
     'common.retry': 'Qayta yuklash',
     'common.logout': 'Chiqish',
+    'common.menu': 'Menyu',
+    'common.debtors': 'qarzdor',
 
     // Roles
     'roles.superAdmin': 'SaaS Egasi',
@@ -1660,6 +1662,8 @@ export const translations = {
     'common.error': 'Произошла ошибка',
     'common.retry': 'Повторить',
     'common.logout': 'Выйти',
+    'common.menu': 'Меню',
+    'common.debtors': 'должников',
 
     // Roles
     'roles.superAdmin': 'Владелец SaaS',

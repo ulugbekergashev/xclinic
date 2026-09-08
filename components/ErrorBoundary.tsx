@@ -59,48 +59,48 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
         return (
             <div className="flex items-center justify-center min-h-[60vh] p-6">
-                <div className="max-w-lg w-full bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-800 overflow-hidden">
-                    <div className="flex items-start gap-3 p-5 border-b border-gray-200 dark:border-gray-700">
+                <div className="max-w-lg w-full bg-surface rounded-xl border border-red-200 dark:border-red-800 overflow-hidden">
+                    <div className="flex items-start gap-3 p-5 border-b border-line">
                         <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
                             <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
                         </div>
                         <div className="min-w-0">
-                            <h2 className="font-semibold text-gray-900 dark:text-white">
+                            <h2 className="font-semibold text-ink">
                                 {this.props.section ? `"${this.props.section}" bo'limida xatolik` : 'Sahifada xatolik'}
                             </h2>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                            <p className="text-sm text-muted mt-0.5">
                                 Ma'lumotlaringiz saqlanib qoldi — hech narsa yo'qolmadi.
                             </p>
                         </div>
                     </div>
 
                     <div className="p-5 space-y-3">
-                        <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 overflow-x-auto">
+                        <div className="bg-canvas border border-line rounded-lg p-3 overflow-x-auto">
                             <p className="font-mono text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-words">
                                 {error.message || String(error)}
                             </p>
                             {info && (
-                                <p className="font-mono text-[11px] text-gray-400 dark:text-gray-500 mt-2 whitespace-pre-wrap">
+                                <p className="font-mono text-[11px] text-faint mt-2 whitespace-pre-wrap">
                                     {info}
                                 </p>
                             )}
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                        <p className="text-xs text-muted">
                             Xato takrorlansa, shu matnni ko'chirib bering.
                         </p>
                     </div>
 
-                    <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex gap-3">
+                    <div className="p-5 border-t border-line flex gap-3">
                         <button onClick={this.reset}
                             className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
                             <RefreshCw className="w-4 h-4" /> Qayta urinish
                         </button>
                         <button onClick={this.goHome}
-                            className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                            className="flex items-center gap-2 px-4 py-2 border border-line rounded-lg text-sm font-medium text-muted hover:bg-elevated">
                             <Home className="w-4 h-4" /> Bosh sahifa
                         </button>
                         <button onClick={() => window.location.reload()}
-                            className="ml-auto px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                            className="ml-auto px-4 py-2 text-sm font-medium text-muted hover:text-muted">
                             Sahifani yangilash
                         </button>
                     </div>

@@ -100,26 +100,26 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
     };
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                <FileSignature className="w-4 h-4 text-gray-400" />
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white">Hujjatlar</h3>
-                <span className="text-xs text-gray-400">({docs.length})</span>
+        <div className="bg-surface rounded-xl border border-line overflow-hidden">
+            <div className="px-4 py-3 border-b border-line-soft flex items-center gap-2">
+                <FileSignature className="w-4 h-4 text-faint" />
+                <h3 className="text-sm font-bold text-ink">Hujjatlar</h3>
+                <span className="text-xs text-faint">({docs.length})</span>
             </div>
 
             {canCreate && (
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <div className="px-4 py-3 border-b border-line-soft">
                     <div className="flex flex-wrap gap-2">
                         {KINDS.map(k => (
                             <button key={k.key} onClick={() => create(k.key)} disabled={!!busy}
                                 title={k.hint}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-primary-400 disabled:opacity-50">
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-line text-muted hover:border-primary-400 disabled:opacity-50">
                                 {busy === k.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                                 {k.label}
                             </button>
                         ))}
                     </div>
-                    <p className="text-[11px] text-gray-400 mt-2">
+                    <p className="text-[11px] text-faint mt-2">
                         Hujjat yaratilib darhol bosishga beriladi. Bemor o'qib imzolagach,
                         ro'yxatda "Imzolandi" deb belgilang.
                     </p>
@@ -138,25 +138,25 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
 
             {loading ? (
                 <div className="p-4 space-y-2">
-                    {[0, 1].map(i => <div key={i} className="h-12 bg-gray-100 dark:bg-gray-700/40 rounded animate-pulse" />)}
+                    {[0, 1].map(i => <div key={i} className="h-12 bg-elevated rounded animate-pulse" />)}
                 </div>
             ) : docs.length === 0 ? (
                 <div className="px-4 py-8 text-center">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Hujjat yo'q</p>
-                    <p className="text-[11px] text-gray-400 mt-1">
+                    <p className="text-sm text-muted">Hujjat yo'q</p>
+                    <p className="text-[11px] text-faint mt-1">
                         Rozilik va shartnoma — qonun talabi, ular bemor kartasida bo'lishi kerak.
                     </p>
                 </div>
             ) : (
-                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                <div className="divide-y divide-line">
                     {docs.map(d => (
                         <div key={d.id} className="px-4 py-3 flex flex-wrap items-center gap-2">
                             <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                <p className="text-sm font-medium text-ink truncate">
                                     {KIND_LABEL[d.kind] || d.kind}
-                                    {d.number ? <span className="text-gray-400 font-normal"> № {d.number}</span> : null}
+                                    {d.number ? <span className="text-faint font-normal"> № {d.number}</span> : null}
                                 </p>
-                                <p className="text-[11px] text-gray-400">
+                                <p className="text-[11px] text-faint">
                                     {fmtDate(d.createdAt)}
                                     {d.createdByName ? ` · ${d.createdByName}` : ''}
                                 </p>
@@ -174,7 +174,7 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
 
                             <button onClick={() => reprint(d.id)} disabled={busy === d.id}
                                 title="Qayta bosish"
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                className="p-1.5 rounded-lg text-faint hover:text-primary-600 hover:bg-elevated">
                                 <Printer className="w-4 h-4" />
                             </button>
 

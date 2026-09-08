@@ -210,10 +210,10 @@ export const ChargePaymentModal: React.FC<Props> = ({
                 {unpaid.length === 0 ? (
                     <div className="py-6 text-center">
                         <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500 dark:text-gray-400">To'lanmagan qator yo'q</p>
+                        <p className="text-sm text-muted">To'lanmagan qator yo'q</p>
                     </div>
                 ) : (
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-700 max-h-64 overflow-y-auto">
+                    <div className="border border-line rounded-xl divide-y divide-line max-h-64 overflow-y-auto">
                         {unpaid.map(c => {
                             const on = plan[c.id] != null;
                             return (
@@ -221,8 +221,8 @@ export const ChargePaymentModal: React.FC<Props> = ({
                                     <input type="checkbox" checked={on} onChange={() => toggle(c)}
                                         className="w-4 h-4 rounded accent-emerald-600 shrink-0" />
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
-                                        <p className="text-[11px] text-gray-400">
+                                        <p className="text-sm font-medium text-ink truncate">{c.name}</p>
+                                        <p className="text-[11px] text-faint">
                                             {c.quantity > 1 && `${c.quantity} x ${num(c.unitPrice)} · `}
                                             qarz {num(remainingOf(c))}
                                             {(c.discount || 0) > 0 && ` · chegirma ${num(c.discount)}`}
@@ -233,7 +233,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                                         <button
                                             onClick={() => { setDiscountFor(c); setDiscountVal(String(c.discount || 0)); }}
                                             title="Chegirma"
-                                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 shrink-0">
+                                            className="p-1.5 rounded-lg text-faint hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 shrink-0">
                                             <Percent className="w-4 h-4" />
                                         </button>
                                     )}
@@ -241,7 +241,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                                         <input type="number" value={plan[c.id] ?? ''} disabled={!on}
                                             onChange={(e) => setAmount(c, e.target.value)}
                                             onFocus={(e) => e.currentTarget.select()}
-                                            className="w-full px-2 py-1.5 text-sm text-right tabular-nums border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white disabled:opacity-40" />
+                                            className="w-full px-2 py-1.5 text-sm text-right tabular-nums border border-line rounded-lg bg-surface text-ink disabled:opacity-40" />
                                     </div>
                                 </div>
                             );
@@ -253,7 +253,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                 {unpaid.length > 0 && (
                     <div>
                         <div className="flex items-center justify-between mb-2">
-                            <h4 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <h4 className="text-xs font-bold uppercase tracking-wide text-muted">
                                 To'lov usuli
                             </h4>
                             {splits.length < 3 && (
@@ -282,10 +282,10 @@ export const ChargePaymentModal: React.FC<Props> = ({
                                             <div className="w-32 shrink-0">
                                                 <input type="number" value={p.amount} placeholder="summa"
                                                     onChange={(e) => setSplits(s => s.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
-                                                    className="w-full h-10 px-2 text-sm text-right tabular-nums border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                                    className="w-full h-10 px-2 text-sm text-right tabular-nums border border-line rounded-lg bg-surface text-ink" />
                                             </div>
                                             <button onClick={() => setSplits(s => s.filter((_, j) => j !== i))}
-                                                className="p-2 text-gray-400 hover:text-red-600 shrink-0">
+                                                className="p-2 text-faint hover:text-red-600 shrink-0">
                                                 <X className="w-4 h-4" />
                                             </button>
                                         </>
@@ -295,7 +295,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                         </div>
 
                         {multiMethod && (
-                            <p className={`mt-2 text-xs ${splitMismatch ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-400'}`}>
+                            <p className={`mt-2 text-xs ${splitMismatch ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-faint'}`}>
                                 Usullar: {num(splitSum)} / {num(selectedTotal)}
                                 {splitMismatch && ` — farq ${num(Math.abs(selectedTotal - splitSum))}`}
                             </p>
@@ -325,16 +325,16 @@ export const ChargePaymentModal: React.FC<Props> = ({
 
                 {/* ── To'langan qatorlar: qaytarish ────────────────────────── */}
                 {canRefund && paid.length > 0 && (
-                    <details className="border border-gray-200 dark:border-gray-700 rounded-xl">
-                        <summary className="p-3 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 cursor-pointer">
+                    <details className="border border-line rounded-xl">
+                        <summary className="p-3 text-xs font-bold uppercase tracking-wide text-muted cursor-pointer">
                             To'langanlar ({paid.length}) — qaytarish
                         </summary>
-                        <div className="border-t border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+                        <div className="border-t border-line divide-y divide-line">
                             {paid.map(c => (
                                 <div key={c.id} className="p-3 flex items-center gap-3">
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-sm text-gray-900 dark:text-white truncate">{c.name}</p>
-                                        <p className="text-[11px] text-gray-400">to'langan {num(c.paidAmount)}</p>
+                                        <p className="text-sm text-ink truncate">{c.name}</p>
+                                        <p className="text-[11px] text-faint">to'langan {num(c.paidAmount)}</p>
                                     </div>
                                     <button onClick={() => { setRefundFor(c); setRefundVal(String(c.paidAmount || 0)); }}
                                         className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100">
@@ -360,7 +360,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                 title="Chegirma" className="max-w-sm">
                 {discountFor && (
                     <div className="space-y-3">
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                        <p className="text-sm text-muted">
                             {discountFor.name} — narxi <b className="tabular-nums">{num(discountFor.unitPrice * (discountFor.quantity || 1))}</b>
                         </p>
                         <Input type="number" label="Chegirma summasi" value={discountVal}

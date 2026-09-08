@@ -97,14 +97,14 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center p-4 font-sans">
+        <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-4 font-sans">
             <div className="w-full max-w-lg">
                 <div className="text-center mb-6">
                     <Logo className="mx-auto w-16 h-16 shadow-lg rounded-2xl mb-4" />
-                    <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+                    <h1 className="text-3xl font-extrabold text-ink tracking-tight">
                         X<span className="text-primary dark:text-primary-400">Clinic</span>
                     </h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-2">
+                    <p className="text-muted mt-2">
                         {activateOnly ? 'Dasturni aktivlashtirish' : 'Birinchi sozlash'}
                     </p>
                 </div>
@@ -114,21 +114,21 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                     <div className="flex items-start gap-3">
                         <KeyRound className="w-5 h-5 text-primary-600 dark:text-primary-400 shrink-0 mt-0.5" />
                         <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                            <p className="text-sm font-semibold text-ink">
                                 1-qadam: kodni sotuvchiga yuboring
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-3">
+                            <p className="text-xs text-muted mt-1 mb-3">
                                 Aktivatsiya kaliti shu kompyuter uchun alohida tayyorlanadi.
                             </p>
                             <div className="flex items-center gap-2">
-                                <code className="flex-1 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 font-mono text-sm text-gray-900 dark:text-gray-100 break-all">
+                                <code className="flex-1 px-3 py-2 rounded-lg bg-elevated font-mono text-sm text-ink break-all">
                                     {machineId}
                                 </code>
                                 <button
                                     type="button"
                                     onClick={copyId}
                                     title="Nusxa olish"
-                                    className="shrink-0 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
+                                    className="shrink-0 p-2 rounded-lg border border-line hover:bg-elevated text-muted"
                                 >
                                     {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                                 </button>
@@ -148,7 +148,7 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
 
                         {!activateOnly && (
                             <>
-                                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-ink">
                                     <Building2 className="w-4 h-4 text-primary-600 dark:text-primary-400" />
                                     2-qadam: klinika va administrator
                                 </div>
@@ -208,7 +208,7 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                     </form>
                 </Card>
 
-                <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-4">
+                <p className="text-center text-xs text-faint mt-4">
                     Kalit yo'qolsa yoki kompyuter almashsa — sotuvchiga murojaat qiling.
                 </p>
             </div>

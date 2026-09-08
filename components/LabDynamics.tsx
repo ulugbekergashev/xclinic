@@ -55,8 +55,8 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
 
     if (loading) {
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <div className="h-4 w-40 bg-gray-100 dark:bg-gray-700 rounded animate-pulse" />
+            <div className="bg-surface rounded-xl border border-line p-4">
+                <div className="h-4 w-40 bg-elevated rounded animate-pulse" />
             </div>
         );
     }
@@ -75,10 +75,10 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
 
     if (series.length === 0) {
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 text-center">
-                <FlaskConical className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">Raqamli tahlil natijasi yo'q</p>
-                <p className="text-[11px] text-gray-400 mt-1">
+            <div className="bg-surface rounded-xl border border-line p-6 text-center">
+                <FlaskConical className="w-8 h-8 mx-auto text-faint mb-2" />
+                <p className="text-sm text-muted">Raqamli tahlil natijasi yo'q</p>
+                <p className="text-[11px] text-faint mt-1">
                     Dinamika faqat raqamli ko'rsatkichlardan quriladi: matnli natijalar
                     ("salbiy", "topilmadi") bu yerga tushmaydi.
                 </p>
@@ -87,14 +87,14 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
     }
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                <FlaskConical className="w-4 h-4 text-gray-400" />
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white">Tahlil dinamikasi</h3>
-                <span className="text-xs text-gray-400">({series.length} ko'rsatkich)</span>
+        <div className="bg-surface rounded-xl border border-line overflow-hidden">
+            <div className="px-4 py-3 border-b border-line-soft flex items-center gap-2">
+                <FlaskConical className="w-4 h-4 text-faint" />
+                <h3 className="text-sm font-bold text-ink">Tahlil dinamikasi</h3>
+                <span className="text-xs text-faint">({series.length} ko'rsatkich)</span>
             </div>
 
-            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            <div className="divide-y divide-line">
                 {series.map(s => {
                     const bad = s.lastFlag && s.lastFlag !== 'Normal';
                     const isOpen = open === s.parameterId;
@@ -103,13 +103,13 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
                             <button
                                 onClick={() => setOpen(isOpen ? '' : s.parameterId)}
                                 disabled={s.count < 2}
-                                className="w-full px-4 py-2.5 flex flex-wrap items-center gap-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 disabled:hover:bg-transparent transition-colors">
+                                className="w-full px-4 py-2.5 flex flex-wrap items-center gap-3 text-left hover:bg-elevated disabled:hover:bg-transparent transition-colors">
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-sm text-gray-900 dark:text-white truncate">
+                                    <p className="text-sm text-ink truncate">
                                         {s.name}
-                                        {s.unit ? <span className="text-gray-400 font-normal"> · {s.unit}</span> : null}
+                                        {s.unit ? <span className="text-faint font-normal"> · {s.unit}</span> : null}
                                     </p>
-                                    <p className="text-[11px] text-gray-400">
+                                    <p className="text-[11px] text-faint">
                                         norma {refText(s.refLow, s.refHigh)}
                                         {' · '}{s.count} o'lchov
                                         {s.count < 2 ? ' (taqqoslash uchun yetarli emas)' : ''}
@@ -124,11 +124,11 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
                                         {s.delta > 0 ? '+' : ''}{s.delta}
                                     </span>
                                 )}
-                                {s.delta === 0 && <Minus className="w-3.5 h-3.5 text-gray-300" />}
+                                {s.delta === 0 && <Minus className="w-3.5 h-3.5 text-faint" />}
 
                                 <span className={`text-sm font-bold tabular-nums shrink-0 ${bad
                                     ? s.lastFlag === 'High' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
-                                    : 'text-gray-900 dark:text-white'}`}>
+                                    : 'text-ink'}`}>
                                     {s.last}
                                     {s.lastFlag === 'High' ? ' ↑' : s.lastFlag === 'Low' ? ' ↓' : ''}
                                 </span>
@@ -143,7 +143,7 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
                                             <span key={i}
                                                 className={`px-1.5 py-0.5 rounded text-[10px] tabular-nums ${p.flag && p.flag !== 'Normal'
                                                     ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
-                                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
+                                                    : 'bg-elevated text-muted'}`}>
                                                 {p.value} <span className="opacity-60">{fmtDate(p.at)}</span>
                                             </span>
                                         ))}

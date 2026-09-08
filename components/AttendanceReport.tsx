@@ -22,13 +22,13 @@ import { api } from '../services/api';
    ───────────────────────────────────────────────────────────────── */
 const StatTile: React.FC<{ label: string; value: string; hint?: string; tone?: 'ok' | 'warn' | 'plain' }> =
   ({ label, value, hint, tone = 'plain' }) => (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-      <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
+    <div className="bg-surface rounded-xl border border-line p-4">
+      <div className="text-xs text-muted">{label}</div>
       <div className={`text-2xl font-bold mt-1 ${
         tone === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
         : tone === 'warn' ? 'text-amber-600 dark:text-amber-400'
-        : 'text-gray-900 dark:text-white'}`}>{value}</div>
-      {hint && <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{hint}</div>}
+        : 'text-ink'}`}>{value}</div>
+      {hint && <div className="text-xs text-faint mt-0.5">{hint}</div>}
     </div>
   );
 
@@ -43,13 +43,13 @@ const GRID = '#374151';
 const ChartTip: React.FC<any> = ({ active, payload, label, suffix }) => {
   if (!active || !payload || !payload.length) return null;
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 shadow-lg text-xs">
-      <div className="font-semibold text-gray-900 dark:text-white mb-1">{label}</div>
+    <div className="rounded-lg border border-line bg-surface px-3 py-2 shadow-lg text-xs">
+      <div className="font-semibold text-ink mb-1">{label}</div>
       {payload.map((x: any) => (
         <div key={x.dataKey} className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: x.color || x.fill }} />
-          <span className="text-gray-500 dark:text-gray-400">{x.name}:</span>
-          <span className="font-medium text-gray-900 dark:text-white tabular-nums">
+          <span className="text-muted">{x.name}:</span>
+          <span className="font-medium text-ink tabular-nums">
             {formatNumber(x.value)}{suffix || ''}
           </span>
         </div>
@@ -62,7 +62,7 @@ const AttendanceReport: React.FC<{
   data: any; busy: boolean; days: number; onDays: (d: number) => void; error: string | null;
 }> = ({ data, busy, days, onDays, error }) => {
   if (busy && !data) {
-    return <div className="flex-1 grid place-items-center text-gray-400 py-20">Hisobot yig'ilmoqda…</div>;
+    return <div className="flex-1 grid place-items-center text-faint py-20">Hisobot yig'ilmoqda…</div>;
   }
   if (!data) {
     /* Sabab KO'RSATILADI. Ilgari bu yerda quruq «yuklab bo'lmadi»
@@ -71,13 +71,13 @@ const AttendanceReport: React.FC<{
     return (
       <div className="flex-1 grid place-items-center py-20 px-4">
         <div className="text-center max-w-md">
-          <div className="text-gray-500 dark:text-gray-400 mb-2">Hisobotni yuklab bo'lmadi.</div>
+          <div className="text-muted mb-2">Hisobotni yuklab bo'lmadi.</div>
           {error && (
             <div className="text-xs font-mono text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2 mb-2">
               {error}
             </div>
           )}
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-faint">
             Agar «404» yozilgan bo'lsa — server eski versiyada ishlayapti, uni qayta ishga tushirish kerak.
           </div>
         </div>
@@ -107,20 +107,20 @@ const AttendanceReport: React.FC<{
     <div className="flex-1 overflow-auto space-y-4 pb-4">
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-gray-500 dark:text-gray-400">Davr:</span>
+        <span className="text-sm text-muted">Davr:</span>
         {[30, 90, 365].map(d => (
           <button key={d} type="button" onClick={() => onDays(d)}
             className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
               days === d
                 ? 'border-primary-600 bg-primary-600 text-white'
-                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                : 'border-line text-muted hover:bg-elevated'}`}>
             {d === 365 ? '1 yil' : `${d} kun`}
           </button>
         ))}
-        <span className="text-xs text-gray-400 ml-1">
+        <span className="text-xs text-faint ml-1">
           {data.range?.from} — {data.range?.to} · {data.range?.days} kunda yozuv bor
         </span>
-        {busy && <span className="text-xs text-gray-400">yangilanmoqda…</span>}
+        {busy && <span className="text-xs text-faint">yangilanmoqda…</span>}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -133,8 +133,8 @@ const AttendanceReport: React.FC<{
       </div>
 
       {data.best && data.worst && data.best.name !== data.worst.name && (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <div className="text-sm text-gray-600 dark:text-gray-300">
+        <div className="rounded-xl border border-line bg-surface p-4">
+          <div className="text-sm text-muted">
             Eng gavjum kun — <b className="text-emerald-600 dark:text-emerald-400">{data.best.name}</b>,
             kuniga o'rtacha <b>{data.best.avgVisits}</b> ta qabul.
             Eng bo'shi — <b className="text-amber-600 dark:text-amber-400">{data.worst.name}</b>,
@@ -143,20 +143,20 @@ const AttendanceReport: React.FC<{
               <> Farqi <b>{Math.round((data.best.avgVisits / data.worst.avgVisits) * 10) / 10} barobar</b>.</>
             )}
           </div>
-          <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          <div className="text-xs text-faint mt-1">
             Shifokorlar jadvalini shu nisbatga qarab tuzish mumkin.
           </div>
         </div>
       )}
 
       {/* ── Kunlik dinamika ─────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <h3 className="font-semibold text-gray-900 dark:text-white">Kunma-kun</h3>
-        <p className="text-xs text-gray-400 mb-3">
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <h3 className="font-semibold text-ink">Kunma-kun</h3>
+        <p className="text-xs text-faint mb-3">
           Ustunlar — yozilgan va kelgan; chiziq — tushum (ming so'm, o'ng o'q)
         </p>
         {daily.length === 0 ? (
-          <div className="text-sm text-gray-400 py-10 text-center">Bu davrda yozuv yo'q</div>
+          <div className="text-sm text-faint py-10 text-center">Bu davrda yozuv yo'q</div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={daily} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
@@ -176,9 +176,9 @@ const AttendanceReport: React.FC<{
 
       <div className="grid lg:grid-cols-2 gap-4">
         {/* ── Hafta kunlari ────────────────────────────────────── */}
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <h3 className="font-semibold text-gray-900 dark:text-white">Hafta kunlari</h3>
-          <p className="text-xs text-gray-400 mb-3">Kuniga o'rtacha nechta qabul</p>
+        <div className="rounded-xl border border-line bg-surface p-4">
+          <h3 className="font-semibold text-ink">Hafta kunlari</h3>
+          <p className="text-xs text-faint mb-3">Kuniga o'rtacha nechta qabul</p>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={wdChart} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} vertical={false} />
@@ -194,17 +194,17 @@ const AttendanceReport: React.FC<{
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-faint mt-1">
             Yashil — eng gavjum, sariq — eng bo'sh kunlar.
           </p>
         </div>
 
         {/* ── Soatlar ──────────────────────────────────────────── */}
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-          <h3 className="font-semibold text-gray-900 dark:text-white">Kun davomida</h3>
-          <p className="text-xs text-gray-400 mb-3">Qaysi soatda gavjum</p>
+        <div className="rounded-xl border border-line bg-surface p-4">
+          <h3 className="font-semibold text-ink">Kun davomida</h3>
+          <p className="text-xs text-faint mb-3">Qaysi soatda gavjum</p>
           {hours.length === 0 ? (
-            <div className="text-sm text-gray-400 py-16 text-center">Ma'lumot yo'q</div>
+            <div className="text-sm text-faint py-16 text-center">Ma'lumot yo'q</div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={hours} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
@@ -222,11 +222,11 @@ const AttendanceReport: React.FC<{
       </div>
 
       {/* ── Shifokorlar ────────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <h3 className="font-semibold text-gray-900 dark:text-white">Shifokorlar bo'yicha</h3>
-        <p className="text-xs text-gray-400 mb-3">Yozuvlar soni va nechtasi kelgani</p>
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <h3 className="font-semibold text-ink">Shifokorlar bo'yicha</h3>
+        <p className="text-xs text-faint mb-3">Yozuvlar soni va nechtasi kelgani</p>
         {docs.length === 0 ? (
-          <div className="text-sm text-gray-400 py-10 text-center">Ma'lumot yo'q</div>
+          <div className="text-sm text-faint py-10 text-center">Ma'lumot yo'q</div>
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(160, docs.length * 38)}>
             <BarChart data={docs} layout="vertical" margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
@@ -244,12 +244,12 @@ const AttendanceReport: React.FC<{
       </div>
 
       {/* ── Raqamli jadval ─────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Hafta kunlari — raqamlar</h3>
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <h3 className="font-semibold text-ink mb-3">Hafta kunlari — raqamlar</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[560px]">
             <thead>
-              <tr className="text-xs text-gray-500 dark:text-gray-400">
+              <tr className="text-xs text-muted">
                 <th className="text-left font-normal pb-2">Kun</th>
                 <th className="text-right font-normal pb-2">Kuniga o'rtacha</th>
                 <th className="text-right font-normal pb-2">Yozilgan</th>
@@ -260,9 +260,9 @@ const AttendanceReport: React.FC<{
             </thead>
             <tbody>
               {wd.map((w: any) => (
-                <tr key={w.weekday} className="border-t border-gray-100 dark:border-gray-700">
-                  <td className="py-2 font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                    {w.name}<span className="text-xs text-gray-400 font-normal ml-1">{w.days} kun</span>
+                <tr key={w.weekday} className="border-t border-line-soft">
+                  <td className="py-2 font-medium text-ink whitespace-nowrap">
+                    {w.name}<span className="text-xs text-faint font-normal ml-1">{w.days} kun</span>
                   </td>
                   <td className="py-2 text-right tabular-nums font-semibold">{w.avgVisits}</td>
                   <td className="py-2 text-right tabular-nums">{formatNumber(w.booked)}</td>

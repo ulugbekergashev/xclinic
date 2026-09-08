@@ -270,7 +270,7 @@ export const Patients: React.FC<PatientsProps> = ({
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-2">
         <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+          <h1 className="text-3xl font-extrabold text-ink tracking-tight">
             {t('patients.title')}
           </h1>
           <div className="flex items-center gap-4 mt-2">
@@ -290,7 +290,7 @@ export const Patients: React.FC<PatientsProps> = ({
         <div className="flex flex-wrap gap-3 w-full lg:w-auto">
           <Button
             variant="secondary" 
-            className="flex-1 lg:flex-none justify-center gap-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all active:scale-95 py-2.5"
+            className="flex-1 lg:flex-none justify-center gap-2 bg-surface border-line shadow-sm hover:shadow-md transition-all active:scale-95 py-2.5"
             onClick={handleExport}
           >
             <Download className="w-4 h-4" />
@@ -335,11 +335,11 @@ export const Patients: React.FC<PatientsProps> = ({
       <Card className="p-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-faint" />
             <input
               type="text"
               placeholder={t('patients.search.placeholder')}
-              className="pl-9 h-9 w-full rounded-md border border-gray-300 bg-transparent text-sm focus:ring-2 focus:ring-primary-500 dark:border-gray-700 dark:text-white"
+              className="pl-9 h-9 w-full rounded-md border border-line bg-transparent text-sm focus:ring-2 focus:ring-primary-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -348,7 +348,7 @@ export const Patients: React.FC<PatientsProps> = ({
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-2 px-4 h-9 rounded-md border text-sm font-medium transition-colors ${showFilters || activeFiltersCount > 0
               ? 'border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400'
-              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              : 'border-line text-muted hover:bg-elevated'
               }`}
           >
             <Filter className="w-4 h-4" />
@@ -364,13 +364,13 @@ export const Patients: React.FC<PatientsProps> = ({
 
         {/* Expanded filter panel */}
         {showFilters && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-2 border-t border-line-soft">
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Status</label>
+              <label className="block text-xs font-medium text-muted mb-1">Status</label>
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full h-9 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white px-2 focus:ring-2 focus:ring-primary-500"
+                className="w-full h-9 rounded-md border border-line bg-transparent text-sm px-2 focus:ring-2 focus:ring-primary-500"
               >
                 <option value="all">{t('patients.filter.all')}</option>
                 <option value="active">{t('patients.filter.active')}</option>
@@ -379,11 +379,11 @@ export const Patients: React.FC<PatientsProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Jins</label>
+              <label className="block text-xs font-medium text-muted mb-1">Jins</label>
               <select
                 value={filterGender}
                 onChange={(e) => setFilterGender(e.target.value)}
-                className="w-full h-9 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white px-2 focus:ring-2 focus:ring-primary-500"
+                className="w-full h-9 rounded-md border border-line bg-transparent text-sm px-2 focus:ring-2 focus:ring-primary-500"
               >
                 <option value="all">{t('patients.filter.all')}</option>
                 <option value="male">{t('patients.filter.male')}</option>
@@ -391,11 +391,11 @@ export const Patients: React.FC<PatientsProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Shifokor</label>
+              <label className="block text-xs font-medium text-muted mb-1">Shifokor</label>
               <select
                 value={filterDoctor}
                 onChange={(e) => setFilterDoctor(e.target.value)}
-                className="w-full h-9 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white px-2 focus:ring-2 focus:ring-primary-500"
+                className="w-full h-9 rounded-md border border-line bg-transparent text-sm px-2 focus:ring-2 focus:ring-primary-500"
               >
                 <option value="all">{t('patients.filter.all')}</option>
                 <option value="none">{t('patients.filter.unassigned')}</option>
@@ -405,21 +405,21 @@ export const Patients: React.FC<PatientsProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tug'ilganidan boshlab</label>
+              <label className="block text-xs font-medium text-muted mb-1">Tug'ilganidan boshlab</label>
               <input
                 type="date"
                 value={filterDateFrom}
                 onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="w-full h-9 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white px-2 focus:ring-2 focus:ring-primary-500"
+                className="w-full h-9 rounded-md border border-line bg-transparent text-sm px-2 focus:ring-2 focus:ring-primary-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tugash sanasi</label>
+              <label className="block text-xs font-medium text-muted mb-1">Tugash sanasi</label>
               <input
                 type="date"
                 value={filterDateTo}
                 onChange={(e) => setFilterDateTo(e.target.value)}
-                className="w-full h-9 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white px-2 focus:ring-2 focus:ring-primary-500"
+                className="w-full h-9 rounded-md border border-line bg-transparent text-sm px-2 focus:ring-2 focus:ring-primary-500"
               />
             </div>
 
@@ -444,23 +444,23 @@ export const Patients: React.FC<PatientsProps> = ({
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
-              <tr className="border-b border-gray-200 dark:border-gray-700">
-                <th className="px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider">{t('patients.table.name')}</th>
-                <th className="px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider">{t('patients.table.phone')}</th>
-                <th className="px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider">{t('patients.table.age_gender')}</th>
-                <th className="px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider">{t('patients.table.doctor')}</th>
-                <th className="px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider">{t('patients.table.lastVisit')}</th>
-                <th className="px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider">DMED</th>
-                <th className="px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider">{t('patients.table.status')}</th>
-                <th className="px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider text-right">{t('patients.table.actions')}</th>
+            <thead className="bg-elevated">
+              <tr className="border-b border-line">
+                <th className="px-6 py-4 text-xs font-medium text-muted uppercase tracking-wider">{t('patients.table.name')}</th>
+                <th className="px-6 py-4 text-xs font-medium text-muted uppercase tracking-wider">{t('patients.table.phone')}</th>
+                <th className="px-6 py-4 text-xs font-medium text-muted uppercase tracking-wider">{t('patients.table.age_gender')}</th>
+                <th className="px-6 py-4 text-xs font-medium text-muted uppercase tracking-wider">{t('patients.table.doctor')}</th>
+                <th className="px-6 py-4 text-xs font-medium text-muted uppercase tracking-wider">{t('patients.table.lastVisit')}</th>
+                <th className="px-6 py-4 text-xs font-medium text-muted uppercase tracking-wider">DMED</th>
+                <th className="px-6 py-4 text-xs font-medium text-muted uppercase tracking-wider">{t('patients.table.status')}</th>
+                <th className="px-6 py-4 text-xs font-medium text-muted uppercase tracking-wider text-right">{t('patients.table.actions')}</th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-surface divide-y divide-line">
               {filteredPatients.map((patient) => (
                 <tr
                   key={patient.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer group"
+                  className="hover:bg-elevated transition-colors cursor-pointer group"
                   onClick={() => onPatientClick(patient.id)}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -473,22 +473,22 @@ export const Patients: React.FC<PatientsProps> = ({
                         )}
                       </div>
                       <div className="ml-3">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                        <div className="text-sm font-medium text-ink group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                           {formatFullName(patient)}
                         </div>
-                        <div className="text-xs text-gray-500">ID: {patient.id}</div>
+                        <div className="text-xs text-muted">ID: {patient.id}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{showPatientPhone ? patient.phone : maskPhone(patient.phone)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{showPatientPhone ? patient.phone : maskPhone(patient.phone)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
                     {calcAge(patient.dob) ?? 'N/A'} / {patient.gender === 'Male' ? 'Erkak' : 'Ayol'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {(() => {
                       const docName = getPatientDoctorName(patient);
                       return docName ? (
-                        <span className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
+                        <span className="flex items-center gap-1.5 text-muted">
                           <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 text-xs font-bold">
                             {docName[0]}
                           </div>
@@ -501,14 +501,14 @@ export const Patients: React.FC<PatientsProps> = ({
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{patient.lastVisit && patient.lastVisit !== 'Never' ? formatDay(patient.lastVisit) : 'Hali kelmagan'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{patient.lastVisit && patient.lastVisit !== 'Never' ? formatDay(patient.lastVisit) : 'Hali kelmagan'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {patient.pinfl ? (
                       <span className="text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 w-fit">
                         <Activity className="w-3 h-3" /> {patient.pinfl}
                       </span>
                     ) : (
-                      <span className="text-gray-400 text-[10px]">—</span>
+                      <span className="text-faint text-[10px]">—</span>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -536,7 +536,7 @@ export const Patients: React.FC<PatientsProps> = ({
                           bor edi. */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditing(patient); }}
-                        className="text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 p-1.5 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                        className="text-muted hover:text-primary-600 dark:hover:text-primary-400 p-1.5 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
                         title="Tahrirlash"
                       >
                         <Pencil className="w-4 h-4" />
@@ -546,7 +546,7 @@ export const Patients: React.FC<PatientsProps> = ({
                           e.stopPropagation();
                           if (await confirmAction({ title: t('patients.deleteConfirm') })) onDeletePatient(patient.id);
                         }}
-                        className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        className="text-faint hover:text-red-600 dark:hover:text-red-400 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                         title={t('patients.actions.delete')}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -557,8 +557,8 @@ export const Patients: React.FC<PatientsProps> = ({
               ))}
               {filteredPatients.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                    <Search className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                  <td colSpan={7} className="px-6 py-12 text-center text-muted">
+                    <Search className="w-10 h-10 mx-auto mb-2 text-faint" />
                     So'rovingiz bo'yicha bemorlar topilmadi.
                   </td>
                 </tr>
@@ -572,18 +572,18 @@ export const Patients: React.FC<PatientsProps> = ({
       <Modal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} title="Doktorga Biriktirish">
         {selectedPatient && (
           <div className="space-y-4">
-            <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+            <div className="flex items-center gap-3 p-3 bg-elevated rounded-lg">
               <div className="h-10 w-10 rounded-full bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center text-primary-600 font-bold">
                 {selectedPatient.firstName[0]}{selectedPatient.lastName[0]}
               </div>
               <div>
-                <p className="font-semibold text-gray-900 dark:text-white">{formatFullName(selectedPatient)}</p>
-                <p className="text-sm text-gray-500">{showPatientPhone ? selectedPatient.phone : maskPhone(selectedPatient.phone)}</p>
+                <p className="font-semibold text-ink">{formatFullName(selectedPatient)}</p>
+                <p className="text-sm text-muted">{showPatientPhone ? selectedPatient.phone : maskPhone(selectedPatient.phone)}</p>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Shifokorni tanlang</label>
+              <label className="block text-sm font-medium text-muted mb-2">Shifokorni tanlang</label>
               <DoctorPicker
                 doctors={doctors}
                 value={assignDoctorId}

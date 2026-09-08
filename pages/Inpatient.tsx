@@ -31,7 +31,7 @@ const BED_UI: Record<string, string> = {
     Free: 'bg-emerald-50 border-emerald-300 dark:bg-emerald-900/20 dark:border-emerald-700',
     Occupied: 'bg-primary-50 border-primary-300 dark:bg-primary-900/20 dark:border-primary-700',
     Cleaning: 'bg-amber-50 border-amber-300 dark:bg-amber-900/20 dark:border-amber-700',
-    Blocked: 'bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600',
+    Blocked: 'bg-elevated border-line',
 };
 const BED_LABEL: Record<string, string> = {
     Free: "Bo'sh", Occupied: 'Band', Cleaning: 'Tozalanmoqda', Blocked: 'Yopiq',
@@ -522,7 +522,7 @@ export const Inpatient: React.FC<Props> = ({
         finally { setSaving(false); }
     };
 
-    const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
+    const inputCls = 'w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 
     return (
         <div className="space-y-5">
@@ -530,10 +530,10 @@ export const Inpatient: React.FC<Props> = ({
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <BedDouble className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('inp.title')}</h2>
+                    <h2 className="text-xl font-bold text-ink">{t('inp.title')}</h2>
                 </div>
                 <div className="flex items-center gap-4 text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">{t('inp.bedLabel')}<b className="text-gray-900 dark:text-white tabular-nums">{stats.total}</b></span>
+                    <span className="text-muted">{t('inp.bedLabel')}<b className="text-ink tabular-nums">{stats.total}</b></span>
                     <span className="text-emerald-600 dark:text-emerald-400">{t('inp.free')}<b className="tabular-nums">{stats.free}</b></span>
                     <span className="text-primary-600 dark:text-primary-400">{t('inp.occupied')}<b className="tabular-nums">{stats.occupied}</b></span>
                     {stats.other > 0 && (
@@ -559,7 +559,7 @@ export const Inpatient: React.FC<Props> = ({
             )}
 
             {/* Bo'limlar */}
-            <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex gap-1 border-b border-line">
                 {([
                     ['beds', 'Palatalar'],
                     ['active', `Yotganlar (${active.length})`],
@@ -570,7 +570,7 @@ export const Inpatient: React.FC<Props> = ({
                     <button key={k} onClick={() => setTab(k as any)}
                         className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === k
                             ? 'border-primary-600 text-primary-600 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
+                            : 'border-transparent text-muted hover:text-muted'}`}>
                         {label}
                     </button>
                 ))}
@@ -587,12 +587,12 @@ export const Inpatient: React.FC<Props> = ({
                 ) : (
                     <div className="space-y-4">
                         {wards.map(w => (
-                            <div key={w.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                            <div key={w.id} className="bg-surface rounded-xl border border-line p-4">
                                 <div className="flex flex-wrap items-baseline gap-2 mb-3">
-                                    <h3 className="font-semibold text-gray-900 dark:text-white">{w.name}</h3>
-                                    <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">{w.kind}</span>
-                                    {w.floor && <span className="text-xs text-gray-400">{w.floor}-qavat</span>}
-                                    <span className="ml-auto text-sm text-gray-500 dark:text-gray-400 tabular-nums">{fmt(w.dailyRate)} so'm/kun</span>
+                                    <h3 className="font-semibold text-ink">{w.name}</h3>
+                                    <span className="text-xs px-2 py-0.5 rounded bg-elevated text-muted">{w.kind}</span>
+                                    {w.floor && <span className="text-xs text-faint">{w.floor}-qavat</span>}
+                                    <span className="ml-auto text-sm text-muted tabular-nums">{fmt(w.dailyRate)} so'm/kun</span>
                                     {/* PALATANI TAHRIRLASH VA KOYKA QO'SHISH.
 
                                         Ilgari koykalar FAQAT palata yaratilganda,
@@ -602,11 +602,11 @@ export const Inpatient: React.FC<Props> = ({
                                     {canManageStay && (
                                         <span className="flex items-center gap-1">
                                             <button onClick={() => openWardEdit(w)} title={t('inp.editWard')} aria-label={t('inp.editWard')}
-                                                className="p-1.5 text-gray-400 hover:text-primary-600 rounded-lg">
+                                                className="p-1.5 text-faint hover:text-primary-600 rounded-lg">
                                                 <Edit2 className="w-4 h-4" />
                                             </button>
                                             <button onClick={() => addBed(w.id)} disabled={saving} title={t('inp.addBed')}
-                                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 disabled:opacity-50">
+                                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border border-line text-muted hover:border-primary-400 disabled:opacity-50">
                                                 <Plus className="w-3.5 h-3.5" /> {t('inp.bed')}
                                             </button>
                                         </span>
@@ -621,8 +621,8 @@ export const Inpatient: React.FC<Props> = ({
                                                 <button
                                                     onClick={() => { if (b.status === 'Free') { if (canManageStay) setAdmitBed({ bed: b, ward: w }); } else if (occ) openDetail(admissions.find(a => a.id === occ.id) || null); }}
                                                     className="w-full text-left hover:opacity-80">
-                                                    <p className="text-sm font-medium text-gray-900 dark:text-white">{b.label}</p>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                                    <p className="text-sm font-medium text-ink">{b.label}</p>
+                                                    <p className="text-xs text-muted mt-0.5 truncate">
                                                         {occ ? occ.patientName : BED_LABEL[b.status]}
                                                     </p>
                                                 </button>
@@ -630,7 +630,7 @@ export const Inpatient: React.FC<Props> = ({
                                                     bo'lib qolardi va palata asta-sekin to'lib borardi. */}
                                                 {b.status === 'Cleaning' && (
                                                     <button onClick={() => markBedReady(b.id)} disabled={saving}
-                                                        className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-white/70 dark:bg-gray-900/40 text-amber-800 dark:text-amber-200 hover:bg-white disabled:opacity-50">
+                                                        className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-white/70 dark:bg-surface/40 text-amber-800 dark:text-amber-200 hover:bg-surface disabled:opacity-50">
                                                         <Sparkles className="w-3 h-3" /> Koyka tayyor
                                                     </button>
                                                 )}
@@ -639,7 +639,7 @@ export const Inpatient: React.FC<Props> = ({
                                                     unga o'tadigan yo'l YO'Q edi. */}
                                                 {canManageStay && (b.status === 'Free' || b.status === 'Blocked') && (
                                                     <button onClick={() => toggleBedBlock(b)} disabled={saving}
-                                                        className="mt-2 w-full px-2 py-1 rounded text-[11px] font-medium bg-white/60 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 hover:bg-white disabled:opacity-50">
+                                                        className="mt-2 w-full px-2 py-1 rounded text-[11px] font-medium bg-white/60 dark:bg-surface/40 text-muted hover:bg-surface disabled:opacity-50">
                                                         {b.status === 'Blocked' ? t('inp.unblockBed') : t('inp.blockBed')}
                                                     </button>
                                                 )}
@@ -657,34 +657,34 @@ export const Inpatient: React.FC<Props> = ({
             {(tab === 'active' || tab === 'archive') && (
                 <>
                     <div className="relative">
-                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                         <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('inp.searchPh')} className={`${inputCls} pl-9`} />
                     </div>
                     {listed.length === 0 ? (
-                        <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <p className="text-gray-500 dark:text-gray-400">{t('inp.noRecords')}</p>
+                        <div className="text-center py-16 bg-surface rounded-xl border border-line">
+                            <p className="text-muted">{t('inp.noRecords')}</p>
                         </div>
                     ) : (
                         <div className="grid gap-3">
                             {listed.map(a => {
                                 const days = daysIn(a.admittedAt, a.dischargedAt);
                                 return (
-                                    <div key={a.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                                    <div key={a.id} className="bg-surface rounded-xl border border-line p-4">
                                         <div className="flex flex-wrap items-start gap-3">
                                             <div className="min-w-0 flex-1">
-                                                <h3 className="font-semibold text-gray-900 dark:text-white">{a.patientName}</h3>
-                                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                                                <h3 className="font-semibold text-ink">{a.patientName}</h3>
+                                                <p className="text-sm text-muted mt-0.5">
                                                     {a.bed ? `${a.bed.ward?.name} / ${a.bed.label}` : 'Koyka biriktirilmagan'}
                                                     {a.doctorName ? ` · ${a.doctorName}` : ''}
                                                 </p>
-                                                {a.diagnosis && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{a.diagnosis}</p>}
-                                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                                {a.diagnosis && <p className="text-xs text-muted mt-1">{a.diagnosis}</p>}
+                                                <p className="text-xs text-faint mt-1">
                                                     {fmtDate(a.admittedAt)} — {a.dischargedAt ? fmtDate(a.dischargedAt) : 'hozirgacha'} · {days} kun
                                                 </p>
                                             </div>
                                             <div className="text-right shrink-0">
-                                                <p className="font-semibold text-gray-900 dark:text-white tabular-nums">{fmt(a.dailyRate * days)} so'm</p>
-                                                <p className="text-xs text-gray-400">{fmt(a.dailyRate)} × {days} kun</p>
+                                                <p className="font-semibold text-ink tabular-nums">{fmt(a.dailyRate * days)} so'm</p>
+                                                <p className="text-xs text-faint">{fmt(a.dailyRate)} × {days} kun</p>
                                                 <div className="flex gap-2 mt-2 justify-end">
                                                     <button onClick={() => openDetail(a)}
                                                         className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
@@ -692,7 +692,7 @@ export const Inpatient: React.FC<Props> = ({
                                                     </button>
                                                     {a.status === 'Active' && canManageStay && (
                                                         <button onClick={() => openDischarge(a)}
-                                                            className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                                                            className="px-3 py-1.5 text-xs font-medium border border-line rounded-lg hover:bg-elevated">
                                                             Chiqarish
                                                         </button>
                                                     )}
@@ -710,19 +710,19 @@ export const Inpatient: React.FC<Props> = ({
             {/* ── Yotqizish ─────────────────────────────────────────────────── */}
             {admitBed && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setAdmitBed(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <div className="bg-surface rounded-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-line flex items-center justify-between">
                             <div>
-                                <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.admit')}</h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <h3 className="font-semibold text-ink">{t('inp.admit')}</h3>
+                                <p className="text-xs text-muted">
                                     {admitBed.ward.name} / {admitBed.bed.label} · {fmt(admitBed.ward.dailyRate)} so'm/kun
                                 </p>
                             </div>
-                            <button onClick={() => setAdmitBed(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                            <button onClick={() => setAdmitBed(null)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-5 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('common.patient2')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('common.patient2')}</label>
                                 <select value={admitForm.patientId} onChange={e => setAdmitForm(f => ({ ...f, patientId: e.target.value }))} className={inputCls}>
                                     <option value="">{t('common.choose')}</option>
                                     {patients.map(p => <option key={p.id} value={p.id}>{formatFullName(p)}</option>)}
@@ -740,16 +740,16 @@ export const Inpatient: React.FC<Props> = ({
                                 onChange={(id) => setAdmitForm(f => ({ ...f, doctorId: id }))}
                             />
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.admitReason')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.admitReason')}</label>
                                 <input value={admitForm.reason} onChange={e => setAdmitForm(f => ({ ...f, reason: e.target.value }))} className={inputCls} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.diagnosis')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.diagnosis')}</label>
                                 <input value={admitForm.diagnosis} onChange={e => setAdmitForm(f => ({ ...f, diagnosis: e.target.value }))} className={inputCls} />
                             </div>
                         </div>
-                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setAdmitBed(null)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
+                        <div className="p-5 border-t border-line flex justify-end gap-3">
+                            <button onClick={() => setAdmitBed(null)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={admit} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {saving ? '...' : 'Yotqizish'}
                             </button>
@@ -772,11 +772,11 @@ export const Inpatient: React.FC<Props> = ({
                                 <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                         </select>
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                        <span className="text-sm text-muted">
                             {schedule?.date || todayISO()}
                         </span>
                         <button onClick={loadSchedule} disabled={schedLoading}
-                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-line rounded-lg hover:bg-elevated disabled:opacity-50">
                             {schedLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
                             Yangilash
                         </button>
@@ -798,24 +798,24 @@ export const Inpatient: React.FC<Props> = ({
                     {schedLoading && !schedule ? (
                         <div className="space-y-2">
                             {[0, 1, 2].map(i => (
-                                <div key={i} className="h-20 bg-gray-100 dark:bg-gray-700/40 rounded-xl animate-pulse" />
+                                <div key={i} className="h-20 bg-elevated rounded-xl animate-pulse" />
                             ))}
                         </div>
                     ) : (schedule?.rows || []).length === 0 ? (
-                        <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <Pill className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                            <p className="text-gray-500 dark:text-gray-400">{t('inp.noMedsToday')}</p>
-                            <p className="text-xs text-gray-400 mt-1">
+                        <div className="text-center py-16 bg-surface rounded-xl border border-line">
+                            <Pill className="w-12 h-12 mx-auto text-faint mb-3" />
+                            <p className="text-muted">{t('inp.noMedsToday')}</p>
+                            <p className="text-xs text-faint mt-1">
                                 {t('inp.assignMed')} — yuqoridagi tugma.
                             </p>
                         </div>
                     ) : (
                         <div className="space-y-3">
                             {schedule.rows.map((row: any) => (
-                                <div key={row.admissionId} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                                    <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-2">
-                                        <p className="font-semibold text-gray-900 dark:text-white">{row.patientName}</p>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                                <div key={row.admissionId} className="bg-surface rounded-xl border border-line overflow-hidden">
+                                    <div className="px-4 py-2.5 bg-canvas/40 border-b border-line flex flex-wrap items-center gap-2">
+                                        <p className="font-semibold text-ink">{row.patientName}</p>
+                                        <span className="text-xs text-muted">
                                             {[row.ward, row.bed].filter(Boolean).join(' / ') || 'koyka yo\'q'}
                                         </span>
                                         <button
@@ -829,19 +829,19 @@ export const Inpatient: React.FC<Props> = ({
                                     </div>
 
                                     {(row.orders || []).length === 0 ? (
-                                        <p className="px-4 py-3 text-sm text-gray-400">{t('inp.noOrdersToday')}</p>
+                                        <p className="px-4 py-3 text-sm text-faint">{t('inp.noOrdersToday')}</p>
                                     ) : (
-                                        <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                                        <div className="divide-y divide-line">
                                             {row.orders.map((o: any) => {
                                                 const given = (o.marks || []).filter((m: any) => m.status === 'Given').length;
                                                 return (
                                                     <div key={o.id} className="px-4 py-2.5 flex flex-wrap items-center gap-2">
                                                         <div className="min-w-0 flex-1">
-                                                            <p className="text-sm text-gray-900 dark:text-white truncate">
+                                                            <p className="text-sm text-ink truncate">
                                                                 {o.name}
-                                                                {o.dosage ? <span className="text-gray-500"> · {o.dosage}</span> : null}
+                                                                {o.dosage ? <span className="text-muted"> · {o.dosage}</span> : null}
                                                             </p>
-                                                            <p className="text-xs text-gray-400">
+                                                            <p className="text-xs text-faint">
                                                                 {[o.route, o.frequency].filter(Boolean).join(' · ')}
                                                             </p>
                                                         </div>
@@ -890,11 +890,11 @@ export const Inpatient: React.FC<Props> = ({
 
             {detail && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDetail(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-3xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+                    <div className="bg-surface rounded-xl w-full max-w-3xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-line flex items-center gap-3">
                             <div className="min-w-0">
-                                <h3 className="font-semibold text-gray-900 dark:text-white truncate">{detail.patientName}</h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <h3 className="font-semibold text-ink truncate">{detail.patientName}</h3>
+                                <p className="text-xs text-muted">
                                     {detail.bed ? `${detail.bed.ward?.name} / ${detail.bed.label}` : '—'} · {fmtDate(detail.admittedAt)} dan
                                     {' · '}{daysIn(detail.admittedAt, detail.dischargedAt)} kun
                                 </p>
@@ -902,13 +902,13 @@ export const Inpatient: React.FC<Props> = ({
                             <div className="ml-auto flex items-center gap-2">
                                 {detail.status === 'Active' && canTransfer && (
                                     <button onClick={() => openTransfer(detail)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-line rounded-lg hover:bg-elevated">
                                         <ArrowRightLeft className="w-3.5 h-3.5" /> Ko'chirish
                                     </button>
                                 )}
                                 {detail.status === 'Active' && canManageStay && (
                                     <button onClick={() => openDischarge(detail)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-line rounded-lg hover:bg-elevated">
                                         <LogOut className="w-3.5 h-3.5" /> Chiqarish
                                     </button>
                                 )}
@@ -919,11 +919,11 @@ export const Inpatient: React.FC<Props> = ({
                                         { ...detail, patient: patients.find(p => p.id === detail.patientId) },
                                         currentClinic || undefined,
                                     )}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-line rounded-lg hover:bg-elevated">
                                         <Printer className="w-3.5 h-3.5" /> Epikriz
                                     </button>
                                 )}
-                                <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                                <button onClick={() => setDetail(null)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
                             </div>
                         </div>
 
@@ -939,16 +939,16 @@ export const Inpatient: React.FC<Props> = ({
                                 narsa. Depozit alohida sxema emas: u avans
                                 (`Patient.balance`), qaror В7. */}
                             {billing && (
-                                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
+                                <div className="p-3 rounded-lg bg-canvas/40 border border-line">
                                     <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                                        <span className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
-                                            <Wallet className="w-4 h-4 text-gray-400" />
+                                        <span className="flex items-center gap-1.5 text-sm text-muted">
+                                            <Wallet className="w-4 h-4 text-faint" />
                                             Yozilgan: <b className="tabular-nums">{fmt(billing.accrued)}</b>
                                         </span>
                                         <span className="text-sm text-emerald-600 dark:text-emerald-400">
                                             To'langan: <b className="tabular-nums">{fmt(billing.paid)}</b>
                                         </span>
-                                        <span className={`text-sm ${billing.due > 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-gray-400'}`}>
+                                        <span className={`text-sm ${billing.due > 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-faint'}`}>
                                             Qarz: <b className="tabular-nums">{fmt(billing.due)}</b>
                                         </span>
                                         {billing.advance > 0 && (
@@ -957,7 +957,7 @@ export const Inpatient: React.FC<Props> = ({
                                             </span>
                                         )}
                                         {detail.status === 'Active' && detail.dailyRate > 0 && (
-                                            <span className="text-xs text-gray-400 ml-auto">
+                                            <span className="text-xs text-faint ml-auto">
                                                 koyka {fmt(detail.dailyRate)}/kun
                                                 {bedDays && bedDays.charged > 0 ? ` · +${bedDays.charged} kun yozildi` : ''}
                                             </span>
@@ -966,9 +966,9 @@ export const Inpatient: React.FC<Props> = ({
 
                                     {/* Nima uchun bunday summa: koyka, dori, xizmat */}
                                     {Object.keys(billing.bySource || {}).length > 0 && (
-                                        <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                        <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-line">
                                             {Object.entries(billing.bySource).map(([src, v]: any) => (
-                                                <span key={src} className="text-[11px] text-gray-500 dark:text-gray-400">
+                                                <span key={src} className="text-[11px] text-muted">
                                                     {SOURCE_LABEL[src] || src}: <b className="tabular-nums">{fmt(v.total)}</b>
                                                     {v.paid > 0 && v.paid < v.total ? ` (to'landi ${fmt(v.paid)})` : ''}
                                                     {v.count > 1 ? ` · ${v.count} ta` : ''}
@@ -1013,7 +1013,7 @@ export const Inpatient: React.FC<Props> = ({
 
                             {/* ── Harorat varag'i ───────────────────────────── */}
                             <div>
-                                <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                                <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-2">
                                     <Activity className="w-4 h-4" /> Harorat varag'i
                                 </h4>
                                 <VitalsChart vitals={vitals} />
@@ -1023,24 +1023,24 @@ export const Inpatient: React.FC<Props> = ({
                             {mar && (mar.orders || []).length > 0 && (
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                                        <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                                        <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
                                             <ClipboardList className="w-4 h-4" /> Dori varag'i
                                         </h4>
                                         <input type="date" value={marDate}
                                             onChange={e => { setMarDate(e.target.value); reloadMar(e.target.value); }}
-                                            className="ml-auto px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                            className="ml-auto px-2 py-1 text-xs border border-line rounded bg-surface text-ink" />
                                     </div>
 
-                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700">
+                                    <div className="border border-line rounded-lg divide-y divide-line">
                                         {mar.orders.map((o: any) => (
                                             <div key={o.id} className="p-3">
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <div className="min-w-0 flex-1">
-                                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                                        <p className="text-sm font-medium text-ink truncate">
                                                             {o.name}
-                                                            {o.dosage ? <span className="text-gray-500 font-normal"> · {o.dosage}</span> : null}
+                                                            {o.dosage ? <span className="text-muted font-normal"> · {o.dosage}</span> : null}
                                                         </p>
-                                                        <p className="text-xs text-gray-400">
+                                                        <p className="text-xs text-faint">
                                                             {[o.route, o.frequency].filter(Boolean).join(' · ') || 'Qabul tartibi ko\'rsatilmagan'}
                                                             {o.givenToday > 0 && (
                                                                 <span className="text-emerald-600 dark:text-emerald-400 font-semibold"> · bugun {o.givenToday} marta berildi</span>
@@ -1056,7 +1056,7 @@ export const Inpatient: React.FC<Props> = ({
                                                                 Berildi
                                                             </button>
                                                             <button onClick={() => { setSkipFor(o); setSkipReason(''); }}
-                                                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border border-line text-muted hover:bg-elevated">
                                                                 Berilmadi
                                                             </button>
                                                         </div>
@@ -1084,7 +1084,7 @@ export const Inpatient: React.FC<Props> = ({
                                         ))}
                                     </div>
                                     {!canGiveMeds && (
-                                        <p className="text-[11px] text-gray-400 mt-1.5">
+                                        <p className="text-[11px] text-faint mt-1.5">
                                             Belgi qo'yish hamshira, shifokor va adminda.
                                         </p>
                                     )}
@@ -1094,12 +1094,12 @@ export const Inpatient: React.FC<Props> = ({
                             {/* ── Ko'chirish tarixi ─────────────────────────── */}
                             {transferHistory.length > 0 && (
                                 <div>
-                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-2">
                                         <ArrowRightLeft className="w-4 h-4" /> Ko'chirishlar
                                     </h4>
                                     <div className="space-y-1">
                                         {transferHistory.map((t: any) => (
-                                            <p key={t.id} className="text-xs text-gray-600 dark:text-gray-300">
+                                            <p key={t.id} className="text-xs text-muted">
                                                 {fmtDate(t.movedAt)}
                                                 {t.movedByName ? ` · ${t.movedByName}` : ''}
                                                 {t.reason ? ` — ${t.reason}` : ''}
@@ -1112,8 +1112,8 @@ export const Inpatient: React.FC<Props> = ({
 
                             {/* Obxod qo'shish */}
                             {detail.status === 'Active' && (
-                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                                <div className="border border-line rounded-lg p-4">
+                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
                                         <Stethoscope className="w-4 h-4" /> Kunlik obxod
                                     </h4>
                                     <div className="grid grid-cols-3 gap-3 mb-3">
@@ -1132,7 +1132,7 @@ export const Inpatient: React.FC<Props> = ({
                             {/* Obxodlar tarixi */}
                             {!!detail.rounds?.length && (
                                 <div>
-                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-2">
                                         <CalendarDays className="w-4 h-4" /> Obxodlar ({detail.rounds.length})
                                     </h4>
                                     <div className="space-y-2">
@@ -1140,17 +1140,17 @@ export const Inpatient: React.FC<Props> = ({
                                             let vs: any = {};
                                             try { vs = r.vitalSigns ? JSON.parse(r.vitalSigns) : {}; } catch { }
                                             return (
-                                                <div key={r.id} className="text-sm border-l-2 border-gray-200 dark:border-gray-700 pl-3 py-1">
-                                                    <p className="text-xs text-gray-400">{r.date} {r.doctorName ? `· ${r.doctorName}` : ''}</p>
+                                                <div key={r.id} className="text-sm border-l-2 border-line pl-3 py-1">
+                                                    <p className="text-xs text-faint">{r.date} {r.doctorName ? `· ${r.doctorName}` : ''}</p>
                                                     {(vs.temperature || vs.bp || vs.pulse) && (
-                                                        <p className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                                                        <p className="text-xs text-muted tabular-nums">
                                                             {vs.temperature && `t ${vs.temperature}°C `}
                                                             {vs.bp && `· AB ${vs.bp} `}
                                                             {vs.pulse && `· puls ${vs.pulse}`}
                                                         </p>
                                                     )}
-                                                    {r.notes && <p className="text-gray-700 dark:text-gray-300">{r.notes}</p>}
-                                                    {r.plan && <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">Reja: {r.plan}</p>}
+                                                    {r.notes && <p className="text-muted">{r.notes}</p>}
+                                                    {r.plan && <p className="text-muted text-xs mt-0.5">Reja: {r.plan}</p>}
                                                 </div>
                                             );
                                         })}
@@ -1160,8 +1160,8 @@ export const Inpatient: React.FC<Props> = ({
 
                             {/* Dori tayinlash */}
                             {detail.status === 'Active' && (
-                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                                <div className="border border-line rounded-lg p-4">
+                                    <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
                                         <Pill className="w-4 h-4" /> Dori tayinlash
                                     </h4>
                                     <div className="grid grid-cols-2 gap-3 mb-3">
@@ -1181,24 +1181,24 @@ export const Inpatient: React.FC<Props> = ({
 
                             {!!detail.medicationOrders?.length && (
                                 <div>
-                                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{t('inp.medOrders')}</h4>
+                                    <h4 className="text-sm font-semibold text-ink mb-2">{t('inp.medOrders')}</h4>
                                     <div className="space-y-1.5">
                                         {detail.medicationOrders.map(m => {
                                             const stopped = (m as any).status === 'Stopped';
                                             return (
                                                 <div key={m.id} className={`text-sm flex flex-wrap items-center gap-x-2 ${stopped
-                                                    ? 'text-gray-400 dark:text-gray-500 line-through'
-                                                    : 'text-gray-700 dark:text-gray-300'}`}>
+                                                    ? 'text-faint line-through'
+                                                    : 'text-muted'}`}>
                                                     <span className="font-medium">{m.name}</span>
-                                                    {m.dosage && <span className="text-gray-500">{m.dosage}</span>}
-                                                    {m.route && <span className="text-gray-500">· {m.route}</span>}
-                                                    {m.frequency && <span className="text-gray-500">· {m.frequency}</span>}
+                                                    {m.dosage && <span className="text-muted">{m.dosage}</span>}
+                                                    {m.route && <span className="text-muted">· {m.route}</span>}
+                                                    {m.frequency && <span className="text-muted">· {m.frequency}</span>}
                                                     {stopped
-                                                        ? <span className="text-[10px] uppercase font-bold text-gray-400 no-underline">{t('inp.stopped')}</span>
+                                                        ? <span className="text-[10px] uppercase font-bold text-faint no-underline">{t('inp.stopped')}</span>
                                                         : canManageStay && (
                                                             <button onClick={() => stopMedication(m.id)} disabled={saving}
                                                                 title={t('inp.stopMed')} aria-label={t('inp.stopMed')}
-                                                                className="ml-auto p-1 text-gray-300 hover:text-red-500 rounded disabled:opacity-50">
+                                                                className="ml-auto p-1 text-faint hover:text-red-500 rounded disabled:opacity-50">
                                                                 <Ban className="w-3.5 h-3.5" />
                                                             </button>
                                                         )}
@@ -1224,12 +1224,12 @@ export const Inpatient: React.FC<Props> = ({
                                 if (filled.length === 0) return null;
                                 return (
                                     <div>
-                                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{t('inp.dischargeEpicrisis')}</h4>
+                                        <h4 className="text-sm font-semibold text-ink mb-2">{t('inp.dischargeEpicrisis')}</h4>
                                         <div className="space-y-2">
                                             {filled.map(([k, v]) => (
                                                 <div key={k}>
-                                                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{k}</p>
-                                                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{v}</p>
+                                                    <p className="text-[11px] font-bold uppercase tracking-wide text-faint">{k}</p>
+                                                    <p className="text-sm text-muted whitespace-pre-wrap">{v}</p>
                                                 </div>
                                             ))}
                                         </div>
@@ -1244,14 +1244,14 @@ export const Inpatient: React.FC<Props> = ({
             {/* ── Dori tayinlash (kunlik varaq vkladkasidan) ───────────────── */}
             {assignOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setAssignOpen(false)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.assignMed')}</h3>
-                            <button onClick={() => setAssignOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                    <div className="bg-surface rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-line flex items-center justify-between">
+                            <h3 className="font-semibold text-ink">{t('inp.assignMed')}</h3>
+                            <button onClick={() => setAssignOpen(false)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-5 space-y-3">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.pickPatient')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.pickPatient')}</label>
                                 <select value={assignAdmId} onChange={e => setAssignAdmId(e.target.value)} className={inputCls}>
                                     <option value="">{t('inp.pickPatient')}</option>
                                     {admissions.filter(a => a.status === 'Active').map(a => (
@@ -1261,7 +1261,7 @@ export const Inpatient: React.FC<Props> = ({
                                     ))}
                                 </select>
                                 {admissions.filter(a => a.status === 'Active').length === 0 && (
-                                    <p className="mt-1 text-xs text-gray-400">{t('inp.noAdmitted')}</p>
+                                    <p className="mt-1 text-xs text-faint">{t('inp.noAdmitted')}</p>
                                 )}
                             </div>
                             {/* Dori nomi ombordan taklif qilinadi — bog'lanmagan
@@ -1280,8 +1280,8 @@ export const Inpatient: React.FC<Props> = ({
                                 <input value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))} className={inputCls} placeholder="Kuniga 2 mahal" />
                             </div>
                         </div>
-                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setAssignOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
+                        <div className="p-5 border-t border-line flex justify-end gap-3">
+                            <button onClick={() => setAssignOpen(false)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={() => addMedication(assignAdmId)} disabled={saving || !assignAdmId || !medForm.name.trim()}
                                 className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {saving ? '...' : t('inp.assignMed')}
@@ -1296,28 +1296,28 @@ export const Inpatient: React.FC<Props> = ({
                 koyka soni (yangi palatada) va tugma nomida. */}
             {(showWard || editWard) && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setShowWard(false); setEditWard(null); }}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">{editWard ? t('inp.editWard') : t('inp.newWard')}</h3>
-                            <button onClick={() => { setShowWard(false); setEditWard(null); }} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                    <div className="bg-surface rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-line flex items-center justify-between">
+                            <h3 className="font-semibold text-ink">{editWard ? t('inp.editWard') : t('inp.newWard')}</h3>
+                            <button onClick={() => { setShowWard(false); setEditWard(null); }} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-5 grid grid-cols-2 gap-4">
                             <div className="col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.name')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.name')}</label>
                                 <input value={wardForm.name} onChange={e => setWardForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder={t('inp.wardNamePh')} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.kind')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.kind')}</label>
                                 <select value={wardForm.kind} onChange={e => setWardForm(f => ({ ...f, kind: e.target.value }))} className={inputCls}>
                                     {['Umumiy', 'Yarim lyuks', 'Lyuks', 'Reanimatsiya'].map(k => <option key={k}>{k}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.floor')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.floor')}</label>
                                 <input value={wardForm.floor} onChange={e => setWardForm(f => ({ ...f, floor: e.target.value }))} className={inputCls} placeholder="1" />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.dailyPrice')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.dailyPrice')}</label>
                                 <input type="number" value={wardForm.dailyRate} onChange={e => setWardForm(f => ({ ...f, dailyRate: e.target.value }))} className={inputCls} placeholder="150000" />
                             </div>
                             {/* Koyka soni FAQAT yaratishda: mavjud palatada
@@ -1325,13 +1325,13 @@ export const Inpatient: React.FC<Props> = ({
                                 borlarini o'chirib yuborgandek ko'rinardi. */}
                             {!editWard && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.bedCount')}</label>
+                                    <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.bedCount')}</label>
                                     <input type="number" value={wardForm.bedCount} onChange={e => setWardForm(f => ({ ...f, bedCount: e.target.value }))} className={inputCls} />
                                 </div>
                             )}
                         </div>
-                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => { setShowWard(false); setEditWard(null); }} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">{t('common.cancel2')}</button>
+                        <div className="p-5 border-t border-line flex justify-end gap-3">
+                            <button onClick={() => { setShowWard(false); setEditWard(null); }} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={editWard ? saveWardEdit : createWard} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {saving ? '...' : (editWard ? t('inp.saveWard') : 'Yaratish')}
                             </button>
@@ -1344,17 +1344,17 @@ export const Inpatient: React.FC<Props> = ({
                 huquqiy ham to'g'ri emas. Lekin jimgina ham o'tkazmaymiz. */}
             {debtConfirm && (
                 <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4" onClick={() => setDebtConfirm(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+                    <div className="bg-surface rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
                         <div className="flex items-start gap-3 mb-4">
                             <Wallet className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                             <div>
-                                <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.hasDebt')}</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                <h3 className="font-semibold text-ink">{t('inp.hasDebt')}</h3>
+                                <p className="text-sm text-muted mt-1">
                                     {debtConfirm.count} qator, jami <b className="tabular-nums">{fmt(debtConfirm.due)}</b> so'm.
                                 </p>
                             </div>
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                        <p className="text-xs text-muted mb-4">
                             Chiqarish taqiqlanmaydi. Lekin qarz bemorning kartasida qoladi va
                             kassada ko'rinib turadi.
                         </p>
@@ -1378,19 +1378,19 @@ export const Inpatient: React.FC<Props> = ({
                 xil holat. Ikkinchisi tibbiy fakt va yozilishi kerak. */}
             {skipFor && (
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setSkipFor(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
-                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{t('inp.medNotGiven')}</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{skipFor.name}</p>
+                    <div className="bg-surface rounded-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+                        <h3 className="font-semibold text-ink mb-1">{t('inp.medNotGiven')}</h3>
+                        <p className="text-xs text-muted mb-3">{skipFor.name}</p>
                         <input value={skipReason} autoFocus
                             onChange={e => setSkipReason(e.target.value)}
                             placeholder={t('inp.notGivenPh')}
                             className={inputCls} />
-                        <p className="text-[11px] text-gray-400 mt-1.5">
+                        <p className="text-[11px] text-faint mt-1.5">
                             Sabab yozuvda qoladi va o'chirilmaydi.
                         </p>
                         <div className="flex justify-end gap-2 mt-4">
                             <button onClick={() => setSkipFor(null)}
-                                className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                className="px-3 py-1.5 text-sm text-muted hover:bg-elevated rounded-lg">
                                 Bekor
                             </button>
                             <button onClick={skipMed} disabled={!skipReason.trim() || marBusy === skipFor.id}
@@ -1407,9 +1407,9 @@ export const Inpatient: React.FC<Props> = ({
                 tanlanmaydigan variantni ko'rsatishning ma'nosi yo'q. */}
             {transferFor && (
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setTransferFor(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
-                        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{t('inp.transferBed')}</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                    <div className="bg-surface rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+                        <h3 className="font-semibold text-ink mb-1">{t('inp.transferBed')}</h3>
+                        <p className="text-xs text-muted mb-4">
                             {transferFor.patientName} · hozir: {transferFor.bed ? `${transferFor.bed.ward?.name} / ${transferFor.bed.label}` : 'koyka biriktirilmagan'}
                         </p>
 
@@ -1421,16 +1421,16 @@ export const Inpatient: React.FC<Props> = ({
                             </div>
                         ) : (
                             <>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.newBed')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.newBed')}</label>
                                 <select value={transferBed} onChange={e => setTransferBed(e.target.value)} className={inputCls}>
                                     <option value="">{t('common.chooseShort')}</option>
                                     {freeBeds.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
                                 </select>
 
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 mt-3">{t('inp.reason')}</label>
+                                <label className="block text-sm font-medium text-muted mb-1.5 mt-3">{t('inp.reason')}</label>
                                 <input value={transferReason} onChange={e => setTransferReason(e.target.value)}
                                     placeholder={t('inp.transferPh')} className={inputCls} />
-                                <p className="text-[11px] text-gray-400 mt-1.5">
+                                <p className="text-[11px] text-faint mt-1.5">
                                     Ko'chirish tarixda qoladi: bemor qayerda qancha yotgani ko'rinadi.
                                     Bo'shagan koyka tozalashga o'tadi.
                                 </p>
@@ -1439,7 +1439,7 @@ export const Inpatient: React.FC<Props> = ({
 
                         <div className="flex justify-end gap-2 mt-4">
                             <button onClick={() => setTransferFor(null)}
-                                className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                className="px-3 py-1.5 text-sm text-muted hover:bg-elevated rounded-lg">
                                 Bekor
                             </button>
                             <button onClick={doTransfer} disabled={saving || !transferBed}
@@ -1456,10 +1456,10 @@ export const Inpatient: React.FC<Props> = ({
                 yozib bo'lmaydi. */}
             {dischargeFor && (
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setDischargeFor(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('inp.dischargeEpicrisis')}</h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="bg-surface rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-line">
+                            <h3 className="font-semibold text-ink">{t('inp.dischargeEpicrisis')}</h3>
+                            <p className="text-xs text-muted">
                                 {dischargeFor.patientName} · {daysIn(dischargeFor.admittedAt, null)} kun yotdi
                             </p>
                         </div>
@@ -1472,25 +1472,25 @@ export const Inpatient: React.FC<Props> = ({
                                 ['recommendations', 'Tavsiyalar', 3],
                             ] as const).map(([key, label, rows]) => (
                                 <div key={key}>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{label}</label>
+                                    <label className="block text-sm font-medium text-muted mb-1.5">{label}</label>
                                     <textarea rows={rows} value={(dischargeForm as any)[key]}
                                         onChange={e => setDischargeForm(f => ({ ...f, [key]: e.target.value }))}
                                         className={inputCls} />
                                 </div>
                             ))}
-                            <p className="text-[11px] text-gray-400">
+                            <p className="text-[11px] text-faint">
                                 Bo'sh qoldirilgan qism qog'ozda "Kiritilmagan" deb chiqadi. Chiqarishdan
                                 oldin koyka haqi oxirgi kunga qadar hisoblanadi.
                             </p>
                         </div>
 
-                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex flex-wrap justify-end gap-2">
+                        <div className="p-5 border-t border-line flex flex-wrap justify-end gap-2">
                             <button onClick={() => setDischargeFor(null)}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">
                                 Bekor qilish
                             </button>
                             <button onClick={() => doDischarge(false)} disabled={saving}
-                                className="px-4 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+                                className="px-4 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated disabled:opacity-50">
                                 Chiqarish
                             </button>
                             <button onClick={() => doDischarge(true)} disabled={saving}

@@ -132,6 +132,45 @@ Electron ishga tushganda `electron/main.ts` backendni alohida jarayon sifatida
 ko'taradi, `/health` javob berguncha kutadi, so'ng oynani ochadi. 3001-port band
 bo'lsa bo'sh port tanlanadi va frontendga `?port=` orqali uzatiladi.
 
+### Ko'rinish: rang tokenlari
+
+Ranglar sinf nomida emas, **ma'nosi bo'yicha** yoziladi. `index.css` da
+bitta joyda ta'riflanadi, komponent esa qaysi tema yoqilganini bilmaydi.
+
+| Token | Nima | Utilita |
+|---|---|---|
+| `canvas` | sahifa foni | `bg-canvas` |
+| `surface` | karta foni | `bg-surface`, `.card` |
+| `elevated` | karta ichidagi ko'tarilgan yuza, input | `bg-elevated` |
+| `rail` | chapdagi menyu ustuni | `bg-rail` |
+| `line` / `line-soft` | chegara / ichki ajratgich | `border-line` |
+| `ink` / `muted` / `faint` | asosiy / ikkilamchi / uchinchi darajali matn | `text-ink` |
+
+**`bg-white dark:bg-gray-800` DEB YOZMANG.** Ilgari shunday edi — 200 dan
+ortiq joyda, va nusxalar bir-biridan ajralib ketgandi: bir kartada
+`gray-800`, boshqasida `gray-800/60`, uchinchisida umuman `dark:` yo'q.
+Rangni bir joydan o'zgartirishning imkoni yo'q edi. Karta uchun `.card`,
+qolgani uchun yuqoridagi tokenlar.
+
+Aksent rangi — indigo (`primary`). Ikkita ish uchun ikkita qiymat:
+
+* **to'ldirilgan tugma** → `bg-primary-600` (qat'iy `#4f46e5`, oq matn
+  bilan kontrast 6,4:1 — ikkala temada ham yetarli);
+* **matn, ramka, tus** → `text-primary` / `border-primary-500/30`
+  (temaga qarab o'zgaradi; qorong'ida ochroq).
+
+Buni chalkashtirmang: `bg-primary` + `text-white` qorong'i temada
+kontrast 2,9:1 beradi — o'qilmaydi.
+
+Holat nishonlari (`Badge`, stat kartalar) **to'ldirilmaydi, tuslanadi**:
+`bg-danger-500/12 text-danger border-danger-500/30`. Shaffof tus fon
+qanday bo'lsa shunga moslashadi va har rang uchun `dark:` juftlik
+yozishga hojat qolmaydi.
+
+Standart tema — **qorong'i**. Sinf `index.html` dagi kichik skript bilan
+React ishga tushishidan OLDIN qo'yiladi (birinchi kadrda oq chaqnamasin);
+`App.tsx` dagi boshlang'ich holat o'sha qaror bilan mos bo'lishi shart.
+
 ### Ma'lumotlar qayerda saqlanadi
 
 Hammasi `%APPDATA%\xclinic\` ichida:
@@ -382,7 +421,25 @@ xarajat bo'lib tushadi.
 **Davomat oylikdan avtomatik ushlamaydi.** Kelmagan kun ko'rinadi, qancha
 ushlash esa direktorning qarori — u jarima bo'lib qo'lda yoziladi.
 
+Uchinchi vkladka — **Davomat**: hamma xodim bo'yicha oylik jadval (kim
+necha kun keldi, foizi qancha) va CSV ga chiqarish.
+
 Tafsilot: `PLAN-HR.md`.
+
+### Eganing tasmasi
+
+Klinika egasi kirganda «Bugun» ekranining tepasida qo'shimcha tasma
+chiqadi — registrator va shifokorda u ko'rinmaydi.
+
+To'rtta raqam (bugun kassaga tushgan pul, qarz, bugungi qabullar,
+bemorlar) va **«Bugun hal qilinsin»** ro'yxati: yopilmagan kassa smenasi,
+muddati o'tayotgan dori, natijasi kiritilmagan tahlil, tuzilmagan
+vedomost va hokazo. Har qator bosilganda o'sha ish bajariladigan ekran
+ochiladi.
+
+**Nol bo'lgan band ro'yxatga tushmaydi.** «0 ta muddati o'tgan dori»
+degan qator bezak bo'lardi va uning orasida haqiqiy muammo ko'rinmay
+qolardi. Hammasi joyida bo'lsa bitta yashil satr chiqadi.
 
 ### To'lov modeli
 

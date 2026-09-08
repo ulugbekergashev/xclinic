@@ -43,6 +43,10 @@ async function call(method: string, path: string, body?: any, token?: string) {
 
 const tag = () => String(Date.now()).slice(-7) + Math.floor(Math.random() * 100);
 
+/* Registrator tokeni ikki bo'limda kerak — ruxsat tekshiruvida ham,
+   eganing tasmasida ham. */
+let recToken: string | undefined;
+
 /* Sinov o'z oyini oladi — o'tgan yilning noyabri. Joriy oy ishlatilsa,
    sinov demo ma'lumoti yoki qo'lda kiritilgan yozuvlarga urilib qolardi. */
 const PERIOD = `${new Date().getFullYear() - 1}-11`;
@@ -233,7 +237,7 @@ async function main() {
     /* ═══ 8. RUXSAT ═══════════════════════════════════════════════════ */
     console.log('\n═══ 8. RUXSAT: FAQAT KLINIKA EGASI ═══════════════');
     const recLogin = await call('POST', '/auth/login', { username: `hrrec${t}`, password: 'testpass123' });
-    const recToken = recLogin.data?.token;
+    recToken = recLogin.data?.token;
     ok('registrator kirdi', !!recToken, JSON.stringify(recLogin.data).slice(0, 120));
     if (recToken) {
         const denied = await call('GET', `/hr/staff/RECEPTIONIST/${recId}/month?period=${PERIOD}`, undefined, recToken);
@@ -252,6 +256,73 @@ async function main() {
     ok('mavjud bo\'lmagan xodim 404', noStaff.status === 404, `status: ${noStaff.status}`);
     const badRole = await call('GET', `/hr/staff/HAYDOVCHI/${recId}/month?period=${PERIOD}`, undefined, token);
     ok("noma'lum rol 400", badRole.status === 400, `status: ${badRole.status}`);
+
+    /* ═══ 10. DAVOMAT YIG'MASI ════════════════════════════════════════ */
+    console.log("\n═══ 10. DAVOMAT — HAMMA XODIM BO'YICHA ════════════");
+    /* Yuqorida shu xodimga belgi qo'yilgan va keyin OLIB TASHLANGAN edi,
+       shuning uchun avval ikkita kun belgilaymiz: biri kelgan, biri yo'q. */
+    await call('POST', `/hr/staff/RECEPTIONIST/${recId}/attendance`,
+        { date: `${PERIOD}-06`, status: 'Present' }, token);
+    await call('POST', `/hr/staff/RECEPTIONIST/${recId}/attendance`,
+        { date: `${PERIOD}-07`, status: 'Absent' }, token);
+    await call('POST', `/hr/staff/RECEPTIONIST/${recId}/attendance`,
+        { date: `${PERIOD}-08`, status: 'Late' }, token);
+
+    const sm = await call('GET', `/hr/attendance-summary?period=${PERIOD}`, undefined, token);
+    ok("davomat yig'masi keldi", sm.status === 200, `status: ${sm.status}`);
+    const mine = (sm.data?.rows || []).find((r: any) => r.id === recId);
+    ok("xodim ro'yxatda bor", !!mine, JSON.stringify(sm.data?.rows?.length));
+    ok('belgilangan kun = 3', mine?.markedDays === 3, String(mine?.markedDays));
+    ok('keldi = 1', mine?.present === 1, String(mine?.present));
+    ok('kelmadi = 1', mine?.absent === 1, String(mine?.absent));
+    ok('kechikdi = 1', mine?.late === 1, String(mine?.late));
+    /* KECHIKKAN KUN — KELGAN kun: odam ishga chiqqan. (1+1)/3 = 67% */
+    ok('FOIZ kechikishni kelgan deb sanaydi (67%)', mine?.percent === 67, String(mine?.percent));
+
+    /* Belgilanmagan xodimda foiz YO'Q — nol emas. Nol «kelmagan» degani,
+       holbuki uni hech kim belgilamagan. */
+    const untracked = (sm.data?.rows || []).find((r: any) => r.markedDays === 0);
+    ok('belgilanmagan xodimda foiz null (nol emas)',
+        !untracked || untracked.percent === null, JSON.stringify(untracked));
+
+    /* ═══ 11. EGANING TASMASI: «BUGUN HAL QILINSIN» ═══════════════════ */
+    console.log("\n═══ 11. BUGUN HAL QILINSIN ═══════════════════════");
+    const care = await call('GET', '/reports/attention', undefined, token);
+    ok("ro'yxat javob berdi", care.status === 200, `status: ${care.status}`);
+    ok('bandlar massiv', Array.isArray(care.data?.items), JSON.stringify(care.data).slice(0, 120));
+
+    const list = care.data?.items || [];
+    ok("NOL bo'lgan band ro'yxatga tushmagan",
+        list.every((i: any) => i.count > 0), JSON.stringify(list.map((i: any) => `${i.key}=${i.count}`)));
+    ok('har bandda manzil bor',
+        list.every((i: any) => typeof i.link === 'string' && i.link.startsWith('/')),
+        JSON.stringify(list.map((i: any) => i.link)));
+    ok("shoshilinchlik bo'yicha tartiblangan", (() => {
+        const rank: any = { high: 0, medium: 1, low: 2 };
+        return list.every((it: any, i: number) => i === 0 || rank[list[i - 1].level] <= rank[it.level]);
+    })(), JSON.stringify(list.map((i: any) => i.level)));
+
+    /* Oyligi kiritilmagan xodim ATAYLAB yaratildi (yuqorida laborant
+       yaratilmagan bo'lsa ham, demo bazada bunday xodim bor) — band
+       chiqsa, uning manzili Xodimlar moduliga olib borishi kerak. */
+    const salaryItem = list.find((i: any) => i.key === 'staff_no_salary');
+    if (salaryItem) {
+        ok('oylik bandi Xodimlarga olib boradi', salaryItem.link === '/staff', salaryItem.link);
+    }
+
+    const dash = await call('GET', '/reports/dashboard', undefined, token);
+    ok('bosh sahifa raqamlari keldi', dash.status === 200, `status: ${dash.status}`);
+    ok("QARZ YOSHI qo'shildi", dash.data?.debtors != null
+        && typeof dash.data.debtors.overdue30 === 'number',
+        JSON.stringify(dash.data?.debtors));
+    ok("30+ kunlik qarzdorlar umumiydan ko'p emas",
+        (dash.data?.debtors?.overdue30 || 0) <= (dash.data?.debtors?.patients || 0),
+        JSON.stringify(dash.data?.debtors));
+
+    if (recToken) {
+        const denied = await call('GET', '/reports/attention', undefined, recToken);
+        ok('registratorga tasma YOPIQ (403)', denied.status === 403, `status: ${denied.status}`);
+    }
 
     finish();
 }

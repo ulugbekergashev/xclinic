@@ -250,15 +250,15 @@ export const StaffCard: React.FC<Props> = ({
     };
 
     if (loading) {
-        return <div className="p-6 text-center text-gray-400">Yuklanmoqda…</div>;
+        return <div className="p-6 text-center text-faint">Yuklanmoqda…</div>;
     }
     if (!row) {
         return (
             <div className="p-6 space-y-4">
-                <Link to="/staff" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary-600">
+                <Link to="/staff" className="inline-flex items-center gap-2 text-sm text-muted hover:text-primary-600">
                     <ArrowLeft className="w-4 h-4" /> Xodimlar ro'yxati
                 </Link>
-                <Card className="p-10 text-center text-gray-500">Xodim topilmadi</Card>
+                <Card className="p-10 text-center text-muted">Xodim topilmadi</Card>
             </div>
         );
     }
@@ -276,7 +276,7 @@ export const StaffCard: React.FC<Props> = ({
 
     return (
         <div className="p-4 md:p-6 space-y-5">
-            <Link to="/staff" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary-600">
+            <Link to="/staff" className="inline-flex items-center gap-2 text-sm text-muted hover:text-primary-600">
                 <ArrowLeft className="w-4 h-4" /> Xodimlar ro'yxati
             </Link>
 
@@ -289,11 +289,11 @@ export const StaffCard: React.FC<Props> = ({
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white truncate">
+                            <h1 className="text-2xl md:text-3xl font-bold text-ink truncate">
                                 {formatFullName(row)}
                             </h1>
                             <button onClick={() => setEditing(true)} title="Tahrirlash"
-                                className="p-1.5 text-gray-400 hover:text-primary-600 rounded-md">
+                                className="p-1.5 text-faint hover:text-primary-600 rounded-md">
                                 <Edit className="w-4 h-4" />
                             </button>
                         </div>
@@ -301,9 +301,9 @@ export const StaffCard: React.FC<Props> = ({
                             <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${meta.badge}`}>
                                 {meta.label}
                             </span>
-                            {row.specialty && <span className="text-sm text-gray-500">{row.specialty}</span>}
+                            {row.specialty && <span className="text-sm text-muted">{row.specialty}</span>}
                             {row.status !== 'Active' && (
-                                <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                                <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-elevated text-muted">
                                     {row.status === 'Vacation' ? "Ta'tilda" : 'Ishlamayapti'}
                                 </span>
                             )}
@@ -313,18 +313,18 @@ export const StaffCard: React.FC<Props> = ({
                 <div className="flex items-center gap-2">
                     {row.phone && (
                         <a href={`tel:${row.phone}`} title="Qo'ng'iroq"
-                            className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600">
+                            className="p-2.5 rounded-xl border border-line text-muted hover:text-primary-600">
                             <Phone className="w-4 h-4" />
                         </a>
                     )}
                     {row.email && (
                         <a href={`mailto:${row.email}`} title="Pochta"
-                            className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600">
+                            className="p-2.5 rounded-xl border border-line text-muted hover:text-primary-600">
                             <Mail className="w-4 h-4" />
                         </a>
                     )}
                     <button onClick={archive} title="Ro'yxatdan chiqarish"
-                        className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-red-600">
+                        className="p-2.5 rounded-xl border border-line text-faint hover:text-red-600">
                         <Trash2 className="w-4 h-4" />
                     </button>
                 </div>
@@ -333,21 +333,21 @@ export const StaffCard: React.FC<Props> = ({
             <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-5 items-start">
                 {/* ── Chap ustun ───────────────────────────────────────── */}
                 <Card className="p-5 space-y-5">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Asosiy oylik</p>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums mt-0.5">
+                    <div className="rounded-xl border border-line p-4">
+                        <p className="text-xs text-muted">Asosiy oylik</p>
+                        <p className="text-2xl font-bold text-ink tabular-nums mt-0.5">
                             {row.fixedSalary ? formatMoney(row.fixedSalary) : '—'}
-                            {!!row.fixedSalary && <span className="text-sm font-normal text-gray-400"> so'm</span>}
+                            {!!row.fixedSalary && <span className="text-sm font-normal text-faint"> so'm</span>}
                         </p>
                         {isDoctor && (
-                            <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                            <p className="text-[11px] text-faint mt-2 leading-relaxed">
                                 Shifokorda asosiy oylik ham, ulush ham vedomost orqali to'lanadi.
                             </p>
                         )}
                     </div>
 
                     <div className="space-y-3">
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Aloqa ma'lumotlari</p>
+                        <p className="text-xs font-bold text-faint uppercase tracking-wider">Aloqa ma'lumotlari</p>
                         {([
                             ['Telefon', row.phone ? formatUzPhone(row.phone) : null],
                             ['Qo\'shimcha', row.secondaryPhone ? formatUzPhone(row.secondaryPhone) : null],
@@ -361,8 +361,8 @@ export const StaffCard: React.FC<Props> = ({
                             ['Login', row.username || null],
                         ] as const).map(([label, value]) => (
                             <div key={label} className="flex items-center justify-between gap-3 text-sm">
-                                <span className="text-gray-500 dark:text-gray-400">{label}</span>
-                                <span className={value ? 'text-gray-900 dark:text-white text-right' : 'text-gray-400'}>
+                                <span className="text-muted">{label}</span>
+                                <span className={value ? 'text-ink text-right' : 'text-faint'}>
                                     {value || '—'}
                                 </span>
                             </div>
@@ -373,12 +373,12 @@ export const StaffCard: React.FC<Props> = ({
                 {/* ── O'ng ustun ───────────────────────────────────────── */}
                 <div className="space-y-5">
                     <Card className="p-0 overflow-hidden">
-                        <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 px-2 overflow-x-auto">
+                        <div className="flex items-center gap-1 border-b border-line px-2 overflow-x-auto">
                             {TABS.map(([k, label, Icon]) => (
                                 <button key={k} type="button" onClick={() => setTab(k)}
                                     className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${tab === k
                                         ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                                        : 'border-transparent text-muted hover:text-muted'}`}>
                                     <Icon className="w-4 h-4" /> {label}
                                 </button>
                             ))}
@@ -389,30 +389,30 @@ export const StaffCard: React.FC<Props> = ({
                             {tab === 'general' && (
                                 <div className="space-y-5">
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        <div className="rounded-xl border border-line p-4">
+                                            <p className="text-xs text-muted">
                                                 {periodLabel(period)} oyligi
                                             </p>
                                             <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-1">
                                                 {month ? formatMoney(month.due) : '—'}
                                             </p>
-                                            <p className="text-[11px] text-gray-400 mt-1">
+                                            <p className="text-[11px] text-faint mt-1">
                                                 {paid ? "to'langan" : "to'lanmagan"}
                                             </p>
                                         </div>
-                                        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">Davomat</p>
-                                            <p className="text-2xl font-bold tabular-nums text-gray-900 dark:text-white mt-1">
-                                                {month?.attendance?.present ?? 0}<span className="text-sm font-normal text-gray-400"> kun</span>
+                                        <div className="rounded-xl border border-line p-4">
+                                            <p className="text-xs text-muted">Davomat</p>
+                                            <p className="text-2xl font-bold tabular-nums text-ink mt-1">
+                                                {month?.attendance?.present ?? 0}<span className="text-sm font-normal text-faint"> kun</span>
                                             </p>
-                                            <p className="text-[11px] text-gray-400 mt-1">kelgan kunlar</p>
+                                            <p className="text-[11px] text-faint mt-1">kelgan kunlar</p>
                                         </div>
-                                        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">Kelmagan</p>
-                                            <p className="text-2xl font-bold tabular-nums text-gray-900 dark:text-white mt-1">
-                                                {(month?.attendance?.absent ?? 0)}<span className="text-sm font-normal text-gray-400"> kun</span>
+                                        <div className="rounded-xl border border-line p-4">
+                                            <p className="text-xs text-muted">Kelmagan</p>
+                                            <p className="text-2xl font-bold tabular-nums text-ink mt-1">
+                                                {(month?.attendance?.absent ?? 0)}<span className="text-sm font-normal text-faint"> kun</span>
                                             </p>
-                                            <p className="text-[11px] text-gray-400 mt-1">
+                                            <p className="text-[11px] text-faint mt-1">
                                                 sababli {month?.attendance?.excused ?? 0} · kechikish {month?.attendance?.late ?? 0}
                                             </p>
                                         </div>
@@ -420,9 +420,9 @@ export const StaffCard: React.FC<Props> = ({
 
                                     {/* Shifokorning ulushi — vedomostdan, MA'LUMOT uchun */}
                                     {isDoctor && month?.share && (
-                                        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                                        <div className="rounded-xl border border-line p-4">
                                             <div className="flex items-center justify-between gap-3 mb-3">
-                                                <p className="text-sm font-bold text-gray-900 dark:text-white">
+                                                <p className="text-sm font-bold text-ink">
                                                     Ulush va asosiy oylik — vedomost bo'yicha
                                                 </p>
                                                 <Link to="/staff?tab=payroll"
@@ -431,19 +431,19 @@ export const StaffCard: React.FC<Props> = ({
                                                 </Link>
                                             </div>
                                             {month.share.runs.length === 0 ? (
-                                                <p className="text-sm text-gray-400">
+                                                <p className="text-sm text-faint">
                                                     Bu oyga vedomost hali tuzilmagan.
                                                 </p>
                                             ) : (
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
-                                                        <p className="text-[11px] text-gray-400 uppercase tracking-wide">Hisoblangan</p>
-                                                        <p className="text-xl font-bold tabular-nums text-gray-900 dark:text-white">
+                                                        <p className="text-[11px] text-faint uppercase tracking-wide">Hisoblangan</p>
+                                                        <p className="text-xl font-bold tabular-nums text-ink">
                                                             {formatMoney(month.share.accrued)}
                                                         </p>
                                                     </div>
                                                     <div>
-                                                        <p className="text-[11px] text-gray-400 uppercase tracking-wide">To'langan</p>
+                                                        <p className="text-[11px] text-faint uppercase tracking-wide">To'langan</p>
                                                         <p className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                                                             {formatMoney(month.share.paid)}
                                                         </p>
@@ -459,26 +459,26 @@ export const StaffCard: React.FC<Props> = ({
                             {tab === 'salary' && (
                                 <div className="space-y-5">
                                     <div className="flex items-center justify-between gap-3">
-                                        <p className="text-sm font-bold text-gray-900 dark:text-white">Maosh hisobi</p>
+                                        <p className="text-sm font-bold text-ink">Maosh hisobi</p>
                                         <div className="flex items-center gap-1">
                                             <button onClick={() => setPeriod(p => shiftPeriod(p, -1))}
-                                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600">
+                                                className="p-2 rounded-lg border border-line text-muted hover:text-primary-600">
                                                 <ChevronLeft className="w-4 h-4" />
                                             </button>
-                                            <span className="px-3 text-sm font-bold text-gray-900 dark:text-white tabular-nums min-w-[92px] text-center">
+                                            <span className="px-3 text-sm font-bold text-ink tabular-nums min-w-[92px] text-center">
                                                 {periodLabel(period)}
                                             </span>
                                             <button onClick={() => setPeriod(p => shiftPeriod(p, 1))}
-                                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600">
+                                                className="p-2 rounded-lg border border-line text-muted hover:text-primary-600">
                                                 <ChevronRight className="w-4 h-4" />
                                             </button>
                                         </div>
                                     </div>
 
                                     {monthLoading ? (
-                                        <p className="text-sm text-gray-400 py-8 text-center">Yuklanmoqda…</p>
+                                        <p className="text-sm text-faint py-8 text-center">Yuklanmoqda…</p>
                                     ) : !month ? (
-                                        <p className="text-sm text-gray-400 py-8 text-center">Hisob olinmadi</p>
+                                        <p className="text-sm text-faint py-8 text-center">Hisob olinmadi</p>
                                     ) : (
                                         <>
                                             <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${paid
@@ -493,19 +493,19 @@ export const StaffCard: React.FC<Props> = ({
                                             <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-start">
                                                 {/* Bonus va jarima */}
                                                 <div className="space-y-3">
-                                                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-fit">
+                                                    <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl w-fit">
                                                         {([['Bonus', "Qo'shimcha bonus"], ['Penalty', 'Jarima']] as const).map(([k, label]) => (
                                                             <button key={k} type="button" onClick={() => setAdjType(k)}
                                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${adjType === k
-                                                                    ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-white shadow-sm'
-                                                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                                                                    ? 'bg-surface text-primary-600 shadow-sm'
+                                                                    : 'text-muted hover:text-muted'}`}>
                                                                 {label}
                                                             </button>
                                                         ))}
                                                     </div>
 
                                                     {paid ? (
-                                                        <p className="text-xs text-gray-400">
+                                                        <p className="text-xs text-faint">
                                                             To'langan oyga yangi yozuv qo'shilmaydi — hujjat o'zgarmasligi kerak.
                                                         </p>
                                                     ) : (
@@ -524,15 +524,15 @@ export const StaffCard: React.FC<Props> = ({
 
                                                     <div className="space-y-2">
                                                         {month.adjustments.length === 0 ? (
-                                                            <p className="text-sm text-gray-400 py-4">
+                                                            <p className="text-sm text-faint py-4">
                                                                 Bu oyda bonus ham, jarima ham yo'q.
                                                             </p>
                                                         ) : month.adjustments.map((a: any) => (
                                                             <div key={a.id}
-                                                                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                                                                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-line">
                                                                 <div className="min-w-0">
-                                                                    <p className="text-sm text-gray-900 dark:text-white truncate">{a.reason}</p>
-                                                                    <p className="text-[11px] text-gray-400">
+                                                                    <p className="text-sm text-ink truncate">{a.reason}</p>
+                                                                    <p className="text-[11px] text-faint">
                                                                         {a.type === 'Bonus' ? 'Bonus' : 'Jarima'}
                                                                         {a.createdByName ? ` · ${a.createdByName}` : ''}
                                                                     </p>
@@ -545,7 +545,7 @@ export const StaffCard: React.FC<Props> = ({
                                                                     </span>
                                                                     {!paid && (
                                                                         <button onClick={() => deleteAdjustment(a.id)}
-                                                                            className="p-1 text-gray-400 hover:text-red-600 rounded">
+                                                                            className="p-1 text-faint hover:text-red-600 rounded">
                                                                             <X className="w-4 h-4" />
                                                                         </button>
                                                                     )}
@@ -556,18 +556,18 @@ export const StaffCard: React.FC<Props> = ({
                                                 </div>
 
                                                 {/* Hisob */}
-                                                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                                                <div className="rounded-xl border border-line p-4 space-y-3">
                                                     <p className="text-sm font-bold text-primary-600 dark:text-primary-400">
                                                         {periodLabel(period)} — Hisob
                                                     </p>
                                                     <div className="flex items-center justify-between text-sm">
-                                                        <span className="text-gray-500 dark:text-gray-400">Asosiy</span>
-                                                        <span className="tabular-nums text-gray-900 dark:text-white">
+                                                        <span className="text-muted">Asosiy</span>
+                                                        <span className="tabular-nums text-ink">
                                                             {formatMoney(month.base)}
                                                         </span>
                                                     </div>
                                                     {isDoctor && (
-                                                        <p className="text-[11px] text-gray-400 -mt-1">
+                                                        <p className="text-[11px] text-faint -mt-1">
                                                             Asosiy oylik va ulush vedomostda hisoblanadi.
                                                         </p>
                                                     )}
@@ -587,11 +587,11 @@ export const StaffCard: React.FC<Props> = ({
                                                             −{formatMoney(month.penalty)}
                                                         </span>
                                                     </div>
-                                                    <div className="border-t border-dashed border-gray-200 dark:border-gray-700 pt-3 flex items-end justify-between">
-                                                        <span className="text-sm font-bold text-gray-900 dark:text-white">
+                                                    <div className="border-t border-dashed border-line pt-3 flex items-end justify-between">
+                                                        <span className="text-sm font-bold text-ink">
                                                             To'lanishi kerak
                                                         </span>
-                                                        <span className="text-2xl font-black tabular-nums text-gray-900 dark:text-white">
+                                                        <span className="text-2xl font-black tabular-nums text-ink">
                                                             {formatMoney(month.due)}
                                                         </span>
                                                     </div>
@@ -614,8 +614,8 @@ export const StaffCard: React.FC<Props> = ({
                                 <div className="space-y-6">
                                     <div>
                                         <div className="flex items-center justify-between gap-3 mb-3">
-                                            <p className="text-sm font-bold text-gray-900 dark:text-white">Haftalik ish kunlari</p>
-                                            {savingDays && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+                                            <p className="text-sm font-bold text-ink">Haftalik ish kunlari</p>
+                                            {savingDays && <Loader2 className="w-4 h-4 animate-spin text-faint" />}
                                         </div>
                                         <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
                                             {WEEK.map(d => {
@@ -627,7 +627,7 @@ export const StaffCard: React.FC<Props> = ({
                                                         aria-label={d.full} aria-pressed={on}
                                                         className={`py-3 rounded-xl border text-center transition-colors ${on
                                                             ? 'bg-primary-600 border-primary-600 text-white'
-                                                            : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-primary-400'}`}>
+                                                            : 'border-line text-muted hover:border-primary-400'}`}>
                                                         <span className="block text-sm font-bold">{d.short}</span>
                                                         <span className="block text-[10px] opacity-70">{d.full.slice(0, 3)}</span>
                                                     </button>
@@ -643,17 +643,17 @@ export const StaffCard: React.FC<Props> = ({
 
                                     <div>
                                         <div className="flex items-center justify-between gap-3 mb-3">
-                                            <p className="text-sm font-bold text-gray-900 dark:text-white">Davomat</p>
+                                            <p className="text-sm font-bold text-ink">Davomat</p>
                                             <div className="flex items-center gap-1">
                                                 <button onClick={() => setPeriod(p => shiftPeriod(p, -1))}
-                                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600">
+                                                    className="p-2 rounded-lg border border-line text-muted hover:text-primary-600">
                                                     <ChevronLeft className="w-4 h-4" />
                                                 </button>
-                                                <span className="px-3 text-sm font-bold text-gray-900 dark:text-white tabular-nums min-w-[92px] text-center">
+                                                <span className="px-3 text-sm font-bold text-ink tabular-nums min-w-[92px] text-center">
                                                     {periodLabel(period)}
                                                 </span>
                                                 <button onClick={() => setPeriod(p => shiftPeriod(p, 1))}
-                                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600">
+                                                    className="p-2 rounded-lg border border-line text-muted hover:text-primary-600">
                                                     <ChevronRight className="w-4 h-4" />
                                                 </button>
                                             </div>
@@ -661,7 +661,7 @@ export const StaffCard: React.FC<Props> = ({
 
                                         <div className="grid grid-cols-7 gap-1.5">
                                             {WEEK.map(d => (
-                                                <div key={d.n} className="text-center text-[10px] text-gray-400 uppercase pb-1">
+                                                <div key={d.n} className="text-center text-[10px] text-faint uppercase pb-1">
                                                     {d.short}
                                                 </div>
                                             ))}
@@ -679,8 +679,8 @@ export const StaffCard: React.FC<Props> = ({
                                                         className={`aspect-square rounded-lg border text-xs font-medium transition-colors ${ui
                                                             ? ui.cls
                                                             : scheduled
-                                                                ? 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400'
-                                                                : 'border-gray-100 dark:border-gray-800 text-gray-300 dark:text-gray-600 hover:border-primary-400'}`}>
+                                                                ? 'border-line text-muted hover:border-primary-400'
+                                                                : 'border-line-soft text-faint hover:border-primary-400'}`}>
                                                         {d.day}
                                                     </button>
                                                 );
@@ -689,11 +689,11 @@ export const StaffCard: React.FC<Props> = ({
 
                                         <div className="flex flex-wrap items-center gap-3 mt-3">
                                             {Object.entries(ATT_UI).map(([k, v]) => (
-                                                <span key={k} className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                                <span key={k} className="flex items-center gap-1.5 text-[11px] text-muted">
                                                     <span className={`w-3 h-3 rounded ${v.cls.split(' ')[0]}`} /> {v.label}
                                                 </span>
                                             ))}
-                                            <span className="text-[11px] text-gray-400 ml-auto">
+                                            <span className="text-[11px] text-faint ml-auto">
                                                 Kunni bosing — holat aylanadi. Davomat oylikdan avtomatik ushlanmaydi.
                                             </span>
                                         </div>

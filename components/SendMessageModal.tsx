@@ -124,7 +124,7 @@ export const SendMessageModal: React.FC<Props> = ({
         <Modal isOpen={isOpen} onClose={onClose} title="Xabar yuborish" className="max-w-lg">
             <form onSubmit={send} className="space-y-4">
                 {patient && (
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                    <p className="text-sm text-muted">
                         {formatFullName(patient)}
                         {debt != null && debt > 0 && (
                             <span className="ml-2 text-xs font-bold text-red-600 dark:text-red-400">
@@ -147,7 +147,7 @@ export const SendMessageModal: React.FC<Props> = ({
                 />
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-muted mb-1">
                         Matn
                     </label>
                     <textarea
@@ -156,7 +156,7 @@ export const SendMessageModal: React.FC<Props> = ({
                         rows={4}
                         required
                         placeholder="Xabar matni. {bemor_ismi}, {sana}, {qarz} kabi o'zgaruvchilar ishlatiladi."
-                        className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                        className="w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                 </div>
 
@@ -164,11 +164,11 @@ export const SendMessageModal: React.FC<Props> = ({
                     almashtirilmasa, bemor «Hurmatli {ism}» degan SMS oladi
                     va buni faqat u ketgandan keyin bilish mumkin edi. */}
                 {text.trim() && (
-                    <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 p-3">
-                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    <div className="rounded-lg bg-canvas/40 border border-line p-3">
+                        <p className="text-[11px] font-bold text-faint uppercase tracking-wider mb-1">
                             Bemor shuni oladi
                         </p>
-                        <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{preview}</p>
+                        <p className="text-sm text-ink whitespace-pre-wrap">{preview}</p>
                     </div>
                 )}
 

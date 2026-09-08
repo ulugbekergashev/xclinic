@@ -114,6 +114,7 @@ import { registerClinicalRoutes } from './clinical';
 import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
 import { registerPayrollRoutes } from './payroll';
 import { registerHrRoutes, serializeWorkDays } from './hr';
+import { registerAttentionRoutes } from './attention';
 import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
 import { check as checkPermission } from './permissions';
 import { validatePatient, validatePhone } from '../shared/validation';
@@ -6163,6 +6164,7 @@ registerReportRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerLicenseRoutes(app, { prisma });
 registerPayrollRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerHrRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerAttentionRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerComplianceRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
 registerFileRoutes(app, { prisma, authenticateToken, getScopedClinicId, uploadsDir });
 

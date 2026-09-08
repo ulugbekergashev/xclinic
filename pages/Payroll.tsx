@@ -63,7 +63,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
 
-    const inputCls = 'px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500';
+    const inputCls = 'px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500';
 
     /* ═══ VEDOMOST ═══════════════════════════════════════════════════════════ */
 
@@ -159,16 +159,16 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <Percent className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">Shifokor ulushi</h2>
+                    <h2 className="text-xl font-bold text-ink">Shifokor ulushi</h2>
                 </div>
             </div>
 
-            <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex gap-1 border-b border-line">
                 {([['runs', 'Vedomost']] as const).map(([k, label]) => (
                     <button key={k} onClick={() => setTab(k)}
                         className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === k
                             ? 'border-primary-600 text-primary-600 dark:text-primary-400'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
+                            : 'border-transparent text-muted hover:text-muted'}`}>
                         {label}
                     </button>
                 ))}
@@ -186,18 +186,18 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
             {tab === 'runs' && (
                 <div className="space-y-5">
                     {/* Davr va hisob */}
-                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                    <div className="bg-surface rounded-xl border border-line p-4">
                         <div className="flex flex-wrap items-end gap-3">
                             <div>
-                                <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Davr boshi</label>
+                                <label className="block text-[11px] text-muted mb-1">Davr boshi</label>
                                 <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputCls} />
                             </div>
                             <div>
-                                <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Davr oxiri</label>
+                                <label className="block text-[11px] text-muted mb-1">Davr oxiri</label>
                                 <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} />
                             </div>
                             <button aria-label="Qayta hisoblash" onClick={loadPreview} disabled={previewLoading}
-                                className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Qayta hisoblash">
+                                className="p-2 text-faint hover:text-muted" title="Qayta hisoblash">
                                 <RefreshCw className={`w-5 h-5 ${previewLoading ? 'animate-spin' : ''}`} />
                             </button>
                             <button onClick={createRun} disabled={busy || !preview || (preview.lines || []).length === 0}
@@ -208,7 +208,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                         </div>
 
                         {previewLoading ? (
-                            <p className="text-sm text-gray-400 py-8 text-center">Hisoblanmoqda...</p>
+                            <p className="text-sm text-faint py-8 text-center">Hisoblanmoqda...</p>
                         ) : !preview ? null : (preview.lines || []).length === 0 ? (
                             /* NEGA BO'SH — aniq sabab bilan.
 
@@ -227,20 +227,20 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
 
                                Endi server sanab beradi va ekran o'shani
                                ko'rsatadi. */
-                            <div className="text-center py-8 mt-3 border-t border-gray-100 dark:border-gray-700">
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                            <div className="text-center py-8 mt-3 border-t border-line-soft">
+                                <p className="text-sm text-muted">
                                     Bu davrda hisoblanadigan ulush yo'q
                                 </p>
 
                                 {(preview.stats?.payments ?? 0) === 0 ? (
-                                    <p className="text-xs text-gray-400 mt-1">
+                                    <p className="text-xs text-faint mt-1">
                                         {formatDay(from)} — {formatDay(to)} oralig'ida bironta to'lov bo'lmagan.
                                         {preview.lastPaymentAt && (
-                                            <> Oxirgi to'lov: <b className="text-gray-500 dark:text-gray-300">{formatDay(preview.lastPaymentAt)}</b>.</>
+                                            <> Oxirgi to'lov: <b className="text-muted">{formatDay(preview.lastPaymentAt)}</b>.</>
                                         )}
                                     </p>
                                 ) : (
-                                    <div className="text-xs text-gray-400 mt-1 space-y-1">
+                                    <div className="text-xs text-faint mt-1 space-y-1">
                                         <p>Davrda {preview.stats.payments} ta to'lov bor, lekin ulushga hech biri kirmadi.</p>
                                         {preview.stats.skippedNoDoctor > 0 && (
                                             <p className="text-amber-600 dark:text-amber-400">
@@ -269,20 +269,20 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                                 )}
                             </div>
                         ) : (
-                            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                            <div className="mt-4 pt-4 border-t border-line-soft">
                                 <div className="flex items-baseline gap-2 mb-3">
-                                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-muted">
                                         Oldindan hisob
                                     </p>
-                                    <span className="ml-auto text-lg font-black tabular-nums text-gray-900 dark:text-white">
-                                        {fmt(preview.total)} <span className="text-xs font-normal text-gray-400">UZS</span>
+                                    <span className="ml-auto text-lg font-black tabular-nums text-ink">
+                                        {fmt(preview.total)} <span className="text-xs font-normal text-faint">UZS</span>
                                     </span>
                                 </div>
                                 <div className="space-y-1.5">
                                     {preview.lines.map((l: any) => (
                                         <div key={l.doctorId} className="flex flex-wrap items-center gap-2 text-sm">
-                                            <span className="text-gray-900 dark:text-white">{l.staffName}</span>
-                                            <span className="text-xs text-gray-400">
+                                            <span className="text-ink">{l.staffName}</span>
+                                            <span className="text-xs text-faint">
                                                 to'langan {fmt(l.paidBase)}
                                                 {l.refunded > 0 ? ` · qaytarilgan ${fmt(l.refunded)}` : ''}
                                                 {/* Fix maosh alohida ko'rinadi: aks holda
@@ -291,13 +291,13 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                                                 {l.fixed > 0 ? ` · fix ${fmt(l.fixed)}` : ''}
                                                 {' · '}{l.items.length} qator
                                             </span>
-                                            <span className="ml-auto font-semibold tabular-nums text-gray-900 dark:text-white">
+                                            <span className="ml-auto font-semibold tabular-nums text-ink">
                                                 {fmt(l.accrued)}
                                             </span>
                                         </div>
                                     ))}
                                 </div>
-                                <p className="text-[11px] text-gray-400 mt-3">
+                                <p className="text-[11px] text-faint mt-3">
                                     Ulush pul KIRGAN paytga qarab hisoblanadi: boshqa oyda to'langan
                                     qarz shu oyga tushadi, qaytarish esa ulushni kamaytiradi.
                                 </p>
@@ -306,14 +306,14 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                     </div>
 
                     {/* Vedomostlar ro'yxati */}
-                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                        <h3 className="px-4 py-3 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700">
+                    <div className="bg-surface rounded-xl border border-line overflow-hidden">
+                        <h3 className="px-4 py-3 text-sm font-bold text-ink border-b border-line-soft">
                             Vedomostlar
                         </h3>
                         {runs.length === 0 ? (
-                            <p className="px-4 py-10 text-sm text-gray-400 text-center">Hali vedomost yaratilmagan</p>
+                            <p className="px-4 py-10 text-sm text-faint text-center">Hali vedomost yaratilmagan</p>
                         ) : (
-                            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                            <div className="divide-y divide-line">
                                 {runs.map(r => {
                                     const accrued = (r.lines || []).reduce((s: number, l: any) => s + (l.accrued || 0), 0);
                                     const paid = (r.lines || []).reduce((s: number, l: any) => s + (l.paid || 0), 0);
@@ -321,17 +321,17 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                                     return (
                                         <div key={r.id} className="px-4 py-3 flex flex-wrap items-center gap-2">
                                             <div className="min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                                <p className="text-sm font-medium text-ink">
                                                     {fmtDate(r.periodFrom)} — {fmtDate(r.periodTo)}
                                                 </p>
-                                                <p className="text-[11px] text-gray-400">
+                                                <p className="text-[11px] text-faint">
                                                     {(r.lines || []).length} qator
                                                     {r.createdByName ? ` · ${r.createdByName}` : ''}
                                                     {r.approvedByName ? ` · tasdiqladi: ${r.approvedByName}` : ''}
                                                 </p>
                                             </div>
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${ui.cls}`}>{ui.label}</span>
-                                            <span className="ml-auto text-sm tabular-nums text-gray-900 dark:text-white">
+                                            <span className="ml-auto text-sm tabular-nums text-ink">
                                                 {fmt(accrued)}
                                                 {paid > 0 && <span className="text-emerald-600 dark:text-emerald-400"> · to'landi {fmt(paid)}</span>}
                                             </span>
@@ -342,7 +342,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                                             {r.status === 'Draft' && (
                                                 <button onClick={() => removeRun(r.id)} disabled={busy}
                                                     title="Qoralamani o'chirish"
-                                                    className="p-1.5 text-gray-400 hover:text-red-600">
+                                                    className="p-1.5 text-faint hover:text-red-600">
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
                                             )}
@@ -367,13 +367,13 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
             {/* ── Vedomost kartasi ─────────────────────────────────────────── */}
             {openRun && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setOpenRun(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-3xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-3">
+                    <div className="bg-surface rounded-xl w-full max-w-3xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-line flex flex-wrap items-center gap-3">
                             <div className="min-w-0">
-                                <h3 className="font-semibold text-gray-900 dark:text-white">
+                                <h3 className="font-semibold text-ink">
                                     {fmtDate(openRun.periodFrom)} — {fmtDate(openRun.periodTo)}
                                 </h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <p className="text-xs text-muted">
                                     {(RUN_UI[openRun.status] || RUN_UI.Draft).label}
                                     {openRun.approvedAt ? ` · ${new Date(openRun.approvedAt).toLocaleString('uz-UZ')}` : ''}
                                 </p>
@@ -385,7 +385,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                                         <CheckCircle className="w-3.5 h-3.5" /> Tasdiqlash
                                     </button>
                                 )}
-                                <button onClick={() => setOpenRun(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                                <button onClick={() => setOpenRun(null)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
                             </div>
                         </div>
 
@@ -402,12 +402,12 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                             )}
 
                             {(openRun.lines || []).map((l: any) => (
-                                <div key={l.id} className="border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <div key={l.id} className="border border-line rounded-lg">
                                     <div className="p-3 flex flex-wrap items-center gap-2">
                                         <div className="min-w-0">
-                                            <p className="text-sm font-medium text-gray-900 dark:text-white">{l.staffName}</p>
+                                            <p className="text-sm font-medium text-ink">{l.staffName}</p>
                                             {l.detail?.paidBase != null && (
-                                                <p className="text-[11px] text-gray-400">
+                                                <p className="text-[11px] text-faint">
                                                     baza: to'langan {fmt(l.detail.paidBase)}
                                                     {l.detail.fixed > 0 ? ` · fix ${fmt(l.detail.fixed)}` : ''}
                                                     {' · '}{(l.detail.items || []).length} qator
@@ -415,7 +415,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                                             )}
                                         </div>
 
-                                        <span className="ml-auto text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
+                                        <span className="ml-auto text-sm font-semibold tabular-nums text-ink">
                                             {fmt(l.accrued)}
                                         </span>
 
@@ -432,7 +432,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
 
                                         {(l.detail?.items || []).length > 0 && (
                                             <button onClick={() => setExpandLine(expandLine === l.id ? '' : l.id)}
-                                                className="p-1.5 text-gray-400 hover:text-gray-600">
+                                                className="p-1.5 text-faint hover:text-muted">
                                                 {expandLine === l.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                             </button>
                                         )}
@@ -440,19 +440,19 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
 
                                     {/* Hisob QANDAY chiqqani: "nega bunday" savoliga javob */}
                                     {expandLine === l.id && (
-                                        <div className="border-t border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto">
+                                        <div className="border-t border-line max-h-64 overflow-y-auto">
                                             <table className="w-full">
-                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                <tbody className="divide-y divide-line">
                                                     {(l.detail.items || []).map((it: any, i: number) => (
                                                         <tr key={i} className="text-xs">
-                                                            <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">{it.name}</td>
-                                                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-500 dark:text-gray-400">
+                                                            <td className="px-3 py-1.5 text-muted">{it.name}</td>
+                                                            <td className="px-3 py-1.5 text-right tabular-nums text-muted">
                                                                 {fmt(it.paid)}
                                                             </td>
-                                                            <td className="px-3 py-1.5 text-right text-gray-400 whitespace-nowrap">
+                                                            <td className="px-3 py-1.5 text-right text-faint whitespace-nowrap">
                                                                 {it.percent}% ({it.basis})
                                                             </td>
-                                                            <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-gray-900 dark:text-white">
+                                                            <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-ink">
                                                                 {fmt(it.share)}
                                                             </td>
                                                         </tr>
@@ -465,13 +465,13 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                             ))}
 
                             {(openRun.lines || []).length === 0 && (
-                                <p className="text-sm text-gray-400 py-8 text-center">Qator yo'q</p>
+                                <p className="text-sm text-faint py-8 text-center">Qator yo'q</p>
                             )}
                         </div>
 
-                        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center gap-3">
-                            <span className="text-sm text-gray-500 dark:text-gray-400">Jami hisoblangan</span>
-                            <span className="ml-auto text-lg font-black tabular-nums text-gray-900 dark:text-white">
+                        <div className="p-4 border-t border-line flex items-center gap-3">
+                            <span className="text-sm text-muted">Jami hisoblangan</span>
+                            <span className="ml-auto text-lg font-black tabular-nums text-ink">
                                 {fmt((openRun.lines || []).reduce((s: number, l: any) => s + (l.accrued || 0), 0))} UZS
                             </span>
                         </div>

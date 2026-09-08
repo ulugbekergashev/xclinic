@@ -364,9 +364,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       return notes.split('\n').map((line, index) => {
          const cleanLine = line.replace(/^#+\s*/, '');
          if (line.trim().startsWith('###')) {
-            return <div key={index} className="font-bold mt-2 text-gray-900 dark:text-white print:text-black">{cleanLine}</div>;
+            return <div key={index} className="font-bold mt-2 text-ink print:text-black">{cleanLine}</div>;
          }
-         return <div key={index} className="text-gray-700 dark:text-gray-300 print:text-black">{cleanLine}</div>;
+         return <div key={index} className="text-muted print:text-black">{cleanLine}</div>;
       });
    };
 
@@ -488,7 +488,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                <Button variant="ghost" onClick={onBack} className="!p-2">
                   <ArrowLeft className="w-5 h-5" />
                </Button>
-               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('patients.details.title')}</h1>
+               <h1 className="text-2xl font-bold text-ink">{t('patients.details.title')}</h1>
                <div className="ml-auto">
                   <Button
                      variant="secondary"
@@ -510,7 +510,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             <Card className="p-6">
                <div className="flex flex-col md:flex-row gap-6 items-start">
                   <div className="relative group flex-shrink-0">
-                     <div className="w-24 h-24 rounded-full bg-primary-100 dark:bg-primary-900 border-2 border-white dark:border-gray-700 shadow-md overflow-hidden flex items-center justify-center text-3xl font-bold">
+                     <div className="w-24 h-24 rounded-full bg-primary-100 dark:bg-primary-900 border-2 border-white shadow-md overflow-hidden flex items-center justify-center text-3xl font-bold">
                         {patient.avatarUrl ? (
                            <img src={getFileUrl('patient-avatar', patient.avatarUrl ? patient.id : null)} alt={patient.firstName} className="w-full h-full object-cover" />
                         ) : (
@@ -532,8 +532,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   </div>
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
                      <div className="space-y-1">
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{formatFullName(patient)}</h2>
-                        <p className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                        <h2 className="text-2xl font-bold text-ink">{formatFullName(patient)}</h2>
+                        <p className="text-muted flex items-center gap-2">
                            <span className="capitalize">{patient.gender === 'Male' ? t('patients.modal.male') : t('patients.modal.female')}</span> • {calcAge(patient.dob) ?? 'N/A'} {t('patients.details.age')}{patient.dob && ` (${formatDobDDMMYYYY(patient.dob)})`}
                         </p>
                         <div className="pt-2 flex items-center gap-3">
@@ -563,18 +563,18 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      </div>
 
                      <div className="space-y-3 text-sm">
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                        <div className="flex items-center gap-2 text-muted">
                            <Phone className="w-4 h-4" /> {showPatientPhone ? patient.phone : maskPhone(patient.phone)}
                         </div>
                         {patient.secondaryPhone && (
-                           <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                              <Phone className="w-4 h-4 text-gray-400" /> {showPatientPhone ? patient.secondaryPhone : maskPhone(patient.secondaryPhone)} (Qo'shimcha)
+                           <div className="flex items-center gap-2 text-muted">
+                              <Phone className="w-4 h-4 text-faint" /> {showPatientPhone ? patient.secondaryPhone : maskPhone(patient.secondaryPhone)} (Qo'shimcha)
                            </div>
                         )}
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                        <div className="flex items-center gap-2 text-muted">
                            <MapPin className="w-4 h-4" /> {patient.address || t('patients.details.noAddress')}
                         </div>
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                        <div className="flex items-center gap-2 text-muted">
                            <Clock className="w-4 h-4" /> {t('patients.details.lastVisit')} {patient.lastVisit}
                         </div>
                         {patient.doctorName && (
@@ -618,15 +618,15 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
                   {/* Tashxislar — qisqacha. To'liq ro'yxat pastdagi bo'limda. */}
                   <Card className="p-4">
-                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                        <ClipboardList className="w-4 h-4 text-gray-400" /> {t('card.secDiagnoses')}
+                     <h3 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
+                        <ClipboardList className="w-4 h-4 text-faint" /> {t('card.secDiagnoses')}
                      </h3>
                      {diagnoses.length === 0 ? (
-                        <p className="text-sm text-gray-400 dark:text-gray-500">{t('card.noDiagnoses')}</p>
+                        <p className="text-sm text-faint">{t('card.noDiagnoses')}</p>
                      ) : (
                         <div className="flex flex-wrap gap-1.5">
                            {diagnoses.slice(0, 6).map(d => (
-                              <span key={d.id} className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-xs text-gray-800 dark:text-gray-200">
+                              <span key={d.id} className="px-2 py-0.5 rounded-lg bg-elevated text-xs text-ink">
                                  <b>{d.code}</b>{d.isChronic ? ' ·' : ''}
                                  {d.isChronic && <span className="text-amber-600 dark:text-amber-400"> {t('visit.chronic')}</span>}
                               </span>
@@ -642,7 +642,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
                   {/* Bo'limlar ro'yxati — bosilganda pastda to'liq kenglikda ochiladi */}
                   <Card className="p-2">
-                     <p className="px-2 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{t('card.historyTitle')}</p>
+                     <p className="px-2 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-faint">{t('card.historyTitle')}</p>
                      <nav className="flex flex-col">
                         {([
                            ['visits', Stethoscope, t('card.secVisits'), visits.length],
@@ -660,13 +660,13 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                            <button key={id} onClick={() => setOpenSec(openSec === id ? null : id)}
                               className={`flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm text-left transition-colors ${openSec === id
                                  ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 font-medium'
-                                 : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
-                              <Icon className={`w-4 h-4 shrink-0 ${openSec === id ? 'text-primary-500' : 'text-gray-400'}`} />
+                                 : 'text-muted hover:bg-elevated'}`}>
+                              <Icon className={`w-4 h-4 shrink-0 ${openSec === id ? 'text-primary-500' : 'text-faint'}`} />
                               <span className="flex-1 min-w-0 truncate">{label}</span>
                               {count !== null && count > 0 && (
-                                 <span className="text-xs tabular-nums text-gray-400">{count}</span>
+                                 <span className="text-xs tabular-nums text-faint">{count}</span>
                               )}
-                              <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform ${openSec === id ? 'rotate-90 text-primary-500' : 'text-gray-300'}`} />
+                              <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform ${openSec === id ? 'rotate-90 text-primary-500' : 'text-faint'}`} />
                            </button>
                         ))}
                      </nav>
@@ -711,7 +711,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                {openSec === 'anamnesis' && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                      <Card className="p-6 space-y-4">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-ink flex items-center gap-2">
                            <Activity className="w-5 h-5" /> {t('patients.details.medicalHistory.title')}
                         </h3>
                         <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-100 dark:border-yellow-800">
@@ -739,8 +739,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         </div>
 
 
-                        <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
-                           <p className="font-medium mb-3 text-gray-700 dark:text-gray-300">{t('patients.details.medicalHistory.quickSelect')}</p>
+                        <div className="pt-4 border-t border-line-soft">
+                           <p className="font-medium mb-3 text-muted">{t('patients.details.medicalHistory.quickSelect')}</p>
                            <div className="flex flex-wrap gap-2">
                               {[
                                  "SOG'LOM(SHIKOYATI YO'Q )",
@@ -789,23 +789,23 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                {openSec === 'visits' && (
                   <Card className="p-0 overflow-hidden">
                      {visits.length === 0 ? (
-                        <p className="p-8 text-center text-gray-500">{t('card.noVisits')}</p>
+                        <p className="p-8 text-center text-muted">{t('card.noVisits')}</p>
                      ) : (
-                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                        <div className="divide-y divide-line">
                            {visits.map(v => {
                               const isOpenVisit = v.status !== 'Completed' && v.status !== 'Cancelled';
                               return (
                                  <button key={v.id} onClick={() => { setPanelVisitId(v.id); setOpenSec(null); }}
-                                    className={`w-full flex flex-wrap items-center gap-3 p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${panelVisitId === v.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''}`}>
-                                    <span className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 grid place-items-center text-sm font-bold text-gray-600 dark:text-gray-300 shrink-0">
+                                    className={`w-full flex flex-wrap items-center gap-3 p-4 text-left hover:bg-elevated transition-colors ${panelVisitId === v.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''}`}>
+                                    <span className="w-10 h-10 rounded-lg bg-elevated grid place-items-center text-sm font-bold text-muted shrink-0">
                                        {v.queueNumber ?? '—'}
                                     </span>
                                     <span className="min-w-0 flex-1">
-                                       <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">
+                                       <span className="block text-sm font-medium text-ink truncate">
                                           {v.department?.name || departments.find(d => d.id === v.departmentId)?.name || t('visit.noDept')}
                                           {v.doctorName ? ` · ${v.doctorName}` : ''}
                                        </span>
-                                       <span className="block text-xs text-gray-500 dark:text-gray-400 truncate">
+                                       <span className="block text-xs text-muted truncate">
                                           {formatDate(v.date)}{v.complaints ? ` · ${v.complaints}` : ''}
                                        </span>
                                     </span>
@@ -814,8 +814,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                           {t('card.openVisitBadge')}
                                        </span>
                                     )}
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">{t(VISIT_STATUS_KEY[v.status] || 'visit.status.Waiting')}</span>
-                                    <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                                    <span className="text-xs text-muted">{t(VISIT_STATUS_KEY[v.status] || 'visit.status.Waiting')}</span>
+                                    <ChevronRight className="w-4 h-4 text-faint shrink-0" />
                                  </button>
                               );
                            })}
@@ -828,26 +828,26 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                {openSec === 'diagnoses' && (
                   <Card className="p-0 overflow-hidden">
                      {diagnoses.length === 0 ? (
-                        <p className="p-8 text-center text-gray-500">{t('card.noDiagnoses')}</p>
+                        <p className="p-8 text-center text-muted">{t('card.noDiagnoses')}</p>
                      ) : (
-                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                        <div className="divide-y divide-line">
                            {diagnoses.map(d => (
                               <div key={d.id} className="flex flex-wrap items-center gap-3 p-4">
                                  <span className="min-w-0 flex-1">
-                                    <span className="block text-sm text-gray-900 dark:text-white">
+                                    <span className="block text-sm text-ink">
                                        <b>{d.code}</b>{d.icd10?.name ? ` — ${d.icd10.name}` : ''}
                                     </span>
-                                    {d.notes && <span className="block text-xs text-gray-500 dark:text-gray-400">{formatDiagnosisNotes(d.notes)}</span>}
+                                    {d.notes && <span className="block text-xs text-muted">{formatDiagnosisNotes(d.notes)}</span>}
                                  </span>
                                  {d.isChronic && (
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                                        {t('visit.chronic')}
                                     </span>
                                  )}
-                                 <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(d.date)}</span>
+                                 <span className="text-xs text-muted">{formatDate(d.date)}</span>
                                  {userRole !== UserRole.LAB_TECHNICIAN && (
                                     <button onClick={() => handleDeleteDiagnosis(d.id)} aria-label={t('common.delete')}
-                                       className="p-1 text-gray-300 hover:text-red-500">
+                                       className="p-1 text-faint hover:text-red-500">
                                        <Trash2 className="w-4 h-4" />
                                     </button>
                                  )}
@@ -864,17 +864,17 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                {openSec === 'prescriptions' && (
                   <Card className="p-0 overflow-hidden">
                      {prescriptions.length === 0 ? (
-                        <p className="p-8 text-center text-gray-500">{t('card.noPrescriptions')}</p>
+                        <p className="p-8 text-center text-muted">{t('card.noPrescriptions')}</p>
                      ) : (
-                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                        <div className="divide-y divide-line">
                            {prescriptions.map(rx => (
                               <div key={rx.id} className="flex flex-wrap items-center gap-3 p-4">
-                                 <Pill className="w-4 h-4 text-gray-400 shrink-0" />
+                                 <Pill className="w-4 h-4 text-faint shrink-0" />
                                  <span className="min-w-0 flex-1">
-                                    <span className="block text-sm text-gray-900 dark:text-white">
+                                    <span className="block text-sm text-ink">
                                        {(rx.items || []).map(i => i.name).filter(Boolean).join(', ') || t('visit.prescription')}
                                     </span>
-                                    <span className="block text-xs text-gray-500 dark:text-gray-400">
+                                    <span className="block text-xs text-muted">
                                        {formatDate(rx.date)}{rx.doctorName ? ` · ${rx.doctorName}` : ''}
                                     </span>
                                  </span>
@@ -904,7 +904,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   <div className="space-y-6">
                      {/* Upcoming Appointments Section */}
                      <Card className="p-6">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t('patients.details.appointments.upcoming')}</h3>
+                        <h3 className="text-lg font-bold text-ink mb-4">{t('patients.details.appointments.upcoming')}</h3>
                         <div className="space-y-3">
                            {patientAppointments
                               .filter(a => {
@@ -924,10 +924,10 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                           {new Date(app.date).getDate()}
                                        </div>
                                        <div>
-                                          <p className="font-bold text-gray-900 dark:text-white">
+                                          <p className="font-bold text-ink">
                                              {formatDateLong(new Date(app.date))}
                                           </p>
-                                          <p className="text-sm text-gray-600 dark:text-gray-300">
+                                          <p className="text-sm text-muted">
                                              {app.time} • {app.type} • {app.doctorName}
                                           </p>
                                        </div>
@@ -941,7 +941,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               const now = new Date();
                               return apptDateTime >= now && a.status !== 'Cancelled' && a.status !== 'Completed';
                            }).length === 0 && (
-                                 <div className="text-center py-8 text-gray-500">
+                                 <div className="text-center py-8 text-muted">
                                     Kutilayotgan qabullar yo'q
                                  </div>
                               )}
@@ -950,51 +950,51 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
                      {/* Appointments History */}
                      <Card className="overflow-hidden">
-                        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                           <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t('patients.details.appointments.history')}</h3>
+                        <div className="p-4 bg-elevated border-b border-line flex justify-between items-center">
+                           <h3 className="text-lg font-bold text-ink">{t('patients.details.appointments.history')}</h3>
                            <Button size="sm" onClick={openApptModal}>{t('patients.details.appointments.new')}</Button>
                         </div>
                         <div className="overflow-x-auto">
                            <table className="w-full text-left text-sm">
-                              <thead className="bg-gray-50 dark:bg-gray-800">
+                              <thead className="bg-elevated">
                                  <tr>
-                                    <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.date')}</th>
-                                    <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.procedure')}</th>
-                                    <th className="p-4 font-medium text-gray-500 w-1/3">{t('patients.details.appointments.table.worksDone')}</th>
-                                    <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.doctor')}</th>
-                                    <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.status')}</th>
+                                    <th className="p-4 font-medium text-muted">{t('patients.details.appointments.table.date')}</th>
+                                    <th className="p-4 font-medium text-muted">{t('patients.details.appointments.table.procedure')}</th>
+                                    <th className="p-4 font-medium text-muted w-1/3">{t('patients.details.appointments.table.worksDone')}</th>
+                                    <th className="p-4 font-medium text-muted">{t('patients.details.appointments.table.doctor')}</th>
+                                    <th className="p-4 font-medium text-muted">{t('patients.details.appointments.table.status')}</th>
                                  </tr>
                               </thead>
-                              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                              <tbody className="divide-y divide-line">
                                  {patientAppointments
                                     .sort((a, b) => new Date(b.date + ' ' + b.time).getTime() - new Date(a.date + ' ' + a.time).getTime())
                                     .map(app => (
-                                       <tr key={app.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer" onClick={() => {
+                                       <tr key={app.id} className="hover:bg-elevated transition-colors cursor-pointer" onClick={() => {
                                           // Optional: Add click handler if user wants to open details modal
                                           if (app.notes) toast.error(app.notes); // Temporary quick view or just rely on the column
                                        }}>
-                                          <td className="p-4 text-gray-900 dark:text-white font-medium whitespace-nowrap">
+                                          <td className="p-4 text-ink font-medium whitespace-nowrap">
                                              {formatDate(new Date(app.date))} <br />
-                                             <span className="text-xs text-gray-500 font-normal">{app.time}</span>
+                                             <span className="text-xs text-muted font-normal">{app.time}</span>
                                           </td>
-                                          <td className="p-4 text-gray-600 dark:text-gray-300">{app.type}</td>
-                                          <td className="p-4 text-gray-600 dark:text-gray-300 min-w-[200px]">
+                                          <td className="p-4 text-muted">{app.type}</td>
+                                          <td className="p-4 text-muted min-w-[200px]">
                                              {app.notes ? (
-                                                <div className="text-xs bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-100 dark:border-gray-700 whitespace-pre-line">
+                                                <div className="text-xs bg-canvas p-2 rounded border border-line-soft whitespace-pre-line">
                                                    {app.notes}
                                                 </div>
                                              ) : (
-                                                <span className="text-xs text-gray-400">-</span>
+                                                <span className="text-xs text-faint">-</span>
                                              )}
                                           </td>
-                                          <td className="p-4 text-gray-600 dark:text-gray-300 whitespace-nowrap">{app.doctorName}</td>
+                                          <td className="p-4 text-muted whitespace-nowrap">{app.doctorName}</td>
                                           <td className="p-4"><Badge status={app.status} /></td>
                                        </tr>
                                     ))}
                               </tbody>
                            </table>
                         </div>
-                        {patientAppointments.length === 0 && <div className="p-8 text-center text-gray-500">{t('patients.details.appointments.historyEmpty')}</div>}
+                        {patientAppointments.length === 0 && <div className="p-8 text-center text-muted">{t('patients.details.appointments.historyEmpty')}</div>}
                      </Card>
                   </div>
                )}
@@ -1017,14 +1017,14 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      <Card className="overflow-hidden border-yellow-200 dark:border-yellow-800">
                         <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-100 dark:border-yellow-800 flex flex-wrap justify-between items-center gap-3">
                            <div>
-                              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                              <h3 className="text-lg font-bold text-ink flex items-center gap-2">
                                  <FileText className="w-5 h-5 text-yellow-600" /> {t('patients.details.payments.pendingTitle')}
                               </h3>
-                              <p className="text-sm text-gray-500">{t('card.unpaidDesc')}</p>
+                              <p className="text-sm text-muted">{t('card.unpaidDesc')}</p>
                            </div>
                            {unpaidCharges.length > 0 && (
                               <div className="flex flex-wrap items-center gap-3">
-                                 <span className="text-sm text-gray-600 dark:text-gray-300">
+                                 <span className="text-sm text-muted">
                                     {t('visit.due')}: <b className="tabular-nums text-red-600 dark:text-red-400">
                                        {formatMoney(unpaidTotal)} UZS
                                     </b>
@@ -1046,28 +1046,28 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         </div>
                         <div className="overflow-x-auto">
                            <table className="w-full text-left text-sm">
-                              <thead className="bg-gray-50 dark:bg-gray-800">
+                              <thead className="bg-elevated">
                                  <tr>
-                                    <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.date')}</th>
-                                    <th className="p-4 font-medium text-gray-500">{t('patients.details.appointments.table.procedure')}</th>
-                                    <th className="p-4 font-medium text-gray-500">{t('common.doctor')}</th>
-                                    <th className="p-4 font-medium text-gray-500 text-right">{t('common.total')}</th>
-                                    <th className="p-4 font-medium text-gray-500 text-right">{t('visit.paid')}</th>
-                                    <th className="p-4 font-medium text-gray-500 text-right">{t('visit.due')}</th>
+                                    <th className="p-4 font-medium text-muted">{t('patients.details.appointments.table.date')}</th>
+                                    <th className="p-4 font-medium text-muted">{t('patients.details.appointments.table.procedure')}</th>
+                                    <th className="p-4 font-medium text-muted">{t('common.doctor')}</th>
+                                    <th className="p-4 font-medium text-muted text-right">{t('common.total')}</th>
+                                    <th className="p-4 font-medium text-muted text-right">{t('visit.paid')}</th>
+                                    <th className="p-4 font-medium text-muted text-right">{t('visit.due')}</th>
                                  </tr>
                               </thead>
-                              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                              <tbody className="divide-y divide-line">
                                  {unpaidCharges.map(c => (
                                     <tr key={c.id} className="hover:bg-yellow-50/50 dark:hover:bg-yellow-900/10 transition-colors">
-                                       <td className="p-4 text-gray-900 dark:text-white whitespace-nowrap">
+                                       <td className="p-4 text-ink whitespace-nowrap">
                                           {c.createdAt ? formatDate(new Date(c.createdAt)) : '—'}
                                        </td>
-                                       <td className="p-4 text-gray-600 dark:text-gray-300">
+                                       <td className="p-4 text-muted">
                                           {c.name}
-                                          {c.quantity > 1 && <span className="text-xs text-gray-400"> ×{c.quantity}</span>}
+                                          {c.quantity > 1 && <span className="text-xs text-faint"> ×{c.quantity}</span>}
                                        </td>
-                                       <td className="p-4 text-gray-600 dark:text-gray-300">{c.doctorName || '—'}</td>
-                                       <td className="p-4 text-right tabular-nums text-gray-900 dark:text-white">{formatMoney(c.total)}</td>
+                                       <td className="p-4 text-muted">{c.doctorName || '—'}</td>
+                                       <td className="p-4 text-right tabular-nums text-ink">{formatMoney(c.total)}</td>
                                        <td className="p-4 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoney(c.paidAmount || 0)}</td>
                                        <td className="p-4 text-right tabular-nums font-medium text-red-600 dark:text-red-400">
                                           {formatMoney(c.total - (c.paidAmount || 0))}
@@ -1078,16 +1078,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                            </table>
                         </div>
                         {unpaidCharges.length === 0 && (
-                           <div className="p-8 text-center text-gray-500">{t('patients.details.payments.pendingEmpty')}</div>
+                           <div className="p-8 text-center text-muted">{t('patients.details.payments.pendingEmpty')}</div>
                         )}
                      </Card>
                      {/* Transaction History Section */}
                      <Card className="overflow-hidden">
-                        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                           <div><h3 className="text-lg font-bold text-gray-900 dark:text-white">{t('patients.details.payments.historyTitle')}</h3><p className="text-sm text-gray-500">{t('patients.details.payments.historyDesc')}</p></div>
+                        <div className="p-4 bg-elevated border-b border-line flex justify-between items-center">
+                           <div><h3 className="text-lg font-bold text-ink">{t('patients.details.payments.historyTitle')}</h3><p className="text-sm text-muted">{t('patients.details.payments.historyDesc')}</p></div>
                            <div className="flex items-center gap-6">
                               <div className="text-right">
-                                 <p className="text-sm text-gray-500">{t('patients.details.payments.totalPaid')}</p>
+                                 <p className="text-sm text-muted">{t('patients.details.payments.totalPaid')}</p>
                                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
                                     {formatMoney((patientTransactions || [])
                                        .filter(transaction => transaction && transaction.status === 'Paid' && transaction.type !== 'Balance')
@@ -1096,7 +1096,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                  </p>
                               </div>
                               <div className="text-right">
-                                 <p className="text-sm text-gray-500">{t('patients.details.balance')}</p>
+                                 <p className="text-sm text-muted">{t('patients.details.balance')}</p>
                                  <p className="text-xl font-bold text-primary-600 dark:text-primary-400">
                                     {formatMoney((patient.balance || 0))} UZS
                                  </p>
@@ -1117,24 +1117,24 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         </div>
                         <div className="overflow-x-auto">
                            <table className="w-full text-left text-sm">
-                              <thead className="bg-gray-50 dark:bg-gray-800">
-                                 <tr><th className="p-4 font-medium text-gray-500">{t('finance.table.date')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.service')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.method')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.amount')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.discount')}</th><th className="p-4 font-medium text-gray-500">{t('finance.table.status')}</th><th className="p-4 font-medium text-gray-500">{t('patients.details.payments.receivedBy')}</th></tr>
+                              <thead className="bg-elevated">
+                                 <tr><th className="p-4 font-medium text-muted">{t('finance.table.date')}</th><th className="p-4 font-medium text-muted">{t('finance.table.service')}</th><th className="p-4 font-medium text-muted">{t('finance.table.method')}</th><th className="p-4 font-medium text-muted">{t('finance.table.amount')}</th><th className="p-4 font-medium text-muted">{t('finance.table.discount')}</th><th className="p-4 font-medium text-muted">{t('finance.table.status')}</th><th className="p-4 font-medium text-muted">{t('patients.details.payments.receivedBy')}</th></tr>
                               </thead>
-                              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                              <tbody className="divide-y divide-line">
                                  {(patientTransactions || []).map(transaction => (
-                                    <tr key={transaction.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                                       <td className="p-4 text-gray-900 dark:text-white">{transaction.date || 'N/A'}</td>
-                                       <td className="p-4 text-gray-600 dark:text-gray-300">{transaction.service}</td>
-                                       <td className="p-4 text-gray-600 dark:text-gray-300">{transaction.type}</td>
-                                       <td className="p-4 text-gray-900 dark:text-white font-medium">{formatMoney((Number(transaction.amount) || 0))} UZS</td>
+                                    <tr key={transaction.id} className="hover:bg-elevated transition-colors">
+                                       <td className="p-4 text-ink">{transaction.date || 'N/A'}</td>
+                                       <td className="p-4 text-muted">{transaction.service}</td>
+                                       <td className="p-4 text-muted">{transaction.type}</td>
+                                       <td className="p-4 text-ink font-medium">{formatMoney((Number(transaction.amount) || 0))} UZS</td>
                                        <td className="p-4">
                                           {transaction.discountPercent ? (
                                              <div className="flex flex-col">
                                                 <span className="text-xs text-orange-600 dark:text-orange-400 font-bold">-{transaction.discountPercent}%</span>
-                                                {transaction.discountAmount ? <span className="text-[10px] text-gray-500">({formatMoney((Number(transaction.discountAmount) || 0))} UZS)</span> : null}
+                                                {transaction.discountAmount ? <span className="text-[10px] text-muted">({formatMoney((Number(transaction.discountAmount) || 0))} UZS)</span> : null}
                                              </div>
                                           ) : (
-                                             <span className="text-gray-400">-</span>
+                                             <span className="text-faint">-</span>
                                           )}
                                        </td>
                                        <td className="p-4"><Badge status={transaction.status} /></td>
@@ -1147,10 +1147,10 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                            qoldiradi. */}
                                        <td className="p-4">
                                           <div className="flex items-center gap-2">
-                                             <span className="text-xs text-gray-400">{transaction.receivedByName || '—'}</span>
+                                             <span className="text-xs text-faint">{transaction.receivedByName || '—'}</span>
                                              <button type="button" title={t('common.print')} aria-label={t('common.print')}
                                                 onClick={() => { setReceiptTransaction(transaction); setIsReceiptModalOpen(true); }}
-                                                className="p-1 text-gray-300 hover:text-primary-600 rounded">
+                                                className="p-1 text-faint hover:text-primary-600 rounded">
                                                 <Printer className="w-4 h-4" />
                                              </button>
                                           </div>
@@ -1160,7 +1160,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               </tbody>
                            </table>
                         </div>
-                        {patientTransactions.length === 0 && <div className="p-8 text-center text-gray-500">{t('patients.details.payments.historyEmpty')}</div>}
+                        {patientTransactions.length === 0 && <div className="p-8 text-center text-muted">{t('patients.details.payments.historyEmpty')}</div>}
                      </Card>
                   </div>
                )}
@@ -1175,40 +1175,40 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                
                {openSec === 'materials' && (
                   <Card className="overflow-hidden">
-                     <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                        <h3 className="font-bold text-gray-900 dark:text-white">{t('patients.details.materials.title')}</h3>
+                     <div className="p-4 bg-elevated border-b border-line flex justify-between items-center">
+                        <h3 className="font-bold text-ink">{t('patients.details.materials.title')}</h3>
                         <Button size="sm" onClick={() => setIsMaterialModalOpen(true)}>{t('patients.details.materials.useBtn')}</Button>
                      </div>
                      <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
-                           <thead className="bg-gray-50 dark:bg-gray-800">
+                           <thead className="bg-elevated">
                               <tr>
-                                 <th className="p-4 font-medium text-gray-500">{t('patients.details.materials.table.date')}</th>
-                                 <th className="p-4 font-medium text-gray-500">{t('patients.details.materials.table.material')}</th>
-                                 <th className="p-4 font-medium text-gray-500">{t('patients.details.materials.table.quantity')}</th>
-                                 <th className="p-4 font-medium text-gray-500">{t('patients.details.materials.table.note')}</th>
-                                 <th className="p-4 font-medium text-gray-500">{t('patients.details.materials.table.user')}</th>
-                                 <th className="p-4 font-medium text-gray-500">{t('common.actions')}</th>
+                                 <th className="p-4 font-medium text-muted">{t('patients.details.materials.table.date')}</th>
+                                 <th className="p-4 font-medium text-muted">{t('patients.details.materials.table.material')}</th>
+                                 <th className="p-4 font-medium text-muted">{t('patients.details.materials.table.quantity')}</th>
+                                 <th className="p-4 font-medium text-muted">{t('patients.details.materials.table.note')}</th>
+                                 <th className="p-4 font-medium text-muted">{t('patients.details.materials.table.user')}</th>
+                                 <th className="p-4 font-medium text-muted">{t('common.actions')}</th>
                               </tr>
                            </thead>
-                           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                           <tbody className="divide-y divide-line">
                               {materialLogs.map(log => (
-                                 <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                                    <td className="p-4 text-gray-900 dark:text-white">{formatDate(new Date(log.date))}</td>
-                                    <td className="p-4 text-gray-900 dark:text-white font-medium">
+                                 <tr key={log.id} className="hover:bg-elevated transition-colors">
+                                    <td className="p-4 text-ink">{formatDate(new Date(log.date))}</td>
+                                    <td className="p-4 text-ink font-medium">
                                        {log.item?.name}
-                                       <span className="text-xs text-gray-500 ml-1">({log.item?.unit})</span>
+                                       <span className="text-xs text-muted ml-1">({log.item?.unit})</span>
                                     </td>
-                                    <td className={`p-4 font-medium ${log.reversed ? 'text-gray-400 line-through' : 'text-red-600'}`}>
+                                    <td className={`p-4 font-medium ${log.reversed ? 'text-faint line-through' : 'text-red-600'}`}>
                                        {Math.abs(log.change)}
                                     </td>
-                                    <td className="p-4 text-gray-600 dark:text-gray-300">{log.note || '-'}</td>
-                                    <td className="p-4 text-gray-600 dark:text-gray-300">{log.userName}</td>
+                                    <td className="p-4 text-muted">{log.note || '-'}</td>
+                                    <td className="p-4 text-muted">{log.userName}</td>
                                     <td className="p-4">
                                        {/* Yozuv O'CHIRILMAYDI: bekor qilinganda teskari harakat
                                            yoziladi va ikkala qator ham jurnalda qoladi (0028). */}
                                        {log.reversed ? (
-                                          <span className="text-xs text-gray-400">
+                                          <span className="text-xs text-faint">
                                              {t('patients.details.materials.reversed')}
                                           </span>
                                        ) : (
@@ -1229,7 +1229,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                                    toast.error(e?.message || t('patients.details.alerts.error'));
                                                 }
                                              }}
-                                             className="px-2 py-1 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                             className="px-2 py-1 text-xs text-muted hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                                              title={t('patients.details.materials.reverse')}
                                           >
                                              {t('patients.details.materials.reverse')}
@@ -1241,7 +1241,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                            </tbody>
                         </table>
                      </div>
-                     {materialLogs.length === 0 && <div className="p-8 text-center text-gray-500">{t('patients.details.materials.empty')}</div>}
+                     {materialLogs.length === 0 && <div className="p-8 text-center text-muted">{t('patients.details.materials.empty')}</div>}
                   </Card>
                )}
                </div>
@@ -1384,7 +1384,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                  <Button variant="secondary" size="sm" onClick={() => { setIcd10Query(''); setIcd10Results([]); }}>
                                     <ArrowLeft className="w-4 h-4" /> {t('patients.details.modals.back')}
                                  </Button>
-                                 <h4 className="font-bold text-gray-900 dark:text-white">{icd10Query}</h4>
+                                 <h4 className="font-bold text-ink">{icd10Query}</h4>
                               </div>
                               <div className="space-y-2 max-h-60 overflow-y-auto">
                                  {icd10Results.map(code => (
@@ -1394,7 +1394,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                        onClick={() => setSelectedCode(code)}
                                     >
                                        <div className="font-bold text-primary-600 dark:text-primary-400">{code.code}</div>
-                                       <div className="text-sm text-gray-700 dark:text-gray-300">{code.name}</div>
+                                       <div className="text-sm text-muted">{code.name}</div>
                                     </div>
                                  ))}
                               </div>
@@ -1402,7 +1402,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         ) : (
                            // Show Categories
                            <div className="space-y-2">
-                              <p className="text-sm text-gray-500 mb-2">{t('patients.details.modals.selectCategory')}:</p>
+                              <p className="text-sm text-muted mb-2">{t('patients.details.modals.selectCategory')}:</p>
                               {[
                                  t('patients.details.modals.cat1'),
                                  t('patients.details.modals.cat2'),
@@ -1412,11 +1412,11 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               ].map(category => (
                                  <div
                                     key={category}
-                                    className="p-4 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer flex justify-between items-center group"
+                                    className="p-4 border rounded-lg hover:bg-elevated cursor-pointer flex justify-between items-center group"
                                     onClick={() => handleSearchICD10(category)}
                                  >
-                                    <span className="font-medium text-gray-900 dark:text-white">{category}</span>
-                                    <ArrowLeft className="w-4 h-4 rotate-180 text-gray-400 group-hover:text-primary-500 transition-colors" />
+                                    <span className="font-medium text-ink">{category}</span>
+                                    <ArrowLeft className="w-4 h-4 rotate-180 text-faint group-hover:text-primary-500 transition-colors" />
                                  </div>
                               ))}
                            </div>
@@ -1434,9 +1434,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('patients.details.modals.notes')}</label>
+                           <label className="block text-sm font-medium text-muted mb-1">{t('patients.details.modals.notes')}</label>
                            <textarea
-                              className="w-full border rounded-md p-3 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                              className="w-full border rounded-md p-3 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
                               rows={3}
                               placeholder={t('patients.details.modals.notesPlaceholder')}
                               value={diagnosisNote}
@@ -1446,7 +1446,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      </div>
                   )}
 
-                  <div className="flex justify-end gap-2 pt-4 border-t dark:border-gray-700">
+                  <div className="flex justify-end gap-2 pt-4 border-t">
                      <Button type="button" variant="secondary" onClick={() => { setIsDiagnosisModalOpen(false); setSelectedCode(null); setIcd10Query(''); }}>{t('common.close')}</Button>
                      {selectedCode && <Button type="submit">{t('common.save')}</Button>}
                   </div>
@@ -1455,21 +1455,21 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          </div >
 
          {/* Print Template */}
-         < div className="hidden print:block print:p-8 bg-white text-black" >
-            <div className="text-center mb-8 border-b-2 border-gray-800 pb-4">
+         < div className="hidden print:block print:p-8 bg-surface text-black" >
+            <div className="text-center mb-8 border-b-2 border-line pb-4">
                <h1 className="text-3xl font-bold uppercase tracking-wider mb-2">DentalFlow Clinic</h1>
-               <p className="text-sm text-gray-600">Tish davolash va diagnostika markazi</p>
+               <p className="text-sm text-muted">Tish davolash va diagnostika markazi</p>
             </div>
 
             <div className="grid grid-cols-2 gap-8 mb-8">
                <div>
-                  <h2 className="text-xs font-bold uppercase text-gray-500 mb-1">Bemor</h2>
+                  <h2 className="text-xs font-bold uppercase text-muted mb-1">Bemor</h2>
                   <p className="text-xl font-bold">{formatFullName(patient)}</p>
                   <p className="text-sm">{showPatientPhone ? patient.phone : maskPhone(patient.phone)}</p>
                   <p className="text-sm">{formatDobDDMMYYYY(patient.dob)} ({calcAge(patient.dob) ?? ''} yosh)</p>
                </div>
                <div className="text-right">
-                  <h2 className="text-xs font-bold uppercase text-gray-500 mb-1">Sana</h2>
+                  <h2 className="text-xs font-bold uppercase text-muted mb-1">Sana</h2>
                   <p className="text-xl font-bold">{formatDate(new Date())}</p>
                   <p className="text-sm">{new Date().toLocaleTimeString('uz-UZ')}</p>
                </div>
@@ -1479,15 +1479,15 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             {
                diagnoses.length > 0 && (
                   <div className="mb-8">
-                     <h3 className="text-lg font-bold border-b border-gray-400 mb-4 pb-1">Tashxislar</h3>
+                     <h3 className="text-lg font-bold border-b border-line mb-4 pb-1">Tashxislar</h3>
                      <div className="space-y-4">
                         {diagnoses.map(d => (
                            <div key={d.id} className="mb-4">
                               <div className="flex justify-between items-baseline mb-1">
                                  <span className="font-bold text-lg">{d.code} - {d.icd10?.name}</span>
-                                 <span className="text-sm text-gray-600">{d.date}</span>
+                                 <span className="text-sm text-muted">{d.date}</span>
                               </div>
-                              <div className="text-sm pl-4 border-l-2 border-gray-300">
+                              <div className="text-sm pl-4 border-l-2 border-line">
                                  {formatDiagnosisNotes(d.notes || '')}
                               </div>
                            </div>
@@ -1499,14 +1499,14 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
             {/* Qabul bayoni */}
             <div className="mb-8 break-inside-avoid">
-               <h3 className="text-lg font-bold border-b border-gray-400 mb-4 pb-1">Qabul bayoni</h3>
+               <h3 className="text-lg font-bold border-b border-line mb-4 pb-1">Qabul bayoni</h3>
                <EncounterSummary
                   template={panelTemplate}
                   value={JSON.stringify(panelEncounterData)}
                />
             </div>
 
-            <div className="mt-12 pt-8 border-t border-gray-300 flex justify-between">
+            <div className="mt-12 pt-8 border-t border-line flex justify-between">
                <div>
                   <p className="text-sm font-bold">Shifokor:</p>
                   <p className="mt-8 border-t border-black w-48 pt-1 text-xs text-center">(Imzo)</p>
@@ -1528,7 +1528,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all text-left group
                               ${patient.doctorId === doc.id
                               ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                              : 'border-gray-200 dark:border-gray-700 hover:border-primary-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                              : 'border-line hover:border-primary-300 hover:bg-elevated'
                            }`}
                      >
                         <div className="flex items-center gap-3">
@@ -1536,8 +1536,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               {doc.firstName[0]}{doc.lastName[0]}
                            </div>
                            <div>
-                              <p className="font-bold text-gray-900 dark:text-white">Dr. {formatFullName(doc)}</p>
-                              <p className="text-xs text-gray-500">{doc.specialty}</p>
+                              <p className="font-bold text-ink">Dr. {formatFullName(doc)}</p>
+                              <p className="text-xs text-muted">{doc.specialty}</p>
                            </div>
                         </div>
                         {patient.doctorId === doc.id && (
@@ -1548,12 +1548,12 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      </button>
                   ))
                ) : (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-muted">
                      {t('patients.details.alerts.doctorNotFound')}
                   </div>
                )}
             </div>
-            <div className="flex justify-end pt-4 mt-2 border-t border-gray-100 dark:border-gray-700">
+            <div className="flex justify-end pt-4 mt-2 border-t border-line-soft">
                <Button variant="secondary" onClick={() => setIsAssignDoctorModalOpen(false)}>{t('common.close')}</Button>
             </div>
          </Modal>

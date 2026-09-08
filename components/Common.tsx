@@ -16,18 +16,22 @@ export const Button: React.FC<ButtonProps> = ({
   children,
   ...props
 }) => {
-  const baseStyles = "inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
+  /* Reference: tugmalar to'liq yumaloq emas, lekin radiusi katta (12px),
+     va rang KO'TARILGAN yuza sifatida ishlaydi — ramka + shaffof tus.
+     Qorong'i fonda to'ldirilgan kulrang tugma "o'chirilgan" kabi
+     ko'rinadi, ramkali esa aniq bosiladigan narsaga o'xshaydi. */
+  const baseStyles = "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-colors disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap";
 
   const variants = {
-    primary: "bg-primary text-white hover:bg-primary-700 focus:ring-primary-500 shadow-sm",
-    secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-500 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700",
-    danger: "bg-danger text-white hover:bg-danger-700 focus:ring-danger-500",
-    ghost: "bg-transparent text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800",
+    primary: "bg-primary-600 text-white hover:bg-primary-500",
+    secondary: "bg-surface text-ink border border-line hover:bg-elevated",
+    danger: "bg-danger-500/12 text-danger border border-danger-500/30 hover:bg-danger-500/20",
+    ghost: "bg-transparent text-muted hover:text-ink hover:bg-elevated",
   };
 
   const sizes = {
-    sm: "h-8 px-3 text-xs",
-    md: "h-10 px-4 py-2 text-sm",
+    sm: "h-9 px-3.5 text-xs",
+    md: "h-11 px-5 text-sm",
     lg: "h-12 px-6 text-base",
   };
 
@@ -42,8 +46,11 @@ export const Button: React.FC<ButtonProps> = ({
 };
 
 // --- Card ---
+/* Ko'rinish `index.css` dagi `.card` da — fon, ramka, radius va
+   qorong'i temadagi ustki yorug'lik chizig'i. Bu yerda takrorlanmaydi:
+   kartaning ko'rinishini o'zgartirish uchun bitta joy bo'lsin. */
 export const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <div className={`bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm ${className}`}>
+  <div className={`card ${className}`}>
     {children}
   </div>
 );
@@ -67,8 +74,17 @@ const STATUS_TRANSLATIONS: Record<string, string> = {
   'crown': 'Qoplama'
 };
 
+/* RAMKALI NISHON.
+
+   Ilgari nishon to'ldirilgan edi (`bg-green-100 text-green-800`). Yorug'
+   fonda u ishlardi, qorong'ida esa `dark:bg-green-900/30` — loyqa yashil
+   dog'. Reference dagi nishon boshqacha: fon deyarli shaffof, rang esa
+   MATN va RAMKA da. Qora fonda shu aniqroq chiqadi va nishonlar qator
+   bo'lib turganda ular chalg'itmaydi.
+
+   Bitta o'zgaruvchi — rang nomi; fon/matn/ramka undan hosil bo'ladi. */
 export const Badge: React.FC<{ status?: string }> = ({ status = 'pending' }) => {
-  let colorClass = 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+  let colorClass = 'bg-elevated text-muted border-line';
   const lowerStatus = (status || 'pending').toLowerCase();
 
   switch (lowerStatus) {
@@ -77,34 +93,34 @@ export const Badge: React.FC<{ status?: string }> = ({ status = 'pending' }) => 
     case 'confirmed':
     case 'completed':
     case 'healthy':
-      colorClass = 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
+      colorClass = 'bg-success-500/12 text-success border-success-500/30';
       break;
     case 'pending':
     case 'filled':
-      colorClass = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+      colorClass = 'bg-warning-500/12 text-warning border-warning-500/30';
       break;
     case 'cancelled':
     case 'overdue':
     case 'cavity':
     case 'missing':
     case 'archived':
-      colorClass = 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
+      colorClass = 'bg-danger-500/12 text-danger border-danger-500/30';
       break;
     case 'no-show':
-      colorClass = 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+      colorClass = 'bg-elevated text-faint border-line';
       break;
     case 'checked-in':
-      colorClass = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300';
+      colorClass = 'bg-primary-500/12 text-primary border-primary-500/30';
       break;
     case 'crown':
-      colorClass = 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
+      colorClass = 'bg-violet-500/12 text-violet-500 dark:text-violet-300 border-violet-500/30';
       break;
   }
 
   const label = STATUS_TRANSLATIONS[lowerStatus] || status;
 
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[11px] font-bold ${colorClass}`}>
       {label}
     </span>
   );
@@ -152,12 +168,12 @@ export const Input: React.FC<InputProps> = ({ label, error, helperText, classNam
   return (
     <div className={`${containerClassName} relative z-10`}>
       {label && (
-        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <label htmlFor={inputId} className="block text-xs font-semibold text-muted mb-1.5">
           {label}
         </label>
       )}
       <input
-        className={`flex h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-white ${props.type === 'date' ? 'cursor-pointer' : ''} ${className} ${error ? 'border-red-500 focus:ring-red-500' : ''}`}
+        className={`flex h-11 w-full rounded-xl border border-line bg-elevated px-3.5 text-sm text-ink placeholder:text-faint outline-none transition-colors focus:border-primary-500/50 focus:ring-4 focus:ring-primary-500/10 disabled:cursor-not-allowed disabled:opacity-50 ${props.type === 'date' ? 'cursor-pointer' : ''} ${className} ${error ? 'border-danger-500/60 focus:ring-danger-500/15' : ''}`}
         {...props}
         id={inputId}
         /* Xato matni maydonga bog'lanadi — ekran o'quvchi uni maydon
@@ -167,8 +183,8 @@ export const Input: React.FC<InputProps> = ({ label, error, helperText, classNam
         onClick={handleClick}
         onWheel={handleWheel}
       />
-      {error && <p id={errorId} className="mt-1 text-xs text-red-500">{error}</p>}
-      {!error && helperText && <p id={helpId} className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helperText}</p>}
+      {error && <p id={errorId} className="mt-1.5 text-xs font-medium text-danger">{error}</p>}
+      {!error && helperText && <p id={helpId} className="mt-1.5 text-xs text-faint">{helperText}</p>}
     </div>
   );
 };
@@ -193,13 +209,13 @@ export const Select: React.FC<SelectProps> = ({ label, options, children, classN
   return (
   <div className="w-full">
     {label && (
-      <label htmlFor={selectId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+      <label htmlFor={selectId} className="block text-xs font-semibold text-muted mb-1.5">
         {label}
       </label>
     )}
     <div className="relative">
       <select
-        className={`flex h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-white dark:bg-gray-800 appearance-none ${className}`}
+        className={`flex h-11 w-full rounded-xl border border-line bg-elevated px-3.5 pr-9 text-sm text-ink outline-none transition-colors appearance-none focus:border-primary-500/50 focus:ring-4 focus:ring-primary-500/10 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
         {...props}
         id={selectId}
       >
@@ -207,7 +223,7 @@ export const Select: React.FC<SelectProps> = ({ label, options, children, classN
           <option key={opt.value} value={opt.value} disabled={opt.disabled}>{opt.label}</option>
         )) : children}
       </select>
-      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-faint">
         <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
       </div>
     </div>
@@ -248,23 +264,23 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({ label, value
 
   return (
     <div className={`w-full relative ${className}`} ref={wrapperRef}>
-      {label && <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
+      {label && <label className="block text-xs font-semibold text-muted mb-1.5">{label}</label>}
       <div
-        className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-gray-700 dark:text-white dark:bg-gray-800"
+        className="flex h-11 w-full items-center justify-between rounded-xl border border-line bg-elevated px-3.5 text-sm text-ink cursor-pointer transition-colors hover:border-primary-500/40"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <span className={selectedOption ? 'truncate' : 'text-gray-400'}>
+        <span className={selectedOption ? 'truncate' : 'text-faint'}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
-        <svg className={`h-4 w-4 text-gray-500 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+        <svg className={`h-4 w-4 text-faint transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 max-h-60 flex flex-col pt-2 mb-2">
-          <div className="px-2 pb-2 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+        <div className="absolute z-50 w-full mt-2 card shadow-2xl max-h-60 flex flex-col pt-2 mb-2">
+          <div className="px-2 pb-2 border-b border-line-soft flex-shrink-0">
             <input
               type="text"
-              className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-1.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:text-white"
+              className="w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink placeholder:text-faint outline-none focus:border-primary-500/50"
               placeholder="Qidirish..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -274,12 +290,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({ label, value
           </div>
           <div className="overflow-y-auto flex-1 p-1">
             {filteredOptions.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-gray-500 text-center">Topilmadi</div>
+              <div className="px-3 py-4 text-sm text-faint text-center">Topilmadi</div>
             ) : (
               filteredOptions.map((opt) => (
                 <div
                   key={opt.value}
-                  className={`px-3 py-2 text-sm cursor-pointer rounded-lg truncate ${opt.value === value ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+                  className={`px-3 py-2 text-sm cursor-pointer rounded-lg truncate ${opt.value === value ? 'bg-primary-500/12 text-primary font-semibold' : 'text-muted hover:text-ink hover:bg-elevated'}`}
                   onClick={() => {
                     onChange(opt.value);
                     setIsOpen(false);
@@ -309,15 +325,15 @@ export const Modal: React.FC<{
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity" onClick={onClose} />
-      <div className={`relative w-full ${className} transform rounded-2xl bg-white dark:bg-gray-900 shadow-2xl transition-all overflow-hidden max-h-[90vh] flex flex-col`}>
-        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 p-4 sm:px-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
-          <button aria-label="Yopish" onClick={onClose} className="text-gray-400 hover:text-gray-500 focus:outline-none">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className={`relative w-full ${className} panel shadow-2xl overflow-hidden max-h-[90vh] flex flex-col`}>
+        <div className="flex items-center justify-between border-b border-line px-5 py-4 sm:px-6">
+          <h3 className="text-lg font-bold tracking-tight text-ink">{title}</h3>
+          <button aria-label="Yopish" onClick={onClose} className="w-9 h-9 -mr-1.5 flex items-center justify-center rounded-full text-faint hover:text-ink hover:bg-elevated transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="p-4 sm:px-6 py-6 overflow-y-auto">
+        <div className="px-5 sm:px-6 py-6 overflow-y-auto">
           {children}
         </div>
       </div>
@@ -347,30 +363,33 @@ export const Toast: React.FC<ToastMessage & { onClose: (id: string) => void }> =
   }, [id, onClose, action, durationMs]);
 
   const icons = {
-    success: <CheckCircle className="w-5 h-5 text-green-500" />,
-    error: <AlertCircle className="w-5 h-5 text-red-500" />,
-    info: <Info className="w-5 h-5 text-primary-500" />
+    success: <CheckCircle className="w-5 h-5 text-success" />,
+    error: <AlertCircle className="w-5 h-5 text-danger" />,
+    info: <Info className="w-5 h-5 text-primary" />
   };
 
+  /* Fon KARTA rangida qoladi, holat rangi esa chap qirradagi chiziqda.
+     Ilgari butun toast yashil/qizil bo'lardi — qorong'i fonda bu ekranning
+     yarmini yoritib yuborardi. */
   const styles = {
-    success: 'border-green-100 bg-green-50 dark:bg-green-900/20 dark:border-green-900',
-    error: 'border-red-100 bg-red-50 dark:bg-red-900/20 dark:border-red-900',
-    info: 'border-primary-100 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-900'
+    success: 'border-l-success',
+    error: 'border-l-danger',
+    info: 'border-l-primary'
   };
 
   return (
-    <div className={`flex items-center gap-3 p-4 rounded-lg border shadow-lg transform transition-all animate-fade-in mb-3 w-80 ${styles[type]}`}>
+    <div className={`flex items-center gap-3 p-4 card border-l-4 shadow-2xl transform transition-all animate-fade-in mb-3 w-80 ${styles[type]}`}>
       {icons[type]}
-      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex-1">{message}</p>
+      <p className="text-sm font-medium text-ink flex-1">{message}</p>
       {action && (
         <button
           onClick={() => { action.run(); onClose(id); }}
-          className="text-sm font-semibold text-primary-700 dark:text-primary-300 hover:underline shrink-0"
+          className="text-sm font-bold text-primary hover:underline shrink-0"
         >
           {action.label}
         </button>
       )}
-      <button onClick={() => onClose(id)} className="text-gray-400 hover:text-gray-600" aria-label="Yopish">
+      <button onClick={() => onClose(id)} className="text-faint hover:text-ink transition-colors" aria-label="Yopish">
         <X className="w-4 h-4" />
       </button>
     </div>
@@ -401,7 +420,7 @@ export const ToastContainer: React.FC<{ toasts: ToastMessage[], removeToast: (id
 
 /** Bitta kulrang chiziq. `h` — balandlik sinfi (Tailwind). */
 export const Skeleton: React.FC<{ className?: string }> = ({ className = 'h-4 w-full' }) => (
-  <div className={`bg-gray-200 dark:bg-gray-700 rounded animate-pulse ${className}`} />
+  <div className={`bg-elevated rounded-lg animate-pulse ${className}`} />
 );
 
 /**
@@ -411,7 +430,7 @@ export const Skeleton: React.FC<{ className?: string }> = ({ className = 'h-4 w-
 export const SkeletonList: React.FC<{ rows?: number; className?: string }> = ({ rows = 5, className = '' }) => (
   <div className={`space-y-2 ${className}`} aria-busy="true" aria-live="polite">
     {Array.from({ length: rows }, (_, i) => (
-      <div key={i} className="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+      <div key={i} className="p-4 card">
         <div className="flex items-center gap-3">
           <Skeleton className="h-10 w-10 rounded-full shrink-0" />
           <div className="flex-1 space-y-2">
@@ -439,10 +458,10 @@ export const EmptyState: React.FC<{
   action?: React.ReactNode;
   className?: string;
 }> = ({ icon, title, hint, action, className = '' }) => (
-  <div className={`text-center py-14 px-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 ${className}`}>
-    {icon && <div className="flex justify-center mb-3 text-gray-300 dark:text-gray-600">{icon}</div>}
-    <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{title}</p>
-    {hint && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 max-w-sm mx-auto">{hint}</p>}
+  <div className={`text-center py-14 px-4 card ${className}`}>
+    {icon && <div className="flex justify-center mb-3 text-faint">{icon}</div>}
+    <p className="text-sm font-semibold text-ink">{title}</p>
+    {hint && <p className="text-xs text-faint mt-1.5 max-w-sm mx-auto">{hint}</p>}
     {action && <div className="mt-4">{action}</div>}
   </div>
 );

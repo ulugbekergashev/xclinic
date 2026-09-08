@@ -210,7 +210,7 @@ export const StaffForm: React.FC<Props> = ({
                 ? `${formatFullName(row)} — ${roleMeta(role).label}`
                 : `Yangi ${roleMeta(role).label.toLowerCase()}`}>
             <form onSubmit={save} className="space-y-4">
-                <p className="text-xs text-gray-500 dark:text-gray-400">{roleMeta(role).hint}</p>
+                <p className="text-xs text-muted">{roleMeta(role).hint}</p>
 
                 <div className="grid grid-cols-2 gap-3">
                     <Input label="Familiya *" value={form.lastName}
@@ -272,8 +272,8 @@ export const StaffForm: React.FC<Props> = ({
 
                 {/* ── OYLIK. To'rt rolda ham (0036). Ilgari u faqat shifokorda
                     bor edi va registratorning oyligi daftarda qolardi. ── */}
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Oylik</p>
+                <div className="rounded-xl border border-line p-4 space-y-3">
+                    <p className="text-xs font-bold text-muted uppercase tracking-wider">Oylik</p>
                     <Input label="Asosiy oylik (UZS)" type="number" value={form.fixedSalary}
                         onChange={e => setForm(f => ({ ...f, fixedSalary: e.target.value }))}
                         placeholder="3000000" />
@@ -292,14 +292,14 @@ export const StaffForm: React.FC<Props> = ({
                                         { value: 'fixed_kpi', label: "Qat'iy summa + foiz" },
                                     ]} />
                             </div>
-                            <p className="text-[11px] text-gray-400">
+                            <p className="text-[11px] text-faint">
                                 Shifokorda asosiy oylik ham, ulush ham VEDOMOST orqali to'lanadi —
                                 shuning uchun xodim kartasidan ikkinchi marta to'lanmaydi.
                             </p>
                         </>
                     )}
                     {!shows.share && (
-                        <p className="text-[11px] text-gray-400">
+                        <p className="text-[11px] text-faint">
                             Oylik xodim kartasidagi «Maosh» bo'limidan to'lanadi va kassaga
                             xarajat bo'lib tushadi.
                         </p>
@@ -308,7 +308,7 @@ export const StaffForm: React.FC<Props> = ({
 
                 {shows.color && (
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label className="block text-sm font-medium text-muted mb-1.5">
                             Kalendardagi rang
                         </label>
                         <div className="flex flex-wrap gap-2">
@@ -316,7 +316,7 @@ export const StaffForm: React.FC<Props> = ({
                                 <button key={c.value} type="button" title={c.name}
                                     onClick={() => setForm(f => ({ ...f, color: c.value }))}
                                     className={`w-8 h-8 rounded-full border-2 transition-transform ${form.color === c.value
-                                        ? 'border-gray-900 dark:border-white scale-110' : 'border-transparent'}`}
+                                        ? 'border-line scale-110' : 'border-transparent'}`}
                                     style={{ backgroundColor: c.value }} />
                             ))}
                         </div>

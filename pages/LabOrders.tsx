@@ -35,7 +35,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 const FLAG_UI: Record<string, { label: string; cls: string; Icon: React.ElementType }> = {
     High: { label: 'Yuqori', cls: 'text-red-600 dark:text-red-400', Icon: ArrowUp },
     Low: { label: 'Past', cls: 'text-blue-600 dark:text-blue-400', Icon: ArrowDown },
-    Normal: { label: 'Norma', cls: 'text-gray-400 dark:text-gray-500', Icon: Minus },
+    Normal: { label: 'Norma', cls: 'text-faint', Icon: Minus },
 };
 
 interface Props {
@@ -202,7 +202,7 @@ export const LabOrders: React.FC<Props> = ({
         if (!opened) setError("Bosma oyna bloklandi — brauzer sozlamalarini tekshiring");
     };
 
-    const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
+    const inputCls = 'w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 
     return (
         <div className="space-y-5">
@@ -210,13 +210,13 @@ export const LabOrders: React.FC<Props> = ({
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <FlaskConical className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('lab.title')}</h2>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{filtered.length} ta yo'llanma</span>
+                    <h2 className="text-xl font-bold text-ink">{t('lab.title')}</h2>
+                    <span className="text-sm text-muted">{filtered.length} ta yo'llanma</span>
                 </div>
                 {/* Yo'llanmalar odatda shifokordan keladi (Qabul → Tahlilga yuborish).
                     Bu tugma faqat to'g'ridan-to'g'ri kelgan bemor uchun. */}
                 <button onClick={() => setShowNew(true)}
-                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700">
+                    className="flex items-center gap-2 px-4 py-2 border border-line text-muted rounded-lg text-sm font-medium hover:bg-elevated">
                     <Plus className="w-4 h-4" /> Tashqi yo'llanma
                 </button>
             </div>
@@ -252,7 +252,7 @@ export const LabOrders: React.FC<Props> = ({
             {/* Filtrlar */}
             <div className="flex flex-wrap gap-3">
                 <div className="relative flex-1 min-w-[220px]">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                     <input value={search} onChange={e => setSearch(e.target.value)}
                         placeholder={t('lab.searchPh')} className={`${inputCls} pl-9`} />
                 </div>
@@ -275,11 +275,11 @@ export const LabOrders: React.FC<Props> = ({
                         const st = STATUS_CONFIG[order.status] || STATUS_CONFIG.Ordered;
                         const StIcon = st.icon;
                         return (
-                            <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                            <div key={order.id} className="bg-surface rounded-xl border border-line p-4">
                                 <div className="flex flex-wrap items-start gap-3">
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <h3 className="font-semibold text-gray-900 dark:text-white truncate">{order.patientName}</h3>
+                                            <h3 className="font-semibold text-ink truncate">{order.patientName}</h3>
                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${st.color}`}>
                                                 <StIcon className="w-3 h-3" /> {st.label}
                                             </span>
@@ -300,7 +300,7 @@ export const LabOrders: React.FC<Props> = ({
                                                 </span>
                                             )}
                                             {(order as any).sampleCollectedAt && (
-                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-elevated text-muted">
                                                     Proba olindi
                                                 </span>
                                             )}
@@ -312,25 +312,25 @@ export const LabOrders: React.FC<Props> = ({
                                             ikkinchi turdagi yo'llanmada laborant nima
                                             qilishini ekrandan bilolmasdi — hammasida
                                             `—` turardi (audit XC-28). */}
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                        <p className="text-sm text-muted mt-1">
                                             {(order.items || []).map(i => i.testName).join(', ')
                                                 || [(order as any).orderType, (order as any).material]
                                                     .filter(Boolean).join(' · ')
                                                 || '—'}
                                         </p>
-                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                        <p className="text-xs text-faint mt-1">
                                             {order.doctorName || 'Shifokor ko\'rsatilmagan'} · {fmtDate(order.orderedAt)}
                                         </p>
                                     </div>
                                     <div className="text-right shrink-0">
-                                        <p className="font-semibold text-gray-900 dark:text-white tabular-nums">{fmt(order.totalPrice || 0)} so'm</p>
+                                        <p className="font-semibold text-ink tabular-nums">{fmt(order.totalPrice || 0)} so'm</p>
                                         <div className="flex gap-2 mt-2">
                                             {/* Bemor keldi va proba olindi. Sana maydoni bor edi,
                                                 lekin uni faqat umumiy tahrirlash orqali
                                                 o'zgartirish mumkin edi. */}
                                             {!(order as any).sampleCollectedAt && order.status !== 'Completed' && order.status !== 'Cancelled' && (
                                                 <button onClick={() => collectSample(order)} disabled={saving}
-                                                    className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:border-primary-400 disabled:opacity-50">
+                                                    className="px-3 py-1.5 text-xs font-medium border border-line text-muted rounded-lg hover:border-primary-400 disabled:opacity-50">
                                                     Proba olindi
                                                 </button>
                                             )}
@@ -339,7 +339,7 @@ export const LabOrders: React.FC<Props> = ({
                                                 Natijalar
                                             </button>
                                             <button onClick={() => removeOrder(order.id)}
-                                                className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg" title={t('common.delete')}>
+                                                className="p-1.5 text-faint hover:text-red-500 rounded-lg" title={t('common.delete')}>
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
@@ -354,16 +354,16 @@ export const LabOrders: React.FC<Props> = ({
             {/* ── Yangi yo'llanma ───────────────────────────────────────────── */}
             {showNew && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowNew(false)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">{t('lab.newOrder')}</h3>
-                            <button onClick={() => setShowNew(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                    <div className="bg-surface rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-line flex items-center justify-between">
+                            <h3 className="font-semibold text-ink">{t('lab.newOrder')}</h3>
+                            <button onClick={() => setShowNew(false)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
                         </div>
 
                         <div className="p-5 space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('common.patient')}</label>
+                                    <label className="block text-sm font-medium text-muted mb-1.5">{t('common.patient')}</label>
                                     <select
                                         value={form.patientId}
                                         onChange={e => {
@@ -400,25 +400,25 @@ export const LabOrders: React.FC<Props> = ({
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('lab.tests')}</label>
-                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 max-h-64 overflow-y-auto">
+                                <label className="block text-sm font-medium text-muted mb-2">{t('lab.tests')}</label>
+                                <div className="border border-line rounded-lg divide-y divide-line max-h-64 overflow-y-auto">
                                     {activeTests.map(t => {
                                         const checked = form.testIds.includes(t.id);
                                         return (
-                                            <label key={t.id} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                            <label key={t.id} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-elevated">
                                                 <input type="checkbox" checked={checked}
                                                     onChange={() => setForm(f => ({
                                                         ...f,
                                                         testIds: checked ? f.testIds.filter(x => x !== t.id) : [...f.testIds, t.id],
                                                     }))}
-                                                    className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                                                    className="w-4 h-4 rounded border-line text-primary-600 focus:ring-primary-500" />
                                                 <span className="flex-1 min-w-0">
-                                                    <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">{t.name}</span>
-                                                    <span className="block text-xs text-gray-500 dark:text-gray-400">
+                                                    <span className="block text-sm font-medium text-ink truncate">{t.name}</span>
+                                                    <span className="block text-xs text-muted">
                                                         {t.code} · {t.sampleType} · {t.turnaroundHours} soat
                                                     </span>
                                                 </span>
-                                                <span className="text-sm tabular-nums text-gray-700 dark:text-gray-300">{fmt(t.price)}</span>
+                                                <span className="text-sm tabular-nums text-muted">{fmt(t.price)}</span>
                                             </label>
                                         );
                                     })}
@@ -431,14 +431,14 @@ export const LabOrders: React.FC<Props> = ({
                                     <option value="Urgent">{t('lab.urgent')}</option>
                                 </select>
                                 <div className="ml-auto text-right">
-                                    <span className="text-sm text-gray-500 dark:text-gray-400">{t('common.totalLabel')}</span>
-                                    <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{fmt(selectedTotal)} so'm</span>
+                                    <span className="text-sm text-muted">{t('common.totalLabel')}</span>
+                                    <span className="font-semibold text-ink tabular-nums">{fmt(selectedTotal)} so'm</span>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <div className="p-5 border-t border-line flex justify-end gap-3">
+                            <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">
                                 Bekor qilish
                             </button>
                             <button onClick={createOrder} disabled={saving}
@@ -453,32 +453,32 @@ export const LabOrders: React.FC<Props> = ({
             {/* ── Natijalar ─────────────────────────────────────────────────── */}
             {resultsOrder && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setResultsOrder(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-4xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+                    <div className="bg-surface rounded-xl w-full max-w-4xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-line flex items-center gap-3">
                             <div className="min-w-0">
-                                <h3 className="font-semibold text-gray-900 dark:text-white truncate">{resultsOrder.patientName}</h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <h3 className="font-semibold text-ink truncate">{resultsOrder.patientName}</h3>
+                                <p className="text-xs text-muted">
                                     {resultsOrder.patientSex === 'Male' ? 'Erkak' : resultsOrder.patientSex === 'Female' ? 'Ayol' : 'Jins ko\'rsatilmagan'}
                                     {resultsOrder.patientAge != null ? ` · ${resultsOrder.patientAge} yosh` : ''}
                                     {' · Normalar shu bemorga moslangan'}
                                 </p>
                             </div>
                             <div className="ml-auto flex items-center gap-2">
-                                <button aria-label={t('common.print')} onClick={printResults} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={t('common.print')}>
+                                <button aria-label={t('common.print')} onClick={printResults} className="p-2 text-faint hover:text-muted" title={t('common.print')}>
                                     <Printer className="w-5 h-5" />
                                 </button>
-                                <button onClick={() => setResultsOrder(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                                <button onClick={() => setResultsOrder(null)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
                             </div>
                         </div>
 
                         <div className="p-5 overflow-y-auto space-y-6">
                             {resultsOrder.items.map(item => (
                                 <div key={item.id}>
-                                    <h4 className="font-medium text-gray-900 dark:text-white mb-3">{item.testName}</h4>
+                                    <h4 className="font-medium text-ink mb-3">{item.testName}</h4>
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm">
                                             <thead>
-                                                <tr className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                                                <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-line">
                                                     <th className="pb-2 pr-3 font-medium">{t('lab.parameter')}</th>
                                                     <th className="pb-2 pr-3 font-medium w-32">{t('lab.result')}</th>
                                                     <th className="pb-2 pr-3 font-medium w-20">{t('lab.unit')}</th>
@@ -486,28 +486,28 @@ export const LabOrders: React.FC<Props> = ({
                                                     <th className="pb-2 font-medium w-24">{t('lab.flag')}</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                                            <tbody className="divide-y divide-line/60">
                                                 {(item.parameters || []).map(p => {
                                                     const key = `${item.id}:${p.parameterId}`;
                                                     const fl = p.flag ? FLAG_UI[p.flag] : null;
                                                     return (
                                                         <tr key={p.parameterId}>
-                                                            <td className="py-2 pr-3 text-gray-900 dark:text-white">{p.name}</td>
+                                                            <td className="py-2 pr-3 text-ink">{p.name}</td>
                                                             <td className="py-2 pr-3">
                                                                 <input
                                                                     value={draft[key] ?? ''}
                                                                     onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
-                                                                    className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm tabular-nums focus:ring-2 focus:ring-primary-500"
+                                                                    className="w-full px-2 py-1 border border-line rounded bg-surface text-ink text-sm tabular-nums focus:ring-2 focus:ring-primary-500"
                                                                 />
                                                             </td>
-                                                            <td className="py-2 pr-3 text-gray-500 dark:text-gray-400">{p.unit || '—'}</td>
-                                                            <td className="py-2 pr-3 text-gray-500 dark:text-gray-400 tabular-nums">{refText(p)}</td>
+                                                            <td className="py-2 pr-3 text-muted">{p.unit || '—'}</td>
+                                                            <td className="py-2 pr-3 text-muted tabular-nums">{refText(p)}</td>
                                                             <td className="py-2">
                                                                 {fl && p.value ? (
                                                                     <span className={`inline-flex items-center gap-1 text-xs font-medium ${fl.cls}`}>
                                                                         <fl.Icon className="w-3.5 h-3.5" /> {fl.label}
                                                                     </span>
-                                                                ) : <span className="text-xs text-gray-300 dark:text-gray-600">—</span>}
+                                                                ) : <span className="text-xs text-faint">—</span>}
                                                             </td>
                                                         </tr>
                                                     );
@@ -519,8 +519,8 @@ export const LabOrders: React.FC<Props> = ({
                             ))}
                         </div>
 
-                        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                            <button onClick={() => setResultsOrder(null)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <div className="p-5 border-t border-line flex justify-end gap-3">
+                            <button onClick={() => setResultsOrder(null)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">
                                 Yopish
                             </button>
                             <button onClick={saveResults} disabled={saving}

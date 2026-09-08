@@ -49,7 +49,7 @@ interface Props {
 const fmt = (n: number) => formatNumber(n);
 const MODALITIES: Modality[] = ['UZI', 'EKG', 'RENTGEN', 'ENDOSKOPIYA', 'MRT', 'KT'];
 
-const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
+const inputCls = 'w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
 
 /** Holat -> tarjima kaliti. Shablon satr (`visit.status.${x}`) yaramaydi:
     `t()` kalitlari qat'iy turlangan, «In Progress» dagi bo'shliq esa
@@ -65,7 +65,7 @@ export const VISIT_STATUS_KEY = {
 
 /** Qabul holati — rangi bilan birga */
 const STATUS_TONE: Record<string, string> = {
-    'Waiting': 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
+    'Waiting': 'bg-elevated text-muted',
     'Called': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     'In Progress': 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
     'AwaitingResults': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
@@ -451,7 +451,7 @@ export const VisitPanel: React.FC<Props> = ({
     // ── Ko'rinish ───────────────────────────────────────────────────────────
 
     if (loading) return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 flex items-center justify-center">
+        <div className="bg-surface rounded-xl border border-line p-10 flex items-center justify-center">
             <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
         </div>
     );
@@ -464,16 +464,16 @@ export const VisitPanel: React.FC<Props> = ({
         const formDoctors = pickableDoctors(doctors, openForm.departmentId || null, openForm.doctorId);
         const formServices = services.filter(s => !openForm.departmentId || !s.departmentId || s.departmentId === openForm.departmentId);
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-                <h3 className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+            <div className="bg-surface rounded-xl border border-line p-5">
+                <h3 className="flex items-center gap-2 font-semibold text-ink">
                     <Stethoscope className="w-5 h-5 text-primary-600" /> {t('visit.noOpen')}
                 </h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('visit.noOpenHint')}</p>
+                <p className="mt-1 text-sm text-muted">{t('visit.noOpenHint')}</p>
                 {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="block">
-                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('visit.department')}</span>
+                        <span className="block text-xs font-medium text-muted mb-1">{t('visit.department')}</span>
                         <select className={inputCls} value={openForm.departmentId}
                             onChange={e => setOpenForm(f => ({ ...f, departmentId: e.target.value, doctorId: '', serviceId: '' }))}>
                             <option value="">{t('common.choose')}</option>
@@ -481,7 +481,7 @@ export const VisitPanel: React.FC<Props> = ({
                         </select>
                     </label>
                     <label className="block">
-                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('visit.doctor')}</span>
+                        <span className="block text-xs font-medium text-muted mb-1">{t('visit.doctor')}</span>
                         <select className={inputCls} value={openForm.doctorId} disabled={!openForm.departmentId}
                             onChange={e => setOpenForm(f => ({ ...f, doctorId: e.target.value }))}>
                             <option value="">{t('common.choose')}</option>
@@ -489,7 +489,7 @@ export const VisitPanel: React.FC<Props> = ({
                         </select>
                     </label>
                     <label className="block">
-                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('visit.serviceOptional')}</span>
+                        <span className="block text-xs font-medium text-muted mb-1">{t('visit.serviceOptional')}</span>
                         <select className={inputCls} value={openForm.serviceId} disabled={!openForm.departmentId}
                             onChange={e => setOpenForm(f => ({ ...f, serviceId: e.target.value }))}>
                             <option value="">{t('common.choose')}</option>
@@ -497,7 +497,7 @@ export const VisitPanel: React.FC<Props> = ({
                         </select>
                     </label>
                     <label className="block">
-                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('visit.complaintLabel')}</span>
+                        <span className="block text-xs font-medium text-muted mb-1">{t('visit.complaintLabel')}</span>
                         <input className={inputCls} value={openForm.complaints}
                             onChange={e => setOpenForm(f => ({ ...f, complaints: e.target.value }))}
                             placeholder={t('visit.complaintPh')} />
@@ -517,14 +517,14 @@ export const VisitPanel: React.FC<Props> = ({
     return (
         <div className="space-y-4">
             {/* ── Sarlavha ────────────────────────────────────────────────── */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <div className="bg-surface rounded-xl border border-line p-4">
                 <div className="flex flex-wrap items-center gap-3">
                     <span className="w-10 h-10 rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 grid place-items-center font-bold shrink-0">
                         {visit.queueNumber ?? '—'}
                     </span>
                     <div className="min-w-0">
-                        <h3 className="font-semibold text-gray-900 dark:text-white truncate">{t('visit.panelTitle')}</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        <h3 className="font-semibold text-ink truncate">{t('visit.panelTitle')}</h3>
+                        <p className="text-xs text-muted truncate">
                             {dept?.name || t('visit.noDept')}
                             {visit.doctorName ? ` · ${visit.doctorName}` : ''}
                             {visit.date ? ` · ${visit.date}` : ''}
@@ -542,7 +542,7 @@ export const VisitPanel: React.FC<Props> = ({
                         )}
                         {!isDone && canCancelVisit && (
                             <button onClick={cancelVisit} disabled={busy} title={t('visit.cancelVisit')}
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-red-400 hover:text-red-600 disabled:opacity-50">
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-line text-muted hover:border-red-400 hover:text-red-600 disabled:opacity-50">
                                 <XCircle className="w-4 h-4" />
                             </button>
                         )}
@@ -561,7 +561,7 @@ export const VisitPanel: React.FC<Props> = ({
 
                 {/* Shikoyat — joyida tahrirlanadi. Ilgari faqat o'qish uchun edi
                     va registraturada xato yozilgan bo'lsa tuzatib bo'lmasdi. */}
-                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <div className="mt-3 pt-3 border-t border-line">
                     {editingComplaint ? (
                         <div className="flex flex-wrap items-center gap-2">
                             <input autoFocus className={`${inputCls} flex-1 min-w-[200px]`} value={complaintDraft}
@@ -572,14 +572,14 @@ export const VisitPanel: React.FC<Props> = ({
                                 {t('common.save')}
                             </button>
                             <button onClick={() => setEditingComplaint(false)}
-                                className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                                className="px-3 py-2 text-sm text-muted hover:text-muted">
                                 {t('common.cancel')}
                             </button>
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                        <p className="text-sm text-muted">
                             <span className="font-medium">{t('visit.complaint')}</span>{' '}
-                            {visit.complaints || <span className="text-gray-400">{t('visit.noComplaint')}</span>}
+                            {visit.complaints || <span className="text-faint">{t('visit.noComplaint')}</span>}
                             {!isDone && (
                                 <button onClick={() => { setComplaintDraft(visit.complaints || ''); setEditingComplaint(true); }}
                                     className="ml-2 text-xs text-primary-600 dark:text-primary-400 hover:underline">
@@ -607,7 +607,7 @@ export const VisitPanel: React.FC<Props> = ({
                         {money.unpaidCount > 1 ? ` (${money.unpaidCount})` : ''}
                     </p>
                     <button onClick={issueReferral} disabled={refBusy}
-                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50">
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-surface border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50">
                         <Printer className="w-4 h-4" /> {t('visit.printReferral')}
                     </button>
                     {onGoToCashier && (
@@ -631,7 +631,7 @@ export const VisitPanel: React.FC<Props> = ({
                         <button key={key} onClick={() => setPanel(panel === key ? null : key)}
                             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors ${panel === key
                                 ? 'bg-primary-600 text-white border-primary-600'
-                                : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-primary-400'}`}>
+                                : 'bg-surface border-line text-muted hover:border-primary-400'}`}>
                             <Icon className="w-4 h-4" /> {label}
                         </button>
                     ))}
@@ -640,10 +640,10 @@ export const VisitPanel: React.FC<Props> = ({
 
             {/* ── Tahlil ──────────────────────────────────────────────────── */}
             {panel === 'lab' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.whichTests')}</h4>
+                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
+                    <h4 className="font-semibold text-ink mb-3">{t('visit.whichTests')}</h4>
                     {labTests.filter(x => x.isActive).length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('visit.labCatalogEmpty')}</p>
+                        <p className="text-sm text-muted">{t('visit.labCatalogEmpty')}</p>
                     ) : (
                         <>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
@@ -652,21 +652,21 @@ export const VisitPanel: React.FC<Props> = ({
                                     return (
                                         <label key={x.id} className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer ${on
                                             ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                                            : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                                            : 'border-line hover:bg-elevated'}`}>
                                             <input type="checkbox" checked={on} className="w-4 h-4 rounded text-primary-600"
                                                 onChange={() => setLabPick(p => on ? p.filter(y => y !== x.id) : [...p, x.id])} />
                                             <span className="flex-1 min-w-0">
-                                                <span className="block text-sm text-gray-900 dark:text-white truncate">{x.name}</span>
-                                                <span className="block text-xs text-gray-400">{x.sampleType} · {x.turnaroundHours} {t('visit.hours')}</span>
+                                                <span className="block text-sm text-ink truncate">{x.name}</span>
+                                                <span className="block text-xs text-faint">{x.sampleType} · {x.turnaroundHours} {t('visit.hours')}</span>
                                             </span>
-                                            <span className="text-sm tabular-nums text-gray-600 dark:text-gray-300">{fmt(x.price)}</span>
+                                            <span className="text-sm tabular-nums text-muted">{fmt(x.price)}</span>
                                         </label>
                                     );
                                 })}
                             </div>
-                            <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
-                                <span className="text-sm text-gray-500 dark:text-gray-400">
-                                    {t('common.total')}: <b className="text-gray-900 dark:text-white tabular-nums">
+                            <div className="flex items-center gap-3 mt-4 pt-3 border-t border-line">
+                                <span className="text-sm text-muted">
+                                    {t('common.total')}: <b className="text-ink tabular-nums">
                                         {fmt(labTests.filter(x => labPick.includes(x.id)).reduce((s, x) => s + x.price, 0))} so'm
                                     </b>
                                 </span>
@@ -682,8 +682,8 @@ export const VisitPanel: React.FC<Props> = ({
 
             {/* ── Diagnostika ─────────────────────────────────────────────── */}
             {panel === 'study' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.whichStudy')}</h4>
+                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
+                    <h4 className="font-semibold text-ink mb-3">{t('visit.whichStudy')}</h4>
                     {/* Prayslistdan tanlash — nom va narx o'zi to'ladi. Qo'lda
                         yozish ham qoldi: prayslistda yo'q tekshiruv bo'lishi mumkin. */}
                     {diagServices.length > 0 && (
@@ -721,9 +721,9 @@ export const VisitPanel: React.FC<Props> = ({
 
             {/* ── Boshqa shifokorga ───────────────────────────────────────── */}
             {panel === 'consult' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-1">{t('visit.consultTitle')}</h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{t('visit.consultHint')}</p>
+                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
+                    <h4 className="font-semibold text-ink mb-1">{t('visit.consultTitle')}</h4>
+                    <p className="text-xs text-muted mb-3">{t('visit.consultHint')}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <select className={inputCls} value={consultForm.departmentId}
                             onChange={e => setConsultForm(f => ({ ...f, departmentId: e.target.value, doctorId: '' }))}>
@@ -751,8 +751,8 @@ export const VisitPanel: React.FC<Props> = ({
 
             {/* ── Retsept ─────────────────────────────────────────────────── */}
             {panel === 'rx' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.prescription')}</h4>
+                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
+                    <h4 className="font-semibold text-ink mb-3">{t('visit.prescription')}</h4>
                     <datalist id="xc-rx-meds">
                         {meds.map(m => <option key={m.id} value={m.name} />)}
                     </datalist>
@@ -784,8 +784,8 @@ export const VisitPanel: React.FC<Props> = ({
 
             {/* ── Xizmat ──────────────────────────────────────────────────── */}
             {panel === 'service' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.addService')}</h4>
+                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
+                    <h4 className="font-semibold text-ink mb-3">{t('visit.addService')}</h4>
                     <div className="flex flex-wrap gap-3">
                         <select value={svcPick} onChange={e => setSvcPick(e.target.value ? Number(e.target.value) : '')} className={`${inputCls} max-w-md`}>
                             <option value="">{t('common.choose')}</option>
@@ -816,12 +816,12 @@ export const VisitPanel: React.FC<Props> = ({
             />
 
             {/* ── Tashxis ─────────────────────────────────────────────────── */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-3">{t('visit.diagnosisTitle')}</h4>
+            <div className="bg-surface rounded-xl border border-line p-4">
+                <h4 className="font-semibold text-ink mb-3">{t('visit.diagnosisTitle')}</h4>
                 {!!visit.diagnoses?.length && (
                     <div className="flex flex-wrap gap-2 mb-3">
                         {visit.diagnoses.map(d => (
-                            <span key={d.id} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-200">
+                            <span key={d.id} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-elevated text-sm text-ink">
                                 <b>{d.code}</b>{d.icd10?.name ? ` — ${d.icd10.name}` : ''}
                                 {d.isChronic && (
                                     <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-bold uppercase">
@@ -830,7 +830,7 @@ export const VisitPanel: React.FC<Props> = ({
                                 )}
                                 {!isDone && (
                                     <button onClick={() => removeDiagnosis(d.id)} aria-label={t('common.delete')}
-                                        className="p-0.5 text-gray-400 hover:text-red-500 rounded">
+                                        className="p-0.5 text-faint hover:text-red-500 rounded">
                                         <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                 )}
@@ -843,19 +843,19 @@ export const VisitPanel: React.FC<Props> = ({
                         <div className="flex flex-wrap items-center gap-3">
                             <input value={icdQuery} onChange={e => searchIcd(e.target.value)} className={`${inputCls} flex-1 min-w-[200px]`}
                                 placeholder={t('visit.icdSearchPh')} />
-                            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                            <label className="flex items-center gap-2 text-sm text-muted whitespace-nowrap">
                                 <input type="checkbox" checked={icdChronic} onChange={e => setIcdChronic(e.target.checked)}
                                     className="w-4 h-4 rounded text-primary-600" />
                                 {t('visit.chronicMark')}
                             </label>
                         </div>
                         {icdResults.length > 0 && (
-                            <div className="mt-2 border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 max-h-48 overflow-y-auto">
+                            <div className="mt-2 border border-line rounded-lg divide-y divide-line max-h-48 overflow-y-auto">
                                 {icdResults.slice(0, 12).map(c => (
                                     <button key={c.code} onClick={() => { addDiagnosis(c); setIcdQuery(''); setIcdResults([]); }}
-                                        className="w-full text-left p-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <b className="text-gray-900 dark:text-white">{c.code}</b>
-                                        <span className="text-gray-600 dark:text-gray-300"> — {c.name}</span>
+                                        className="w-full text-left p-2.5 text-sm hover:bg-elevated">
+                                        <b className="text-ink">{c.code}</b>
+                                        <span className="text-muted"> — {c.name}</span>
                                     </button>
                                 ))}
                             </div>
@@ -932,7 +932,7 @@ export const VisitPanel: React.FC<Props> = ({
                             action={
                                 <button onClick={() => printPrescription({ ...rx, patient }, undefined)}
                                     title={t('common.print')} aria-label={t('common.print')}
-                                    className="shrink-0 p-1 text-gray-400 hover:text-primary-600 rounded">
+                                    className="shrink-0 p-1 text-faint hover:text-primary-600 rounded">
                                     <Printer className="w-3.5 h-3.5" />
                                 </button>
                             } />
@@ -941,18 +941,18 @@ export const VisitPanel: React.FC<Props> = ({
             </div>
 
             {/* ── Pul yakuni ──────────────────────────────────────────────── */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {t('common.total')}: <b className="text-gray-900 dark:text-white tabular-nums">{fmt(money.total)}</b>
+            <div className="bg-surface rounded-xl border border-line p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+                <span className="text-sm text-muted">
+                    {t('common.total')}: <b className="text-ink tabular-nums">{fmt(money.total)}</b>
                 </span>
-                <span className="text-sm text-gray-500 dark:text-gray-400">
+                <span className="text-sm text-muted">
                     {t('visit.paid')}: <b className="text-emerald-600 dark:text-emerald-400 tabular-nums">{fmt(money.paid)}</b>
                 </span>
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {t('visit.due')}: <b className={`tabular-nums ${money.due > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{fmt(money.due)}</b>
+                <span className="text-sm text-muted">
+                    {t('visit.due')}: <b className={`tabular-nums ${money.due > 0 ? 'text-red-600 dark:text-red-400' : 'text-ink'}`}>{fmt(money.due)}</b>
                 </span>
                 {visit.checkInTime && (
-                    <span className="ml-auto flex items-center gap-1.5 text-xs text-gray-400">
+                    <span className="ml-auto flex items-center gap-1.5 text-xs text-faint">
                         <Clock className="w-3.5 h-3.5" /> {new Date(visit.checkInTime).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                 )}
@@ -967,12 +967,12 @@ const Section: React.FC<{ title: string; icon: React.ElementType; empty: string;
     ({ title, icon: Icon, empty, children }) => {
         const has = React.Children.count(children) > 0;
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                    <Icon className="w-4 h-4 text-gray-400" /> {title}
+            <div className="bg-surface rounded-xl border border-line p-4">
+                <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
+                    <Icon className="w-4 h-4 text-faint" /> {title}
                 </h4>
                 {has ? <div className="space-y-2">{children}</div>
-                    : <p className="text-sm text-gray-400 dark:text-gray-500">{empty}</p>}
+                    : <p className="text-sm text-faint">{empty}</p>}
             </div>
         );
     };
@@ -997,19 +997,19 @@ const Row: React.FC<{
 }> = ({ main, sub, right, tone, onDelete, charge, action }) => (
     <div className="flex items-center gap-3 text-sm">
         <div className="min-w-0 flex-1">
-            <p className="text-gray-900 dark:text-white truncate">{main}</p>
+            <p className="text-ink truncate">{main}</p>
             {sub && (
                 <p className={`text-xs truncate ${tone === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
-                    : tone === 'wait' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'}`}>
+                    : tone === 'wait' ? 'text-amber-600 dark:text-amber-400' : 'text-faint'}`}>
                     {sub}
                 </p>
             )}
         </div>
         {action}
         <PaidBadge charge={charge} />
-        {right && <span className="tabular-nums text-gray-600 dark:text-gray-300 shrink-0">{right}</span>}
+        {right && <span className="tabular-nums text-muted shrink-0">{right}</span>}
         {onDelete && (
-            <button aria-label="O'chirish" onClick={onDelete} className="p-1 text-gray-300 hover:text-red-500 shrink-0">
+            <button aria-label="O'chirish" onClick={onDelete} className="p-1 text-faint hover:text-red-500 shrink-0">
                 <Trash2 className="w-3.5 h-3.5" />
             </button>
         )}

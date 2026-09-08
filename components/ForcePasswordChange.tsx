@@ -57,30 +57,30 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
         }
     };
 
-    const inputCls = 'w-full px-4 py-2.5 pr-11 border border-gray-300 dark:border-gray-600 rounded-lg '
-        + 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white '
+    const inputCls = 'w-full px-4 py-2.5 pr-11 border border-line rounded-lg '
+        + 'bg-surface text-ink '
         + 'focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none';
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
-            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+        <div className="min-h-screen flex items-center justify-center bg-canvas p-4">
+            <div className="w-full max-w-md bg-surface rounded-2xl shadow-xl p-8">
                 <div className="flex items-center gap-3 mb-2">
                     <div className="p-2.5 bg-amber-100 dark:bg-amber-900/40 rounded-xl">
                         <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-400" />
                     </div>
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                    <h1 className="text-xl font-bold text-ink">
                         Parolni almashtiring
                     </h1>
                 </div>
 
-                <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+                <p className="text-sm text-muted mb-6">
                     Siz standart parol bilan kirdingiz. Uni almashtirmaguncha dasturdan
                     foydalanib bo'lmaydi — bemorlar ma'lumoti himoyasiz qolmasligi kerak.
                 </p>
 
                 <form onSubmit={submit} className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label className="block text-sm font-medium text-muted mb-1.5">
                             Joriy parol
                         </label>
                         <input
@@ -94,7 +94,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label className="block text-sm font-medium text-muted mb-1.5">
                             Yangi parol
                         </label>
                         <div className="relative">
@@ -108,7 +108,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                             <button
                                 type="button"
                                 onClick={() => setShow((v) => !v)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-muted"
                                 title={show ? 'Yashirish' : "Ko'rsatish"}
                             >
                                 {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -122,7 +122,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label className="block text-sm font-medium text-muted mb-1.5">
                             Yangi parolni takrorlang
                         </label>
                         <input
@@ -158,8 +158,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
 
                 <button
                     onClick={onLogout}
-                    className="w-full mt-3 px-6 py-2.5 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900
-                               dark:hover:text-white transition-colors"
+                    className="w-full mt-3 px-6 py-2.5 text-sm text-muted hover:text-ink transition-colors"
                 >
                     Chiqish
                 </button>

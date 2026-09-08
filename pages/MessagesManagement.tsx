@@ -99,8 +99,8 @@ const SOURCE_LABELS: Record<string, string> = {
     retry: 'Qayta yuborish',
 };
 
-const inputCls = "w-full px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-white placeholder-gray-400";
-const labelCls = "block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5";
+const inputCls = "w-full px-3 py-2.5 bg-surface border border-line rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 placeholder-faint";
+const labelCls = "block text-xs font-bold text-muted uppercase tracking-wider mb-1.5";
 
 // Eskiz'dan qaytgan xom holat matnini o'qiladigan yorliq + rangga aylantiradi.
 // Aniq enum kafolatlanmagani uchun kalit so'zlarga qarab taxminiy rang beriladi.
@@ -108,7 +108,7 @@ function eskizStatusBadge(status?: string | null): { label: string; cls: string 
     if (!status) return null;
     const s = status.toLowerCase();
     if (s === 'error') return { label: 'Yuborishda xatolik', cls: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
-    if (s === 'not_found') return { label: 'Eskiz\'da topilmadi', cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' };
+    if (s === 'not_found') return { label: 'Eskiz\'da topilmadi', cls: 'bg-elevated text-muted' };
     if (/(declin|reject|rad)/.test(s)) return { label: `Rad etildi (${status})`, cls: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
     if (/(confirm|approv|activ|tasdiq)/.test(s)) return { label: `Tasdiqlandi (${status})`, cls: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' };
     return { label: `Moderatsiyada (${status})`, cls: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' };
@@ -144,12 +144,12 @@ const FunnelRow: React.FC<{ label: string; value: number; diff?: number; isDeduc
     label, value, diff, isDeduction,
 }) => (
     <div className="flex items-center justify-between px-4 py-2">
-        <span className="text-gray-500 dark:text-gray-400">{label}</span>
+        <span className="text-muted">{label}</span>
         <span className="flex items-center gap-2">
             {diff !== undefined && diff !== 0 && (
-                <span className="text-xs text-gray-400">{diff > 0 ? `+${diff}` : diff}</span>
+                <span className="text-xs text-faint">{diff > 0 ? `+${diff}` : diff}</span>
             )}
-            <span className={`font-bold ${isDeduction ? 'text-amber-600' : 'text-gray-900 dark:text-white'}`}>
+            <span className={`font-bold ${isDeduction ? 'text-amber-600' : 'text-ink'}`}>
                 {isDeduction ? value : `${value} ta`}
             </span>
         </span>
@@ -668,20 +668,20 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     <MessageSquare className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                 </div>
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Xabarlar</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Avtomatik va qo'lda SMS/Telegram xabar yuborish boshqaruvi</p>
+                    <h1 className="text-2xl font-bold text-ink">Xabarlar</h1>
+                    <p className="text-sm text-muted">Avtomatik va qo'lda SMS/Telegram xabar yuborish boshqaruvi</p>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="grid grid-cols-4 gap-1 bg-gray-100 dark:bg-gray-800 rounded-2xl p-1.5">
+            <div className="grid grid-cols-4 gap-1 bg-elevated rounded-2xl p-1.5">
                 {TABS.map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
                         className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === tab.id
-                            ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                            ? 'bg-surface text-primary-600 dark:text-primary-400 shadow-sm'
+                            : 'text-muted hover:text-muted'}`}
                     >
                         <tab.icon className="w-4 h-4" />
                         <span className="hidden sm:inline">{tab.label}</span>
@@ -695,7 +695,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap gap-1.5">
                             {TEMPLATE_VARS.map(v => (
-                                <span key={v.token} className="px-2 py-0.5 text-xs font-mono text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-800 rounded-md bg-white dark:bg-gray-800">
+                                <span key={v.token} className="px-2 py-0.5 text-xs font-mono text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-800 rounded-md bg-surface">
                                     {v.token}
                                 </span>
                             ))}
@@ -713,10 +713,10 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     {isTemplateFormOpen && (
                         <Card className="p-6 space-y-4">
                             <div className="flex items-center justify-between">
-                                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                                <h2 className="text-lg font-bold text-ink">
                                     {editingTemplate ? 'Shablonni tahrirlash' : 'Yangi shablon'}
                                 </h2>
-                                <button onClick={() => { setIsTemplateFormOpen(false); setEditingTemplate(null); }} className="text-gray-400 hover:text-gray-600">
+                                <button onClick={() => { setIsTemplateFormOpen(false); setEditingTemplate(null); }} className="text-faint hover:text-muted">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
@@ -764,30 +764,30 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 <Card key={tpl.id} className="p-5 flex items-start justify-between gap-4">
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <h3 className="font-bold text-gray-900 dark:text-white">{tpl.name}</h3>
+                                            <h3 className="font-bold text-ink">{tpl.name}</h3>
                                             {badge && (
                                                 <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${badge.cls}`}>
                                                     {badge.label}
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 whitespace-pre-wrap break-words">{tpl.text}</p>
+                                        <p className="text-sm text-muted mt-1 whitespace-pre-wrap break-words">{tpl.text}</p>
                                     </div>
                                     <div className="flex gap-1 shrink-0">
                                         {smsConnected && (
                                             <button
                                                 onClick={() => handleSyncEskizStatus(tpl)}
                                                 disabled={syncingTemplateId === tpl.id}
-                                                className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                                                className="p-2 text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                                                 title={tpl.eskizStatus ? 'Eskiz holatini yangilash' : "Eskiz moderatsiyasiga yuborish"}
                                             >
                                                 <RefreshCw className={`w-4 h-4 ${syncingTemplateId === tpl.id ? 'animate-spin' : ''}`} />
                                             </button>
                                         )}
-                                        <button onClick={() => openTemplateForm(tpl)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Tahrirlash">
+                                        <button onClick={() => openTemplateForm(tpl)} className="p-2 text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Tahrirlash">
                                             <Pencil className="w-4 h-4" />
                                         </button>
-                                        <button onClick={() => handleDeleteTemplate(tpl)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="O'chirish">
+                                        <button onClick={() => handleDeleteTemplate(tpl)} className="p-2 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="O'chirish">
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
@@ -795,7 +795,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             );
                         })}
                         {templates.length === 0 && !isTemplateFormOpen && (
-                            <Card className="p-10 text-center text-gray-500">
+                            <Card className="p-10 text-center text-muted">
                                 Hozircha shablonlar yo'q. "Yangi shablon" tugmasi bilan birinchisini yarating.
                             </Card>
                         )}
@@ -810,8 +810,8 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     <Card className="p-5">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
-                                <h3 className="font-bold text-gray-900 dark:text-white text-sm">Chastota chegarasi</h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                <h3 className="font-bold text-ink text-sm">Chastota chegarasi</h3>
+                                <p className="text-xs text-muted mt-0.5">
                                     Bitta bemorga shu muddat ichida bittadan ko'p xabar yuborilmaydi.
                                     Qabul eslatmalari bundan mustasno — ular baribir yetib boradi.
                                 </p>
@@ -824,7 +824,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         onClick={() => saveCooldown(d)}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50 ${cooldownDays === d
                                             ? 'bg-primary-600 text-white'
-                                            : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                                            : 'text-muted hover:bg-elevated'}`}
                                     >
                                         {d === 0 ? "O'chiq" : `${d} kun`}
                                     </button>
@@ -842,10 +842,10 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     {isRuleFormOpen && (
                         <Card className="p-6 space-y-4">
                             <div className="flex items-center justify-between">
-                                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                                <h2 className="text-lg font-bold text-ink">
                                     {editingRule ? 'Qoidani tahrirlash' : 'Yangi qoida'}
                                 </h2>
-                                <button aria-label="Yopish" onClick={closeRuleForm} className="text-gray-400 hover:text-gray-600">
+                                <button aria-label="Yopish" onClick={closeRuleForm} className="text-faint hover:text-muted">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
@@ -936,18 +936,18 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                             onClick={() => setRuleForm(f => ({ ...f, channel: value }))}
                                             className={`px-3 py-2.5 rounded-xl text-sm font-bold border transition-all ${ruleForm.channel === value
                                                 ? 'bg-primary-600 text-white border-primary-600'
-                                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-400'}`}
+                                                : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                                         >
                                             {label}
                                         </button>
                                     ))}
                                 </div>
-                                <p className="text-xs text-gray-400 mt-2">
+                                <p className="text-xs text-faint mt-2">
                                     {CHANNEL_OPTIONS.find(c => c.value === ruleForm.channel)?.hint}
                                 </p>
                             </div>
                             {activeTriggerDef?.supportsSchedule && (
-                                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl space-y-3">
+                                <div className="p-4 bg-elevated rounded-xl space-y-3">
                                     <label className={labelCls}>Qachon yuborilsin</label>
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         <select
@@ -995,7 +995,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             )}
 
                             {activeTriggerDef?.supportsSegment && (
-                                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl space-y-3">
+                                <div className="p-4 bg-elevated rounded-xl space-y-3">
                                     <label className={labelCls}>Kimga yuborilsin</label>
                                     <SegmentBuilder
                                         value={ruleForm.segment}
@@ -1021,7 +1021,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 </div>
                             )}
                             {activeTriggerDef && (
-                                <div className="text-xs text-gray-400 space-y-1">
+                                <div className="text-xs text-faint space-y-1">
                                     {activeTriggerDef.sendWindow && (
                                         <p>
                                             Yuborish vaqti: <strong>{activeTriggerDef.sendWindow.fromHour}:00 – {activeTriggerDef.sendWindow.toHour}:00</strong> oralig'ida
@@ -1050,8 +1050,8 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             return (
                                 <Card key={rule.id} className={`p-5 flex items-center justify-between gap-4 ${!rule.active ? 'opacity-60' : ''}`}>
                                     <div className="min-w-0">
-                                        <h3 className="font-bold text-gray-900 dark:text-white">{rule.name}</h3>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                        <h3 className="font-bold text-ink">{rule.name}</h3>
+                                        <p className="text-sm text-muted mt-1">
                                             {triggerIcon(rule.trigger)} {def?.label || rule.trigger}
                                             {def?.offset && rule.hoursBefore != null
                                                 ? ` · ${rule.hoursBefore === 0 ? 'darhol' : `${rule.hoursBefore} ${offsetUnitLabel(def.offset.unit)}`}`
@@ -1067,15 +1067,15 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     <div className="flex items-center gap-2 shrink-0">
                                         <button
                                             onClick={() => handleToggleRule(rule)}
-                                            className={`relative w-11 h-6 rounded-full transition-colors ${rule.active ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                                            className={`relative w-11 h-6 rounded-full transition-colors ${rule.active ? 'bg-emerald-500' : 'bg-elevated'}`}
                                             title={rule.active ? "O'chirish" : 'Yoqish'}
                                         >
-                                            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${rule.active ? 'left-[22px]' : 'left-0.5'}`} />
+                                            <span className={`absolute top-0.5 w-5 h-5 bg-surface rounded-full shadow transition-all ${rule.active ? 'left-[22px]' : 'left-0.5'}`} />
                                         </button>
-                                        <button onClick={() => openRuleForm(rule)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Tahrirlash">
+                                        <button onClick={() => openRuleForm(rule)} className="p-2 text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Tahrirlash">
                                             <Pencil className="w-4 h-4" />
                                         </button>
-                                        <button onClick={() => handleDeleteRule(rule)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="O'chirish">
+                                        <button onClick={() => handleDeleteRule(rule)} className="p-2 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="O'chirish">
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
@@ -1083,7 +1083,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             );
                         })}
                         {rules.length === 0 && !isRuleFormOpen && (
-                            <Card className="p-10 text-center text-gray-500">
+                            <Card className="p-10 text-center text-muted">
                                 Avtomatik qoidalar yo'q. "Yangi qoida" tugmasi bilan yarating — masalan, qabuldan 2 soat oldin eslatma.
                             </Card>
                         )}
@@ -1100,7 +1100,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             onClick={() => setManualChannel('telegram_first')}
                             className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold border transition-all ${manualChannel === 'telegram_first'
                                 ? 'bg-primary-600 text-white border-primary-600'
-                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-400'}`}
+                                : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                         >
                             ✈️→📱 Avval Telegram
                         </button>
@@ -1108,7 +1108,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             onClick={() => setManualChannel('telegram')}
                             className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold border transition-all ${manualChannel === 'telegram'
                                 ? 'bg-primary-600 text-white border-primary-600'
-                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-400'}`}
+                                : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                         >
                             ✈️ Telegram {!telegramConnected && <AlertTriangle className="w-4 h-4 text-amber-400" />}
                         </button>
@@ -1116,13 +1116,13 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             onClick={() => setManualChannel('sms')}
                             className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold border transition-all ${manualChannel === 'sms'
                                 ? 'bg-primary-600 text-white border-primary-600'
-                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-400'}`}
+                                : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                         >
                             <Smartphone className="w-4 h-4" /> Faqat SMS {!smsConnected && <AlertTriangle className="w-4 h-4 text-amber-400" />}
                         </button>
                     </div>
                     {manualChannel === 'telegram_first' && (
-                        <p className="text-xs text-gray-400 px-1">
+                        <p className="text-xs text-faint px-1">
                             Botga ulangan bemorga bepul Telegram, qolganiga SMS ketadi — eng tejamli variant.
                         </p>
                     )}
@@ -1142,13 +1142,13 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                     {/* Auditoriya */}
                     <Card className="p-6 space-y-4">
-                        <h2 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            <Users className="w-5 h-5 text-gray-400" /> Kimga yuborish?
+                        <h2 className="font-bold text-ink flex items-center gap-2">
+                            <Users className="w-5 h-5 text-faint" /> Kimga yuborish?
                         </h2>
                         {/* Saqlangan segmentlar — bir marta yig'ilib qayta ishlatiladi */}
                         {savedSegments.length > 0 && (
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Saqlangan:</span>
+                                <span className="text-xs font-bold text-muted uppercase tracking-wider">Saqlangan:</span>
                                 {savedSegments.map(s => (
                                     <span key={s.id} className="flex items-center rounded-lg border border-primary-200 dark:border-primary-800 overflow-hidden">
                                         <button
@@ -1160,7 +1160,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         <button
                                             onClick={() => handleDeleteSegment(s)}
                                             title="O'chirish"
-                                            className="px-1.5 py-1 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                            className="px-1.5 py-1 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                                         >
                                             <X className="w-3 h-3" />
                                         </button>
@@ -1179,7 +1179,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         {(segment.conditions?.length || 0) > 0 && (
                             <button
                                 onClick={handleSaveSegment}
-                                className="self-start text-xs font-bold text-gray-500 hover:text-primary-600"
+                                className="self-start text-xs font-bold text-muted hover:text-primary-600"
                             >
                                 💾 Shu segmentni saqlab qo'yish
                             </button>
@@ -1187,12 +1187,12 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                         {/* Hisob-kitob: son qayerdan kelgani bosqichma-bosqich ko'rinadi */}
                         {audienceLoading ? (
-                            <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl text-sm text-gray-500">
+                            <div className="px-4 py-3 bg-elevated rounded-xl text-sm text-muted">
                                 Hisoblanmoqda...
                             </div>
                         ) : audience ? (
-                            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                                <div className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+                            <div className="border border-line rounded-xl overflow-hidden">
+                                <div className="divide-y divide-line text-sm">
                                     <FunnelRow label="Klinikada bemorlar" value={audience.clinicTotal} />
                                     {audience.matched !== audience.clinicTotal && (
                                         <FunnelRow
@@ -1231,7 +1231,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                                 {/* Narx — pul faqat SMS uchun ketadi */}
                                 {recipientCount > 0 && (
-                                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700 text-sm">
+                                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 bg-elevated border-t border-line text-sm">
                                         {viaTelegram > 0 && (
                                             <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                                                 ✈️ {viaTelegram} ta — bepul
@@ -1245,7 +1245,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                             </span>
                                         )}
                                         {smsBalance !== null && (
-                                            <span className={`text-xs ${totalSmsParts > smsBalance ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
+                                            <span className={`text-xs ${totalSmsParts > smsBalance ? 'text-red-600 font-bold' : 'text-muted'}`}>
                                                 Eskiz balansi: {formatMoney(smsBalance)} SMS
                                                 {totalSmsParts > smsBalance && ' — yetmaydi!'}
                                             </span>
@@ -1255,10 +1255,10 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                                 {/* To'liq ro'yxat — kimga ketishini ko'rib, kerakmasini olib tashlash */}
                                 {allRecipients.length > 0 && (
-                                    <div className="border-t border-gray-200 dark:border-gray-700">
+                                    <div className="border-t border-line">
                                         <button
                                             onClick={() => setShowRecipients(v => !v)}
-                                            className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-xs text-gray-500 hover:text-primary-600"
+                                            className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-xs text-muted hover:text-primary-600"
                                         >
                                             <span>
                                                 {recipientSample.map(r => `${formatFullName(r)}`).join(', ')}
@@ -1270,14 +1270,14 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         </button>
 
                                         {showRecipients && (
-                                            <div className="border-t border-gray-100 dark:border-gray-800">
+                                            <div className="border-t border-line-soft">
                                                 <div className="px-4 py-2 flex flex-wrap items-center gap-2">
                                                     <input
                                                         type="text"
                                                         value={recipientSearch}
                                                         onChange={e => setRecipientSearch(e.target.value)}
                                                         placeholder="Ism yoki raqam bo'yicha qidirish"
-                                                        className="flex-1 min-w-[180px] px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs outline-none dark:text-white"
+                                                        className="flex-1 min-w-[180px] px-3 py-1.5 bg-surface border border-line rounded-lg text-xs outline-none"
                                                     />
                                                     {excludedIds.size > 0 && (
                                                         <button
@@ -1288,38 +1288,38 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                         </button>
                                                     )}
                                                 </div>
-                                                <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-72 overflow-y-auto">
+                                                <div className="divide-y divide-line max-h-72 overflow-y-auto">
                                                     {visibleRecipients.map(r => {
                                                         const off = excludedIds.has(r.id);
                                                         return (
                                                             <label
                                                                 key={r.id}
-                                                                className={`flex items-center gap-3 px-4 py-2 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 ${off ? 'opacity-40' : ''}`}
+                                                                className={`flex items-center gap-3 px-4 py-2 text-xs cursor-pointer hover:bg-elevated ${off ? 'opacity-40' : ''}`}
                                                             >
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={!off}
                                                                     onChange={() => toggleExcluded(r.id)}
-                                                                    className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                                                    className="w-3.5 h-3.5 rounded border-line text-primary-600 focus:ring-primary-500"
                                                                 />
-                                                                <span className="font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0 truncate">
+                                                                <span className="font-medium text-muted flex-1 min-w-0 truncate">
                                                                     {formatFullName(r)}
                                                                 </span>
                                                                 <span className={r.channel === 'telegram' ? 'text-emerald-600' : 'text-amber-600'}>
                                                                     {r.channel === 'telegram' ? '✈️ bepul' : '📱 SMS'}
                                                                 </span>
                                                                 {r.debt > 0 && (
-                                                                    <span className="text-gray-400 tabular-nums">{formatNumber(r.debt)} so'm</span>
+                                                                    <span className="text-faint tabular-nums">{formatNumber(r.debt)} so'm</span>
                                                                 )}
                                                             </label>
                                                         );
                                                     })}
                                                     {visibleRecipients.length === 0 && (
-                                                        <div className="px-4 py-6 text-center text-xs text-gray-400">Topilmadi</div>
+                                                        <div className="px-4 py-6 text-center text-xs text-faint">Topilmadi</div>
                                                     )}
                                                 </div>
                                                 {audience.recipientsTruncated && (
-                                                    <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100 dark:border-gray-800">
+                                                    <div className="px-4 py-2 text-xs text-faint border-t border-line-soft">
                                                         Birinchi 500 tasi ko'rsatilgan — yuborish baribir hammasiga ketadi.
                                                     </div>
                                                 )}
@@ -1347,12 +1347,12 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     <div className="divide-y divide-amber-100 dark:divide-amber-900/40 max-h-56 overflow-y-auto">
                                         {(audience?.unreachableList || []).map(u => (
                                             <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-2 text-xs">
-                                                <span className="font-medium text-gray-700 dark:text-gray-300">{u.name}</span>
+                                                <span className="font-medium text-muted">{u.name}</span>
                                                 <span className="text-amber-600 dark:text-amber-500 text-right">{u.reason}</span>
                                             </div>
                                         ))}
                                         {unreachableCount > (audience?.unreachableList?.length || 0) && (
-                                            <div className="px-4 py-2 text-xs text-gray-400">
+                                            <div className="px-4 py-2 text-xs text-faint">
                                                 ...va yana {unreachableCount - (audience?.unreachableList?.length || 0)} ta
                                             </div>
                                         )}
@@ -1364,18 +1364,18 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                     {/* Xabar matni */}
                     <Card className="p-6 space-y-4">
-                        <h2 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            <MessageSquare className="w-5 h-5 text-gray-400" /> Xabar matni
+                        <h2 className="font-bold text-ink flex items-center gap-2">
+                            <MessageSquare className="w-5 h-5 text-faint" /> Xabar matni
                         </h2>
                         {templates.length > 0 && (
                             <div>
-                                <p className="text-xs text-gray-500 mb-2">Shablondan foydalanish:</p>
+                                <p className="text-xs text-muted mb-2">Shablondan foydalanish:</p>
                                 <div className="flex flex-wrap gap-2">
                                     {templates.map(tpl => (
                                         <button
                                             key={tpl.id}
                                             onClick={() => setManualMessage(tpl.text)}
-                                            className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600 transition-colors bg-white dark:bg-gray-800"
+                                            className="px-3 py-1.5 text-xs font-medium border border-line rounded-lg text-muted hover:border-primary-400 hover:text-primary-600 transition-colors bg-surface"
                                         >
                                             {tpl.name}
                                         </button>
@@ -1394,11 +1394,11 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         {manualMessage.trim() && viaSms > 0 && (
                             <div className="space-y-2">
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                                    <span className="text-gray-500">
-                                        {smsInfo.length} belgi · <strong className={smsInfo.parts > 1 ? 'text-amber-600' : 'text-gray-700 dark:text-gray-300'}>{smsInfo.parts} qism</strong>
+                                    <span className="text-muted">
+                                        {smsInfo.length} belgi · <strong className={smsInfo.parts > 1 ? 'text-amber-600' : 'text-muted'}>{smsInfo.parts} qism</strong>
                                         {' '}({smsInfo.encoding}, qismiga {smsInfo.perPart} belgi)
                                     </span>
-                                    <span className="text-gray-400">Keyingi qismgacha: {smsInfo.remaining}</span>
+                                    <span className="text-faint">Keyingi qismgacha: {smsInfo.remaining}</span>
                                 </div>
                                 {smsInfo.encoding === 'UCS-2' && (
                                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
@@ -1421,19 +1421,19 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             </div>
                         )}
                         <VarButtons onInsert={token => setManualMessage(m => m + token)} />
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-faint">
                             <strong>{'{sana}'}</strong>, <strong>{'{vaqt}'}</strong> va <strong>{"{shifokor_ismi}"}</strong> bemorning eng yaqin kelgusi qabuli bo'yicha to'ldiriladi.
                             Qabuli bo'lmasa {'{sana}'} bugungi sana bo'ladi, qolganlari bo'sh qoladi.
                         </p>
                         {/* Bemor aynan nimani ko'radi */}
                         {manualMessage.trim() && previewPatient && (
-                            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                                <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
-                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <div className="border border-line rounded-xl overflow-hidden">
+                                <div className="flex items-center justify-between px-4 py-2 bg-elevated border-b border-line">
+                                    <span className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
                                         <Eye className="w-3.5 h-3.5" /> Bemor ko'radigan matn
                                     </span>
                                     <div className="flex items-center gap-2 text-xs">
-                                        <span className="text-gray-400">{formatFullName(previewPatient)}</span>
+                                        <span className="text-faint">{formatFullName(previewPatient)}</span>
                                         {recipientSample.length > 1 && (
                                             <button
                                                 onClick={() => setPreviewIndex(i => i + 1)}
@@ -1444,7 +1444,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         )}
                                     </div>
                                 </div>
-                                <p className="px-4 py-3 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+                                <p className="px-4 py-3 text-sm text-ink whitespace-pre-wrap break-words">
                                     {previewText}
                                 </p>
                             </div>
@@ -1452,7 +1452,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                         {/* Test yuborish — 26 kishiga tarqatishdan oldin o'zingizga */}
                         {manualMessage.trim() && (
-                            <div className="border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-3">
+                            <div className="border border-dashed border-line rounded-xl p-3">
                                 {!testOpen ? (
                                     <button
                                         onClick={() => setTestOpen(true)}
@@ -1462,7 +1462,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     </button>
                                 ) : (
                                     <div className="space-y-2">
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-xs text-muted">
                                             {manualChannel === 'telegram'
                                                 ? "Test xabar klinikaning Telegram chatiga yuboriladi."
                                                 : "Test SMS shu raqamga yuboriladi (bemorlarga tegmaydi, chastota chegarasidan ozod)."}
@@ -1488,12 +1488,12 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         )}
 
                         {cooldownDays > 0 && (
-                            <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+                            <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={ignoreCooldown}
                                     onChange={e => setIgnoreCooldown(e.target.checked)}
-                                    className="w-3.5 h-3.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                    className="w-3.5 h-3.5 rounded border-line text-amber-600 focus:ring-amber-500"
                                 />
                                 Chastota chegarasini ({cooldownDays} kun) e'tiborsiz qoldirish — yaqinda xabar olganlarga ham yuborilsin
                             </label>
@@ -1523,16 +1523,16 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     {/* Stats */}
                     <div className="grid grid-cols-3 gap-4">
                         <Card className="p-5 text-center">
-                            <h2 className="text-3xl font-black text-gray-900 dark:text-white">{logStats.total}</h2>
-                            <p className="text-sm text-gray-500 mt-1">Jami yuborilgan</p>
+                            <h2 className="text-3xl font-black text-ink">{logStats.total}</h2>
+                            <p className="text-sm text-muted mt-1">Jami yuborilgan</p>
                         </Card>
                         <Card className="p-5 text-center border border-emerald-100 dark:border-emerald-900/40">
                             <h2 className="text-3xl font-black text-emerald-600">{logStats.sent}</h2>
-                            <p className="text-sm text-gray-500 mt-1">Muvaffaqiyatli</p>
+                            <p className="text-sm text-muted mt-1">Muvaffaqiyatli</p>
                         </Card>
                         <Card className="p-5 text-center border border-red-100 dark:border-red-900/40">
                             <h2 className="text-3xl font-black text-red-600">{logStats.failed}</h2>
-                            <p className="text-sm text-gray-500 mt-1">Xato</p>
+                            <p className="text-sm text-muted mt-1">Xato</p>
                         </Card>
                     </div>
 
@@ -1602,7 +1602,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                     {/* Filtr + ro'yxat */}
                     <Card className="overflow-hidden">
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-3">
+                        <div className="p-4 border-b border-line flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-1">
                                 {([
                                     ['all', 'Barchasi'],
@@ -1614,7 +1614,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         onClick={() => changeHistoryFilter(key)}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${historyFilter === key
                                             ? 'bg-primary-600 text-white'
-                                            : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                                            : 'text-muted hover:bg-elevated'}`}
                                     >
                                         {lbl}
                                     </button>
@@ -1624,7 +1624,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 <RefreshCw className={`w-3.5 h-3.5 ${logsLoading ? 'animate-spin' : ''}`} /> Yangilash
                             </button>
                         </div>
-                        <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[60vh] overflow-y-auto">
+                        <div className="divide-y divide-line max-h-[60vh] overflow-y-auto">
                             {logs.map(log => {
                                 const name = log.patient ? `${formatFullName(log.patient)}` : (log.recipient || '-');
                                 const contact = log.recipient || log.patient?.phone || '';
@@ -1632,7 +1632,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 const isRetried = log.status === 'Retried';
                                 const isSkipped = log.status === 'Skipped';
                                 return (
-                                    <div key={log.id} className="px-4 py-3 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                    <div key={log.id} className="px-4 py-3 flex items-start gap-3 hover:bg-elevated">
                                         {/* Checkbox faqat xatolar uchun faol, lekin joyi doim band —
                                             aks holda qatorlar chapga siljib, ro'yxat notekis ko'rinardi */}
                                         <input
@@ -1640,14 +1640,14 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                             checked={isFailed && selectedLogIds.has(log.id)}
                                             onChange={() => toggleLogSelection(log.id)}
                                             disabled={!isFailed}
-                                            className={`mt-1.5 w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 ${isFailed ? '' : 'invisible'}`}
+                                            className={`mt-1.5 w-4 h-4 rounded border-line text-red-600 focus:ring-red-500 ${isFailed ? '' : 'invisible'}`}
                                         />
-                                        <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${isFailed ? 'bg-red-500' : (isRetried || isSkipped) ? 'bg-gray-400' : 'bg-emerald-500'}`} />
+                                        <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${isFailed ? 'bg-red-500' : (isRetried || isSkipped) ? 'bg-elevated' : 'bg-emerald-500'}`} />
                                         <div className="flex-1 min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <span className="font-bold text-gray-900 dark:text-white text-sm">{name}</span>
-                                                {contact && <span className="text-xs text-gray-400">{contact}</span>}
-                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-md">
+                                                <span className="font-bold text-ink text-sm">{name}</span>
+                                                {contact && <span className="text-xs text-faint">{contact}</span>}
+                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-elevated text-muted rounded-md">
                                                     {log.channel === 'sms' ? 'SMS' : 'Telegram'} ({SOURCE_LABELS[log.source] || log.source})
                                                 </span>
                                                 {isFailed ? (
@@ -1655,11 +1655,11 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                         <XCircle className="w-3 h-3" /> Xato
                                                     </span>
                                                 ) : isRetried ? (
-                                                    <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-md">
+                                                    <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-elevated text-muted rounded-md">
                                                         <RefreshCw className="w-3 h-3" /> Qayta yuborilgan
                                                     </span>
                                                 ) : isSkipped ? (
-                                                    <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-md">
+                                                    <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-elevated text-muted rounded-md">
                                                         <Clock className="w-3 h-3" /> O'tkazib yuborildi
                                                     </span>
                                                 ) : (
@@ -1668,15 +1668,15 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                     </span>
                                                 )}
                                             </div>
-                                            {log.message && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{log.message}</p>}
-                                            {(isFailed || isRetried || isSkipped) && log.error && <p className={`text-xs mt-0.5 ${isFailed ? 'text-red-500' : 'text-gray-400'}`}>{log.error}</p>}
+                                            {log.message && <p className="text-xs text-muted mt-1 line-clamp-2">{log.message}</p>}
+                                            {(isFailed || isRetried || isSkipped) && log.error && <p className={`text-xs mt-0.5 ${isFailed ? 'text-red-500' : 'text-faint'}`}>{log.error}</p>}
                                         </div>
-                                        <span className="text-xs text-gray-400 shrink-0">{formatLogDate(log.sentAt)}</span>
+                                        <span className="text-xs text-faint shrink-0">{formatLogDate(log.sentAt)}</span>
                                     </div>
                                 );
                             })}
                             {logs.length === 0 && (
-                                <div className="px-4 py-10 text-center text-gray-500 text-sm">
+                                <div className="px-4 py-10 text-center text-muted text-sm">
                                     {logsLoading ? 'Yuklanmoqda...' : historyFilter === 'all' ? "Xabarlar tarixi bo'sh." : 'Bu filtr bo\'yicha xabar yo\'q.'}
                                 </div>
                             )}

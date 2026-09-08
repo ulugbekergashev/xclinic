@@ -17,19 +17,45 @@
      Inter kerak bo'lsa public/fonts/ ga woff2 qo'yib, @font-face qo'shing. */
   --font-sans: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
     "Helvetica Neue", Arial, sans-serif;
+  /* Raqamlar uchun — jadvalda ustunlar tekis turishi uchun tabular */
+  --font-mono: "JetBrains Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
 
-  /* Yagona brend rangi (primary) + semantik tokenlar */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
-  --color-primary: #2563eb;
+  /* ═════════════════════════════════════════════════════════════════════
+     SEMANTIK YUZA TOKENLARI
+
+     Ilgari har bir kartada `bg-white dark:bg-gray-800 border-gray-200
+     dark:border-gray-700` qo'lda yozilardi — 200 dan ortiq joyda. Rangni
+     bir joydan o'zgartirishning imkoni yo'q edi, va nusxalar bir-biridan
+     ajralib ketgandi (ba'zi kartada `gray-750`, boshqasida `gray-800/60`).
+
+     Endi rang MA'NOSI bo'yicha ataladi va qiymat pastdagi `:root` /
+     `.dark` bloklarida yashaydi. Tailwind ularni oddiy utilitaga
+     aylantiradi: `bg-surface`, `border-line`, `text-muted`.
+     ═════════════════════════════════════════════════════════════════════ */
+  --color-canvas: var(--x-canvas);      /* sahifa foni */
+  --color-surface: var(--x-surface);    /* karta foni */
+  --color-elevated: var(--x-elevated);  /* karta ichidagi ko'tarilgan yuza, input */
+  --color-rail: var(--x-rail);          /* chapdagi menyu ustuni */
+  --color-line: var(--x-line);          /* chegara */
+  --color-line-soft: var(--x-line-soft);/* ichki, kuchsizroq ajratgich */
+  --color-ink: var(--x-ink);            /* asosiy matn */
+  --color-muted: var(--x-muted);        /* ikkilamchi matn */
+  --color-faint: var(--x-faint);        /* uchinchi darajali matn, yorliqlar */
+
+  /* Yagona brend rangi (primary) — indigo.
+     Ilgari ko'k (#2563eb) edi; yangi qorong'i palitrada ko'k fon bilan
+     qo'shilib ketardi, indigo esa deyarli qora fonda ham ajralib turadi. */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+  --color-primary: var(--x-primary);
 
   --color-success-50: #ecfdf5;
   --color-success-100: #d1fae5;
@@ -37,7 +63,7 @@
   --color-success-500: #10b981;
   --color-success-600: #059669;
   --color-success-700: #047857;
-  --color-success: #059669;
+  --color-success: var(--x-success);
 
   --color-warning-50: #fffbeb;
   --color-warning-100: #fef3c7;
@@ -45,7 +71,7 @@
   --color-warning-500: #f59e0b;
   --color-warning-600: #d97706;
   --color-warning-700: #b45309;
-  --color-warning: #d97706;
+  --color-warning: var(--x-warning);
 
   --color-danger-50: #fef2f2;
   --color-danger-100: #fee2e2;
@@ -53,7 +79,7 @@
   --color-danger-500: #ef4444;
   --color-danger-600: #dc2626;
   --color-danger-700: #b91c1c;
-  --color-danger: #dc2626;
+  --color-danger: var(--x-danger);
 
   --color-info-50: #f0f9ff;
   --color-info-100: #e0f2fe;
@@ -61,11 +87,66 @@
   --color-info-500: #0ea5e9;
   --color-info-600: #0284c7;
   --color-info-700: #0369a1;
-  --color-info: #0ea5e9;
+  --color-info: var(--x-info);
+
+  /* Burchak radiusi — bitta joydan. Reference: katta, yumshoq burchak. */
+  --radius-card: 1rem;      /* 16px — karta */
+  --radius-panel: 1.25rem;  /* 20px — katta panel, modal */
+
+  /* Chapdagi menyu ustuni kengligi — qobiqning barcha qismlari shunga
+     tayanadi (`pl-rail`, `left-rail`), ya'ni o'lchamni bitta joydan
+     o'zgartirsa bo'ladi. */
+  --spacing-rail: 5.75rem;  /* 92px */
+  --spacing-topbar: 4.75rem;/* 76px */
 
   --animate-fade-in: fadeIn 0.3s ease-in-out;
   --animate-in: fadeIn 0.2s ease-out;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PALITRA QIYMATLARI
+
+   Yorug' va qorong'i — BIR XIL nomlar, boshqa qiymatlar. Komponent
+   `bg-surface` deb yozadi va qaysi temada ekanini bilishi shart emas.
+
+   Qorong'i tema ASOSIY (`index.tsx` da standart). Reference shundan
+   olingan: deyarli qora, biroz ko'kka moyil fon; kartalar fondan atigi
+   bir necha pog'ona yorug', ajralishi ramka orqali — soya bilan emas.
+   Qora fonda soya ko'rinmaydi, ramka esa ko'rinadi. */
+:root {
+  --x-canvas: #f5f6f9;
+  --x-surface: #ffffff;
+  --x-elevated: #f1f3f7;
+  --x-rail: #ffffff;
+  --x-line: #e4e7ee;
+  --x-line-soft: #eef0f5;
+  --x-ink: #111624;
+  --x-muted: #5d6577;
+  --x-faint: #8b93a5;
+  --x-primary: #4f46e5;
+  --x-success: #059669;
+  --x-warning: #d97706;
+  --x-danger: #dc2626;
+  --x-info: #0284c7;
+}
+
+.dark {
+  --x-canvas: #080b12;
+  --x-surface: #111725;
+  --x-elevated: #19202f;
+  --x-rail: #0b0f18;
+  --x-line: #212a3b;
+  --x-line-soft: #1a2230;
+  --x-ink: #e8ecf5;
+  --x-muted: #8d97ac;
+  --x-faint: #677084;
+  --x-primary: #818cf8;
+  --x-success: #34d399;
+  --x-warning: #fbbf24;
+  --x-danger: #f87171;
+  --x-info: #38bdf8;
+}
+
 
 @keyframes fadeIn {
   0% {
@@ -78,14 +159,31 @@
   }
 }
 
+html {
+  /* Brauzerning o'z elementlari (scrollbar, tanlangan matn, form
+     boshqaruvlari) ham temaga ergashsin. Ilgari qorong'i temada oq
+     scrollbar chiqib turardi. */
+  color-scheme: light;
+  background: var(--x-canvas);
+}
+
+.dark {
+  color-scheme: dark;
+}
+
 body {
   font-family: var(--font-sans);
+  background: var(--x-canvas);
+  color: var(--x-ink);
+  /* Reference dagi matn qorong'i fonda biroz ingichka ko'rinadi —
+     tekislash shu holatda o'qishni yaxshilaydi. */
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Toza ko'rinish uchun ingichka scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -93,16 +191,52 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: var(--x-line);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--x-faint);
+  background-clip: content-box;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KARTA — bitta shakl, hamma joyda bir xil.
+
+   Nega utilita emas, klass. `bg-surface border border-line rounded-card`
+   ni 200 joyga yozish — aynan hozirgi muammoning takrori. `.card` esa
+   bitta ta'rif: fon, ramka, radius va qorong'i temadagi ustki yorug'lik
+   chizig'i (reference dagi kartalar tepasida shu bor — u kartani fondan
+   soyasiz ajratadi). */
+@layer components {
+  .card {
+    background: var(--x-surface);
+    border: 1px solid var(--x-line);
+    border-radius: var(--radius-card);
+  }
+
+  .dark .card {
+    /* Ustki qirrada ingichka yorug'lik — qora fonda hajm hosil qiladi */
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.04);
+  }
+
+  :root:not(.dark) .card {
+    box-shadow: 0 1px 2px rgb(16 24 40 / 0.04);
+  }
+
+  /* Katta panel — modal va sahifa darajasidagi bloklar */
+  .panel {
+    background: var(--x-surface);
+    border: 1px solid var(--x-line);
+    border-radius: var(--radius-panel);
+  }
+
+  /* Raqamlar: jadval va summalar ustunlari tekis tursin */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /* Scrollbarni yashirish (nav/qidiruv qatorlari uchun) */

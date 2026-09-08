@@ -264,6 +264,89 @@ export function registerHrRoutes(app: express.Express, deps: Deps) {
         });
     });
 
+    /* ═══ 2b. DAVOMAT — HAMMA XODIM BO'YICHA ═════════════════════════════════
+
+       Xodim kartasidagi davomat BITTA odam haqida. «Bu oy kim qancha
+       ishladi?» degan savol esa boshqa: unga javob berish uchun har
+       kartani ochib chiqish kerak bo'lardi.
+
+       FOIZ BELGILANGAN KUNLARDAN hisoblanadi, kalendar kunlaridan emas.
+       Ya'ni maxraj — shu xodim uchun ACTUALLY belgilangan kunlar soni.
+       Aks holda oyning yarmida ochilgan xodim 50% ko'rsatardi va bu
+       raqam hech narsani anglatmasdi. Belgilanmagan xodimda foiz
+       umuman ko'rsatilmaydi. */
+    route('get', '/api/hr/attendance-summary', async (req, res, clinicId) => {
+        const period = normalizePeriod(req.query.period);
+        const { from, to } = monthBounds(period);
+
+        const notDeleted = { clinicId, status: { not: 'Deleted' } };
+        const sel = {
+            id: true, firstName: true, lastName: true, phone: true,
+            specialty: true, status: true,
+        };
+        const [doctors, receptionists, technicians, nurses, days] = await Promise.all([
+            prisma.doctor.findMany({ where: notDeleted, select: sel }),
+            prisma.receptionist.findMany({ where: notDeleted, select: sel }),
+            prisma.labTechnician.findMany({ where: notDeleted, select: sel }),
+            prisma.nurse.findMany({ where: notDeleted, select: sel }),
+            prisma.staffAttendance.findMany({
+                where: { clinicId, date: { gte: from, lte: to } },
+                select: { staffRole: true, staffId: true, status: true },
+            }),
+        ]);
+
+        const marks = new Map<string, { present: number; absent: number; excused: number; late: number }>();
+        for (const d of days) {
+            const key = `${d.staffRole}:${d.staffId}`;
+            const g = marks.get(key) || { present: 0, absent: 0, excused: 0, late: 0 };
+            if (d.status === 'Present') g.present++;
+            else if (d.status === 'Absent') g.absent++;
+            else if (d.status === 'Excused') g.excused++;
+            else if (d.status === 'Late') g.late++;
+            marks.set(key, g);
+        }
+
+        const build = (rows: any[], role: StaffRole) => rows.map((r: any) => {
+            const g = marks.get(`${role}:${r.id}`) || { present: 0, absent: 0, excused: 0, late: 0 };
+            const marked = g.present + g.absent + g.excused + g.late;
+            return {
+                role, id: r.id, name: fullName(r),
+                position: r.specialty || ROLE_MODEL[role].label,
+                phone: r.phone || null,
+                status: r.status,
+                markedDays: marked,
+                present: g.present, absent: g.absent, excused: g.excused, late: g.late,
+                /* Kechikkan kun ham KELGAN kun: odam ishga chiqqan.
+                   Uni alohida ustunda ko'rsatamiz, foizdan chiqarmaymiz. */
+                percent: marked ? Math.round(((g.present + g.late) / marked) * 100) : null,
+            };
+        });
+
+        const rows = [
+            ...build(doctors, 'DOCTOR'),
+            ...build(receptionists, 'RECEPTIONIST'),
+            ...build(technicians, 'LAB_TECHNICIAN'),
+            ...build(nurses, 'NURSE'),
+        ].sort((a, b) => a.name.localeCompare(b.name));
+
+        const withPercent = rows.filter(r => r.percent != null);
+        const best = withPercent.length
+            ? withPercent.reduce((a, b) => (b.percent! > a.percent! ? b : a))
+            : null;
+
+        res.json({
+            period, from, to,
+            staffTotal: rows.length,
+            trackedStaff: withPercent.length,
+            avgPercent: withPercent.length
+                ? Math.round(withPercent.reduce((s, r) => s + (r.percent || 0), 0) / withPercent.length)
+                : null,
+            best: best ? { name: best.name, percent: best.percent } : null,
+            markedDays: rows.reduce((s, r) => s + r.markedDays, 0),
+            rows,
+        });
+    });
+
     /* ═══ 3. OYLIK HISOBI ════════════════════════════════════════════════════ */
     route('get', '/api/hr/staff/:role/:id/month', async (req, res, clinicId) => {
         const role = req.params.role as StaffRole;

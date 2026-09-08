@@ -17,14 +17,23 @@ interface StatCardProps {
     className?: string;
 }
 
-// Yagona KPI/stat karta. flat = oq fon + rangli ikonka chipi; gradient = to'liq rangli (faqat muhim kartalar).
+/* Yagona KPI/stat karta.
+     flat     — karta foni + rangli ikonka chipi;
+     active   — filtr tanlangan holat (TUSLI, to'ldirilgan emas — pastga qarang);
+     gradient — to'liq rangli (faqat sanoqli, eng muhim kartalar).
+
+   Rang endi SHAFFOFLIK orqali beriladi (`/12`), tayyor 50/900 pog'onalar
+   bilan emas. Sabab: `bg-primary-50` yorug' temada oq-ko'k, qorong'ida esa
+   deyarli oq dog' bo'lib chiqadi va har bir rang uchun `dark:` juftlik
+   yozishga to'g'ri kelardi. Shaffof tus fon qanday bo'lsa, shunga
+   moslashadi — bitta qator ikkala temada ishlaydi. */
 const FLAT_ICON: Record<StatColor, string> = {
-    primary: 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400',
-    success: 'bg-success-50 text-success-600 dark:bg-success-900/30 dark:text-success',
-    warning: 'bg-warning-50 text-warning-600 dark:bg-warning-900/30 dark:text-warning',
-    danger: 'bg-danger-50 text-danger-600 dark:bg-danger-900/30 dark:text-danger',
-    info: 'bg-info-50 text-info-600 dark:bg-info-900/30 dark:text-info',
-    neutral: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+    primary: 'bg-primary-500/12 text-primary',
+    success: 'bg-success-500/12 text-success',
+    warning: 'bg-warning-500/12 text-warning',
+    danger: 'bg-danger-500/12 text-danger',
+    info: 'bg-info-500/12 text-info',
+    neutral: 'bg-elevated text-muted',
 };
 
 const GRADIENT_BG: Record<StatColor, string> = {
@@ -36,13 +45,32 @@ const GRADIENT_BG: Record<StatColor, string> = {
     neutral: 'from-gray-500 via-gray-600 to-gray-700 shadow-gray-500/25',
 };
 
-const ACTIVE_BG: Record<StatColor, string> = {
-    primary: 'bg-primary text-white border-primary',
-    success: 'bg-success text-white border-success',
-    warning: 'bg-warning text-white border-warning',
-    danger: 'bg-danger text-white border-danger',
-    info: 'bg-info text-white border-info',
-    neutral: 'bg-gray-700 text-white border-gray-700',
+/* TANLANGAN FILTR — TO'LDIRILGAN EMAS, TUSLI.
+
+   Ilgari bu `bg-primary text-white` edi: butun karta yorqin rangga
+   bo'yalardi. Qorong'i temada natija yomon — to'rtta kartaning biri
+   ekranni yoritib yuboradigan blok bo'lib turadi va oq matn ochiq
+   indigo ustida o'qilmaydi (kontrast ~2,6:1).
+
+   Endi tanlanganlik uch belgidan bilinadi: tusli fon, rangli ramka va
+   raqamning rangi. Karta qolganlari bilan bir og'irlikda qoladi, lekin
+   qaysi biri tanlangani baribir bir qarashda ko'rinadi. */
+const ACTIVE_CLS: Record<StatColor, string> = {
+    primary: 'bg-primary-500/10 border-primary-500/45',
+    success: 'bg-success-500/10 border-success-500/45',
+    warning: 'bg-warning-500/10 border-warning-500/45',
+    danger: 'bg-danger-500/10 border-danger-500/45',
+    info: 'bg-info-500/10 border-info-500/45',
+    neutral: 'bg-elevated border-line',
+};
+
+const ACTIVE_TEXT: Record<StatColor, string> = {
+    primary: 'text-primary',
+    success: 'text-success',
+    warning: 'text-warning',
+    danger: 'text-danger',
+    info: 'text-info',
+    neutral: 'text-ink',
 };
 
 /* KONTRAST (S4.4, audit B-16).
@@ -51,13 +79,13 @@ const ACTIVE_BG: Record<StatColor, string> = {
    kontrast 2,6:1, WCAG AA talabi 4,5:1. Ustiga 10px o'lchamdagi katta
    harfli matn.
 
-   Sabab shu fayldagi ikkita sinf edi: `text-[10px]` va `text-gray-400`.
+   Sabab shu fayldagi ikkita sinf edi: `text-[10px]` va `text-faint`.
    `gray-400` (#9ca3af) oq fonda 2,55:1 beradi.
 
    Yorug' va qorong'i temada TURLI tus kerak: `gray-600` oq fonda 7,5:1,
    lekin `gray-800` fonda 3,1:1 — ya'ni bitta rang ikkalasida ishlamaydi. */
-const LABEL_CLS = 'text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-widest leading-none';
-const MUTED_CLS = 'text-gray-600 dark:text-gray-400';
+const LABEL_CLS = 'text-[11px] font-bold text-muted uppercase tracking-widest leading-none';
+const MUTED_CLS = 'text-muted';
 
 export const StatCard: React.FC<StatCardProps> = ({
     label, value, unit, icon: Icon, color = 'primary', variant = 'flat',
@@ -98,33 +126,21 @@ export const StatCard: React.FC<StatCardProps> = ({
         );
     }
 
-    // Active (filter tanlangan) holat — to'ldirilgan rang
-    if (active) {
-        return (
-            <div
-                {...interactive}
-                className={`relative overflow-hidden rounded-2xl border p-5 ${ACTIVE_BG[color]} shadow-lg ${clickable} transition-all ${className}`}
-            >
-                <div className="p-2 w-fit bg-white/20 rounded-xl"><Icon className="w-5 h-5" /></div>
-                <div className="mt-4">
-                    <p className="text-[11px] font-bold text-white/95 uppercase tracking-widest leading-none">{label}</p>
-                    <h3 className="text-2xl font-black text-white mt-1 leading-none">{value}{unit && <span className="text-sm font-semibold text-white/95 ml-1">{unit}</span>}</h3>
-                    {subtitle && <p className="text-xs text-white/90 mt-2">{subtitle}</p>}
-                </div>
-            </div>
-        );
-    }
-
-    // Standart flat
+    /* Flat va active bitta shakl — farqi faqat fon/ramka/raqam rangida.
+       Ilgari ular ikkita alohida JSX bloki edi va bir-biridan ajralib
+       ketgandi: bittasida `p-5`, ikkinchisida boshqa yorliq o'lchami,
+       ikkalasida ham `LABEL_CLS` ishlatilmasdi. */
     return (
         <div
             {...interactive}
-            className={`relative group overflow-hidden bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md ${clickable} transition-all duration-300 ${className}`}
+            className={`relative group overflow-hidden p-5 card transition-colors
+                        ${active ? ACTIVE_CLS[color] : 'hover:border-line'}
+                        ${clickable} ${className}`}
         >
             <div className={`p-2 w-fit rounded-xl ${FLAT_ICON[color]}`}><Icon className="w-5 h-5" /></div>
             <div className="mt-4">
                 <p className={LABEL_CLS}>{label}</p>
-                <h3 className="text-2xl font-black text-gray-900 dark:text-white mt-1 leading-none">
+                <h3 className={`text-2xl font-black mt-1 leading-none tnum ${active ? ACTIVE_TEXT[color] : 'text-ink'}`}>
                     {value}{unit && <span className={`text-sm font-semibold ml-1 ${MUTED_CLS}`}>{unit}</span>}
                 </h3>
                 {(subtitle || trend) && (

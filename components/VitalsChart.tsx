@@ -58,9 +58,9 @@ export const VitalsChart: React.FC<Props> = ({ vitals }) => {
 
     if (!bounds) {
         return (
-            <div className="text-center py-6 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                <Activity className="w-6 h-6 mx-auto text-gray-300 dark:text-gray-600 mb-1" />
-                <p className="text-xs text-gray-400">
+            <div className="text-center py-6 border border-dashed border-line rounded-lg">
+                <Activity className="w-6 h-6 mx-auto text-faint mb-1" />
+                <p className="text-xs text-faint">
                     O'lchov yo'q. Obxodda harorat va pulsni kiritsangiz, grafik shu yerda chiziladi.
                 </p>
             </div>
@@ -111,10 +111,10 @@ export const VitalsChart: React.FC<Props> = ({ vitals }) => {
                     if (pts.length === 0) return null;
                     const last = pts[pts.length - 1];
                     return (
-                        <span key={s.kind} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                        <span key={s.kind} className="flex items-center gap-1.5 text-xs text-muted">
                             <span className="w-3 h-0.5 rounded" style={{ backgroundColor: s.color }} />
                             {s.label}: <b className="tabular-nums">{last.v}</b> {s.unit}
-                            <span className="text-gray-400">({pts.length} o'lchov)</span>
+                            <span className="text-faint">({pts.length} o'lchov)</span>
                         </span>
                     );
                 })}
@@ -122,14 +122,14 @@ export const VitalsChart: React.FC<Props> = ({ vitals }) => {
 
             {bp.length > 0 && (
                 <div className="mt-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-muted mb-1">
                         Qon bosimi
                     </p>
                     <div className="flex flex-wrap gap-2">
                         {bp.map((b, i) => (
-                            <span key={i} className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs tabular-nums text-gray-700 dark:text-gray-200">
+                            <span key={i} className="px-2 py-0.5 rounded bg-elevated text-xs tabular-nums text-muted">
                                 {b.sys}{b.dia != null ? `/${b.dia}` : ''}
-                                <span className="text-gray-400 ml-1">
+                                <span className="text-faint ml-1">
                                     {formatDateShort(b.at)}
                                 </span>
                             </span>

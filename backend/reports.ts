@@ -841,7 +841,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
            `Transaction` dan o'qiladi (haqiqiy pul kirimi), snapshot esa
            `VisitCharge` dan (buyurilgan xizmat). Ikkisi turli savolga
            javob beradi va ataylab ajratilgan. */
-        const [todayAppointments, todayVisits, todayPaid, monthPaid, snap] = await Promise.all([
+        const [todayAppointments, todayVisits, todayPaid, monthPaid, snap, unpaid] = await Promise.all([
             prisma.appointment.count({ where: { clinicId, date: today } }),
             prisma.visit.count({ where: { clinicId, date: today } }),
             prisma.transaction.aggregate({
@@ -853,7 +853,34 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 _sum: { amount: true },
             }),
             financialSnapshot(prisma, clinicId, monthStart, today),
+            /* Qarz YOSHI: «qancha» degan raqamning o'zi qaror chiqarmaydi.
+               30 kundan oshgan qarz — bu allaqachon qo'ng'iroq qilinadigan
+               ro'yxat, va u umumiy summadan butunlay boshqa narsa. */
+            prisma.visitCharge.findMany({
+                where: { clinicId, status: 'Unpaid' },
+                select: {
+                    patientId: true, patientName: true, total: true, paidAmount: true,
+                    createdAt: true, visit: { select: { date: true } },
+                },
+            }),
         ]);
+
+        /* Qarzdorlar bemor kesimida: qator emas, ODAM sanaladi. */
+        const debtByPatient = new Map<string, { due: number; oldest: string }>();
+        for (const c of unpaid) {
+            const key = c.patientId || `noname:${c.patientName}`;
+            const day = c.visit?.date || toTashkentDay(c.createdAt);
+            const g = debtByPatient.get(key) || { due: 0, oldest: day };
+            g.due = round(g.due + (c.total - (c.paidAmount || 0)));
+            if (day < g.oldest) g.oldest = day;
+            debtByPatient.set(key, g);
+        }
+        const debtors = Array.from(debtByPatient.values()).filter(g => g.due > 0);
+        const overdue30 = debtors.filter(g => {
+            const days = Math.round(
+                (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${g.oldest}T00:00:00Z`)) / 864e5);
+            return days >= 30;
+        });
 
         res.json({
             date: today,
@@ -870,6 +897,12 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             },
             month: { revenue: round(monthPaid._sum.amount || 0) },
             debt: snap.debt,
+            /* Qarzning YOSHI — bosh sahifadagi qizil kartada ko'rinadi */
+            debtors: {
+                patients: debtors.length,
+                overdue30: overdue30.length,
+                overdue30Sum: round(overdue30.reduce((s: number, g: any) => s + g.due, 0)),
+            },
             period: snap.period,
         });
     });

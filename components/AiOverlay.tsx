@@ -40,10 +40,10 @@ export const AiOverlay: React.FC<Props> = ({ open, onClose, userRole }) => {
     return (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 sm:p-8 overflow-y-auto"
             onClick={onClose} role="dialog" aria-modal="true">
-            <div className="w-full max-w-5xl bg-gray-50 dark:bg-gray-900 rounded-2xl shadow-2xl my-auto relative"
+            <div className="w-full max-w-5xl bg-canvas rounded-2xl shadow-2xl my-auto relative"
                 onClick={e => e.stopPropagation()}>
                 <button onClick={onClose} aria-label="Yopish"
-                    className="absolute top-3 right-3 z-10 p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800">
+                    className="absolute top-3 right-3 z-10 p-2 rounded-lg text-faint hover:text-muted hover:bg-elevated">
                     <X className="w-5 h-5" />
                 </button>
                 <div className="p-4 sm:p-6">

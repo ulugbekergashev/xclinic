@@ -98,14 +98,14 @@ const Tile: React.FC<{
     hint?: string;
 }> = ({ label, value, icon: Icon, tone = 'default', hint }) => {
     const tones: Record<string, string> = {
-        default: 'text-gray-900 dark:text-white',
+        default: 'text-ink',
         cash: 'text-emerald-600 dark:text-emerald-400',
         card: 'text-blue-600 dark:text-blue-400',
         expense: 'text-red-600 dark:text-red-400',
         drawer: 'text-amber-600 dark:text-amber-400',
     };
     const bgs: Record<string, string> = {
-        default: 'bg-gray-50 dark:bg-gray-700/40',
+        default: 'bg-elevated',
         cash: 'bg-emerald-50 dark:bg-emerald-900/20',
         card: 'bg-blue-50 dark:bg-blue-900/20',
         expense: 'bg-red-50 dark:bg-red-900/20',
@@ -118,9 +118,9 @@ const Tile: React.FC<{
                     <Icon className={`w-4 h-4 ${tones[tone]}`} />
                 </div>
             </div>
-            <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</p>
+            <p className="text-[11px] font-medium text-faint uppercase tracking-wide">{label}</p>
             <h2 className={`text-lg font-black mt-0.5 ${tones[tone]}`}>{num(value)}</h2>
-            <p className="text-[10px] text-gray-400 mt-0.5">{hint || 'UZS'}</p>
+            <p className="text-[10px] text-faint mt-0.5">{hint || 'UZS'}</p>
         </Card>
     );
 };
@@ -151,18 +151,18 @@ const MethodStrip: React.FC<{ totals: CashBookTotals }> = ({ totals }) => {
                     <div key={m.key} className="flex items-center gap-2.5">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
                         <div>
-                            <p className="text-[11px] text-gray-400 leading-tight">{m.label}</p>
-                            <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
+                            <p className="text-[11px] text-faint leading-tight">{m.label}</p>
+                            <p className="text-sm font-bold text-ink leading-tight">
                                 {num(totals.byMethod[m.key])}
                             </p>
                         </div>
                     </div>
                 ))}
                 {totals.fromBalance > 0 && (
-                    <div className="flex items-center gap-2.5 pl-4 border-l border-dashed border-gray-300 dark:border-gray-600">
+                    <div className="flex items-center gap-2.5 pl-4 border-l border-dashed border-line">
                         <div>
-                            <p className="text-[11px] text-gray-400 leading-tight">{t('finance.cash.fromAdvance')}</p>
-                            <p className="text-sm font-bold text-gray-500 dark:text-gray-400 leading-tight">
+                            <p className="text-[11px] text-faint leading-tight">{t('finance.cash.fromAdvance')}</p>
+                            <p className="text-sm font-bold text-muted leading-tight">
                                 {num(totals.fromBalance)} <span className="text-[10px] font-normal">· kassaga kirmagan</span>
                             </p>
                         </div>
@@ -180,8 +180,8 @@ const ClosureChip: React.FC<{
 }> = ({ status, hasActivity }) => {
     const { t } = useLanguage();
     if (!status?.closed) {
-        if (!hasActivity) return <span className="text-gray-200 dark:text-gray-700">·</span>;
-        return <span className="text-[10px] font-bold text-gray-400 uppercase">ochiq</span>;
+        if (!hasActivity) return <span className="text-faint">·</span>;
+        return <span className="text-[10px] font-bold text-faint uppercase">ochiq</span>;
     }
     if (status.changedAfterClose) {
         return (
@@ -213,24 +213,24 @@ const FlowStep: React.FC<{
     hint?: string;
 }> = ({ label, value, sign, tone = 'neutral', hint }) => {
     const colors: Record<string, string> = {
-        neutral: 'text-gray-900 dark:text-white',
+        neutral: 'text-ink',
         in: 'text-emerald-600 dark:text-emerald-400',
         out: 'text-red-600 dark:text-red-400',
         move: 'text-indigo-600 dark:text-indigo-400',
     };
     return (
         <div className="min-w-[120px]">
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight">{label}</p>
+            <p className="text-[11px] text-faint leading-tight">{label}</p>
             <p className={`text-lg font-black tabular-nums leading-tight mt-0.5 ${colors[tone]}`}>
                 {sign === '−' ? '−' : sign === '+' ? '+' : ''}{num(value)}
             </p>
-            {hint && <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{hint}</p>}
+            {hint && <p className="text-[10px] text-faint leading-tight mt-0.5">{hint}</p>}
         </div>
     );
 };
 
 const Operator: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <span className="hidden lg:block text-xl font-light text-gray-300 dark:text-gray-600 select-none px-1">
+    <span className="hidden lg:block text-xl font-light text-faint select-none px-1">
         {children}
     </span>
 );
@@ -277,7 +277,7 @@ const CashFlowPanel: React.FC<{
             <div className="flex flex-col xl:flex-row xl:items-stretch gap-5">
                 {/* Chap: oqim */}
                 <div className="flex-1 min-w-0">
-                    <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">{t('finance.cash.drawerCount')}</h2>
+                    <h2 className="text-xs font-bold text-faint uppercase tracking-widest mb-4">{t('finance.cash.drawerCount')}</h2>
                     {quiet ? (
                         <div className="flex items-baseline gap-3">
                             <FlowStep
@@ -285,7 +285,7 @@ const CashFlowPanel: React.FC<{
                                 value={totals.openingCash}
                                 hint={day.openingAnchorDate ? `${formatDateLabel(day.openingAnchorDate)} yopilishidan` : undefined}
                             />
-                            <p className="text-sm text-gray-400">{t('finance.cash.noCashMoves')}</p>
+                            <p className="text-sm text-faint">{t('finance.cash.noCashMoves')}</p>
                         </div>
                     ) : (
                         <div className="flex flex-wrap items-start gap-x-4 gap-y-4">
@@ -294,8 +294,8 @@ const CashFlowPanel: React.FC<{
                     )}
 
                     {(totals.nonCashIn > 0 || totals.nonCashExpense > 0) && (
-                        <div className="mt-5 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
-                            <p className="text-[11px] text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                        <div className="mt-5 pt-4 border-t border-dashed border-line">
+                            <p className="text-[11px] text-faint uppercase tracking-wide mb-2 flex items-center gap-1.5">
                                 <CreditCard className="w-3.5 h-3.5" />
                                 Naqdsiz (hisob raqam) — yashikda emas
                             </p>
@@ -321,22 +321,22 @@ const CashFlowPanel: React.FC<{
                 </div>
 
                 {/* O'ng: natija va amal */}
-                <div className="xl:w-72 shrink-0 xl:border-l xl:pl-5 border-gray-200 dark:border-gray-700 flex flex-col justify-between gap-3">
+                <div className="xl:w-72 shrink-0 xl:border-l xl:pl-5 border-line flex flex-col justify-between gap-3">
                     <div>
-                        <p className="text-[11px] text-gray-400 uppercase tracking-wide">{t('finance.cash.shouldBeInDrawer')}</p>
+                        <p className="text-[11px] text-faint uppercase tracking-wide">{t('finance.cash.shouldBeInDrawer')}</p>
                         <p className="text-3xl font-black tabular-nums text-amber-600 dark:text-amber-400 leading-tight mt-1">
                             {num(drawer ?? totals.drawer)}
                         </p>
-                        <p className="text-[10px] text-gray-400">UZS</p>
+                        <p className="text-[10px] text-faint">UZS</p>
 
                         {closure.closed && closure.closure && (
-                            <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-gray-700 space-y-1">
-                                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                            <div className="mt-3 pt-3 border-t border-dashed border-line space-y-1">
+                                <div className="flex justify-between text-xs text-muted">
                                     <span>{t('finance.cash.countedByCashier')}</span>
                                     <span className="font-semibold tabular-nums">{num(closure.closure.countedCash)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                    <span className="font-bold text-gray-700 dark:text-gray-200">Farq</span>
+                                    <span className="font-bold text-muted">Farq</span>
                                     <span className={`font-black tabular-nums ${exact
                                         ? 'text-emerald-600 dark:text-emerald-400'
                                         : 'text-red-600 dark:text-red-400'}`}>
@@ -352,7 +352,7 @@ const CashFlowPanel: React.FC<{
                             <Lock className="w-4 h-4 mr-2" />{t('finance.cash.closeDay')}</Button>
                     )}
                     {closure.closed && (
-                        <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                        <p className="text-[11px] text-faint flex items-center gap-1.5">
                             <Check className="w-3.5 h-3.5 text-emerald-500" />{t('finance.cash.dayClosed')}</p>
                     )}
                 </div>
@@ -373,8 +373,8 @@ const ReconRow: React.FC<{
     return (
         <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-700 dark:text-gray-200 truncate">{label}</p>
-                <p className="text-[11px] text-gray-400">tizimda: {num(expected)}</p>
+                <p className="text-sm text-muted truncate">{label}</p>
+                <p className="text-[11px] text-faint">tizimda: {num(expected)}</p>
             </div>
             <input
                 type="number"
@@ -382,9 +382,9 @@ const ReconRow: React.FC<{
                 onChange={e => onChange(e.target.value)}
                 onWheel={e => e.currentTarget.blur()}
                 placeholder="—"
-                className="w-32 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-right tabular-nums outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-white"
+                className="w-32 px-3 py-2 bg-surface border border-line rounded-xl text-sm text-right tabular-nums outline-none focus:ring-2 focus:ring-primary-500/20"
             />
-            <span className={`w-24 text-right text-sm font-bold tabular-nums ${diff === null ? 'text-gray-300 dark:text-gray-600'
+            <span className={`w-24 text-right text-sm font-bold tabular-nums ${diff === null ? 'text-faint'
                 : Math.abs(diff) < 1 ? 'text-emerald-600 dark:text-emerald-400'
                     : 'text-red-600 dark:text-red-400'}`}>
                 {diff === null ? '—' : `${diff > 0 ? '+' : ''}${num(diff)}`}
@@ -422,12 +422,12 @@ const ClosureBanner: React.FC<{
                             : <AlertCircle className={`w-5 h-5 ${status.changedAfterClose ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`} />}
                     </div>
                     <div>
-                        <p className="text-sm font-bold text-gray-900 dark:text-white">
+                        <p className="text-sm font-bold text-ink">
                             {status.changedAfterClose
                                 ? 'Kun yopilgan, lekin keyin o\'zgardi'
                                 : exact ? 'Kun yopilgan — kassa to\'g\'ri keldi' : 'Kun yopilgan — farq bor'}
                         </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                        <p className="text-xs text-muted mt-1">
                             Sanalgan <b>{num(c.countedCash)}</b>
                             <span className="mx-1.5">·</span>{t('finance.cash.byLedger')}<b>{num(status.changedAfterClose ? currentDrawer : c.expectedCash)}</b>
                             <span className="mx-1.5">·</span>
@@ -441,7 +441,7 @@ const ClosureBanner: React.FC<{
                                 Naqdni qayta sanab, kunni yangilang.
                             </p>
                         )}
-                        <p className="text-[11px] text-gray-400 mt-1.5">
+                        <p className="text-[11px] text-faint mt-1.5">
                             {c.closedByName || 'Xodim'} · {new Date(c.closedAt).toLocaleString('uz-UZ')}
                             {c.note ? ` · ${c.note}` : ''}
                         </p>
@@ -1026,8 +1026,8 @@ export const CashBook: React.FC<CashBookProps> = ({
             <div className={`flex flex-col lg:flex-row items-start lg:items-center gap-4 ${embedded ? 'lg:justify-end' : 'justify-between'}`}>
                 {!embedded && (
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Kassa</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('finance.cash.realMoneyHint')}</p>
+                        <h1 className="text-2xl font-bold text-ink">Kassa</h1>
+                        <p className="text-sm text-muted">{t('finance.cash.realMoneyHint')}</p>
                     </div>
                 )}
 
@@ -1064,7 +1064,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     <button
                                         onClick={() => openMovement('Refund')}
                                         title={t('finance.cash.refundToPatient')}
-                                        className="flex items-center gap-1.5 px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
+                                        className="flex items-center gap-1.5 px-3 py-2 bg-elevated hover:bg-surface text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
                                     >
                                         <Undo2 className="w-3.5 h-3.5" />
                                         Qaytarish
@@ -1075,14 +1075,14 @@ export const CashBook: React.FC<CashBookProps> = ({
                     )}
 
                     {/* Kun / Oy */}
-                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                    <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl">
                         {(['day', 'month'] as const).map(v => (
                             <button
                                 key={v}
                                 onClick={() => setView(v)}
                                 className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${view === v
-                                    ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-white shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                    ? 'bg-surface text-primary-600 shadow-sm'
+                                    : 'text-muted hover:text-muted'
                                     }`}
                             >
                                 {v === 'day' ? 'Kun' : 'Oy'}
@@ -1095,23 +1095,23 @@ export const CashBook: React.FC<CashBookProps> = ({
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={() => changeDate(shiftDate(date, -1))}
-                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                className="p-2 rounded-lg border border-line hover:bg-elevated transition-colors"
                                 aria-label={t('finance.cash.prevDay')}
                             >
-                                <ChevronLeft className="w-4 h-4 text-gray-500" />
+                                <ChevronLeft className="w-4 h-4 text-muted" />
                             </button>
                             <input
                                 type="date"
                                 value={date}
                                 onChange={e => e.target.value && changeDate(e.target.value)}
-                                className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
+                                className="h-9 px-3 rounded-lg border border-line bg-surface text-sm text-ink"
                             />
                             <button
                                 onClick={() => changeDate(shiftDate(date, 1))}
-                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                className="p-2 rounded-lg border border-line hover:bg-elevated transition-colors"
                                 aria-label={t('finance.cash.nextDay')}
                             >
-                                <ChevronRight className="w-4 h-4 text-gray-500" />
+                                <ChevronRight className="w-4 h-4 text-muted" />
                             </button>
                             {date !== today && (
                                 <Button variant="ghost" size="sm" onClick={() => changeDate(today)}>Bugun</Button>
@@ -1121,23 +1121,23 @@ export const CashBook: React.FC<CashBookProps> = ({
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={() => setMonth(shiftMonth(month, -1))}
-                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                className="p-2 rounded-lg border border-line hover:bg-elevated transition-colors"
                                 aria-label={t('finance.cash.prevMonth')}
                             >
-                                <ChevronLeft className="w-4 h-4 text-gray-500" />
+                                <ChevronLeft className="w-4 h-4 text-muted" />
                             </button>
                             <input
                                 type="month"
                                 value={month}
                                 onChange={e => e.target.value && setMonth(e.target.value)}
-                                className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
+                                className="h-9 px-3 rounded-lg border border-line bg-surface text-sm text-ink"
                             />
                             <button
                                 onClick={() => setMonth(shiftMonth(month, 1))}
-                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                className="p-2 rounded-lg border border-line hover:bg-elevated transition-colors"
                                 aria-label={t('finance.cash.nextMonth')}
                             >
-                                <ChevronRight className="w-4 h-4 text-gray-500" />
+                                <ChevronRight className="w-4 h-4 text-muted" />
                             </button>
                         </div>
                     )}
@@ -1155,13 +1155,13 @@ export const CashBook: React.FC<CashBookProps> = ({
 
             {/* Sarlavha: sana */}
             <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-200">
-                    <CalendarDays className="w-4 h-4 text-gray-400" />
+                <div className="flex items-center gap-2 text-sm font-bold text-muted">
+                    <CalendarDays className="w-4 h-4 text-faint" />
                     {view === 'day' ? formatDateLabel(date) : formatMonthLabel(month)}
                 </div>
 
                 {view === 'day' && multiShift && (
-                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                    <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl">
                         {shiftWindows.map(w => {
                             const active = w.shift === activeShift;
                             return (
@@ -1169,8 +1169,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     key={w.shift}
                                     onClick={() => setSelectedShift(w.shift)}
                                     className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${active
-                                        ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-white shadow-sm'
-                                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                        ? 'bg-surface text-primary-600 shadow-sm'
+                                        : 'text-muted hover:text-muted'}`}
                                 >
                                     {w.shift}-smena
                                     {w.isOpen
@@ -1200,72 +1200,72 @@ export const CashBook: React.FC<CashBookProps> = ({
                 <>
                     {/* ── Kunlik matritsa: bemor × shifokor ── */}
                     <Card className="overflow-hidden">
-                        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                            <Users className="w-4 h-4 text-gray-400" />
-                            <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                        <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
+                            <Users className="w-4 h-4 text-faint" />
+                            <h2 className="text-sm font-bold text-ink">
                                 To'lovlar — shifokorlar bo'yicha
                             </h2>
-                            <span className="text-xs text-gray-400">({day.rows.length} ta)</span>
+                            <span className="text-xs text-faint">({day.rows.length} ta)</span>
                         </div>
 
                         {day.rows.length === 0 ? (
                             <div className="px-5 py-12 text-center">
-                                <Wallet className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{t('finance.cash.noPaymentsLogged')}</p>
+                                <Wallet className="w-10 h-10 text-faint mx-auto mb-3" />
+                                <p className="text-sm text-muted">{t('finance.cash.noPaymentsLogged')}</p>
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
-                                    <thead className="bg-gray-50 dark:bg-gray-700/40">
+                                    <thead className="bg-elevated">
                                         <tr>
-                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase sticky left-0 bg-gray-50 dark:bg-gray-700/40 z-10 min-w-[180px]">
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-muted uppercase sticky left-0 bg-elevated z-10 min-w-[180px]">
                                                 Bemor
                                             </th>
-                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-gray-500 uppercase w-20">Vaqt</th>
+                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-muted uppercase w-20">Vaqt</th>
                                             {doctorCols.map(col => (
-                                                <th key={col.id} className="px-3 py-3 text-right text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap min-w-[110px]">
+                                                <th key={col.id} className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase whitespace-nowrap min-w-[110px]">
                                                     {col.name}
                                                 </th>
                                             ))}
-                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">Usul</th>
+                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-muted uppercase whitespace-nowrap">Usul</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                    <tbody className="divide-y divide-line">
                                         {day.rows.map(row => (
                                             <tr
                                                 key={row.id}
-                                                className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${!row.isMoneyIn ? 'opacity-60' : ''}`}
+                                                className={`hover:bg-elevated transition-colors ${!row.isMoneyIn ? 'opacity-60' : ''}`}
                                             >
-                                                <td className="px-4 py-2.5 sticky left-0 bg-white dark:bg-gray-800 z-10">
+                                                <td className="px-4 py-2.5 sticky left-0 bg-surface z-10">
                                                     {row.patientId && onPatientClick ? (
                                                         <button
                                                             onClick={() => onPatientClick(row.patientId!)}
-                                                            className="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 text-left"
+                                                            className="font-medium text-ink hover:text-primary-600 dark:hover:text-primary-400 text-left"
                                                         >
                                                             {row.patientName}
                                                         </button>
                                                     ) : (
-                                                        <span className="font-medium text-gray-900 dark:text-white">{row.patientName}</span>
+                                                        <span className="font-medium text-ink">{row.patientName}</span>
                                                     )}
                                                     {row.service && (
-                                                        <p className="text-[11px] text-gray-400 truncate max-w-[220px]">{row.service}</p>
+                                                        <p className="text-[11px] text-faint truncate max-w-[220px]">{row.service}</p>
                                                     )}
                                                 </td>
-                                                <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{row.time || '—'}</td>
+                                                <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{row.time || '—'}</td>
                                                 {doctorCols.map(col => (
                                                     <td key={col.id} className="px-3 py-2.5 text-right tabular-nums">
                                                         {col.id === row.doctorId ? (
-                                                            <span className={row.isMoneyIn ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-400 line-through'}>
+                                                            <span className={row.isMoneyIn ? 'font-semibold text-ink' : 'text-faint line-through'}>
                                                                 {num(row.amount)}
                                                             </span>
                                                         ) : (
-                                                            <span className="text-gray-200 dark:text-gray-700">·</span>
+                                                            <span className="text-faint">·</span>
                                                         )}
                                                     </td>
                                                 ))}
                                                 <td className="px-3 py-2.5 whitespace-nowrap">
                                                     <span
-                                                        className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300"
+                                                        className="inline-flex items-center gap-1.5 text-xs text-muted"
                                                     >
                                                         <span
                                                             className="w-2 h-2 rounded-full"
@@ -1277,14 +1277,14 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             </tr>
                                         ))}
                                     </tbody>
-                                    <tfoot className="bg-gray-50 dark:bg-gray-700/40 border-t-2 border-gray-200 dark:border-gray-600">
+                                    <tfoot className="bg-elevated border-t-2 border-line">
                                         <tr>
-                                            <td className="px-4 py-3 font-bold text-gray-900 dark:text-white sticky left-0 bg-gray-50 dark:bg-gray-700/40 z-10">
+                                            <td className="px-4 py-3 font-bold text-ink sticky left-0 bg-elevated z-10">
                                                 JAMI
                                             </td>
                                             <td />
                                             {doctorCols.map(col => (
-                                                <td key={col.id} className="px-3 py-3 text-right font-black text-gray-900 dark:text-white tabular-nums">
+                                                <td key={col.id} className="px-3 py-3 text-right font-black text-ink tabular-nums">
                                                     {col.total ? num(col.total) : '—'}
                                                 </td>
                                             ))}
@@ -1303,23 +1303,23 @@ export const CashBook: React.FC<CashBookProps> = ({
 
                     {/* ── Kunlik to'lovlar ro'yxati (chek, o'chirish) ── */}
                     <Card className="overflow-hidden">
-                        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                            <ListOrdered className="w-4 h-4 text-gray-400" />
-                            <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('finance.cash.dayPayments')}</h2>
-                            <span className="text-xs text-gray-400">({day.rows.length} ta)</span>
+                        <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
+                            <ListOrdered className="w-4 h-4 text-faint" />
+                            <h2 className="text-sm font-bold text-ink">{t('finance.cash.dayPayments')}</h2>
+                            <span className="text-xs text-faint">({day.rows.length} ta)</span>
                         </div>
                         {day.rows.length === 0 ? (
-                            <p className="px-5 py-8 text-center text-sm text-gray-500 dark:text-gray-400">{t('finance.cash.noPayments')}</p>
+                            <p className="px-5 py-8 text-center text-sm text-muted">{t('finance.cash.noPayments')}</p>
                         ) : (
-                            <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                            <ul className="divide-y divide-line">
                                 {day.rows.map(row => (
                                     <li key={row.id} className="px-5 py-3 flex items-center justify-between gap-3">
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                                                {row.time && <span className="text-gray-400 font-normal mr-2">{row.time}</span>}
+                                            <p className="text-sm font-medium text-ink truncate">
+                                                {row.time && <span className="text-faint font-normal mr-2">{row.time}</span>}
                                                 {row.patientName}
                                             </p>
-                                            <p className="text-[11px] text-gray-400 truncate">
+                                            <p className="text-[11px] text-faint truncate">
                                                 {row.doctorName}
                                                 {row.service && <><span className="mx-1.5">·</span>{row.service}</>}
                                                 <span className="mx-1.5">·</span>
@@ -1330,15 +1330,15 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             </p>
                                         </div>
                                         <span className={`text-sm font-bold tabular-nums shrink-0 ${row.isMoneyIn
-                                            ? 'text-gray-900 dark:text-white'
-                                            : 'text-gray-400 line-through'}`}>
+                                            ? 'text-ink'
+                                            : 'text-faint line-through'}`}>
                                             {num(row.amount)}
                                         </span>
                                         <div className="flex items-center gap-1 shrink-0">
                                             <button
                                                 onClick={() => setReceiptTx(transactions.find(t => t.id === row.id) || null)}
                                                 title={t('finance.cash.receipt')}
-                                                className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                className="p-1.5 rounded-lg text-faint hover:text-primary-600 hover:bg-elevated transition-colors"
                                             >
                                                 <Printer className="w-4 h-4" />
                                             </button>
@@ -1358,7 +1358,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                     title={transactions.find(t => t.id === row.id)?.linkedToCharges
                                                         ? "Xizmat qatorlariga bog'langan chek — summasini «Qaytarish» orqali tuzating"
                                                         : 'Tuzatish'}
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                                    className="p-1.5 rounded-lg text-faint hover:text-primary-600 hover:bg-elevated transition-colors disabled:opacity-30 disabled:hover:text-faint disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                                 >
                                                     <Pencil className="w-4 h-4" />
                                                 </button>
@@ -1371,7 +1371,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 <button
                                                     onClick={() => openChargePayment(row.patientName, row.patientId)}
                                                     title="Qaytarish yoki qolgan qatorlarni to'lash"
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                    className="p-1.5 rounded-lg text-faint hover:text-amber-600 hover:bg-elevated transition-colors"
                                                 >
                                                     <Undo2 className="w-4 h-4" />
                                                 </button>
@@ -1383,7 +1383,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                     title={transactions.find(t => t.id === row.id)?.linkedToCharges
                                                         ? "Xizmat qatorlariga bog'langan chek — o'chirib bo'lmaydi, «Qaytarish» dan foydalaning"
                                                         : "O'chirish"}
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:hover:text-gray-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                                    className="p-1.5 rounded-lg text-faint hover:text-red-600 hover:bg-elevated transition-colors disabled:opacity-30 disabled:hover:text-faint disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -1398,11 +1398,11 @@ export const CashBook: React.FC<CashBookProps> = ({
 
                     {/* ── To'lanmaganlar: kimdan pul olinmadi ── */}
                     <Card className="overflow-hidden">
-                        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
+                        <div className="px-5 py-4 border-b border-line-soft flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
                                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-                                <h2 className="text-sm font-bold text-gray-900 dark:text-white truncate">{t('finance.cash.unpaid')}</h2>
-                                <span className="text-xs text-gray-400">({unpaidItems.length} ta)</span>
+                                <h2 className="text-sm font-bold text-ink truncate">{t('finance.cash.unpaid')}</h2>
+                                <span className="text-xs text-faint">({unpaidItems.length} ta)</span>
                             </div>
                             <span className="text-sm font-black text-amber-600 dark:text-amber-400 tabular-nums shrink-0">
                                 {num(unpaidTotal)} UZS
@@ -1417,17 +1417,17 @@ export const CashBook: React.FC<CashBookProps> = ({
                         {unpaidItems.length === 0 ? (
                             <div className="px-5 py-10 text-center">
                                 <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{t('finance.cash.allCollected')}</p>
+                                <p className="text-sm text-muted">{t('finance.cash.allCollected')}</p>
                             </div>
                         ) : (
-                            <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                            <ul className="divide-y divide-line">
                                 {unpaidItems.map(item => (
                                     <li key={`${item.kind}-${item.id}`} className="px-5 py-3 flex items-center justify-between gap-3">
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                            <p className="text-sm font-medium text-ink truncate">
                                                 {item.patientName}
                                             </p>
-                                            <p className="text-[11px] text-gray-400 truncate">
+                                            <p className="text-[11px] text-faint truncate">
                                                 <span className="text-primary-600 dark:text-primary-400 font-bold">{t('finance.cash.orderedByDoctor')}</span>
                                                 {item.doctorName && <><span className="mx-1.5">.</span>{item.doctorName}</>}
                                                 {item.service && <><span className="mx-1.5">.</span>{item.service}</>}
@@ -1448,11 +1448,11 @@ export const CashBook: React.FC<CashBookProps> = ({
 
                     {/* ── Kunlik xarajatlar ── */}
                     <Card className="overflow-hidden">
-                        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                        <div className="px-5 py-4 border-b border-line-soft flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <TrendingDown className="w-4 h-4 text-gray-400" />
-                                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Xarajatlar</h2>
-                                <span className="text-xs text-gray-400">({day.expenses.length} ta)</span>
+                                <TrendingDown className="w-4 h-4 text-faint" />
+                                <h2 className="text-sm font-bold text-ink">Xarajatlar</h2>
+                                <span className="text-xs text-faint">({day.expenses.length} ta)</span>
                             </div>
                             <span className="text-sm font-black text-red-600 dark:text-red-400 tabular-nums">
                                 {num(day.totals.expenseTotal)} UZS
@@ -1460,7 +1460,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                         </div>
                         {day.expenses.length === 0 ? (
                             <div className="px-5 py-8 text-center">
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{t('finance.cash.noExpenses')}</p>
+                                <p className="text-sm text-muted">{t('finance.cash.noExpenses')}</p>
                                 {onAddExpense && canEditExpenses && (
                                     <button
                                         onClick={openExpenseModal}
@@ -1471,21 +1471,21 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 )}
                             </div>
                         ) : (
-                            <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                            <ul className="divide-y divide-line">
                                 {day.expenses.map(e => {
                                     const src = expenseSource(e);
                                     const editable = !src && !!onUpdateExpense && canEditExpenses && !closureStatus.closed;
                                     return (
                                     <li key={e.id} className="px-5 py-3 flex items-center justify-between gap-3">
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{e.title}</p>
-                                            <p className="text-[11px] text-gray-400 truncate">
+                                            <p className="text-sm font-medium text-ink truncate">{e.title}</p>
+                                            <p className="text-[11px] text-faint truncate">
                                                 {EXPENSE_CATEGORY_LABELS[e.category] || e.category}
                                                 <span className="mx-1.5">·</span>
                                                 {getPaymentMethodLabel(e.method)}
                                                 {/* Avtomatik xarajat qayerdan kelgani ko'rinib tursin —
                                                     kassir uni qidirib yurmasin. */}
-                                                {src && <><span className="mx-1.5">·</span><span className="text-gray-400">{src}</span></>}
+                                                {src && <><span className="mx-1.5">·</span><span className="text-faint">{src}</span></>}
                                             </p>
                                         </div>
                                         <span className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums shrink-0">
@@ -1496,7 +1496,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 onClick={() => openExpenseEdit(e)}
                                                 title="Tuzatish"
                                                 aria-label={`${e.title} — tuzatish`}
-                                                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                className="shrink-0 p-1.5 rounded-lg text-faint hover:text-primary-600 hover:bg-elevated transition-colors"
                                             ><Pencil className="w-3.5 h-3.5" /></button>
                                         ) : (
                                             <span className="shrink-0 w-[26px]" />
@@ -1510,14 +1510,14 @@ export const CashBook: React.FC<CashBookProps> = ({
 
                     {/* ── Kassa harakatlari ── */}
                     <Card className="overflow-hidden">
-                            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                                <ArrowDownToLine className="w-4 h-4 text-gray-400" />
-                                <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('finance.cash.cashMoves')}</h2>
-                                <span className="text-xs text-gray-400">({day.movements.length} ta)</span>
+                            <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
+                                <ArrowDownToLine className="w-4 h-4 text-faint" />
+                                <h2 className="text-sm font-bold text-ink">{t('finance.cash.cashMoves')}</h2>
+                                <span className="text-xs text-faint">({day.movements.length} ta)</span>
                             </div>
                             {day.movements.length === 0 ? (
                                 <div className="px-5 py-8 text-center">
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">{t('finance.cash.noCashInOut')}</p>
+                                    <p className="text-sm text-muted">{t('finance.cash.noCashInOut')}</p>
                                     {onAddCashMovement && (
                                         <div className="flex items-center justify-center gap-3 mt-3">
                                             <button
@@ -1528,7 +1528,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             </button>
                                             <button
                                                 onClick={() => openMovement('Refund')}
-                                                className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:underline"
+                                                className="text-xs font-bold text-muted hover:underline"
                                             >
                                                 Qaytarish →
                                             </button>
@@ -1536,16 +1536,16 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     )}
                                 </div>
                             ) : (
-                            <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                            <ul className="divide-y divide-line">
                                 {day.movements.map(m => {
                                     const isOut = m.type === 'Encashment' || m.type === 'Refund';
                                     return (
                                         <li key={m.id} className="px-5 py-3 flex items-center justify-between gap-3">
                                             <div className="min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                                <p className="text-sm font-medium text-ink">
                                                     {CASH_MOVEMENT_LABELS[m.type] || m.type}
                                                 </p>
-                                                <p className="text-[11px] text-gray-400 truncate">
+                                                <p className="text-[11px] text-faint truncate">
                                                     {getPaymentMethodLabel(m.method)}
                                                     {m.createdByName && <><span className="mx-1.5">·</span>{m.createdByName}</>}
                                                     {m.note && <><span className="mx-1.5">·</span>{m.note}</>}
@@ -1560,7 +1560,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 <button
                                                     onClick={() => onDeleteCashMovement(m.id).catch(() => { })}
                                                     title="O'chirish"
-                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shrink-0"
+                                                    className="p-1.5 rounded-lg text-faint hover:text-red-600 hover:bg-elevated transition-colors shrink-0"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -1578,26 +1578,26 @@ export const CashBook: React.FC<CashBookProps> = ({
                     <Card className="overflow-hidden">
                         <button
                             onClick={toggleAudit}
-                            className="w-full px-5 py-4 flex items-center gap-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+                            className="w-full px-5 py-4 flex items-center gap-2 text-left hover:bg-elevated transition-colors"
                         >
-                            <History className="w-4 h-4 text-gray-400" />
-                            <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('finance.cash.auditTrail')}</h2>
-                            <span className="text-xs text-gray-400">kim nimani o'chirgan yoki tuzatgan</span>
-                            <ChevronDown className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${auditOpen ? 'rotate-180' : ''}`} />
+                            <History className="w-4 h-4 text-faint" />
+                            <h2 className="text-sm font-bold text-ink">{t('finance.cash.auditTrail')}</h2>
+                            <span className="text-xs text-faint">kim nimani o'chirgan yoki tuzatgan</span>
+                            <ChevronDown className={`w-4 h-4 text-faint ml-auto transition-transform ${auditOpen ? 'rotate-180' : ''}`} />
                         </button>
                         {auditOpen && (
-                            <div className="border-t border-gray-100 dark:border-gray-700">
+                            <div className="border-t border-line-soft">
                                 {auditLoading ? (
-                                    <p className="px-5 py-6 text-center text-sm text-gray-400">Yuklanmoqda...</p>
+                                    <p className="px-5 py-6 text-center text-sm text-faint">Yuklanmoqda...</p>
                                 ) : auditLogs.length === 0 ? (
-                                    <p className="px-5 py-6 text-center text-sm text-gray-500 dark:text-gray-400">{t('finance.cash.noChanges')}</p>
+                                    <p className="px-5 py-6 text-center text-sm text-muted">{t('finance.cash.noChanges')}</p>
                                 ) : (
-                                    <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                                    <ul className="divide-y divide-line">
                                         {auditLogs.map(log => (
                                             <li key={log.id} className="px-5 py-3 flex items-start justify-between gap-3">
                                                 <div className="min-w-0">
-                                                    <p className="text-sm text-gray-900 dark:text-white">{log.summary}</p>
-                                                    <p className="text-[11px] text-gray-400">
+                                                    <p className="text-sm text-ink">{log.summary}</p>
+                                                    <p className="text-[11px] text-faint">
                                                         {log.byName || 'Xodim'}
                                                         <span className="mx-1.5">.</span>
                                                         {new Date(log.createdAt).toLocaleString('uz-UZ')}
@@ -1621,15 +1621,15 @@ export const CashBook: React.FC<CashBookProps> = ({
                         navbat raqami bo'yicha topadi. */}
                     {hereNow.length > 0 && (
                         <Card className="overflow-hidden">
-                            <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                            <div className="px-5 py-3 border-b border-line-soft flex items-center gap-2">
                                 <Users className="w-4 h-4 text-primary-500 shrink-0" />
-                                <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('finance.cash.nowInClinic')}</h2>
-                                <span className="text-xs text-gray-400">({hereNow.length} ta to'lovsiz)</span>
+                                <h2 className="text-sm font-bold text-ink">{t('finance.cash.nowInClinic')}</h2>
+                                <span className="text-xs text-faint">({hereNow.length} ta to'lovsiz)</span>
                                 <span className="ml-auto text-sm font-black text-primary-600 dark:text-primary-400 tabular-nums">
                                     {num(hereNow.reduce((s: number, g: any) => s + (g.due || 0), 0))} UZS
                                 </span>
                             </div>
-                            <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                            <ul className="divide-y divide-line">
                                 {hereNow.map((g: any) => (
                                     <li key={g.patientId || g.patientName} className="px-5 py-3 flex flex-wrap items-center gap-3">
                                         {g.queueNumber != null && (
@@ -1638,8 +1638,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             </span>
                                         )}
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{g.patientName}</p>
-                                            <p className="text-[11px] text-gray-400">
+                                            <p className="text-sm font-medium text-ink truncate">{g.patientName}</p>
+                                            <p className="text-[11px] text-faint">
                                                 {(g.items || []).length} ta xizmat
                                                 {(g.items || []).length > 0 ? ` · ${g.items.map((i: any) => i.name).join(', ').slice(0, 60)}` : ''}
                                             </p>
@@ -1672,9 +1672,9 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 </span>
                             </div>
                         ) : (
-                            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                                <Lock className="w-4 h-4 text-gray-400 shrink-0" />
-                                <span className="text-sm text-gray-600 dark:text-gray-300">{t('finance.cash.shiftNotOpen')}</span>
+                            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-elevated border border-line">
+                                <Lock className="w-4 h-4 text-faint shrink-0" />
+                                <span className="text-sm text-muted">{t('finance.cash.shiftNotOpen')}</span>
                                 <Button size="sm" variant="secondary" className="ml-auto"
                                     onClick={handleOpenShift} disabled={openingShift}>
                                     {openingShift ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <LockOpen className="w-3.5 h-3.5 mr-1.5" />}
@@ -1695,30 +1695,30 @@ export const CashBook: React.FC<CashBookProps> = ({
             ) : (
                 /* ── Oylik daftar ── */
                 <Card className="overflow-hidden">
-                    <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                        <CalendarDays className="w-4 h-4 text-gray-400" />
-                        <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('finance.cash.dayBook')}</h2>
-                        <span className="text-xs text-gray-400">kunni bosing — o'sha kun varag'i ochiladi</span>
+                    <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
+                        <CalendarDays className="w-4 h-4 text-faint" />
+                        <h2 className="text-sm font-bold text-ink">{t('finance.cash.dayBook')}</h2>
+                        <span className="text-xs text-faint">kunni bosing — o'sha kun varag'i ochiladi</span>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-gray-50 dark:bg-gray-700/40">
+                            <thead className="bg-elevated">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase sticky left-0 bg-gray-50 dark:bg-gray-700/40 z-10">Kun</th>
-                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-gray-500 uppercase">{t('finance.cash.cash')}</th>
-                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-gray-500 uppercase">{t('finance.cash.cashless')}</th>
-                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-gray-500 uppercase">Jami</th>
-                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-gray-500 uppercase">{t('finance.cash.expense')}</th>
-                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">{t('finance.cash.leftInDrawer')}</th>
-                                    <th className="px-3 py-3 text-center text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">Holat</th>
+                                    <th className="px-4 py-3 text-left text-[11px] font-bold text-muted uppercase sticky left-0 bg-elevated z-10">Kun</th>
+                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('finance.cash.cash')}</th>
+                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('finance.cash.cashless')}</th>
+                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">Jami</th>
+                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('finance.cash.expense')}</th>
+                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase whitespace-nowrap">{t('finance.cash.leftInDrawer')}</th>
+                                    <th className="px-3 py-3 text-center text-[11px] font-bold text-muted uppercase whitespace-nowrap">Holat</th>
                                     {doctorCols.map(col => (
-                                        <th key={col.id} className="px-3 py-3 text-right text-[11px] font-bold text-gray-400 uppercase whitespace-nowrap min-w-[100px]">
+                                        <th key={col.id} className="px-3 py-3 text-right text-[11px] font-bold text-faint uppercase whitespace-nowrap min-w-[100px]">
                                             {col.name}
                                         </th>
                                     ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                            <tbody className="divide-y divide-line">
                                 {monthData.days.map(d => (
                                     <tr
                                         key={d.date}
@@ -1726,7 +1726,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         className={`cursor-pointer transition-colors hover:bg-primary-50 dark:hover:bg-primary-900/10 ${!d.hasActivity ? 'opacity-40' : ''
                                             } ${d.date === today ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''}`}
                                     >
-                                        <td className="px-4 py-2.5 font-semibold text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10 whitespace-nowrap">
+                                        <td className="px-4 py-2.5 font-semibold text-ink sticky left-0 bg-surface z-10 whitespace-nowrap">
                                             {String(d.day).padStart(2, '0')}
                                             {d.date === today && <span className="ml-2 text-[10px] text-primary-600 font-bold">bugun</span>}
                                         </td>
@@ -1736,7 +1736,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         <td className="px-3 py-2.5 text-right tabular-nums text-blue-600 dark:text-blue-400">
                                             {d.totals.nonCashIn ? num(d.totals.nonCashIn) : '—'}
                                         </td>
-                                        <td className="px-3 py-2.5 text-right tabular-nums font-bold text-gray-900 dark:text-white">
+                                        <td className="px-3 py-2.5 text-right tabular-nums font-bold text-ink">
                                             {d.totals.gross ? num(d.totals.gross) : '—'}
                                         </td>
                                         <td className="px-3 py-2.5 text-right tabular-nums text-red-600 dark:text-red-400">
@@ -1749,22 +1749,22 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             <ClosureChip status={closureByDate.get(d.date)} hasActivity={d.hasActivity} />
                                         </td>
                                         {doctorCols.map(col => (
-                                            <td key={col.id} className="px-3 py-2.5 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                                                {d.byDoctor[col.id] ? num(d.byDoctor[col.id]) : <span className="text-gray-200 dark:text-gray-700">·</span>}
+                                            <td key={col.id} className="px-3 py-2.5 text-right tabular-nums text-muted">
+                                                {d.byDoctor[col.id] ? num(d.byDoctor[col.id]) : <span className="text-faint">·</span>}
                                             </td>
                                         ))}
                                     </tr>
                                 ))}
                             </tbody>
-                            <tfoot className="bg-gray-50 dark:bg-gray-700/40 border-t-2 border-gray-200 dark:border-gray-600">
+                            <tfoot className="bg-elevated border-t-2 border-line">
                                 <tr>
-                                    <td className="px-4 py-3 font-black text-gray-900 dark:text-white sticky left-0 bg-gray-50 dark:bg-gray-700/40 z-10">JAMI</td>
+                                    <td className="px-4 py-3 font-black text-ink sticky left-0 bg-elevated z-10">JAMI</td>
                                     <td className="px-3 py-3 text-right font-black tabular-nums text-emerald-600 dark:text-emerald-400">{num(monthData.totals.cashIn)}</td>
                                     <td className="px-3 py-3 text-right font-black tabular-nums text-blue-600 dark:text-blue-400">{num(monthData.totals.nonCashIn)}</td>
-                                    <td className="px-3 py-3 text-right font-black tabular-nums text-gray-900 dark:text-white">{num(monthData.totals.gross)}</td>
+                                    <td className="px-3 py-3 text-right font-black tabular-nums text-ink">{num(monthData.totals.gross)}</td>
                                     <td className="px-3 py-3 text-right font-black tabular-nums text-red-600 dark:text-red-400">−{num(monthData.totals.expenseTotal)}</td>
                                     <td className="px-3 py-3 text-right font-black tabular-nums text-amber-600 dark:text-amber-400">{num(monthData.totals.drawer)}</td>
-                                    <td className="px-3 py-3 text-center text-[11px] font-bold text-gray-500 whitespace-nowrap">
+                                    <td className="px-3 py-3 text-center text-[11px] font-bold text-muted whitespace-nowrap">
                                         {monthData.days.filter(d => closureByDate.get(d.date)?.closed).length}
                                         {' / '}
                                         {monthData.days.filter(d => d.hasActivity).length} yopilgan
@@ -1772,7 +1772,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     {doctorCols.map(col => {
                                         const total = monthData.days.reduce((s, d) => s + (d.byDoctor[col.id] || 0), 0);
                                         return (
-                                            <td key={col.id} className="px-3 py-3 text-right font-black tabular-nums text-gray-900 dark:text-white">
+                                            <td key={col.id} className="px-3 py-3 text-right font-black tabular-nums text-ink">
                                                 {total ? num(total) : '—'}
                                             </td>
                                         );
@@ -1840,7 +1840,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     <option key={d.id} value={d.id}>{d.name}</option>
                                 ))}
                             </Select>
-                            <p className="text-[11px] text-gray-400 mt-1">{t('finance.cash.deptExpenseHint')}</p>
+                            <p className="text-[11px] text-faint mt-1">{t('finance.cash.deptExpenseHint')}</p>
                         </div>
                     )}
 
@@ -1862,7 +1862,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     />
 
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('finance.cash.paidFrom')}</label>
+                        <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">{t('finance.cash.paidFrom')}</label>
                         <div className="flex gap-2 flex-wrap">
                             {EXPENSE_PAYMENT_METHODS.map(m => (
                                 <button
@@ -1871,13 +1871,13 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     onClick={() => setExpenseForm(f => ({ ...f, method: m }))}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${expenseForm.method === m
                                         ? 'bg-red-500 text-white border-red-500'
-                                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-red-400'}`}
+                                        : 'bg-surface text-muted border-line hover:border-red-400'}`}
                                 >
                                     {getPaymentMethodLabel(m)}
                                 </button>
                             ))}
                         </div>
-                        <p className="text-[11px] text-gray-400 mt-1.5">
+                        <p className="text-[11px] text-faint mt-1.5">
                             Naqd tanlansa kassadagi pul kamayadi. Boshqasi hisob raqamdan chiqadi.
                         </p>
                         {/* NAQD YASHIQDA YETARLI PUL BORMI. Yashiqda jismonan
@@ -1899,16 +1899,16 @@ export const CashBook: React.FC<CashBookProps> = ({
                     </div>
 
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('finance.cash.noteOptional')}</label>
+                        <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">{t('finance.cash.noteOptional')}</label>
                         <textarea
                             value={expenseForm.note}
                             onChange={e => setExpenseForm(f => ({ ...f, note: e.target.value }))}
                             rows={2}
-                            className="w-full px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-white placeholder-gray-400"
+                            className="w-full px-3 py-2.5 bg-surface border border-line rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 placeholder-faint"
                         />
                     </div>
 
-                    <p className="text-[11px] text-gray-400">
+                    <p className="text-[11px] text-faint">
                         Oylik va shifokor ulushi bu yerda yo'q — ular Hisobot tabida rasmiylashtiriladi.
                     </p>
 
@@ -1947,8 +1947,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                 className="max-w-md"
             >
                 <div className="space-y-4">
-                    <div className="rounded-xl bg-gray-50 dark:bg-gray-800 p-4 flex justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-300">{t('finance.cash.expectedNow')}</span>
+                    <div className="rounded-xl bg-elevated p-4 flex justify-between text-sm">
+                        <span className="text-muted">{t('finance.cash.expectedNow')}</span>
                         <span className="font-black tabular-nums text-amber-600 dark:text-amber-400">
                             {num(drawerNow)}
                         </span>
@@ -1987,17 +1987,17 @@ export const CashBook: React.FC<CashBookProps> = ({
                     )}
 
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('finance.cash.noteOptional')}</label>
+                        <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">{t('finance.cash.noteOptional')}</label>
                         <textarea
                             value={movementForm.note}
                             onChange={e => setMovementForm(f => ({ ...f, note: e.target.value }))}
                             rows={2}
                             placeholder={movementType === 'Encashment' ? 'Kimga topshirildi' : 'Nima uchun qaytarildi'}
-                            className="w-full px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-white placeholder-gray-400"
+                            className="w-full px-3 py-2.5 bg-surface border border-line rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 placeholder-faint"
                         />
                     </div>
 
-                    <p className="text-[11px] text-gray-400">
+                    <p className="text-[11px] text-faint">
                         Bu xarajat emas — kassadagi naqdni kamaytiradi, lekin klinikaning sof foydasiga ta'sir qilmaydi.
                     </p>
 
@@ -2023,7 +2023,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                 className="max-w-md"
             >
                 <div className="space-y-4">
-                    <p className="text-sm text-gray-700 dark:text-gray-200">
+                    <p className="text-sm text-muted">
                         <b>{deletingRow?.patientName}</b> — <b>{num(deletingRow?.amount || 0)} UZS</b> to'lovi o'chiriladi.
                     </p>
                     {closureStatus.closed && (
@@ -2034,7 +2034,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             </p>
                         </div>
                     )}
-                    <p className="text-[11px] text-gray-400">
+                    <p className="text-[11px] text-faint">
                         O'chirish izda qoladi: kim, qachon va qaysi to'lovni o'chirgani yozib qo'yiladi.
                     </p>
                     <div className="flex gap-2">
@@ -2070,9 +2070,9 @@ export const CashBook: React.FC<CashBookProps> = ({
                 className="max-w-md"
             >
                 <div className="space-y-4">
-                    <div className="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{editingTx?.patientName}</p>
-                        <p className="text-[11px] text-gray-400">
+                    <div className="rounded-xl bg-elevated p-4">
+                        <p className="text-sm font-medium text-ink">{editingTx?.patientName}</p>
+                        <p className="text-[11px] text-faint">
                             {editingTx?.service}
                             <span className="mx-1.5">.</span>
                             {editingTx?.date}
@@ -2089,7 +2089,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     />
 
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('finance.cash.paymentMethod')}</label>
+                        <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">{t('finance.cash.paymentMethod')}</label>
                         <div className="flex gap-2 flex-wrap">
                             {PAYMENT_METHODS.filter(m => m.key !== 'Balance').map(m => (
                                 <button
@@ -2098,7 +2098,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     onClick={() => setEditForm(f => ({ ...f, type: m.key }))}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${editForm.type === m.key
                                         ? 'bg-primary-600 text-white border-primary-600'
-                                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-400'}`}
+                                        : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                                 >
                                     {m.label}
                                 </button>
@@ -2138,27 +2138,27 @@ export const CashBook: React.FC<CashBookProps> = ({
                 title={`Kunni yopish — ${formatDateLabel(date)}`}
             >
                 <div className="space-y-5">
-                    <div className="rounded-xl bg-gray-50 dark:bg-gray-800 p-4 space-y-2 text-sm">
-                        <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                    <div className="rounded-xl bg-elevated p-4 space-y-2 text-sm">
+                        <div className="flex justify-between text-muted">
                             <span>{t('finance.cash.openingBalance')}</span>
                             <span className="font-semibold tabular-nums">{num(day.totals.openingCash)}</span>
                         </div>
-                        <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                        <div className="flex justify-between text-muted">
                             <span>{t('finance.cash.cashIn')}</span>
                             <span className="font-semibold tabular-nums">{num(day.totals.cashIn)}</span>
                         </div>
-                        <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                        <div className="flex justify-between text-muted">
                             <span>{t('finance.cash.cashOut')}</span>
                             <span className="font-semibold tabular-nums text-red-600 dark:text-red-400">−{num(day.totals.cashExpense)}</span>
                         </div>
-                        <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700 text-base">
-                            <span className="font-bold text-gray-900 dark:text-white">{t('finance.cash.ledgerInDrawer')}</span>
+                        <div className="flex justify-between pt-2 border-t border-line text-base">
+                            <span className="font-bold text-ink">{t('finance.cash.ledgerInDrawer')}</span>
                             <span className="font-black tabular-nums text-amber-600 dark:text-amber-400">
                                 {expectedLoading ? '…' : num(expectedForClose)}
                             </span>
                         </div>
                         {serverExpected && (
-                            <p className="text-[11px] text-gray-400 pt-1">
+                            <p className="text-[11px] text-faint pt-1">
                                 Server hisobi: {serverExpected.sources?.paymentCount ?? 0} to'lov,
                                 boshlang'ich {num(serverExpected.openingCash)}
                                 {serverExpected.sources?.openingFrom ? ` (${formatDateLabel(String(serverExpected.sources.openingFrom))} yopilishidan)` : ''}
@@ -2209,7 +2209,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             tugmasi bor edi. U bir bosishda farqni nolga
                             aylantirardi — ya'ni sanashning o'zi ma'nosiz
                             bo'lib qolardi. Olib tashlandi (C6). */}
-                        <p className="mt-2 text-[11px] text-gray-400">
+                        <p className="mt-2 text-[11px] text-faint">
                             Pulni sanab, haqiqiy summani kiriting. Farqni tizim o'zi chiqaradi.
                         </p>
                     </div>
@@ -2219,14 +2219,14 @@ export const CashBook: React.FC<CashBookProps> = ({
                             ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20'
                             : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'}`}>
                             <div className="flex items-center justify-between">
-                                <span className="text-sm font-bold text-gray-900 dark:text-white">Farq</span>
+                                <span className="text-sm font-bold text-ink">Farq</span>
                                 <span className={`text-lg font-black tabular-nums ${Math.abs(previewDifference) < 1
                                     ? 'text-emerald-600 dark:text-emerald-400'
                                     : 'text-red-600 dark:text-red-400'}`}>
                                     {previewDifference > 0 ? '+' : ''}{num(previewDifference)}
                                 </span>
                             </div>
-                            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                            <p className="text-xs text-muted mt-1">
                                 {Math.abs(previewDifference) < 1
                                     ? "Kassa to'g'ri keldi."
                                     : previewDifference > 0
@@ -2239,7 +2239,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     {/* Terminal va Click — ixtiyoriy, kiritilsa solishtiriladi */}
                     {(expectedCard > 0 || expectedClick > 0) && (
                         <div className="space-y-3 pt-1">
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('finance.cash.compareCashless')}</p>
+                            <p className="text-xs font-bold text-muted uppercase tracking-wider">{t('finance.cash.compareCashless')}</p>
                             {expectedCard > 0 && (
                                 <ReconRow
                                     label={t('finance.cash.terminalZ')}
@@ -2258,22 +2258,22 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     counted={countedClickValue}
                                 />
                             )}
-                            <p className="text-[11px] text-gray-400">{t('finance.cash.compareHint')}</p>
+                            <p className="text-[11px] text-faint">{t('finance.cash.compareHint')}</p>
                         </div>
                     )}
 
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('finance.cash.noteOptional')}</label>
+                        <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">{t('finance.cash.noteOptional')}</label>
                         <textarea
                             value={closeNote}
                             onChange={e => setCloseNote(e.target.value)}
                             rows={2}
                             placeholder={t('finance.cash.notePlaceholder')}
-                            className="w-full px-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-white placeholder-gray-400"
+                            className="w-full px-3 py-2.5 bg-surface border border-line rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 placeholder-faint"
                         />
                     </div>
 
-                    <p className="text-[11px] text-gray-400">
+                    <p className="text-[11px] text-faint">
                         Yopish kunni qulflamaydi — kechroq kelgan to'lov baribir yoziladi.
                         Shunda bu sahifada "yopilgandan keyin o'zgardi" belgisi chiqadi.
                     </p>

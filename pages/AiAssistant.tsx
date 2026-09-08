@@ -101,13 +101,13 @@ const ICONS: Record<string, React.ElementType> = {
 
 // Rang ilovaning yorug'/qorong'i rejimiga moslashadi.
 const TONE: Record<string, string> = {
-  neutral: 'text-gray-900 dark:text-white',
+  neutral: 'text-ink',
   good: 'text-emerald-600 dark:text-emerald-400',
   warn: 'text-amber-600 dark:text-amber-400',
   bad: 'text-rose-600 dark:text-rose-400',
 };
 
-const CARD = 'bg-white dark:bg-gray-800/40 ring-1 ring-gray-200/80 dark:ring-white/[0.06]';
+const CARD = 'bg-surface/40 ring-1 ring-line/80 dark:ring-white/[0.06]';
 
 const fmtValue = (v: number | string): string =>
   typeof v === 'number' ? formatNumber(v) : v;
@@ -131,16 +131,16 @@ const MetricCard: React.FC<{ m: Metric; i: number }> = ({ m, i }) => (
     transition={{ delay: i * 0.04, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
     className={`rounded-2xl px-5 py-4 ${CARD}`}
   >
-    <div className="text-[11px] uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500 mb-2">
+    <div className="text-[11px] uppercase tracking-[0.12em] text-faint mb-2">
       {m.label}
     </div>
     <div className={`text-[26px] leading-none font-semibold tabular-nums ${TONE[m.tone || 'neutral']}`}>
       {fmtValue(m.value)}
       {m.unit && (
-        <span className="text-[13px] font-normal text-gray-400 dark:text-gray-500 ml-1.5">{m.unit}</span>
+        <span className="text-[13px] font-normal text-faint ml-1.5">{m.unit}</span>
       )}
     </div>
-    {m.hint && <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-2">{m.hint}</div>}
+    {m.hint && <div className="text-[12px] text-faint mt-2">{m.hint}</div>}
   </motion.div>
 );
 
@@ -149,12 +149,12 @@ const DataTable: React.FC<{ t: ReportTable }> = ({ t }) => (
     <div className="overflow-x-auto">
       <table className="w-full text-[13px] min-w-[480px]">
         <thead>
-          <tr className="bg-gray-50/80 dark:bg-white/[0.03]">
+          <tr className="bg-elevated/80">
             {t.columns.map(c => (
               <th
                 key={c}
                 className="text-left font-medium px-4 py-2.5 whitespace-nowrap text-[11px]
-                           uppercase tracking-[0.1em] text-gray-400 dark:text-gray-500"
+                           uppercase tracking-[0.1em] text-faint"
               >
                 {c}
               </th>
@@ -163,14 +163,14 @@ const DataTable: React.FC<{ t: ReportTable }> = ({ t }) => (
         </thead>
         <tbody>
           {t.rows.map((row, i) => (
-            <tr key={i} className="border-t border-gray-100 dark:border-white/[0.04]">
+            <tr key={i} className="border-t border-line-soft">
               {row.map((cell, j) => (
                 <td
                   key={j}
                   className={`px-4 py-2.5 whitespace-nowrap ${
                     j === 0
-                      ? 'text-gray-800 dark:text-gray-200'
-                      : 'text-gray-500 dark:text-gray-400 tabular-nums'
+                      ? 'text-ink'
+                      : 'text-muted tabular-nums'
                   }`}
                 >
                   {cell}
@@ -189,13 +189,13 @@ const SourcePills: React.FC<{ sources: string[]; label: string; lang: 'uz' | 'ru
   if (!uniq.length) return null;
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <Database className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
-      <span className="text-[11px] text-gray-400 dark:text-gray-500">{label}</span>
+      <Database className="w-3.5 h-3.5 text-faint" />
+      <span className="text-[11px] text-faint">{label}</span>
       {uniq.map(s => (
         <span
           key={s}
-          className="text-[11px] rounded-full px-2.5 py-0.5 text-gray-500 dark:text-gray-400
-                     bg-gray-100 dark:bg-white/[0.05]"
+          className="text-[11px] rounded-full px-2.5 py-0.5 text-muted
+                     bg-elevated"
         >
           {SOURCE_LABEL[s]?.[lang] || s}
         </span>
@@ -312,10 +312,10 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
               exit={{ opacity: 0, y: -8 }}
               className="text-center pt-10 pb-8"
             >
-              <h2 className="text-[26px] sm:text-[32px] font-bold tracking-tight text-gray-900 dark:text-white">
+              <h2 className="text-[26px] sm:text-[32px] font-bold tracking-tight text-ink">
                 {t('ai.heroTitle')}
               </h2>
-              <p className="text-gray-500 dark:text-gray-400 mt-2 text-[15px]">
+              <p className="text-muted mt-2 text-[15px]">
                 {t('ai.heroSub')}
               </p>
             </motion.div>
@@ -326,7 +326,7 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
         <div className="max-w-2xl mx-auto relative group">
           <Search
             className="absolute left-5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] pointer-events-none
-                       text-gray-400 dark:text-gray-500 group-focus-within:text-violet-500 transition-colors"
+                       text-faint group-focus-within:text-violet-500 transition-colors"
           />
           <textarea
             ref={inputRef}
@@ -338,12 +338,12 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
             rows={1}
             placeholder={t('ai.placeholder')}
             className="w-full rounded-2xl pl-14 pr-14 py-[18px] text-[15.5px] resize-none outline-none
-                       bg-white dark:bg-gray-800/60
-                       ring-1 ring-gray-200 dark:ring-white/[0.08]
+                       bg-surface/60
+                       ring-1 ring-line dark:ring-white/[0.08]
                        focus:ring-2 focus:ring-violet-500/60
                        focus:shadow-[0_0_0_5px_rgba(139,92,246,0.07)]
-                       placeholder:text-gray-400 dark:placeholder:text-gray-500
-                       text-gray-900 dark:text-white transition-shadow shadow-sm"
+                       placeholder:text-faint
+                       text-ink transition-shadow shadow-sm"
           />
           <button
             onClick={ask}
@@ -351,8 +351,8 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
             aria-label={t('ai.send')}
             className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 grid place-items-center
                        rounded-xl bg-violet-600 text-white transition-colors
-                       disabled:bg-gray-100 dark:disabled:bg-white/[0.06]
-                       disabled:text-gray-300 dark:disabled:text-gray-600"
+                       disabled:bg-elevated
+                       disabled:text-faint"
           >
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
           </button>
@@ -376,7 +376,7 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
                             font-medium transition-colors disabled:opacity-40 ${
                   on
                     ? 'bg-violet-50 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-200 dark:ring-violet-400/30'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06]'
+                    : 'text-muted hover:bg-elevated'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -388,8 +388,8 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
             <button aria-label="Qaytarish"
               onClick={reset}
               className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px]
-                         text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300
-                         hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors ml-auto"
+                         text-faint hover:text-muted
+                         hover:bg-elevated transition-colors ml-auto"
             >
               <RotateCcw className="w-3.5 h-3.5" /> {t('ai.restart')}
             </button>
@@ -407,7 +407,7 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
             transition={{ delay: 0.08 }}
             className="max-w-3xl mx-auto mt-10 pb-6"
           >
-            <div className="text-[11px] uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 mb-3">
+            <div className="text-[11px] uppercase tracking-[0.14em] text-faint mb-3">
               {t('ai.oneClick')}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
@@ -429,17 +429,17 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
                         skanerlashga yordam beradi, yalang'och ikona esa
                         matnga qo'shilib ketadi. */}
                     <span className="shrink-0 w-9 h-9 rounded-xl grid place-items-center transition-colors
-                                     bg-gray-100 dark:bg-white/[0.05]
+                                     bg-elevated
                                      group-hover:bg-violet-50 dark:group-hover:bg-violet-500/15">
-                      <Icon className="w-[18px] h-[18px] text-gray-500 dark:text-gray-400
+                      <Icon className="w-[18px] h-[18px] text-muted
                                        group-hover:text-violet-500 dark:group-hover:text-violet-300
                                        transition-colors" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[14px] font-semibold text-gray-900 dark:text-white mb-0.5">
+                      <span className="block text-[14px] font-semibold text-ink mb-0.5">
                         {r.title}
                       </span>
-                      <span className="block text-[12.5px] text-gray-500 dark:text-gray-400 leading-snug">
+                      <span className="block text-[12.5px] text-muted leading-snug">
                         {r.hint}
                       </span>
                     </span>
@@ -467,11 +467,11 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
             >
               <div className="flex items-start gap-2.5">
                 <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
-                <div className="text-[15px] font-medium text-gray-900 dark:text-white">
+                <div className="text-[15px] font-medium text-ink">
                   {turn.q}
                 </div>
               </div>
-              <p className="text-[15.5px] leading-relaxed text-gray-700 dark:text-gray-300
+              <p className="text-[15.5px] leading-relaxed text-muted
                             whitespace-pre-wrap max-w-2xl pl-4">
                 {turn.a}
               </p>
@@ -488,7 +488,7 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
       <AnimatePresence>
         {busy && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-8">
-            <div className="flex items-center gap-2.5 text-[13px] text-gray-500 dark:text-gray-400 mb-5">
+            <div className="flex items-center gap-2.5 text-[13px] text-muted mb-5">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-500" />
               {busyLabel}…
             </div>
@@ -498,16 +498,16 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
                 {[0, 1, 2, 3].map(i => (
                   <div key={i} className={`rounded-2xl px-5 py-4 ${CARD}`}>
-                    <div className="h-2 w-14 bg-gray-200 dark:bg-white/[0.07] rounded mb-3.5 animate-pulse" />
-                    <div className="h-6 w-20 bg-gray-200 dark:bg-white/[0.07] rounded animate-pulse" />
+                    <div className="h-2 w-14 bg-elevated rounded mb-3.5 animate-pulse" />
+                    <div className="h-6 w-20 bg-elevated rounded animate-pulse" />
                   </div>
                 ))}
               </div>
             ) : (
               <div className="space-y-2.5 max-w-2xl pl-4">
-                <div className="h-3.5 w-11/12 bg-gray-200 dark:bg-white/[0.07] rounded animate-pulse" />
-                <div className="h-3.5 w-4/5 bg-gray-200 dark:bg-white/[0.07] rounded animate-pulse" />
-                <div className="h-3.5 w-2/3 bg-gray-200 dark:bg-white/[0.07] rounded animate-pulse" />
+                <div className="h-3.5 w-11/12 bg-elevated rounded animate-pulse" />
+                <div className="h-3.5 w-4/5 bg-elevated rounded animate-pulse" />
+                <div className="h-3.5 w-2/3 bg-elevated rounded animate-pulse" />
               </div>
             )}
           </motion.div>
@@ -542,10 +542,10 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
             {result.kind === 'report' && (
               <>
                 <div className="flex items-baseline justify-between gap-4 flex-wrap">
-                  <h3 className="text-[20px] font-bold tracking-tight text-gray-900 dark:text-white">
+                  <h3 className="text-[20px] font-bold tracking-tight text-ink">
                     {result.report.title}
                   </h3>
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500 tabular-nums">
+                  <span className="text-[12px] text-faint tabular-nums">
                     {result.report.period}
                   </span>
                 </div>
@@ -554,11 +554,11 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
                 {result.report.empty ? (
                   <div className={`rounded-2xl px-6 py-12 text-center ${CARD}`}>
                     <div className="w-10 h-10 rounded-xl grid place-items-center mx-auto mb-3.5
-                                    bg-gray-100 dark:bg-white/[0.05]">
-                      <Inbox className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+                                    bg-elevated">
+                      <Inbox className="w-5 h-5 text-faint" />
                     </div>
-                    <div className="text-[15px] text-gray-700 dark:text-gray-300 mb-1">{t('ai.noData')}</div>
-                    <div className="text-[13px] text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
+                    <div className="text-[15px] text-muted mb-1">{t('ai.noData')}</div>
+                    <div className="text-[13px] text-muted max-w-sm mx-auto">
                       {result.report.emptyText || t('ai.noDataFallback')}
                     </div>
                   </div>
@@ -569,7 +569,7 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
                     </div>
 
                     {result.report.narrative && (
-                      <p className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300
+                      <p className="text-[15px] leading-relaxed text-muted
                                     max-w-2xl whitespace-pre-wrap">
                         {result.report.narrative}
                       </p>

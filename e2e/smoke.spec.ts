@@ -176,47 +176,48 @@ test.describe('XClinic — asosiy oqimlar', () => {
         await expect(page.getByText(/sahifa topilmadi/i)).toBeVisible({ timeout: 10_000 });
     });
 
-    test('9. Nav panelda faol modul ko\'rinadi (B-03)', async ({ page }) => {
+    test('9. Menyuda faol modul ko\'rinadi (B-03)', async ({ page }) => {
         await login(page);
+        /* «Sozlamalar» — menyuning OXIRGI punkti. Aynan u ilgari
+           ekrandan tashqarida qolardi, ya'ni tekshiruvning eng qattiq
+           nuqtasi shu. */
         await go(page, '/settings');
         await page.waitForTimeout(1500);
 
-        /* Audit: «1278px da 15 modulning 6 tasi ekrandan tashqarida
-           qoladi va scrollbar yashirilgan». Endi faol element
-           `scrollIntoView` bilan ko'rinishga suriladi. */
-        /* `banner` ichida — pastdagi mobil nav ham `aria-current` beradi
-           va u katta ekranda yashirin bo'ladi. */
-        const active = page.getByRole('banner').locator('[aria-current="page"]').first();
+        /* Audit B-03: «1278px da modullarning bir qismi ekrandan tashqarida
+           qoladi va scrollbar yashirilgan».
+
+           MENYU ENDI GORIZONTAL EMAS. U chapdagi vertikal ustun
+           (\`<aside>\` = \`complementary\`), shuning uchun sinov ham
+           \`banner\` ichida emas, o'sha yerda qidiradi va chap/o'ng
+           o'rniga TEPA/PAST bo'yicha o'lchaydi.
+
+           Talab o'zgarmadi: turgan sahifangizning punkti menyuning
+           ko'rinadigan qismida bo'lishi kerak. */
+        const rail = page.getByRole('complementary').filter({ has: page.locator('nav') }).last();
+        const active = rail.locator('[aria-current="page"]').first();
         await expect(active).toBeVisible({ timeout: 10_000 });
 
-        /* TEKSHIRUV KONTEYNERGA NISBATAN, ekranga emas.
+        /* TEKSHIRUV KONTEYNERGA NISBATAN, ekranga emas: menyu o'zi
+           suriladigan qism va faol punkt aynan uning ichida ko'rinishi
+           kerak. \`toBeInViewport\` bu yerda ishonchsiz — ustun \`fixed\`
+           va natija sahifa tartibiga bog'lanib qoladi.
 
-           B-03 ning talabi aynan shu: nav paneli gorizontal suriladi va
-           faol element uning KO'RINADIGAN qismida bo'lishi kerak.
-           `toBeInViewport` bu yerda ishonchsiz — header `fixed` va
-           natija sahifa tartibiga bog'lanib qoladi. */
-        /* QAT'IY KUTISH EMAS, QAYTA TEKSHIRISH.
-
-           Ilgari bu yerda o'lchov bir marta olinardi — yuqoridagi
-           1500ms kutishdan keyin. Surish esa `requestAnimationFrame`
-           ichida va 250ms lik zaxira bilan bajariladi, ya'ni shrift
-           kech yuklansa yoki render sekinlashsa o'sha 1500ms yetmay
-           qolardi va sinov beqaror bo'lib yiqilardi (to'plam bilan
-           birga yurganda tez-tez, yolg'iz yurganda deyarli hech qachon).
-
-           `toPass` natija to'g'ri bo'lguncha qayta o'lchaydi. */
+           \`toPass\` — qat'iy kutish o'rniga qayta o'lchash: shrift kech
+           yuklansa element o'lchami o'zgaradi va bir martalik o'lchov
+           beqaror yiqilardi. */
         await expect(async () => {
             const pos = await active.evaluate((el) => {
                 const box = el.getBoundingClientRect();
-                const scroller = el.closest('.overflow-x-auto') as HTMLElement | null;
+                const scroller = el.closest('.overflow-y-auto') as HTMLElement | null;
                 if (!scroller) return null;
                 const c = scroller.getBoundingClientRect();
-                return { left: box.left - c.left, right: box.right - c.left, width: c.width };
+                return { top: box.top - c.top, bottom: box.bottom - c.top, height: c.height };
             });
 
             expect(pos).not.toBeNull();
-            expect(pos!.left).toBeGreaterThanOrEqual(-1);
-            expect(pos!.right).toBeLessThanOrEqual(pos!.width + 1);
+            expect(pos!.top).toBeGreaterThanOrEqual(-1);
+            expect(pos!.bottom).toBeLessThanOrEqual(pos!.height + 1);
         }).toPass({ timeout: 8_000 });
     });
 

@@ -39,7 +39,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
     };
 
     return (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-50 px-2 pb-safe-area-inset-bottom">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-line z-50 px-2 pb-safe-area-inset-bottom">
             <div className="flex justify-around items-center h-16">
                 {visibleItems.map((item) => {
                     const Icon = item.icon;
@@ -51,7 +51,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
                             onClick={() => navigate(item.path)}
                             className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 relative ${active
                                 ? 'text-primary-600 dark:text-primary-400'
-                                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                : 'text-muted hover:text-muted'
                                 }`}
                         >
                             <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-primary-50 dark:bg-primary-900/30 scale-110' : ''}`}>
@@ -70,7 +70,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
                         onClick={() => setIsSidebarOpen(true)}
                         className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${isSidebarOpen
                             ? 'text-primary-600 dark:text-primary-400'
-                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                            : 'text-muted hover:text-muted'
                             }`}
                     >
                         <div className={`p-1.5 rounded-xl transition-all duration-300 ${isSidebarOpen ? 'bg-primary-50 dark:bg-primary-900/30 scale-110' : ''}`}>

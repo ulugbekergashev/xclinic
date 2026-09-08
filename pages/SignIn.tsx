@@ -135,16 +135,16 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center p-4 font-sans">
+    <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-4 font-sans">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Logo className="mx-auto w-16 h-16 shadow-lg rounded-2xl mb-4" />
           {/* Sarlavhadagi bilan bir xil ikki rangli yozuv — brend ikki
               ekranda ikki xil ko'rinmasligi uchun. Nom tarjima qilinmaydi. */}
-          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+          <h1 className="text-3xl font-extrabold text-ink tracking-tight">
             X<span className="text-primary dark:text-primary-400">Clinic</span>
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-2">{t('auth.subtitle')}</p>
+          <p className="text-muted mt-2">{t('auth.subtitle')}</p>
         </div>
 
         <Card className="p-8 shadow-xl border-t-4 border-t-primary-600">
@@ -160,17 +160,17 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
             )}
 
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.login')}</label>
+              <label className="block text-sm font-medium text-muted">{t('auth.login')}</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400" />
+                  <User className="h-5 w-5 text-faint" />
                 </div>
                 <input
                   type="text"
                   required
                   name="username"
                   autoComplete="username"
-                  className="pl-10 block w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
+                  className="pl-10 block w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm placeholder-faint focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
                   placeholder={t('auth.usernamePlaceholder')}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -179,24 +179,24 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('auth.password')}</label>
+              <label className="block text-sm font-medium text-muted">{t('auth.password')}</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
+                  <Lock className="h-5 w-5 text-faint" />
                 </div>
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   name="password"
                   autoComplete="current-password"
-                  className="pl-10 pr-10 block w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
+                  className="pl-10 pr-10 block w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm placeholder-faint focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-faint hover:text-muted focus:outline-none"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? (
@@ -218,7 +218,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
           </form>
           )}
 
-          <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700 text-center">
+          <div className="mt-6 pt-6 border-t border-line-soft text-center">
             {/* NAMOYISH NUSXASI. Faqat `VITE_DEMO_BUILD=true` bilan qurilgan
                 bundle'da ko'rinadi — klinikaning o'rnatmasida bu blok
                 umuman chizilmaydi.
@@ -239,20 +239,20 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                 >
                   Demoga kirish
                 </button>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-faint mt-2">
                   Namoyish ma'lumotlari brauzeringizda saqlanadi. Bemor qo'shsangiz ham,
                   o'chirsangiz ham — faqat sizda ko'rinadi.
                 </p>
               </div>
             )}
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-faint">
               {t('auth.support')} <br />
               <span className="font-medium text-primary-600">+998 90 824 29 92</span>
             </p>
           </div>
         </Card>
 
-        <p className="text-center text-xs text-gray-400 mt-8">
+        <p className="text-center text-xs text-faint mt-8">
           &copy; {new Date().getFullYear()} XClinic. {t('auth.copyright')}
         </p>
       </div>

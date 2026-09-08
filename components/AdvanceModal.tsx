@@ -92,17 +92,17 @@ export const AdvanceModal: React.FC<Props> = ({
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800">
                         <Wallet className="w-5 h-5 text-primary-600 dark:text-primary-300 shrink-0" />
                         <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            <p className="text-sm font-medium text-ink truncate">
                                 {target.lastName} {target.firstName}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <p className="text-xs text-muted">
                                 {t('advance.current')}: {formatMoney(target.balance || 0)}
                             </p>
                         </div>
                         {!patient && (
                             <button type="button" onClick={() => { setPicked(null); setSearch(''); }}
                                 aria-label={t('common.change')}
-                                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                className="p-1 text-faint hover:text-muted">
                                 <X className="w-4 h-4" />
                             </button>
                         )}
@@ -110,21 +110,21 @@ export const AdvanceModal: React.FC<Props> = ({
                 ) : (
                     <div>
                         <div className="relative">
-                            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                             <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
                                 placeholder={t('reception.searchPh')}
-                                className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500" />
+                                className="w-full pl-9 pr-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500" />
                         </div>
-                        {searching && <p className="mt-2 text-xs text-gray-400">{t('common.loading')}</p>}
+                        {searching && <p className="mt-2 text-xs text-faint">{t('common.loading')}</p>}
                         {results.length > 0 && (
-                            <div className="mt-2 border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 max-h-48 overflow-y-auto">
+                            <div className="mt-2 border border-line rounded-lg divide-y divide-line max-h-48 overflow-y-auto">
                                 {results.map(p => (
                                     <button key={p.id} type="button" onClick={() => setPicked(p)}
-                                        className="w-full text-left p-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <span className="block text-sm text-gray-900 dark:text-white truncate">
+                                        className="w-full text-left p-2.5 hover:bg-elevated">
+                                        <span className="block text-sm text-ink truncate">
                                             {p.lastName} {p.firstName}
                                         </span>
-                                        <span className="block text-xs text-gray-500 dark:text-gray-400">{formatUzPhone(p.phone)}</span>
+                                        <span className="block text-xs text-muted">{formatUzPhone(p.phone)}</span>
                                     </button>
                                 ))}
                             </div>
@@ -139,7 +139,7 @@ export const AdvanceModal: React.FC<Props> = ({
                     onChange={(e: any) => setAmount(e.target.value)} />
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    <label className="block text-sm font-medium text-muted mb-1.5">
                         {t('advance.method')}
                     </label>
                     <div className="flex flex-wrap gap-2">
@@ -150,7 +150,7 @@ export const AdvanceModal: React.FC<Props> = ({
                             <button key={m} type="button" onClick={() => setMethod(m)}
                                 className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${method === m
                                     ? 'bg-primary-600 text-white border-primary-600'
-                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-primary-400'}`}>
+                                    : 'bg-surface border-line text-muted hover:border-primary-400'}`}>
                                 {getPaymentMethodLabel(m)}
                             </button>
                         ))}
@@ -160,7 +160,7 @@ export const AdvanceModal: React.FC<Props> = ({
                 <Input label={t('advance.note')} value={note}
                     onChange={(e: any) => setNote(e.target.value)} />
 
-                <p className="text-xs text-gray-500 dark:text-gray-400">{t('advance.hint')}</p>
+                <p className="text-xs text-muted">{t('advance.hint')}</p>
 
                 {error && (
                     <p className="text-sm text-red-600 dark:text-red-400">{error}</p>

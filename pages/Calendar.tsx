@@ -382,28 +382,28 @@ export const Calendar: React.FC<CalendarProps> = ({
       {/* Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4 w-full sm:w-auto">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('calendar.title')}</h1>
-          <div className="flex items-center bg-white dark:bg-gray-800 rounded-md shadow-sm border border-gray-200 dark:border-gray-700 flex-1 sm:flex-none justify-between sm:justify-start">
-            <button aria-label="Oldingi" onClick={handlePrev} className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronLeft className="w-4 h-4" /></button>
+          <h1 className="text-2xl font-bold text-ink">{t('calendar.title')}</h1>
+          <div className="flex items-center bg-surface rounded-md shadow-sm border border-line flex-1 sm:flex-none justify-between sm:justify-start">
+            <button aria-label="Oldingi" onClick={handlePrev} className="p-2 hover:bg-elevated text-muted"><ChevronLeft className="w-4 h-4" /></button>
             <span className="px-4 text-sm font-medium min-w-[140px] text-center">
               {view === 'week'
                 ? `${displayDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${displayDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
                 : displayDays[0].toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
               }
             </span>
-            <button aria-label="Keyingi" onClick={handleNext} className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronRight className="w-4 h-4" /></button>
+            <button aria-label="Keyingi" onClick={handleNext} className="p-2 hover:bg-elevated text-muted"><ChevronRight className="w-4 h-4" /></button>
           </div>
           {/* View Toggle for Desktop/Tablet */}
-          <div className="hidden md:flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+          <div className="hidden md:flex bg-elevated rounded-lg p-1">
             <button
               onClick={() => setView('day')}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'day' ? 'bg-white dark:bg-gray-600 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'day' ? 'bg-surface shadow text-ink' : 'text-muted hover:text-ink'}`}
             >
               {t('calendar.day')}
             </button>
             <button
               onClick={() => setView('week')}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'week' ? 'bg-white dark:bg-gray-600 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'week' ? 'bg-surface shadow text-ink' : 'text-muted hover:text-ink'}`}
             >
               {t('calendar.week')}
             </button>
@@ -438,8 +438,8 @@ export const Calendar: React.FC<CalendarProps> = ({
               title={on ? 'Filtrni bekor qilish' : `Faqat Dr. ${doc.lastName}`}
               className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors
                 ${on
-                  ? 'border-gray-900 dark:border-white bg-gray-900 dark:bg-white text-white dark:text-gray-900'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                  ? 'border-line bg-surface text-white'
+                  : 'border-line text-muted hover:bg-elevated'}`}
             >
               <span className="w-3 h-3 rounded-full shadow-sm shrink-0"
                     style={{ backgroundColor: doctorColor(doc) }} />
@@ -462,37 +462,37 @@ export const Calendar: React.FC<CalendarProps> = ({
           uchun kalendar har ochilganda og'ir so'rov ham ketardi. */}
       {(
       /* Calendar Grid */
-      <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col relative">
+      <div className="flex-1 bg-surface rounded-xl border border-line overflow-hidden flex flex-col relative">
         <div className="flex-1 overflow-auto">
           <div className={`h-full relative ${view === 'week' ? 'min-w-[1000px]' : activeDoctors.length > 2 ? 'min-w-fit' : 'w-full'}`}>
             {/* Header Row */}
-            <div style={gridCols} className="grid border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30 bg-white dark:bg-gray-800">
-              <div className="p-4 border-r border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 sticky left-0 z-40"></div>
+            <div style={gridCols} className="grid border-b border-line sticky top-0 z-30 bg-surface">
+              <div className="p-4 border-r border-line-soft bg-canvas sticky left-0 z-40"></div>
               {view === 'week' ? (
                 displayDays.map((day, i) => {
                   const isToday = day.toDateString() === new Date().toDateString();
                   return (
-                    <div key={i} className={`p-4 text-center border-r border-gray-100 dark:border-gray-700 last:border-0 ${isToday ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''}`}>
-                      <p className={`text-sm font-semibold ${isToday ? 'text-primary-600' : 'text-gray-900 dark:text-white'}`}>{dayNames[day.getDay()]}</p>
-                      <p className={`text-xs ${isToday ? 'text-primary-500' : 'text-gray-500 dark:text-gray-400'}`}>{day.getDate()}</p>
+                    <div key={i} className={`p-4 text-center border-r border-line-soft last:border-0 ${isToday ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''}`}>
+                      <p className={`text-sm font-semibold ${isToday ? 'text-primary-600' : 'text-ink'}`}>{dayNames[day.getDay()]}</p>
+                      <p className={`text-xs ${isToday ? 'text-primary-500' : 'text-muted'}`}>{day.getDate()}</p>
                     </div>
                   );
                 })
               ) : (
                 activeDoctors.length > 0 ? (
                   activeDoctors.map((doc, i) => (
-                    <div key={doc.id} className="p-3 text-center border-r border-gray-100 dark:border-gray-700 last:border-0">
+                    <div key={doc.id} className="p-3 text-center border-r border-line-soft last:border-0">
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: doctorColor(doc) }} />
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">Dr. {doc.lastName}</p>
+                        <p className="text-sm font-semibold text-ink truncate">Dr. {doc.lastName}</p>
                       </div>
-                      <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{doc.specialty}</p>
+                      <p className="text-[10px] text-muted truncate">{doc.specialty}</p>
                     </div>
                   ))
                 ) : (
-                  <div className="p-4 text-center border-r border-gray-100 dark:border-gray-700">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{dayNames[displayDays[0].getDay()]}</p>
-                    <p className="text-xs text-gray-500">{displayDays[0].getDate()}</p>
+                  <div className="p-4 text-center border-r border-line-soft">
+                    <p className="text-sm font-semibold text-ink">{dayNames[displayDays[0].getDay()]}</p>
+                    <p className="text-xs text-muted">{displayDays[0].getDate()}</p>
                   </div>
                 )
               )}
@@ -501,11 +501,11 @@ export const Calendar: React.FC<CalendarProps> = ({
             {/* Body */}
             <div style={gridCols} className="grid h-[1200px] relative">
               {/* Time Column */}
-              <div className="border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 sticky left-0 z-20">
+              <div className="border-r border-line bg-canvas sticky left-0 z-20">
                 {HOURS.map(hour => (
                   <React.Fragment key={hour}>
-                    <div className="h-12 border-b border-gray-100 dark:border-gray-700/50 text-xs text-gray-400 p-2 text-right">{hour}:00</div>
-                    <div className="h-12 border-b border-gray-100 dark:border-gray-700/50"></div>
+                    <div className="h-12 border-b border-line-soft text-xs text-faint p-2 text-right">{hour}:00</div>
+                    <div className="h-12 border-b border-line-soft"></div>
                   </React.Fragment>
                 ))}
               </div>
@@ -515,17 +515,17 @@ export const Calendar: React.FC<CalendarProps> = ({
                 displayDays.map((day, i) => {
                   const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
                   return (
-                    <div key={i} className="border-r border-gray-100 dark:border-gray-700 last:border-0 relative">
+                    <div key={i} className="border-r border-line-soft last:border-0 relative">
                       {HOURS.map(hour => {
                         const formattedHour = hour.toString().padStart(2, '0');
                         return (
                           <React.Fragment key={hour}>
                             <div
-                              className="h-12 border-b border-gray-50 dark:border-gray-800/50 cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
+                              className="h-12 border-b border-line-soft cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
                               onClick={() => openAddModal(dateStr, `${formattedHour}:00`)}
                             ></div>
                             <div
-                              className="h-12 border-b border-gray-50 dark:border-gray-800/50 cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
+                              className="h-12 border-b border-line-soft cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
                               onClick={() => openAddModal(dateStr, `${formattedHour}:30`)}
                             ></div>
                           </React.Fragment>
@@ -539,17 +539,17 @@ export const Calendar: React.FC<CalendarProps> = ({
                   activeDoctors.map((doc, i) => {
                     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
                     return (
-                      <div key={doc.id} className="border-r border-gray-100 dark:border-gray-700 last:border-0 relative">
+                      <div key={doc.id} className="border-r border-line-soft last:border-0 relative">
                         {HOURS.map(hour => {
                           const formattedHour = hour.toString().padStart(2, '0');
                           return (
                             <React.Fragment key={hour}>
                               <div
-                                className="h-12 border-b border-gray-50 dark:border-gray-800/50 cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
+                                className="h-12 border-b border-line-soft cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
                                 onClick={() => openAddModal(dateStr, `${formattedHour}:00`, doc.id)}
                               ></div>
                               <div
-                                className="h-12 border-b border-gray-50 dark:border-gray-800/50 cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
+                                className="h-12 border-b border-line-soft cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
                                 onClick={() => openAddModal(dateStr, `${formattedHour}:30`, doc.id)}
                               ></div>
                             </React.Fragment>
@@ -559,14 +559,14 @@ export const Calendar: React.FC<CalendarProps> = ({
                     );
                   })
                 ) : (
-                  <div className="border-r border-gray-100 dark:border-gray-700 last:border-0 relative">
+                  <div className="border-r border-line-soft last:border-0 relative">
                     {HOURS.map(hour => {
                       const formattedHour = hour.toString().padStart(2, '0');
                       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
                       return (
                         <React.Fragment key={hour}>
-                          <div className="h-12 border-b border-gray-50 dark:border-gray-800/50 cursor-pointer" onClick={() => openAddModal(dateStr, `${formattedHour}:00`)}></div>
-                          <div className="h-12 border-b border-gray-50 dark:border-gray-800/50 cursor-pointer" onClick={() => openAddModal(dateStr, `${formattedHour}:30`)}></div>
+                          <div className="h-12 border-b border-line-soft cursor-pointer" onClick={() => openAddModal(dateStr, `${formattedHour}:00`)}></div>
+                          <div className="h-12 border-b border-line-soft cursor-pointer" onClick={() => openAddModal(dateStr, `${formattedHour}:30`)}></div>
                         </React.Fragment>
                       );
                     })}
@@ -752,7 +752,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                     'Completed': 'border-current opacity-80',
                     'Pending': 'border-current border-dashed',
                     'Cancelled': 'border-red-500 bg-red-50 text-red-700 opacity-50',
-                    'No-Show': 'border-gray-400 bg-gray-100 text-gray-500 opacity-50'
+                    'No-Show': 'border-line bg-elevated text-muted opacity-50'
                   }[app.status] || 'border-current';
 
                   const isSpecialStatus = app.status === 'Cancelled' || app.status === 'No-Show';
@@ -825,7 +825,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                       key={o.id}
                       onClick={() => { setCurrentDate(new Date(o.date)); setView('day'); }}
                       title={`Yana ${o.count} ta qabul:\n${o.names}\n\nKunlik ko'rinishda ochish uchun bosing`}
-                      className="absolute m-1 rounded-md border border-dashed border-gray-400 dark:border-gray-500 bg-gray-100/80 dark:bg-gray-700/60 text-[10px] font-semibold text-gray-600 dark:text-gray-300 flex items-center justify-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors z-10"
+                      className="absolute m-1 rounded-md border border-dashed border-line bg-elevated/80 text-[10px] font-semibold text-muted flex items-center justify-center cursor-pointer hover:bg-elevated transition-colors z-10"
                       style={{
                         top: `${topOffset}px`,
                         left: `calc(${(dayIndex + 1) * (100 / 8)}% + 2px + ${(74 / 100) * (100 / 8)}%)`,
@@ -874,7 +874,7 @@ export const Calendar: React.FC<CalendarProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <h2
-                  className={`text-xl font-bold text-gray-900 dark:text-white ${onPatientClick ? 'cursor-pointer hover:text-primary-600 transition-colors hover:underline title-transition' : ''}`}
+                  className={`text-xl font-bold text-ink ${onPatientClick ? 'cursor-pointer hover:text-primary-600 transition-colors hover:underline title-transition' : ''}`}
                   onClick={() => {
                     if (onPatientClick) {
                       onPatientClick(selectedAppointment.patientId);
@@ -885,12 +885,12 @@ export const Calendar: React.FC<CalendarProps> = ({
                 >
                   {selectedAppointment.patientName}
                 </h2>
-                <p className="text-gray-500 text-sm">{selectedAppointment.type}</p>
+                <p className="text-muted text-sm">{selectedAppointment.type}</p>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => openEditModal(selectedAppointment)}
-                  className="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-primary-50 dark:text-gray-400 dark:hover:bg-gray-800 rounded-md transition-colors"
+                  className="p-1.5 text-muted hover:text-primary-600 hover:bg-primary-50 rounded-md transition-colors"
                   title="Qabulni tahrirlash"
                 >
                   <Edit2 className="w-5 h-5" />
@@ -900,25 +900,25 @@ export const Calendar: React.FC<CalendarProps> = ({
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
-                <Clock className="w-5 h-5 text-gray-400" />
+              <div className="flex items-center gap-3 text-muted">
+                <Clock className="w-5 h-5 text-faint" />
                 <span>{selectedAppointment.date}, {selectedAppointment.time} ({selectedAppointment.duration} daq)</span>
               </div>
-              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
-                <User className="w-5 h-5 text-gray-400" />
+              <div className="flex items-center gap-3 text-muted">
+                <User className="w-5 h-5 text-faint" />
                 <span>{selectedAppointment.doctorName}</span>
               </div>
               {selectedAppointment.notes && (
-                <div className="flex items-start gap-3 text-gray-700 dark:text-gray-300">
-                  <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <p className="text-sm bg-gray-50 dark:bg-gray-800 p-3 rounded-md border border-gray-100 dark:border-gray-700 w-full">
+                <div className="flex items-start gap-3 text-muted">
+                  <FileText className="w-5 h-5 text-faint mt-0.5" />
+                  <p className="text-sm bg-elevated p-3 rounded-md border border-line-soft w-full">
                     {selectedAppointment.notes}
                   </p>
                 </div>
               )}
             </div>
 
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+            <div className="border-t border-line pt-6">
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2 justify-end">
                 {/* Initial States: Pending, Confirmed or Checked-In (Legacy support) */}
@@ -948,7 +948,7 @@ export const Calendar: React.FC<CalendarProps> = ({
 
                     <button
                       onClick={() => handleStatusUpdate('No-Show')}
-                      className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 flex-1"
+                      className="inline-flex items-center justify-center px-4 py-2 border border-line shadow-sm text-sm font-medium rounded-md text-muted bg-surface hover:bg-elevated focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-line flex-1"
                     >
                       <XCircle className="w-4 h-4 mr-2 text-red-500" />
                       {t('calendar.noShow')}
@@ -970,9 +970,9 @@ export const Calendar: React.FC<CalendarProps> = ({
                           confirmLabel: 'Bekor qilish',
                         })) handleStatusUpdate('Cancelled');
                       }}
-                      className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 flex-1"
+                      className="inline-flex items-center justify-center px-4 py-2 border border-line shadow-sm text-sm font-medium rounded-md text-muted bg-surface hover:bg-elevated focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-line flex-1"
                     >
-                      <XCircle className="w-4 h-4 mr-2 text-gray-400" />
+                      <XCircle className="w-4 h-4 mr-2 text-faint" />
                       Bekor qilish
                     </button>
 

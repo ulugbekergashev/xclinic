@@ -108,32 +108,32 @@ export const NetworkAccessTab: React.FC<Props> = ({ canManageRemote }) => {
                         <Wifi className="w-5 h-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t('net.lanTitle')}</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('net.lanDesc')}</p>
+                        <h3 className="text-lg font-bold text-ink">{t('net.lanTitle')}</h3>
+                        <p className="text-sm text-muted mb-4">{t('net.lanDesc')}</p>
 
                         {lanUrl ? (
                             <div className="flex flex-wrap items-start gap-6">
                                 <div className="space-y-3 min-w-0">
                                     <CopyRow value={lanUrl} label={t('net.copy')} />
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md">{t('net.lanHint')}</p>
+                                    <p className="text-xs text-muted max-w-md">{t('net.lanHint')}</p>
                                 </div>
                                 {/* QR — telefon uchun. Klinikada aynan shu kerak:
                                     hamshira raqamni qo'lda yozib o'tirmaydi. */}
                                 <div className="text-center shrink-0">
-                                    <div className="p-3 bg-white rounded-xl border border-gray-200 inline-block">
+                                    <div className="p-3 bg-surface rounded-xl border border-line inline-block">
                                         <QRCodeSVG value={lanUrl} size={132} level="M" />
                                     </div>
-                                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
+                                    <p className="mt-2 text-xs text-muted flex items-center justify-center gap-1">
                                         <Smartphone className="w-3.5 h-3.5" /> {t('net.scan')}
                                     </p>
                                 </div>
                             </div>
                         ) : (
-                            <p className="text-sm text-gray-400">{t('net.noAddress')}</p>
+                            <p className="text-sm text-faint">{t('net.noAddress')}</p>
                         )}
                     </div>
                     <button onClick={load} aria-label={t('common.refresh')} title={t('common.refresh')}
-                        className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg shrink-0">
+                        className="p-2 text-faint hover:text-muted rounded-lg shrink-0">
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>
@@ -147,8 +147,8 @@ export const NetworkAccessTab: React.FC<Props> = ({ canManageRemote }) => {
                             <Globe className="w-5 h-5" />
                         </div>
                         <div className="min-w-0 flex-1">
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t('net.internetTitle')}</h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('net.internetDesc')}</p>
+                            <h3 className="text-lg font-bold text-ink">{t('net.internetTitle')}</h3>
+                            <p className="text-sm text-muted mb-4">{t('net.internetDesc')}</p>
 
                             {/* Standart parol turganda server yoqishni RAD ETADI.
                                 Sabab ochiq aytiladi, aks holda tugma «ishlamayapti»
@@ -171,22 +171,22 @@ export const NetworkAccessTab: React.FC<Props> = ({ canManageRemote }) => {
                                 </Button>
                                 <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${remote.enabled
                                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
+                                    : 'bg-elevated text-muted'}`}>
                                     {remote.enabled ? t('net.on') : t('net.off')}
                                 </span>
                             </div>
 
                             {remote.enabled && (
-                                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">{t('net.restartNeeded')}</p>
+                                <p className="mt-3 text-xs text-muted">{t('net.restartNeeded')}</p>
                             )}
 
                             {info?.tunnelUrl && (
-                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-start gap-6">
+                                <div className="mt-4 pt-4 border-t border-line flex flex-wrap items-start gap-6">
                                     <div className="min-w-0">
-                                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('net.internetAddress')}</p>
+                                        <p className="text-xs font-medium text-muted mb-1.5">{t('net.internetAddress')}</p>
                                         <CopyRow value={info.tunnelUrl} label={t('net.copy')} />
                                     </div>
-                                    <div className="p-3 bg-white rounded-xl border border-gray-200 shrink-0">
+                                    <div className="p-3 bg-surface rounded-xl border border-line shrink-0">
                                         <QRCodeSVG value={info.tunnelUrl} size={110} level="M" />
                                     </div>
                                 </div>

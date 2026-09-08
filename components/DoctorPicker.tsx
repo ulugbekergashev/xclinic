@@ -75,7 +75,7 @@ export const DoctorPicker: React.FC<DoctorPickerProps> = ({
         <div className={className}>
             {label && (
                 <label htmlFor={selectId}
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    className="block text-sm font-medium text-muted mb-1">
                     {label}
                 </label>
             )}
@@ -85,7 +85,7 @@ export const DoctorPicker: React.FC<DoctorPickerProps> = ({
                 required={required}
                 disabled={disabled}
                 onChange={e => onChange(e.target.value)}
-                className="w-full h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-500 outline-none disabled:opacity-60"
+                className="w-full h-10 rounded-lg border border-line bg-transparent px-3 text-sm focus:ring-2 focus:ring-primary-500 outline-none disabled:opacity-60"
             >
                 {(emptyLabel || !value) && (
                     <option value="">{emptyLabel || '— Tanlang —'}</option>
@@ -104,7 +104,7 @@ export const DoctorPicker: React.FC<DoctorPickerProps> = ({
                 </p>
             )}
             {list.length === 0 && (
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-faint mt-1">
                     {departmentId
                         ? "Bu bo'limda faol shifokor yo'q"
                         : "Faol shifokor yo'q — Sozlamalar → Xodimlar"}

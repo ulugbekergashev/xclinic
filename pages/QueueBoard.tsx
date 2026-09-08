@@ -133,22 +133,22 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
     };
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white p-6 lg:p-10">
+        <div className="min-h-screen bg-surface text-white p-6 lg:p-10">
             {/* Sarlavha */}
             <div className="flex items-center gap-4 mb-8">
                 <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">Navbat</h1>
                 <div className="ml-auto flex items-center gap-4">
-                    <span className="flex items-center gap-2 text-2xl lg:text-3xl font-semibold tabular-nums text-gray-300">
-                        <Clock className="w-6 h-6 text-gray-500" />
+                    <span className="flex items-center gap-2 text-2xl lg:text-3xl font-semibold tabular-nums text-faint">
+                        <Clock className="w-6 h-6 text-muted" />
                         {now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <button onClick={() => setVoiceOn(v => !v)}
-                        className="p-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300"
+                        className="p-2.5 rounded-lg bg-surface hover:bg-surface text-faint"
                         title={voiceOn ? "Ovozni o'chirish" : 'Ovozni yoqish'}>
                         {voiceOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
                     </button>
                     <button aria-label="To'liq ekran" onClick={goFullscreen}
-                        className="p-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300"
+                        className="p-2.5 rounded-lg bg-surface hover:bg-surface text-faint"
                         title="To'liq ekran">
                         <Maximize2 className="w-5 h-5" />
                     </button>
@@ -168,7 +168,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                             rel="noopener noreferrer"
                             aria-label="Kiosk rejimi — alohida oynada"
                             title="Kiosk rejimi: menyusiz, alohida oynada"
-                            className="p-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 inline-flex"
+                            className="p-2.5 rounded-lg bg-surface hover:bg-surface text-faint inline-flex"
                         >
                             <MonitorPlay className="w-5 h-5" />
                         </a>
@@ -178,9 +178,9 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
 
             {/* Chaqirilganlar — asosiy qism */}
             <div className="mb-10">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-500 mb-4">Chaqirilmoqda</h2>
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted mb-4">Chaqirilmoqda</h2>
                 {called.length === 0 ? (
-                    <div className="py-16 text-center text-gray-600 text-xl">Hozircha chaqirilgan navbat yo'q</div>
+                    <div className="py-16 text-center text-muted text-xl">Hozircha chaqirilgan navbat yo'q</div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
                         {called.map((e, i) => {
@@ -209,7 +209,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                                 <p className={`${size} font-black leading-none tabular-nums break-words`}>
                                     {ticket}
                                 </p>
-                                <p className="mt-3 text-xl font-medium text-gray-200 truncate">
+                                <p className="mt-3 text-xl font-medium text-faint truncate">
                                     {e.department || '—'}
                                 </p>
                             </div>
@@ -221,25 +221,25 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
 
             {/* Kutayotganlar */}
             <div>
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-500 mb-4">
-                    Kutmoqda <span className="text-gray-600">({waiting.length})</span>
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted mb-4">
+                    Kutmoqda <span className="text-muted">({waiting.length})</span>
                 </h2>
                 {waiting.length === 0 ? (
-                    <p className="text-gray-600">Navbat bo'sh</p>
+                    <p className="text-muted">Navbat bo'sh</p>
                 ) : (
                     <div className="flex flex-wrap gap-3">
                         {waiting.map((e, i) => (
                             <div key={`${e.queueNumber}-${i}`}
-                                className="px-5 py-3 rounded-xl bg-gray-900 border border-gray-800 min-w-[92px] text-center">
+                                className="px-5 py-3 rounded-xl bg-surface border border-line min-w-[92px] text-center">
                                 <p className="text-3xl font-bold tabular-nums">{e.ticket ?? e.queueNumber ?? '—'}</p>
-                                <p className="text-xs text-gray-500 truncate max-w-[120px]">{e.department || ''}</p>
+                                <p className="text-xs text-muted truncate max-w-[120px]">{e.department || ''}</p>
                             </div>
                         ))}
                     </div>
                 )}
             </div>
 
-            <p className="mt-10 text-xs text-gray-700">
+            <p className="mt-10 text-xs text-muted">
                 Tablo har {REFRESH_MS / 1000} soniyada yangilanadi
             </p>
         </div>

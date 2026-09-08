@@ -574,11 +574,11 @@ export const Settings: React.FC<SettingsProps> = ({
    if (userRole === UserRole.DOCTOR) {
       return (
          <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('settings.general.myProfile')}</h1>
+            <h1 className="text-2xl font-bold text-ink">{t('settings.general.myProfile')}</h1>
             <Card className="p-6">
                <div className="flex items-center gap-6 mb-6">
-                  <div className="h-20 w-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                     <User className="w-10 h-10 text-gray-400" />
+                  <div className="h-20 w-20 rounded-full bg-elevated flex items-center justify-center">
+                     <User className="w-10 h-10 text-faint" />
                   </div>
                   <div>
                      <Button variant="secondary" size="sm">{t('settings.general.changePhoto')}</Button>
@@ -1039,7 +1039,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
    return (
       <div className="space-y-6 animate-fade-in">
-         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('settings.title')}</h1>
+         <h1 className="text-2xl font-bold text-ink">{t('settings.title')}</h1>
 
          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Sidebar Tabs */}
@@ -1087,7 +1087,7 @@ export const Settings: React.FC<SettingsProps> = ({
                      className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-md transition-colors 
                    ${activeTab === item.id
                            ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                           : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
+                           : 'text-muted hover:bg-elevated'
                         }`}
                   >
                      <item.icon className="w-4 h-4" />
@@ -1104,8 +1104,8 @@ export const Settings: React.FC<SettingsProps> = ({
                      <Card className="p-6">
                         <div className="flex items-center justify-between">
                            <div>
-                              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('settings.general.rating')}</p>
-                              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                              <p className="text-sm font-medium text-muted">{t('settings.general.rating')}</p>
+                              <h2 className="text-2xl font-bold text-ink mt-1">
                                  {clinicAvgRating > 0 ? clinicAvgRating.toFixed(1) : '0.0'}
                               </h2>
                            </div>
@@ -1113,10 +1113,10 @@ export const Settings: React.FC<SettingsProps> = ({
                               <Star className="w-6 h-6 text-yellow-500 fill-current" />
                            </div>
                         </div>
-                        <div className="mt-4 flex items-center text-sm text-gray-500">
+                        <div className="mt-4 flex items-center text-sm text-muted">
                            <span className="font-medium text-yellow-600 mr-2 flex items-center">
                               {[...Array(5)].map((_, i) => (
-                                 <Star key={i} className={`w-3 h-3 ${i < Math.round(clinicAvgRating) ? 'fill-current' : 'text-gray-200'}`} />
+                                 <Star key={i} className={`w-3 h-3 ${i < Math.round(clinicAvgRating) ? 'fill-current' : 'text-faint'}`} />
                               ))}
                            </span>
                            {reviews.length} {t('settings.general.reviewsSuffix')}
@@ -1124,7 +1124,7 @@ export const Settings: React.FC<SettingsProps> = ({
                      </Card>
 
                      <Card className="p-6">
-                        <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-6">{t('settings.general.info')}</h2>
+                        <h2 className="text-lg font-medium text-ink mb-6">{t('settings.general.info')}</h2>
                         <form onSubmit={handleGeneralSave} className="space-y-4">
                            <Input label={t('settings.general.clinicName')} value={generalForm.clinicName} onChange={e => setGeneralForm({ ...generalForm, clinicName: e.target.value })} />
                            <Input label={t('settings.general.address')} value={generalForm.address} onChange={e => setGeneralForm({ ...generalForm, address: e.target.value })} />
@@ -1141,7 +1141,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            />
                            <div className="grid grid-cols-2 gap-4 mt-4">
                               <div>
-                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ishni boshlash vaqti</label>
+                                 <label className="block text-sm font-medium text-muted mb-1">Ishni boshlash vaqti</label>
                                  <Select
                                     value={generalForm.startHour.toString()}
                                     onChange={e => setGeneralForm({ ...generalForm, startHour: parseInt(e.target.value) })}
@@ -1149,7 +1149,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  />
                               </div>
                               <div>
-                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ishni tugash vaqti</label>
+                                 <label className="block text-sm font-medium text-muted mb-1">Ishni tugash vaqti</label>
                                  <Select
                                     value={generalForm.endHour.toString()}
                                     onChange={e => setGeneralForm({ ...generalForm, endHour: parseInt(e.target.value) })}
@@ -1165,11 +1165,11 @@ export const Settings: React.FC<SettingsProps> = ({
                                     type="checkbox"
                                     checked={generalForm.enableReceipts}
                                     onChange={(e) => setGeneralForm({ ...generalForm, enableReceipts: e.target.checked })}
-                                    className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+                                    className="w-5 h-5 text-primary-600 border-line rounded focus:ring-primary-500"
                                  />
                                  <div>
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white">Chek chiqarish funksiyasi</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">Yoqilsa, to'lov qabul qilinganda avtomatik ravishda chek oynasi ochiladi.</p>
+                                    <p className="text-sm font-medium text-ink">Chek chiqarish funksiyasi</p>
+                                    <p className="text-xs text-muted">Yoqilsa, to'lov qabul qilinganda avtomatik ravishda chek oynasi ochiladi.</p>
                                  </div>
                               </label>
                            </div>
@@ -1180,10 +1180,10 @@ export const Settings: React.FC<SettingsProps> = ({
                                ISHLATILADI (`utils/printDocument.ts`), lekin
                                ularni kiritadigan joy yo'q edi — har bosma
                                varaqda litsenziya bo'sh qolardi. */}
-                           <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                           <div className="pt-4 border-t border-line space-y-4">
                               <div>
-                                 <p className="text-sm font-medium text-gray-900 dark:text-white">Bosma blank</p>
-                                 <p className="text-xs text-gray-500 dark:text-gray-400">
+                                 <p className="text-sm font-medium text-ink">Bosma blank</p>
+                                 <p className="text-xs text-muted">
                                     Tahlil natijasi, xulosa va ma'lumotnomalarda chop etiladi.
                                  </p>
                               </div>
@@ -1194,7 +1194,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  placeholder="Masalan: LIC-001234"
                               />
                               <div>
-                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                 <label className="block text-sm font-medium text-muted mb-1">
                                     Varaq pastidagi izoh
                                  </label>
                                  <textarea
@@ -1202,7 +1202,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     onChange={e => setGeneralForm({ ...generalForm, letterheadNote: e.target.value })}
                                     rows={2}
                                     placeholder="Masalan: Natija faqat shu klinika uchun amal qiladi."
-                                    className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                                    className="w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                                  />
                               </div>
                            </div>
@@ -1221,8 +1221,8 @@ export const Settings: React.FC<SettingsProps> = ({
                               <DollarSign className="w-8 h-8" />
                            </div>
                            <div>
-                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Oldindan To'lov (Bron uchun)</h2>
-                              <p className="text-sm text-gray-500">Bemor bot orqali qabulga yozilganda oldindan to'lov talab qilish.</p>
+                              <h2 className="text-xl font-bold text-ink">Oldindan To'lov (Bron uchun)</h2>
+                              <p className="text-sm text-muted">Bemor bot orqali qabulga yozilganda oldindan to'lov talab qilish.</p>
                               {/* Ilgari tasdiq faqat qabul holatini o'zgartirardi va pul
                                   hech qayerda qolmasdi. Endi u bemor hisobiga avans
                                   bo'lib tushadi — buni sozlamada aytib qo'yamiz, aks
@@ -1235,11 +1235,11 @@ export const Settings: React.FC<SettingsProps> = ({
                         </div>
 
                         <form onSubmit={handlePrepaymentSave} className="space-y-5">
-                           <div className="bg-gray-50 dark:bg-gray-800/50 p-5 rounded-2xl border border-gray-100 dark:border-gray-700">
+                           <div className="bg-elevated p-5 rounded-2xl border border-line-soft">
                               <label className="flex items-center justify-between cursor-pointer">
                                  <div>
-                                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Oldindan to'lovni yoqish</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Yoqilsa, bemor qabulga yozilgandan keyin to'lov cheki yuborishi shart bo'ladi</p>
+                                    <p className="text-sm font-semibold text-ink">Oldindan to'lovni yoqish</p>
+                                    <p className="text-xs text-muted mt-0.5">Yoqilsa, bemor qabulga yozilgandan keyin to'lov cheki yuborishi shart bo'ladi</p>
                                  </div>
                                  <div className="relative w-12 h-6 flex-shrink-0">
                                     <input
@@ -1248,8 +1248,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                        checked={prepaymentForm.prepaymentEnabled}
                                        onChange={(e) => setPrepaymentForm({ ...prepaymentForm, prepaymentEnabled: e.target.checked })}
                                     />
-                                    <div className={`w-12 h-6 rounded-full transition-colors ${prepaymentForm.prepaymentEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                       <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${prepaymentForm.prepaymentEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                                    <div className={`w-12 h-6 rounded-full transition-colors ${prepaymentForm.prepaymentEnabled ? 'bg-emerald-500' : 'bg-elevated'}`}>
+                                       <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-surface rounded-full shadow transition-transform ${prepaymentForm.prepaymentEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
                                     </div>
                                  </div>
                               </label>
@@ -1270,7 +1270,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     onChange={(e) => setPrepaymentForm({ ...prepaymentForm, prepaymentAmount: Number(e.target.value) })}
                                     placeholder="50000"
                                  />
-                                 <p className="text-xs text-gray-500 dark:text-gray-400">
+                                 <p className="text-xs text-muted">
                                     Bemor to'lov chekini (rasm yoki fayl) telegram bot orqali yuborganda, bu chek admin telegram chatiga avtomatik yuboriladi.
                                  </p>
                               </div>
@@ -1298,8 +1298,8 @@ export const Settings: React.FC<SettingsProps> = ({
                               <Bot className="w-8 h-8" />
                            </div>
                            <div>
-                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">AI yordamchi</h2>
-                              <p className="text-sm text-gray-500">
+                              <h2 className="text-xl font-bold text-ink">AI yordamchi</h2>
+                              <p className="text-sm text-muted">
                                  «Bugun nechta qabul bor?» kabi savollar va hisobotlar uchun. Ishlashi uchun
                                  kamida bitta provayder kaliti kerak.
                               </p>
@@ -1337,22 +1337,22 @@ export const Settings: React.FC<SettingsProps> = ({
                         </div>
 
                         {!aiSettings ? (
-                           <p className="text-sm text-gray-500">Yuklanmoqda…</p>
+                           <p className="text-sm text-muted">Yuklanmoqda…</p>
                         ) : (
                         <form onSubmit={handleAiSave} className="space-y-5">
                            {aiSettings.providers.map((prov) => (
-                              <div key={prov.name} className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
+                              <div key={prov.name} className="p-4 rounded-xl border border-line bg-elevated">
                                  <div className="flex items-center justify-between gap-3 mb-3">
                                     <div>
-                                       <h3 className="font-medium text-gray-900 dark:text-white">{prov.label}</h3>
-                                       <p className="text-xs text-gray-500">{prov.hint}</p>
+                                       <h3 className="font-medium text-ink">{prov.label}</h3>
+                                       <p className="text-xs text-muted">{prov.hint}</p>
                                     </div>
                                     {prov.configured ? (
                                        <span className="flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2.5 py-1 rounded-full whitespace-nowrap">
                                           <CheckCircle className="w-3.5 h-3.5" /> {prov.masked}
                                        </span>
                                     ) : (
-                                       <span className="text-xs text-gray-400 whitespace-nowrap">kalit yo’q</span>
+                                       <span className="text-xs text-faint whitespace-nowrap">kalit yo’q</span>
                                     )}
                                  </div>
 
@@ -1380,7 +1380,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                        </button>
                                     )}
                                     {prov.source === 'env' && (
-                                       <span className="text-xs text-gray-400">
+                                       <span className="text-xs text-faint">
                                           Serverdagi {prov.envName} dan olingan — bu yerdan o’chirilmaydi.
                                        </span>
                                     )}
@@ -1389,7 +1389,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            ))}
 
                            <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              <label className="block text-sm font-medium text-muted mb-1">
                                  Birinchi ishlatiladigan provayder
                               </label>
                               <Select
@@ -1400,7 +1400,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     ...aiSettings.providers.map(prov => ({ value: prov.name, label: prov.label })),
                                  ]}
                               />
-                              <p className="text-xs text-gray-400 mt-1">
+                              <p className="text-xs text-faint mt-1">
                                  Qolganlari zaxira bo’lib qoladi: tanlangani javob bermasa, keyingisiga o’tadi.
                               </p>
                            </div>
@@ -1439,8 +1439,8 @@ export const Settings: React.FC<SettingsProps> = ({
                               <Activity className="w-8 h-8" />
                            </div>
                            <div>
-                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">DMED (IT-MED) Integratsiyasi</h2>
-                              <p className="text-sm text-gray-500">O'zbekiston milliy tibbiy axborot tizimi bilan bog'lanish va ma'lumotlarni sinxronizatsiya qilish.</p>
+                              <h2 className="text-xl font-bold text-ink">DMED (IT-MED) Integratsiyasi</h2>
+                              <p className="text-sm text-muted">O'zbekiston milliy tibbiy axborot tizimi bilan bog'lanish va ma'lumotlarni sinxronizatsiya qilish.</p>
                            </div>
                         </div>
 
@@ -1451,10 +1451,10 @@ export const Settings: React.FC<SettingsProps> = ({
                         </div>
 
                         <form onSubmit={handleDmedSave} className="space-y-6">
-                           <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                           <div className="flex items-center justify-between p-4 bg-elevated rounded-xl border border-line">
                               <div>
-                                 <h3 className="font-medium text-gray-900 dark:text-white">DMED Integratsiyasini yoqish</h3>
-                                 <p className="text-sm text-gray-500">Agar yoqilsa, bemorlar profilida DMED ma'lumotlari paydo bo'ladi.</p>
+                                 <h3 className="font-medium text-ink">DMED Integratsiyasini yoqish</h3>
+                                 <p className="text-sm text-muted">Agar yoqilsa, bemorlar profilida DMED ma'lumotlari paydo bo'ladi.</p>
                               </div>
                               <label className="relative inline-flex items-center cursor-pointer">
                                  <input 
@@ -1463,7 +1463,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     checked={dmedEnabled}
                                     onChange={(e) => setDmedEnabled(e.target.checked)}
                                  />
-                                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
+                                 <div className="w-11 h-6 bg-elevated peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface after:border-line after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                               </label>
                            </div>
 
@@ -1536,13 +1536,13 @@ export const Settings: React.FC<SettingsProps> = ({
                               <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                                  <Building2 className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                               </div>
-                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Bo'limlar</h2>
+                              <h2 className="text-xl font-bold text-ink">Bo'limlar</h2>
                            </div>
                            <Button onClick={openDeptCreate} disabled={deptBusy}>
                               <Plus className="w-4 h-4 mr-1.5" /> Bo'lim qo'shish
                            </Button>
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                        <p className="text-sm text-muted mb-5">
                            Shifokorlar, xizmatlar, qabullar va kalendar bo'limga bog'lanadi.
                            {/* Ilgari bu yerda «registratura faqat klinik bo'limlarni
                                ko'rsatadi» deb yozilgan edi — bu noto'g'ri: diagnostika
@@ -1565,13 +1565,13 @@ export const Settings: React.FC<SettingsProps> = ({
                         {deptLoading && deptList.length === 0 ? (
                            <div className="space-y-2">
                               {[0, 1, 2].map((i) => (
-                                 <div key={i} className="h-14 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                                 <div key={i} className="h-14 bg-elevated rounded animate-pulse" />
                               ))}
                            </div>
                         ) : deptList.length === 0 ? (
-                           <div className="text-center py-10 border border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
-                              <Building2 className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Bo'lim yo'q</p>
+                           <div className="text-center py-10 border border-dashed border-line rounded-lg">
+                              <Building2 className="w-8 h-8 mx-auto text-faint mb-2" />
+                              <p className="text-sm text-muted mb-3">Bo'lim yo'q</p>
                               <Button size="sm" onClick={openDeptCreate}>Birinchisini qo'shish</Button>
                            </div>
                         ) : (
@@ -1580,23 +1580,23 @@ export const Settings: React.FC<SettingsProps> = ({
                                  <div key={d.id}
                                     className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 border rounded-lg
                                        ${d.isActive
-                                          ? 'border-gray-200 dark:border-gray-700'
-                                          : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 opacity-60'}`}>
+                                          ? 'border-line'
+                                          : 'border-line bg-elevated opacity-60'}`}>
                                     <span className="w-3 h-3 rounded-full shrink-0"
                                        style={{ backgroundColor: d.color || '#9CA3AF' }} />
                                     <div className="min-w-0 flex-1">
                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{d.name}</p>
-                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                          <p className="text-sm font-semibold text-ink truncate">{d.name}</p>
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-elevated text-muted">
                                              {d.code}
                                           </span>
                                           {!d.isActive && (
-                                             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">
+                                             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-elevated text-muted">
                                                 o'chirilgan
                                              </span>
                                           )}
                                        </div>
-                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                       <p className="text-xs text-muted mt-0.5">
                                           {DEPARTMENT_TYPE_LABELS[d.type as DepartmentType] || d.type}
                                           {' · '}tartib {d.sortOrder ?? 0}
                                        </p>
@@ -1661,40 +1661,40 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <Database className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Baza holati</h2>
+                           <h2 className="text-xl font-bold text-ink">Baza holati</h2>
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                        <p className="text-sm text-muted mb-5">
                            Qo'llab-quvvatlashga murojaat qilganda birinchi so'raladigan ma'lumot.
                         </p>
 
                         {maintLoading && !schemaInfo ? (
                            <div className="space-y-2">
-                              <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-                              <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-2/3 animate-pulse" />
+                              <div className="h-4 bg-elevated rounded animate-pulse" />
+                              <div className="h-4 bg-elevated rounded w-2/3 animate-pulse" />
                            </div>
                         ) : schemaInfo ? (
                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                               <div>
-                                 <p className="text-xs uppercase tracking-wide text-gray-400">Sxema versiyasi</p>
-                                 <p className="text-sm font-mono font-semibold text-gray-900 dark:text-white mt-1 break-all">
+                                 <p className="text-xs uppercase tracking-wide text-faint">Sxema versiyasi</p>
+                                 <p className="text-sm font-mono font-semibold text-ink mt-1 break-all">
                                     {schemaInfo.current || (schemaInfo.baseline ? 'boshlang’ich holat' : '—')}
                                  </p>
                               </div>
                               <div>
-                                 <p className="text-xs uppercase tracking-wide text-gray-400">Qo'llanilgan</p>
-                                 <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">
+                                 <p className="text-xs uppercase tracking-wide text-faint">Qo'llanilgan</p>
+                                 <p className="text-sm font-semibold text-ink mt-1">
                                     {schemaInfo.appliedCount} ta migratsiya
                                  </p>
                               </div>
                               <div>
-                                 <p className="text-xs uppercase tracking-wide text-gray-400">Kutilmoqda</p>
+                                 <p className="text-xs uppercase tracking-wide text-faint">Kutilmoqda</p>
                                  <p className={`text-sm font-semibold mt-1 ${schemaInfo.pendingCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                     {schemaInfo.pendingCount > 0 ? `${schemaInfo.pendingCount} ta` : 'yo’q'}
                                  </p>
                               </div>
                            </div>
                         ) : (
-                           <p className="text-sm text-gray-400">Ma'lumot yo'q</p>
+                           <p className="text-sm text-faint">Ma'lumot yo'q</p>
                         )}
 
                         {schemaInfo?.pendingCount > 0 && (
@@ -1712,9 +1712,9 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <Shield className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Yaxlitlik tekshiruvi</h2>
+                           <h2 className="text-xl font-bold text-ink">Yaxlitlik tekshiruvi</h2>
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                        <p className="text-sm text-muted mb-5">
                            Pul va ombor yozuvlari bir-biriga mos kelishini tekshiradi. Faqat
                            o'qiydi — hech narsani o'zgartirmaydi.
                         </p>
@@ -1739,36 +1739,36 @@ export const Settings: React.FC<SettingsProps> = ({
                                     ? 'border-red-200 dark:border-red-800'
                                     : c.severity === 'warn'
                                        ? 'border-amber-200 dark:border-amber-800'
-                                       : 'border-gray-200 dark:border-gray-700';
+                                       : 'border-line';
                                  const badge = c.severity === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                                     : c.severity === 'warn' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                                       : c.severity === 'info' ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                                       : c.severity === 'info' ? 'bg-elevated text-muted'
                                           : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
                                  return (
                                     <div key={c.key} className={`p-3 border rounded-lg ${tone}`}>
                                        <div className="flex items-start justify-between gap-3">
-                                          <p className="text-sm font-medium text-gray-900 dark:text-white">{c.title}</p>
+                                          <p className="text-sm font-medium text-ink">{c.title}</p>
                                           <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${badge}`}>
                                              {c.severity === 'ok' ? 'toza' : c.count}
                                           </span>
                                        </div>
-                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                       <p className="text-xs text-muted mt-1">
                                           {c.scanned} ta yozuv tekshirildi
                                        </p>
                                        {c.note && (
-                                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1.5 italic">{c.note}</p>
+                                          <p className="text-xs text-muted mt-1.5 italic">{c.note}</p>
                                        )}
                                        {c.sample?.length > 0 && c.severity !== 'ok' && (
                                           <div className="mt-2 max-h-40 overflow-y-auto overflow-x-auto">
                                              <table className="text-xs w-full">
                                                 <tbody>
                                                    {c.sample.slice(0, 20).map((row: any, i: number) => (
-                                                      <tr key={i} className="border-t border-gray-100 dark:border-gray-700">
+                                                      <tr key={i} className="border-t border-line-soft">
                                                          {Object.entries(row)
                                                             .filter(([k]) => !k.toLowerCase().endsWith('id'))
                                                             .map(([k, v]) => (
-                                                               <td key={k} className="py-1 pr-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                                                                  <span className="text-gray-400">{k}:</span> {String(v)}
+                                                               <td key={k} className="py-1 pr-3 text-muted whitespace-nowrap">
+                                                                  <span className="text-faint">{k}:</span> {String(v)}
                                                                </td>
                                                             ))}
                                                       </tr>
@@ -1776,7 +1776,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                                 </tbody>
                                              </table>
                                              {c.count > 20 && (
-                                                <p className="text-xs text-gray-400 mt-1">…yana {c.count - 20} ta</p>
+                                                <p className="text-xs text-faint mt-1">…yana {c.count - 20} ta</p>
                                              )}
                                           </div>
                                        )}
@@ -1793,7 +1793,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                                 Qayta hisoblab yozish
                                              </Button>
                                              {balanceFix && (
-                                                <span className="text-xs text-gray-600 dark:text-gray-300">
+                                                <span className="text-xs text-muted">
                                                    {balanceFix.dryRun
                                                       ? balanceFix.message
                                                       : `${balanceFix.patientsFixed} ta bemor tuzatildi`}
@@ -1814,9 +1814,9 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <HardDrive className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Zaxira nusxa</h2>
+                           <h2 className="text-xl font-bold text-ink">Zaxira nusxa</h2>
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                        <p className="text-sm text-muted mb-5">
                            Baza bilan birga bemor fotolari va tekshiruv fayllari ham saqlanadi.
                            Nusxalar <code className="text-xs">%APPDATA%\xclinic\backups</code> papkasida.
                         </p>
@@ -1843,7 +1843,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                                 ? 'Oxirgi nusxa: kecha'
                                                 : `Oxirgi nusxa: ${backupStatus.ageDays} kun oldin`}
                                     </p>
-                                    <p className="text-xs mt-1 text-gray-600 dark:text-gray-300">
+                                    <p className="text-xs mt-1 text-muted">
                                        {backupStatus.lastBackup && (
                                           <>{fmtWhen(backupStatus.lastBackup.createdAt)} · {fmtBytes(backupStatus.lastBackup.sizeBytes)} · </>
                                        )}
@@ -1861,7 +1861,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                         {/* ─── Avtomatik nusxa jadvali ─────────────────────── */}
                         {cfgDraft && (
-                           <div className="mb-6 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                           <div className="mb-6 p-4 border border-line rounded-lg">
                               <label className="flex items-center gap-3 cursor-pointer">
                                  <input
                                     type="checkbox"
@@ -1869,12 +1869,12 @@ export const Settings: React.FC<SettingsProps> = ({
                                     onChange={(e) => setCfgDraft((c: any) => ({ ...c, enabled: e.target.checked }))}
                                     className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500"
                                  />
-                                 <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                 <span className="text-sm font-medium text-ink">
                                     Har kuni avtomatik nusxa olish
                                  </span>
                               </label>
 
-                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 ml-7">
+                              <p className="text-xs text-muted mt-2 ml-7">
                                  Belgilangan vaqtda kompyuter o'chiq bo'lsa, nusxa keyingi ishga
                                  tushishda olinadi — o'tkazib yuborilgan kun yo'qolmaydi. Kompyuter
                                  kechqurun o'chadigan bo'lsa, ish tugash vaqtini qo'ying.
@@ -1884,31 +1884,31 @@ export const Settings: React.FC<SettingsProps> = ({
                                  <div className="mt-4 ml-7 space-y-4">
                                     <div className="flex flex-wrap items-end gap-3">
                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Vaqt</label>
+                                          <label className="block text-xs font-medium text-muted mb-1">Vaqt</label>
                                           <div className="flex items-center gap-1">
                                              <input type="number" min={0} max={23} value={cfgDraft.hour}
                                                 onChange={(e) => setCfgDraft((c: any) => ({ ...c, hour: Number(e.target.value) }))}
-                                                className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
-                                             <span className="text-gray-400">:</span>
+                                                className="w-16 px-2 py-1.5 text-sm text-center border border-line rounded bg-surface text-ink" />
+                                             <span className="text-faint">:</span>
                                              <input type="number" min={0} max={59} step={5} value={cfgDraft.minute}
                                                 onChange={(e) => setCfgDraft((c: any) => ({ ...c, minute: Number(e.target.value) }))}
-                                                className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                                                className="w-16 px-2 py-1.5 text-sm text-center border border-line rounded bg-surface text-ink" />
                                           </div>
                                        </div>
                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Kunlik saqlash</label>
+                                          <label className="block text-xs font-medium text-muted mb-1">Kunlik saqlash</label>
                                           <input type="number" min={2} max={365} value={cfgDraft.keepDaily}
                                              onChange={(e) => setCfgDraft((c: any) => ({ ...c, keepDaily: Number(e.target.value) }))}
-                                             className="w-20 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                                             className="w-20 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink" />
                                        </div>
                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Oylik saqlash</label>
+                                          <label className="block text-xs font-medium text-muted mb-1">Oylik saqlash</label>
                                           <input type="number" min={0} max={120} value={cfgDraft.keepMonthly}
                                              onChange={(e) => setCfgDraft((c: any) => ({ ...c, keepMonthly: Number(e.target.value) }))}
-                                             className="w-20 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+                                             className="w-20 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink" />
                                        </div>
                                     </div>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    <p className="text-xs text-muted">
                                        Oxirgi {cfgDraft.keepDaily} kunning hamma nusxasi va undan
                                        oldingi {cfgDraft.keepMonthly} oyning har biridan bittasi saqlanadi.
                                        Izohli nusxalar hech qachon o'chirilmaydi.
@@ -1928,11 +1928,11 @@ export const Settings: React.FC<SettingsProps> = ({
                                         va papkani foydalanuvchi o'zi qidirardi. Bu yerda
                                         dastur uni topib beradi. */}
                                     <div className="p-3 rounded-lg border border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-900/20">
-                                       <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                                       <p className="text-sm font-medium text-ink flex items-center gap-2">
                                           <Cloud className="w-4 h-4 text-primary-600 dark:text-primary-300" />
                                           {t('backup.cloudTitle')}
                                        </p>
-                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('backup.cloudDesc')}</p>
+                                       <p className="text-xs text-muted mt-1">{t('backup.cloudDesc')}</p>
                                        {cloudFolders.length > 0 ? (
                                           <div className="flex flex-wrap gap-2 mt-3">
                                              {cloudFolders.map(f => {
@@ -1958,7 +1958,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     </div>
 
                                     <div>
-                                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                                       <label className="block text-xs font-medium text-muted mb-1">
                                           Ikkinchi manzil (ixtiyoriy) — flesh, tarmoq diski yoki bulut papkasi
                                        </label>
                                        <div className="flex flex-col sm:flex-row gap-2">
@@ -1972,7 +1972,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                              Papka tanlash
                                           </Button>
                                        </div>
-                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                       <p className="text-xs text-muted mt-1">
                                           Disk ulanmagan bo'lsa asosiy nusxa baribir olinadi — faqat
                                           ko'chirish o'tkazib yuboriladi.
                                        </p>
@@ -2003,13 +2003,13 @@ export const Settings: React.FC<SettingsProps> = ({
                         {maintLoading && backupList.length === 0 ? (
                            <div className="space-y-2">
                               {[0, 1, 2].map((i) => (
-                                 <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                                 <div key={i} className="h-12 bg-elevated rounded animate-pulse" />
                               ))}
                            </div>
                         ) : backupList.length === 0 ? (
-                           <div className="text-center py-8 border border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
-                              <HardDrive className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                           <div className="text-center py-8 border border-dashed border-line rounded-lg">
+                              <HardDrive className="w-8 h-8 mx-auto text-faint mb-2" />
+                              <p className="text-sm text-muted">
                                  Nusxa hali yo'q. Birinchisini hozir oling.
                               </p>
                            </div>
@@ -2017,15 +2017,15 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="space-y-2">
                               {backupList.map((b) => (
                                  <div key={b.file}
-                                    className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                    className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 border border-line rounded-lg">
                                     <div className="min-w-0 flex-1">
-                                       <p className="text-sm font-mono text-gray-900 dark:text-white truncate">{b.file}</p>
-                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                       <p className="text-sm font-mono text-ink truncate">{b.file}</p>
+                                       <p className="text-xs text-muted mt-0.5">
                                           {fmtWhen(b.createdAt)} · {fmtBytes(b.sizeBytes)}
                                           {b.hasUploads ? ' · fayllar arxivi bor' : ' · faqat baza'}
                                        </p>
                                        {b.note && (
-                                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 italic truncate">{b.note}</p>
+                                          <p className="text-xs text-muted mt-1 italic truncate">{b.note}</p>
                                        )}
                                     </div>
                                     <Button variant="secondary" size="sm"
@@ -2049,8 +2049,8 @@ export const Settings: React.FC<SettingsProps> = ({
                               <Shield className="w-5 h-5 text-primary-600 dark:text-primary-400" />
                            </div>
                            <div>
-                              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Ruxsatlarni boshqarish</h2>
-                              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                              <h2 className="text-lg font-semibold text-ink">Ruxsatlarni boshqarish</h2>
+                              <p className="text-sm text-muted mt-1">
                                  Shifokor va resepshn qaysi bo'limlar va ma'lumotlarni ko'rishini belgilang.
                                  Belgisi olib tashlangan modul menyuda ko'rinmaydi. Bosh sahifa (Dashboard) har doim ochiq qoladi.
                               </p>
@@ -2075,10 +2075,10 @@ export const Settings: React.FC<SettingsProps> = ({
                            <Card key={roleKey} className="p-6">
                               <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                                  <div>
-                                    <h3 className="text-base font-bold text-gray-900 dark:text-white">{title}</h3>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">{desc}</p>
+                                    <h3 className="text-base font-bold text-ink">{title}</h3>
+                                    <p className="text-xs text-muted">{desc}</p>
                                  </div>
-                                 <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                                 <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl">
                                     {([
                                        { key: 'simple' as const, label: 'Sodda', active: isSimplePreset(roleKey, roleId) },
                                        { key: 'all' as const, label: 'Hammasi', active: (accessForm[roleKey]?.hiddenModules || []).length === 0 },
@@ -2088,8 +2088,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                           type="button"
                                           onClick={() => applyPreset(roleKey, roleId, p.key)}
                                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${p.active
-                                             ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-white shadow-sm'
-                                             : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                             ? 'bg-surface text-primary-600 shadow-sm'
+                                             : 'text-muted hover:text-muted'}`}
                                        >
                                           {p.label}
                                        </button>
@@ -2098,20 +2098,20 @@ export const Settings: React.FC<SettingsProps> = ({
                               </div>
 
                               {roleKey === 'receptionist' && (
-                                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 -mt-2">
+                                 <p className="text-xs text-muted mb-3 -mt-2">
                                     <b>Sodda</b> — faqat kundalik ish uchun kerak bo'lgan bo'limlar qoladi
                                     (Bemorlar, Kalendar, Kassa, Navbat). Menyu qisqarsa, yangi xodim tezroq o'rganadi.
                                  </p>
                               )}
 
-                              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Ko'rinadigan modullar</p>
+                              <p className="text-xs font-bold text-faint uppercase tracking-wider mb-3">Ko'rinadigan modullar</p>
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-6">
                                  {modules.map(m => {
                                     const visible = !hidden.includes(m.id);
                                     return (
                                        <label key={m.id} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all text-sm font-medium ${visible
                                           ? 'border-primary-200 bg-primary-50/60 text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300'
-                                          : 'border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-700 dark:bg-gray-800/50 line-through'}`}>
+                                          : 'border-line bg-elevated text-faint dark:bg-surface/50 line-through'}`}>
                                           <input
                                              type="checkbox"
                                              checked={visible}
@@ -2124,9 +2124,9 @@ export const Settings: React.FC<SettingsProps> = ({
                                  })}
                               </div>
 
-                              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Maxfiy ma'lumotlar</p>
+                              <p className="text-xs font-bold text-faint uppercase tracking-wider mb-3">Maxfiy ma'lumotlar</p>
                               <div className="space-y-2">
-                                 <label className="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 cursor-pointer hover:border-primary-300 transition-colors">
+                                 <label className="flex items-start gap-3 p-3 rounded-xl border border-line cursor-pointer hover:border-primary-300 transition-colors">
                                     <input
                                        type="checkbox"
                                        checked={roleAccess.showFinance !== false}
@@ -2134,12 +2134,12 @@ export const Settings: React.FC<SettingsProps> = ({
                                        className="w-4 h-4 mt-0.5 rounded text-primary-600 focus:ring-primary-500"
                                     />
                                     <div>
-                                       <p className="text-sm font-semibold text-gray-900 dark:text-white">Moliyaviy ko'rsatkichlarni ko'rsatish</p>
-                                       <p className="text-xs text-gray-500 dark:text-gray-400">Dashboarddagi tushum, o'rtacha chek, kutilayotgan to'lovlar va qarzdorlar ro'yxati</p>
+                                       <p className="text-sm font-semibold text-ink">Moliyaviy ko'rsatkichlarni ko'rsatish</p>
+                                       <p className="text-xs text-muted">Dashboarddagi tushum, o'rtacha chek, kutilayotgan to'lovlar va qarzdorlar ro'yxati</p>
                                     </div>
                                  </label>
                                  {roleKey === 'doctor' && (
-                                    <label className="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 cursor-pointer hover:border-primary-300 transition-colors">
+                                    <label className="flex items-start gap-3 p-3 rounded-xl border border-line cursor-pointer hover:border-primary-300 transition-colors">
                                        <input
                                           type="checkbox"
                                           checked={roleAccess.showPatientPhone !== false}
@@ -2147,8 +2147,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                           className="w-4 h-4 mt-0.5 rounded text-primary-600 focus:ring-primary-500"
                                        />
                                        <div>
-                                          <p className="text-sm font-semibold text-gray-900 dark:text-white">Bemor telefon raqamlarini ko'rsatish</p>
-                                          <p className="text-xs text-gray-500 dark:text-gray-400">O'chirilsa, shifokorga raqamlar yulduzcha bilan maskalanadi (masalan, +*** ** *** ** 67)</p>
+                                          <p className="text-sm font-semibold text-ink">Bemor telefon raqamlarini ko'rsatish</p>
+                                          <p className="text-xs text-muted">O'chirilsa, shifokorga raqamlar yulduzcha bilan maskalanadi (masalan, +*** ** *** ** 67)</p>
                                        </div>
                                     </label>
                                  )}
@@ -2159,8 +2159,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
                      <Card className="p-6">
                         <div className="mb-4">
-                           <h3 className="text-base font-bold text-gray-900 dark:text-white">Kassa smenalari</h3>
-                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                           <h3 className="text-base font-bold text-ink">Kassa smenalari</h3>
+                           <p className="text-xs text-muted mt-1">
                               Smena kassir "Kunni yopish" bosgan daqiqada tugaydi — soat bo'yicha emas.
                               Undan keyingi to'lovlar keyingi smenaga o'tadi.
                            </p>
@@ -2174,14 +2174,14 @@ export const Settings: React.FC<SettingsProps> = ({
                                  onClick={() => saveCashShifts(n)}
                                  className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all disabled:opacity-50 ${cashShifts === n
                                     ? 'bg-primary-600 text-white border-primary-600'
-                                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-400'}`}
+                                    : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                               >
                                  {n === 1 ? 'Kuniga 1 smena' : 'Kuniga 2 smena'}
                               </button>
                            ))}
-                           {cashShiftsSaving && <span className="text-xs text-gray-400">Saqlanmoqda...</span>}
+                           {cashShiftsSaving && <span className="text-xs text-faint">Saqlanmoqda...</span>}
                         </div>
-                        <p className="text-[11px] text-gray-400 mt-3">
+                        <p className="text-[11px] text-faint mt-3">
                            {cashShifts === 1
                               ? 'Kassa sahifasida kun butunligicha ko\'rinadi.'
                               : 'Kassa sahifasida "1-smena / 2-smena" tanlagichi chiqadi. 2-smena 1-smena topshirgan naqddan boshlanadi.'}
@@ -2209,8 +2209,8 @@ export const Settings: React.FC<SettingsProps> = ({
                   <Card className="p-6">
                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-5">
                         <div>
-                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Kirish jurnali</h2>
-                           <p className="text-sm text-gray-500">
+                           <h2 className="text-lg font-medium text-ink">Kirish jurnali</h2>
+                           <p className="text-sm text-muted">
                               Bemor kartasini kim ochgani va o'zgartirgani.
                               {logData?.retentionMonths ? ` ${logData.retentionMonths} oy saqlanadi.` : ''}
                            </p>
@@ -2222,19 +2222,19 @@ export const Settings: React.FC<SettingsProps> = ({
 
                      <div className="flex flex-wrap items-end gap-3 mb-4">
                         <div>
-                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Boshlanish</label>
+                           <label className="block text-[11px] text-muted mb-1">Boshlanish</label>
                            <input type="date" value={logFrom} onChange={e => setLogFrom(e.target.value)}
-                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm" />
+                              className="px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm" />
                         </div>
                         <div>
-                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Tugash</label>
+                           <label className="block text-[11px] text-muted mb-1">Tugash</label>
                            <input type="date" value={logTo} onChange={e => setLogTo(e.target.value)}
-                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm" />
+                              className="px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm" />
                         </div>
                         <div>
-                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Amal</label>
+                           <label className="block text-[11px] text-muted mb-1">Amal</label>
                            <select value={logAction} onChange={e => setLogAction(e.target.value)}
-                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm">
+                              className="px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm">
                               <option value="">Barchasi</option>
                               <option value="View">Ko'rish</option>
                               <option value="Create">Yaratish</option>
@@ -2253,49 +2253,49 @@ export const Settings: React.FC<SettingsProps> = ({
 
                      {logLoading && !logData ? (
                         <div className="space-y-2">
-                           {[0, 1, 2].map(i => <div key={i} className="h-10 bg-gray-100 dark:bg-gray-700/40 rounded animate-pulse" />)}
+                           {[0, 1, 2].map(i => <div key={i} className="h-10 bg-elevated rounded animate-pulse" />)}
                         </div>
                      ) : !logData || logData.items.length === 0 ? (
                         <div className="text-center py-10">
-                           <Shield className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                           <p className="text-sm text-gray-500">Bu davrda yozuv yo'q</p>
+                           <Shield className="w-8 h-8 text-faint mx-auto mb-2" />
+                           <p className="text-sm text-muted">Bu davrda yozuv yo'q</p>
                         </div>
                      ) : (
                         <>
-                           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                           <div className="overflow-x-auto border border-line rounded-lg">
                               <table className="w-full min-w-[640px]">
-                                 <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+                                 <thead className="bg-canvas/40 border-b border-line">
                                     <tr>
                                        {['Vaqt', 'Kim', 'Roli', 'Amal', 'Nima', 'Bemor'].map(h => (
-                                          <th key={h} className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                          <th key={h} className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-muted">
                                              {h}
                                           </th>
                                        ))}
                                     </tr>
                                  </thead>
-                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                 <tbody className="divide-y divide-line">
                                     {logData.items.map((l: any) => (
                                        <tr key={l.id}>
-                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                          <td className="px-3 py-2 text-xs text-muted whitespace-nowrap">
                                              {new Date(l.at).toLocaleString('uz-UZ')}
                                           </td>
-                                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">{l.userName || '—'}</td>
-                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{ROLE_LABEL[l.userRole] || l.userRole || '—'}</td>
+                                          <td className="px-3 py-2 text-sm text-ink">{l.userName || '—'}</td>
+                                          <td className="px-3 py-2 text-xs text-muted">{ROLE_LABEL[l.userRole] || l.userRole || '—'}</td>
                                           <td className="px-3 py-2">
                                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${l.action === 'View'
-                                                ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                                                ? 'bg-elevated text-muted'
                                                 : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
                                                 {ACTION_LABEL[l.action] || l.action}
                                              </span>
                                           </td>
-                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{ENTITY_LABEL[l.entityType] || l.entityType}</td>
-                                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">{l.patientName || '—'}</td>
+                                          <td className="px-3 py-2 text-xs text-muted">{ENTITY_LABEL[l.entityType] || l.entityType}</td>
+                                          <td className="px-3 py-2 text-sm text-ink">{l.patientName || '—'}</td>
                                        </tr>
                                     ))}
                                  </tbody>
                               </table>
                            </div>
-                           <p className="text-[11px] text-gray-400 mt-2">
+                           <p className="text-[11px] text-faint mt-2">
                               {logData.total} yozuv
                               {logData.truncated ? ` — oxirgi ${logData.items.length} tasi ko'rsatilgan, davrni toraytiring` : ''}.
                               Jurnalga faqat server yozadi: tashqaridan yozib bo'lmaydi.
@@ -2315,13 +2315,13 @@ export const Settings: React.FC<SettingsProps> = ({
                      {/* Categories Sidebar */}
                      <Card className="col-span-1 h-fit p-4">
                         <div className="flex justify-between items-center mb-4">
-                           <h2 className="font-medium text-gray-900 dark:text-white">{t('settings.services.categories')}</h2>
+                           <h2 className="font-medium text-ink">{t('settings.services.categories')}</h2>
                            <Button size="sm" variant="secondary" onClick={() => setIsCategoryModalOpen(true)}>+</Button>
                         </div>
                         <div className="space-y-1">
                            <button
                               onClick={() => setSelectedCategory(null)}
-                              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${!selectedCategory ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'}`}
+                              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${!selectedCategory ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-muted hover:bg-elevated'}`}
                            >
                               {t('settings.services.all')}
                            </button>
@@ -2329,11 +2329,11 @@ export const Settings: React.FC<SettingsProps> = ({
                               <div key={cat.id} className="group flex items-center justify-between">
                                  <button
                                     onClick={() => setSelectedCategory(cat.id)}
-                                    className={`flex-1 text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${selectedCategory === cat.id ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'}`}
+                                    className={`flex-1 text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${selectedCategory === cat.id ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-muted hover:bg-elevated'}`}
                                  >
                                     {cat.name}
                                  </button>
-                                 <button onClick={() => handleDeleteCategory(cat.id)} className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500">
+                                 <button onClick={() => handleDeleteCategory(cat.id)} className="opacity-0 group-hover:opacity-100 p-1 text-faint hover:text-red-500">
                                     <Trash2 className="w-3 h-3" />
                                  </button>
                               </div>
@@ -2346,28 +2346,28 @@ export const Settings: React.FC<SettingsProps> = ({
                         <Card className="p-6">
                            <div className="flex justify-between items-center mb-6">
                               <div>
-                                 <h2 className="text-lg font-medium text-gray-900 dark:text-white">{t('settings.services.title')}</h2>
-                                 <p className="text-sm text-gray-500">{t('settings.services.subtitle')}</p>
+                                 <h2 className="text-lg font-medium text-ink">{t('settings.services.title')}</h2>
+                                 <p className="text-sm text-muted">{t('settings.services.subtitle')}</p>
                               </div>
                               <Button size="sm" onClick={() => handleOpenServiceModal()}>Xizmat Qo'shish</Button>
                            </div>
 
-                           <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                           <div className="overflow-hidden rounded-lg border border-line">
                               <table className="w-full text-left text-sm">
-                                 <thead className="bg-gray-50 dark:bg-gray-800">
+                                 <thead className="bg-elevated">
                                     <tr>
-                                       <th className="px-4 py-3 font-medium text-gray-500">{t('settings.services.thName')}</th>
-                                       <th className="px-4 py-3 font-medium text-gray-500">{t('settings.services.thPrice')}</th>
-                                       <th className="px-4 py-3 font-medium text-gray-500 text-right">{t('settings.services.thAction')}</th>
+                                       <th className="px-4 py-3 font-medium text-muted">{t('settings.services.thName')}</th>
+                                       <th className="px-4 py-3 font-medium text-muted">{t('settings.services.thPrice')}</th>
+                                       <th className="px-4 py-3 font-medium text-muted text-right">{t('settings.services.thAction')}</th>
                                     </tr>
                                  </thead>
-                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                 <tbody className="divide-y divide-line">
                                     {services
                                        .filter(s => !selectedCategory || s.categoryId === selectedCategory)
                                        .map((s) => (
-                                          <tr key={s.id ?? s.name} className="bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800">
-                                             <td className="px-4 py-3 text-gray-900 dark:text-gray-200 font-medium">{s.name}</td>
-                                             <td className="px-4 py-3 text-gray-500">{formatMoney(s.price)} UZS</td>
+                                          <tr key={s.id ?? s.name} className="bg-surface hover:bg-elevated">
+                                             <td className="px-4 py-3 text-ink font-medium">{s.name}</td>
+                                             <td className="px-4 py-3 text-muted">{formatMoney(s.price)} UZS</td>
                                              <td className="px-4 py-3 text-right">
                                                 <div className="flex items-center justify-end gap-1">
                                                    <button
@@ -2393,7 +2393,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                        ))}
                                     {services.filter(s => !selectedCategory || s.categoryId === selectedCategory).length === 0 && (
                                        <tr>
-                                          <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
+                                          <td colSpan={3} className="px-4 py-8 text-center text-muted">
                                              {t('settings.services.notFound')}
                                           </td>
                                        </tr>
@@ -2421,8 +2421,8 @@ export const Settings: React.FC<SettingsProps> = ({
                         <MessageSquare className="w-5 h-5" />
                      </div>
                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold text-gray-900 dark:text-white">{t('settings.messagesLinkTitle')}</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('settings.messagesLinkDesc')}</p>
+                        <h3 className="font-semibold text-ink">{t('settings.messagesLinkTitle')}</h3>
+                        <p className="text-sm text-muted">{t('settings.messagesLinkDesc')}</p>
                      </div>
                      <Button variant="secondary" onClick={() => navigate('/messages')}>
                         {t('settings.messagesLinkBtn')} <ArrowRight className="w-4 h-4 ml-2" />
@@ -2434,15 +2434,15 @@ export const Settings: React.FC<SettingsProps> = ({
                            <Bot className="w-8 h-8" />
                         </div>
                         <div>
-                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('settings.bot.title')}</h2>
-                           <p className="text-sm text-gray-500">{t('settings.bot.subtitle')}</p>
+                           <h2 className="text-xl font-bold text-ink">{t('settings.bot.title')}</h2>
+                           <p className="text-sm text-muted">{t('settings.bot.subtitle')}</p>
                         </div>
                      </div>
 
                      <div className="space-y-6">
-                        <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-2xl border border-gray-100 dark:border-gray-700">
-                           <h3 className="font-bold text-gray-900 dark:text-white mb-2">Shaxsiy Telegram Botni Ulash</h3>
-                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                        <div className="bg-elevated p-6 rounded-2xl border border-line-soft">
+                           <h3 className="font-bold text-ink mb-2">Shaxsiy Telegram Botni Ulash</h3>
+                           <p className="text-sm text-muted mb-6">
                               Telegram-da @BotFather orqali o'zingizning shaxsiy botingizni yarating va bot tokenini quyidagi maydonga kiritib, uni tizimga ulang.
                            </p>
 
@@ -2485,16 +2485,16 @@ export const Settings: React.FC<SettingsProps> = ({
                               <MessageSquare className="w-8 h-8" />
                            </div>
                            <div>
-                              <h2 className="text-xl font-bold text-gray-900 dark:text-white">SMS va Xabar Yuborish Rejimi</h2>
-                              <p className="text-sm text-gray-500">Mijozlarga xabarnomalar qanday yuborilishini sozlang va Eskiz.uz profilingizni ulang.</p>
+                              <h2 className="text-xl font-bold text-ink">SMS va Xabar Yuborish Rejimi</h2>
+                              <p className="text-sm text-muted">Mijozlarga xabarnomalar qanday yuborilishini sozlang va Eskiz.uz profilingizni ulang.</p>
                            </div>
                         </div>
                         <form onSubmit={handleSmsSave} className="space-y-8">
                            <div>
-                              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">1. Standart kanalni tanlang</h3>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 mb-4">Bu rejim Xabarlar bo'limidagi "avtomatik" (auto) yuborishlar uchun standart kanal sifatida ishlatiladi.</p>
+                              <h3 className="text-lg font-medium text-ink mb-4">1. Standart kanalni tanlang</h3>
+                              <p className="text-xs text-muted -mt-2 mb-4">Bu rejim Xabarlar bo'limidagi "avtomatik" (auto) yuborishlar uchun standart kanal sifatida ishlatiladi.</p>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                 <label className={`relative flex cursor-pointer rounded-lg border bg-white dark:bg-gray-800 p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'telegram_only' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-300 dark:border-gray-700'}`}>
+                                 <label className={`relative flex cursor-pointer rounded-lg border bg-surface p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'telegram_only' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-line'}`}>
                                     <input 
                                        type="radio" 
                                        name="notificationMode"
@@ -2505,13 +2505,13 @@ export const Settings: React.FC<SettingsProps> = ({
                                     />
                                     <span className="flex flex-1">
                                        <span className="flex flex-col">
-                                          <span className="block text-sm font-medium text-gray-900 dark:text-white mb-1">🤖 Faqat Telegram Bot</span>
-                                          <span className="mt-1 flex items-center text-xs text-gray-500 dark:text-gray-400">Xabarlar mijozning Telegram profiliga (bepul) yuboriladi</span>
+                                          <span className="block text-sm font-medium text-ink mb-1">🤖 Faqat Telegram Bot</span>
+                                          <span className="mt-1 flex items-center text-xs text-muted">Xabarlar mijozning Telegram profiliga (bepul) yuboriladi</span>
                                        </span>
                                     </span>
                                     <CheckCircle className={`h-5 w-5 ${smsForm.notificationMode === 'telegram_only' ? 'text-purple-600' : 'invisible'}`} />
                                  </label>
-                                 <label className={`relative flex cursor-pointer rounded-lg border bg-white dark:bg-gray-800 p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'sms_only' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-300 dark:border-gray-700'}`}>
+                                 <label className={`relative flex cursor-pointer rounded-lg border bg-surface p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'sms_only' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-line'}`}>
                                     <input 
                                        type="radio" 
                                        name="notificationMode"
@@ -2522,13 +2522,13 @@ export const Settings: React.FC<SettingsProps> = ({
                                     />
                                     <span className="flex flex-1">
                                        <span className="flex flex-col">
-                                          <span className="block text-sm font-medium text-gray-900 dark:text-white mb-1">📱 Faqat SMS (Eskiz)</span>
-                                          <span className="mt-1 flex items-center text-xs text-gray-500 dark:text-gray-400">Xabarlar bevosita telefon raqamiga (pullik) yuboriladi</span>
+                                          <span className="block text-sm font-medium text-ink mb-1">📱 Faqat SMS (Eskiz)</span>
+                                          <span className="mt-1 flex items-center text-xs text-muted">Xabarlar bevosita telefon raqamiga (pullik) yuboriladi</span>
                                        </span>
                                     </span>
                                     <CheckCircle className={`h-5 w-5 ${smsForm.notificationMode === 'sms_only' ? 'text-purple-600' : 'invisible'}`} />
                                  </label>
-                                 <label className={`relative flex cursor-pointer rounded-lg border bg-white dark:bg-gray-800 p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'both' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-300 dark:border-gray-700'}`}>
+                                 <label className={`relative flex cursor-pointer rounded-lg border bg-surface p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'both' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-line'}`}>
                                     <input 
                                        type="radio" 
                                        name="notificationMode"
@@ -2539,8 +2539,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                     />
                                     <span className="flex flex-1">
                                        <span className="flex flex-col">
-                                          <span className="block text-sm font-medium text-gray-900 dark:text-white mb-1">🤖📱 Ikkalasi ham</span>
-                                          <span className="mt-1 flex items-center text-xs text-gray-500 dark:text-gray-400">Xabarlar avval Telegram, so'ng qo'shimcha sifatida SMS orqali boradi</span>
+                                          <span className="block text-sm font-medium text-ink mb-1">🤖📱 Ikkalasi ham</span>
+                                          <span className="mt-1 flex items-center text-xs text-muted">Xabarlar avval Telegram, so'ng qo'shimcha sifatida SMS orqali boradi</span>
                                        </span>
                                     </span>
                                     <CheckCircle className={`h-5 w-5 ${smsForm.notificationMode === 'both' ? 'text-purple-600' : 'invisible'}`} />
@@ -2549,9 +2549,9 @@ export const Settings: React.FC<SettingsProps> = ({
                            </div>
 
                            {(smsForm.notificationMode === 'sms_only' || smsForm.notificationMode === 'both') && (
-                              <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-2xl border border-gray-100 dark:border-gray-700">
+                              <div className="bg-elevated p-6 rounded-2xl border border-line-soft">
                                  <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">2. Eskiz.uz Integratsiyasi</h3>
+                                    <h3 className="text-lg font-medium text-ink">2. Eskiz.uz Integratsiyasi</h3>
                                     {smsConnected ? (
                                        <span className="flex items-center text-green-600 text-sm font-medium bg-green-50 dark:bg-green-900/30 px-3 py-1.5 rounded-full">
                                           <CheckCircle className="w-4 h-4 mr-1.5" /> Ulangan
@@ -2571,10 +2571,10 @@ export const Settings: React.FC<SettingsProps> = ({
                                        required
                                     />
                                     <div className="space-y-1">
-                                        <p className="sms-settings-label text-sm font-medium text-gray-700 dark:text-gray-300">Eskiz.uz Kabinet Paroli</p>
+                                        <p className="sms-settings-label text-sm font-medium text-muted">Eskiz.uz Kabinet Paroli</p>
                                         <input
                                             type="password"
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            className="w-full px-3 py-2 border border-line rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
                                             placeholder={smsHasPassword ? "(Parol kiritilgan. O'zgartirish uchun yangisini kiriting)" : "Yashirin kalitni kiriting"}
                                             value={smsForm.eskizPassword}
                                             onChange={(e) => setSmsForm({...smsForm, eskizPassword: e.target.value})}
@@ -2582,15 +2582,15 @@ export const Settings: React.FC<SettingsProps> = ({
                                     </div>
 
                                     <div className="space-y-1">
-                                        <p className="sms-settings-label text-sm font-medium text-gray-700 dark:text-gray-300">Nickname (Yuboruvchi nomi)</p>
+                                        <p className="sms-settings-label text-sm font-medium text-muted">Nickname (Yuboruvchi nomi)</p>
                                         <input
                                             type="text"
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            className="w-full px-3 py-2 border border-line rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
                                             placeholder="Masalan: 4546 yoki XClinic"
                                             value={smsForm.eskizNick}
                                             onChange={(e) => setSmsForm({...smsForm, eskizNick: e.target.value})}
                                         />
-                                        <p className="text-xs text-gray-500 mt-1">
+                                        <p className="text-xs text-muted mt-1">
                                             Eskizda tasdiqlangan maxsus nomingiz bo'lsa kiriting. Aks holda 4546 qoladi.
                                         </p>
                                     </div>
@@ -2616,17 +2616,17 @@ export const Settings: React.FC<SettingsProps> = ({
                         <Card className="p-6 border-l-4 border-l-purple-500">
                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                               <div>
-                                 <p className="text-sm font-medium text-gray-500 mb-1">Joriy SMS balans (Eskiz.uz)</p>
+                                 <p className="text-sm font-medium text-muted mb-1">Joriy SMS balans (Eskiz.uz)</p>
                                  <div className="flex items-end gap-2">
-                                    <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                                    <p className="text-3xl font-bold text-ink">
                                        {smsBalance !== null ? formatMoney(smsBalance) : 'Tekshirilmoqda...'}
                                     </p>
-                                    <span className="text-gray-500 mb-1 font-medium">ta SMS qoldi</span>
+                                    <span className="text-muted mb-1 font-medium">ta SMS qoldi</span>
                                  </div>
                               </div>
 
-                              <div className="w-full md:w-auto p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Test SMS yuborish</p>
+                              <div className="w-full md:w-auto p-4 bg-elevated rounded-xl border border-line-soft">
+                                 <p className="text-sm font-medium text-muted mb-3">Test SMS yuborish</p>
                                  <div className="flex gap-2">
                                     <Input 
                                        placeholder="998901234567" 
@@ -2654,7 +2654,7 @@ export const Settings: React.FC<SettingsProps> = ({
                <Input label={t('settings.services.thName')} value={serviceForm.name} onChange={e => setServiceForm({ ...serviceForm, name: e.target.value })} required />
 
                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategoriya</label>
+                  <label className="block text-sm font-medium text-muted mb-1">Kategoriya</label>
                   <Select
                      value={serviceForm.categoryId}
                      onChange={e => setServiceForm({ ...serviceForm, categoryId: e.target.value })}
@@ -2678,7 +2678,7 @@ export const Settings: React.FC<SettingsProps> = ({
                    bo'yicha filtrlanadi. Ilgari uni formadan berib
                    bo'lmasdi. */}
                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bo'lim</label>
+                  <label className="block text-sm font-medium text-muted mb-1">Bo'lim</label>
                   <Select
                      value={serviceForm.departmentId}
                      onChange={e => setServiceForm({ ...serviceForm, departmentId: e.target.value })}
@@ -2694,8 +2694,8 @@ export const Settings: React.FC<SettingsProps> = ({
                    kiritadigan ekran yo'q edi: tannarx har doim nol
                    chiqardi va «qaysi xizmat foydali» degan savolga javob
                    yo'q edi. */}
-               <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+               <div className="rounded-xl border border-line p-4">
+                  <p className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
                      Sarflanadigan materiallar
                   </p>
                   <ServiceRecipeEditor
@@ -2740,7 +2740,7 @@ export const Settings: React.FC<SettingsProps> = ({
             title={deptModal.mode === 'edit' ? 'Bo\'limni tahrirlash' : 'Yangi bo\'lim'}>
             <div className="space-y-4">
                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nomi</label>
+                  <label className="block text-sm font-medium text-muted mb-1">Nomi</label>
                   <Input value={deptForm.name}
                      onChange={(e: any) => {
                         const name = e.target.value;
@@ -2755,25 +2755,25 @@ export const Settings: React.FC<SettingsProps> = ({
 
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kod</label>
+                     <label className="block text-sm font-medium text-muted mb-1">Kod</label>
                      <Input value={deptForm.code}
                         onChange={(e: any) => {
                            setDeptCodeTouched(true);
                            setDeptForm(f => ({ ...f, code: e.target.value.toUpperCase() }));
                         }}
                         placeholder="KARD" />
-                     <p className="text-xs text-gray-400 mt-1">Qisqa, takrorlanmaydigan belgi — nomdan o'zi yasaladi</p>
+                     <p className="text-xs text-faint mt-1">Qisqa, takrorlanmaydigan belgi — nomdan o'zi yasaladi</p>
                   </div>
                   <div>
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tartib</label>
+                     <label className="block text-sm font-medium text-muted mb-1">Tartib</label>
                      <Input type="number" value={deptForm.sortOrder}
                         onChange={(e: any) => setDeptForm(f => ({ ...f, sortOrder: e.target.value }))} />
-                     <p className="text-xs text-gray-400 mt-1">Ro'yxatlarda joyi</p>
+                     <p className="text-xs text-faint mt-1">Ro'yxatlarda joyi</p>
                   </div>
                </div>
 
                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Turi</label>
+                  <label className="block text-sm font-medium text-muted mb-1">Turi</label>
                   <Select value={deptForm.type}
                      onChange={(e: any) => setDeptForm(f => ({ ...f, type: e.target.value }))}>
                      {(Object.keys(DEPARTMENT_TYPE_LABELS) as DepartmentType[]).map((k) => (
@@ -2782,7 +2782,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   </Select>
                   {/* Turni tushuntirish TALTIQ emas: noto'g'ri tanlangan tur — keyin
                       hech kim topa olmaydigan bo'lim. */}
-                  <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                  <div className="mt-2 p-3 bg-elevated border border-line rounded-lg text-xs text-muted space-y-1">
                      <p><b>Klinik</b> — registraturada bemor shu bo'limga yoziladi</p>
                      <p><b>Laboratoriya</b> — tahlillar katalogi va yo'llanmalar</p>
                      <p><b>Diagnostika</b> — UZI, EKG, rentgen</p>
@@ -2792,7 +2792,7 @@ export const Settings: React.FC<SettingsProps> = ({
                </div>
 
                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rangi</label>
+                  <label className="block text-sm font-medium text-muted mb-2">Rangi</label>
                   <div className="flex flex-wrap gap-2">
                      {DEPT_COLORS.map((c) => (
                         <button key={c.value} type="button"
@@ -2800,12 +2800,12 @@ export const Settings: React.FC<SettingsProps> = ({
                            title={c.name}
                            className={`w-8 h-8 rounded-full border-2 transition-transform
                               ${deptForm.color === c.value
-                                 ? 'border-gray-900 dark:border-white scale-110'
+                                 ? 'border-line scale-110'
                                  : 'border-transparent hover:scale-105'}`}
                            style={{ backgroundColor: c.value }} />
                      ))}
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">Navbat tablosida va kalendarda ishlatiladi</p>
+                  <p className="text-xs text-faint mt-2">Navbat tablosida va kalendarda ishlatiladi</p>
                </div>
 
                {deptError && (
@@ -2844,14 +2844,14 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                </div>
 
-               <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
-                  <p><span className="text-gray-400">Nusxa:</span> <span className="font-mono">{restoreTarget.file}</span></p>
-                  <p><span className="text-gray-400">Hajmi:</span> {fmtBytes(restoreTarget.sizeBytes)}</p>
-                  <p><span className="text-gray-400">Fayllar arxivi:</span> {restoreTarget.hasUploads ? 'bor' : 'yo’q'}</p>
+               <div className="text-sm text-muted space-y-1">
+                  <p><span className="text-faint">Nusxa:</span> <span className="font-mono">{restoreTarget.file}</span></p>
+                  <p><span className="text-faint">Hajmi:</span> {fmtBytes(restoreTarget.sizeBytes)}</p>
+                  <p><span className="text-faint">Fayllar arxivi:</span> {restoreTarget.hasUploads ? 'bor' : 'yo’q'}</p>
                </div>
 
                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-muted mb-1">
                      Tasdiqlash uchun <span className="font-mono font-bold">TIKLASH</span> deb yozing
                   </label>
                   <Input
@@ -2861,7 +2861,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   />
                </div>
 
-               <p className="text-xs text-gray-500 dark:text-gray-400">
+               <p className="text-xs text-muted">
                   Tiklash darhol bajarilmaydi: server bazani ochiq tutadi. Belgi qo'yiladi va
                   almashtirish dastur qayta ishga tushganda bo'ladi. Shu paytgacha bekor qilish mumkin.
                </p>

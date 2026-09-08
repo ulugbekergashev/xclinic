@@ -152,14 +152,14 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
       }
    };
 
-   if (loading) return <div className="p-8 text-center text-gray-500">Yuklanmoqda...</div>;
+   if (loading) return <div className="p-8 text-center text-muted">Yuklanmoqda...</div>;
 
    return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
          <div className="flex justify-between items-center gap-3">
             <div>
-               <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Bo'lib to'lash</h3>
-               <p className="text-xs text-gray-500 dark:text-gray-400">
+               <h3 className="text-lg font-medium text-ink">Bo'lib to'lash</h3>
+               <p className="text-xs text-muted">
                   Mavjud qarzni oylarga bo'ladi. Yangi qarz yaratmaydi.
                </p>
             </div>
@@ -173,8 +173,8 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/20 text-primary-500 rounded-full flex items-center justify-center mb-4">
                   <CreditCard className="w-8 h-8" />
                </div>
-               <h4 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">Reja yo'q</h4>
-               <p className="text-gray-500 dark:text-gray-400 mb-6">
+               <h4 className="text-lg font-medium text-ink mb-2">Reja yo'q</h4>
+               <p className="text-muted mb-6">
                   Bemorning to'lanmagan xizmatlarini oylarga bo'lish uchun reja tuzing.
                </p>
                <Button onClick={openCreate}>Reja tuzish</Button>
@@ -189,27 +189,27 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                   const collected = plan.collected ?? plan.totalPaid;
                   return (
                   <Card key={plan.id} className="p-6">
-                     <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 pb-4 border-b border-gray-100 dark:border-gray-800">
+                     <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 pb-4 border-b border-line-soft">
                         <div className="min-w-0">
                            <div className="flex items-center gap-3 mb-1">
-                              <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">{plan.service}</h4>
+                              <h4 className="text-lg font-semibold text-ink truncate">{plan.service}</h4>
                               <Badge status={plan.status === 'Active' ? 'pending' : 'completed'} />
                            </div>
-                           <p className="text-sm text-gray-500 dark:text-gray-400">
+                           <p className="text-sm text-muted">
                               Shifokor: {plan.doctor ? formatFullName(plan.doctor) : 'Klinika'}
                            </p>
                         </div>
                         <div className="mt-4 md:mt-0 flex gap-6 text-sm shrink-0">
                            <div>
-                              <p className="text-gray-500 dark:text-gray-400 mb-1">Umumiy</p>
-                              <p className="font-medium text-gray-900 dark:text-gray-100">{formatMoney(plan.totalAmount)}</p>
+                              <p className="text-muted mb-1">Umumiy</p>
+                              <p className="font-medium text-ink">{formatMoney(plan.totalAmount)}</p>
                            </div>
                            <div>
-                              <p className="text-gray-500 dark:text-gray-400 mb-1">To'landi</p>
+                              <p className="text-muted mb-1">To'landi</p>
                               <p className="font-medium text-green-600 dark:text-green-400">{formatMoney(collected)}</p>
                            </div>
                            <div>
-                              <p className="text-gray-500 dark:text-gray-400 mb-1">Qoldiq</p>
+                              <p className="text-muted mb-1">Qoldiq</p>
                               <p className="font-medium text-red-600 dark:text-red-400">{formatMoney(due)}</p>
                            </div>
                            {!plan.items?.some(i => i.status === 'Paid') && (
@@ -223,13 +223,13 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
 
                      {/* Reja qaysi qatorlar ustiga qurilgani ko'rinib tursin */}
                      {!!plan.charges?.length && (
-                        <p className="text-[11px] text-gray-400 mb-4 truncate">
+                        <p className="text-[11px] text-faint mb-4 truncate">
                            Qatorlar: {plan.charges.map(c => c.name).join(' · ')}
                         </p>
                      )}
 
                      <div className="space-y-3">
-                        <h5 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-3">To'lov grafigi</h5>
+                        <h5 className="font-medium text-sm text-muted mb-3">To'lov grafigi</h5>
                         {plan.items?.map((item, idx) => {
                            const expected = new Date(item.expectedDate);
                            const overdue = item.status === 'Pending' && expected < new Date();
@@ -238,7 +238,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                                  ? 'bg-green-50/50 border-green-100 dark:bg-green-900/10 dark:border-green-900/30'
                                  : overdue
                                     ? 'bg-red-50/50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30'
-                                    : 'bg-gray-50 border-gray-100 dark:bg-gray-800/50 dark:border-gray-800'}`}>
+                                    : 'bg-elevated border-line-soft dark:bg-surface/50'}`}>
                                  <div className="flex items-center gap-4">
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.status === 'Paid'
                                        ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
@@ -248,8 +248,8 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                                        {item.status === 'Paid' ? <Check className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                                     </div>
                                     <div>
-                                       <p className="font-medium text-gray-900 dark:text-gray-100">{idx + 1}-oylik to'lov</p>
-                                       <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                       <p className="font-medium text-ink">{idx + 1}-oylik to'lov</p>
+                                       <p className="text-sm text-muted flex items-center gap-1">
                                           <Calendar className="w-3 h-3" />
                                           {formatDate(expected)}
                                           {item.status === 'Paid' && item.paidDate && ` (To'landi: ${formatDate(new Date(item.paidDate))})`}
@@ -258,7 +258,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                                  </div>
 
                                  <div className="flex items-center gap-4">
-                                    <p className="font-bold text-gray-900 dark:text-gray-100">{formatMoney(item.amount)}</p>
+                                    <p className="font-bold text-ink">{formatMoney(item.amount)}</p>
                                     {item.status === 'Pending' && due > 0 && (
                                        <Button size="sm" onClick={() => { setPayItem(item); setPayMethod('Cash'); }}>
                                           To'lash
@@ -289,21 +289,21 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                ) : (
                   <>
                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <label className="block text-sm font-medium text-muted mb-2">
                            Qaysi xizmatlar bo'lib to'lanadi
                         </label>
-                        <div className="border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-800 max-h-56 overflow-y-auto">
+                        <div className="border border-line rounded-xl divide-y divide-line max-h-56 overflow-y-auto">
                            {freeCharges.map(c => {
                               const left = Math.max(0, c.total - (c.paidAmount || 0));
                               return (
-                                 <label key={c.id} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                 <label key={c.id} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-elevated">
                                     <input type="checkbox" checked={picked.has(c.id)} onChange={() => toggle(c.id)}
-                                       className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                                       className="w-4 h-4 rounded border-line text-primary-600 focus:ring-primary-500" />
                                     <span className="flex-1 min-w-0">
-                                       <span className="block text-sm text-gray-900 dark:text-gray-100 truncate">{c.name}</span>
-                                       {c.doctorName && <span className="block text-[11px] text-gray-400">{c.doctorName}</span>}
+                                       <span className="block text-sm text-ink truncate">{c.name}</span>
+                                       {c.doctorName && <span className="block text-[11px] text-faint">{c.doctorName}</span>}
                                     </span>
-                                    <span className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                                    <span className="text-sm font-semibold tabular-nums text-ink">
                                        {formatMoney(left)}
                                     </span>
                                  </label>
@@ -316,7 +316,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                         <Input label="Boshlanish sanasi" type="date" value={startDate}
                            onChange={(e: any) => setStartDate(e.target.value)} />
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Necha oy?</label>
+                           <label className="block text-sm font-medium text-muted mb-1">Necha oy?</label>
                            <Select value={months} onChange={(e) => setMonths(e.target.value)}
                               options={MONTH_OPTIONS.map(m => ({ value: m, label: `${m} oy` }))} />
                         </div>
@@ -350,25 +350,25 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
          <Modal isOpen={!!payItem} onClose={() => setPayItem(null)} title="Oylik to'lovni qabul qilish">
             <div className="space-y-4">
                {payItem && (
-                  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl text-center">
-                     <p className="text-sm text-gray-500 mb-1">To'lanayotgan summa</p>
-                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatMoney(payItem.amount)} UZS</p>
+                  <div className="bg-elevated p-4 rounded-xl text-center">
+                     <p className="text-sm text-muted mb-1">To'lanayotgan summa</p>
+                     <p className="text-2xl font-bold text-ink">{formatMoney(payItem.amount)} UZS</p>
                   </div>
                )}
 
                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">To'lov usuli</label>
+                  <label className="block text-sm font-medium text-muted mb-2">To'lov usuli</label>
                   <div className="flex flex-wrap gap-2">
                      {INCOMING_PAYMENT_METHODS.map(m => (
                         <button key={m} type="button" onClick={() => setPayMethod(m)}
                            className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${payMethod === m
                               ? 'bg-primary-600 text-white border-primary-600'
-                              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-primary-400'}`}>
+                              : 'bg-surface border-line text-muted hover:border-primary-400'}`}>
                            {getPaymentMethodLabel(m)}
                         </button>
                      ))}
                   </div>
-                  <p className="text-[11px] text-gray-400 mt-2">
+                  <p className="text-[11px] text-faint mt-2">
                      Pul rejaning hisob qatorlariga tushadi — kassadagi oddiy to'lov bilan bir xil.
                   </p>
                </div>

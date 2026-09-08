@@ -240,9 +240,9 @@ export const AppointmentFormModal: React.FC<Props> = ({
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('calendar.notes')}</label>
+                    <label className="block text-sm font-medium text-muted mb-1">{t('calendar.notes')}</label>
                     <textarea
-                        className="w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm h-20 dark:border-gray-700 dark:text-white"
+                        className="w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm h-20"
                         value={form.notes}
                         onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                     />

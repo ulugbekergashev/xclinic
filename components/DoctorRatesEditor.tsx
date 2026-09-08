@@ -18,7 +18,7 @@ import { Department, Service } from '../types';
    `pickRate`). Jadval bo'sh bo'lsa hisob avvalgidek ishlaydi.
    ───────────────────────────────────────────────────────────────────────────── */
 
-const inputCls = 'h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-500 outline-none';
+const inputCls = 'h-10 rounded-lg border border-line bg-transparent px-3 text-sm focus:ring-2 focus:ring-primary-500 outline-none';
 
 interface Props {
     doctorId: string;
@@ -83,8 +83,8 @@ export const DoctorRatesEditor: React.FC<Props> = ({
 
     return (
         <div className="space-y-3">
-            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
-                <p className="text-xs text-gray-600 dark:text-gray-300">
+            <div className="p-3 rounded-lg bg-canvas/40 border border-line">
+                <p className="text-xs text-muted">
                     Stavka ANIQROQDAN umumiyga qarab tanlanadi: xizmat → bo'lim →
                     umumiy stavka → kartadagi foiz
                     {fallbackPercent != null ? ` (${fallbackPercent}%)` : ''}.
@@ -95,9 +95,9 @@ export const DoctorRatesEditor: React.FC<Props> = ({
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
             {loading ? (
-                <p className="text-sm text-gray-400 py-6 text-center">Yuklanmoqda…</p>
+                <p className="text-sm text-faint py-6 text-center">Yuklanmoqda…</p>
             ) : rows.length === 0 ? (
-                <p className="text-sm text-gray-400 py-6 text-center">
+                <p className="text-sm text-faint py-6 text-center">
                     Stavka yo'q — kartadagi umumiy foiz ishlatiladi
                 </p>
             ) : (
@@ -133,11 +133,11 @@ export const DoctorRatesEditor: React.FC<Props> = ({
                                 <input type="number" value={r.percent} placeholder="0"
                                     onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, percent: e.target.value } : x))}
                                     className={inputCls + ' w-full text-right pr-7'} />
-                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-faint">%</span>
                             </div>
 
                             <button type="button" onClick={() => setRows(rs => rs.filter((_, j) => j !== i))}
-                                className="p-2 text-gray-400 hover:text-red-600">
+                                className="p-2 text-faint hover:text-red-600">
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
@@ -148,7 +148,7 @@ export const DoctorRatesEditor: React.FC<Props> = ({
             <div className="flex items-center gap-2 pt-1">
                 <button type="button"
                     onClick={() => setRows(rs => [...rs, { serviceId: '', departmentId: '', percent: '', role: 'Doctor' }])}
-                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated">
                     <Plus className="w-4 h-4" /> Qator qo'shish
                 </button>
                 <button type="button" onClick={save} disabled={busy}

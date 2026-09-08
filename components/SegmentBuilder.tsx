@@ -11,7 +11,7 @@ import { X, Plus } from 'lucide-react';
  * Bemorlarni komponent hisoblamaydi — natijani doim server qaytaradi.
  */
 
-const inputCls = "px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-white";
+const inputCls = "px-3 py-2 bg-surface border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500/20";
 
 /** Tez boshlash uchun tayyor shartlar */
 const PRESETS: { label: string; conditions: SegmentCondition[] }[] = [
@@ -113,7 +113,7 @@ const ConditionRow: React.FC<{
                             onChange={e => onChange({ value: [Array.isArray(cond.value) ? cond.value[0] : '', Number(e.target.value)] })}
                             className={`${inputCls} w-20`}
                         />
-                        <span className="text-xs text-gray-400">{def.unit}</span>
+                        <span className="text-xs text-faint">{def.unit}</span>
                     </span>
                 ) : def.options ? (
                     <select
@@ -142,14 +142,14 @@ const ConditionRow: React.FC<{
                             onChange={e => onChange({ value: [Number(e.target.value), Array.isArray(cond.value) ? cond.value[1] : 0] })}
                             className={`${inputCls} w-20`}
                         />
-                        <span className="text-gray-400 text-sm">—</span>
+                        <span className="text-faint text-sm">—</span>
                         <input
                             type="number"
                             value={Array.isArray(cond.value) ? cond.value[1] : ''}
                             onChange={e => onChange({ value: [Array.isArray(cond.value) ? cond.value[0] : 0, Number(e.target.value)] })}
                             className={`${inputCls} w-20`}
                         />
-                        {def.unit && <span className="text-xs text-gray-400">{def.unit}</span>}
+                        {def.unit && <span className="text-xs text-faint">{def.unit}</span>}
                     </span>
                 ) : (
                     <span className="flex items-center gap-1.5">
@@ -159,13 +159,13 @@ const ConditionRow: React.FC<{
                             onChange={e => onChange({ value: Number(e.target.value) })}
                             className={`${inputCls} w-24`}
                         />
-                        {def.unit && <span className="text-xs text-gray-400">{def.unit}</span>}
+                        {def.unit && <span className="text-xs text-faint">{def.unit}</span>}
                     </span>
                 )
             )}
 
             {count !== undefined && (
-                <span className="text-xs text-gray-400 font-mono tabular-nums">{count} ta</span>
+                <span className="text-xs text-faint font-mono tabular-nums">{count} ta</span>
             )}
         </>
     );
@@ -212,7 +212,7 @@ const GroupEditor: React.FC<{
                             type="button"
                             onClick={toggleMatch}
                             title="VA / YOKI almashtirish"
-                            className="px-2 py-1 text-[10px] font-bold rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-primary-600 uppercase tracking-wider min-w-[46px]"
+                            className="px-2 py-1 text-[10px] font-bold rounded-md bg-elevated text-muted hover:text-primary-600 uppercase tracking-wider min-w-[46px]"
                         >
                             {match === 'all' ? 'VA' : 'YOKI'}
                         </button>
@@ -221,7 +221,7 @@ const GroupEditor: React.FC<{
                     )}
 
                     {isGroup(cond) ? (
-                        <div className="flex-1 min-w-[260px] rounded-lg bg-gray-50 dark:bg-gray-800/40 p-2">
+                        <div className="flex-1 min-w-[260px] rounded-lg bg-elevated p-2">
                             <GroupEditor
                                 node={cond}
                                 fields={fields}
@@ -242,7 +242,7 @@ const GroupEditor: React.FC<{
                         type="button"
                         onClick={() => removeAt(i)}
                         title={isGroup(cond) ? "Guruhni olib tashlash" : "Shartni olib tashlash"}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors ml-auto"
+                        className="p-1.5 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors ml-auto"
                     >
                         <X className="w-4 h-4" />
                     </button>
@@ -261,14 +261,14 @@ const GroupEditor: React.FC<{
                     <button
                         type="button"
                         onClick={addGroup}
-                        className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-primary-600"
+                        className="flex items-center gap-1.5 text-xs font-bold text-muted hover:text-primary-600"
                         title="Qavs ichida alohida mantiq: ayol VA (VIP YOKI implant)"
                     >
                         <Plus className="w-3.5 h-3.5" /> Qavs
                     </button>
                 )}
                 {conditions.length === 0 && depth === 0 && (
-                    <span className="text-xs text-gray-400">Shartsiz — klinikaning barcha bemorlari</span>
+                    <span className="text-xs text-faint">Shartsiz — klinikaning barcha bemorlari</span>
                 )}
             </div>
         </div>
@@ -305,7 +305,7 @@ export const SegmentBuilder: React.FC<Props> = ({ value, onChange, fields, condi
                         key={p.label}
                         type="button"
                         onClick={() => applyPreset(p.conditions)}
-                        className="px-2.5 py-1 text-xs font-medium border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600 transition-colors bg-white dark:bg-gray-800"
+                        className="px-2.5 py-1 text-xs font-medium border border-line rounded-lg text-muted hover:border-primary-400 hover:text-primary-600 transition-colors bg-surface"
                     >
                         {p.label}
                     </button>
@@ -321,7 +321,7 @@ export const SegmentBuilder: React.FC<Props> = ({ value, onChange, fields, condi
             />
 
             {conditions.length > 1 && (
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-faint">
                     {match === 'all'
                         ? 'Barcha shartlar bajarilishi kerak'
                         : 'Shartlardan bittasi bajarilsa yetarli'}

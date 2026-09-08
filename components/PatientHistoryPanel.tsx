@@ -41,7 +41,7 @@ const fmtDate = (v?: string | null) => {
 const SEVERITY_UI: Record<string, string> = {
     Severe: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
     Mild: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-    Unknown: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+    Unknown: 'bg-elevated text-muted',
 };
 const SEVERITY_LABEL: Record<string, string> = {
     Severe: "Og'ir", Mild: 'Yengil', Unknown: "Noma'lum",
@@ -100,9 +100,9 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
 
     if (loading) {
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <div className="h-4 w-40 bg-gray-100 dark:bg-gray-700 rounded animate-pulse mb-2" />
-                <div className="h-3 w-64 bg-gray-100 dark:bg-gray-700 rounded animate-pulse" />
+            <div className="bg-surface rounded-xl border border-line p-4">
+                <div className="h-4 w-40 bg-elevated rounded animate-pulse mb-2" />
+                <div className="h-3 w-64 bg-elevated rounded animate-pulse" />
             </div>
         );
     }
@@ -126,12 +126,12 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
         || (data.recentVisits || []).length > 0 || (data.abnormalResults || []).length > 0;
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="bg-surface rounded-xl border border-line overflow-hidden">
             {/* Sarlavha — bosilganda yopiladi/ochiladi */}
             <button onClick={() => setOpen(!open)}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
-                <Activity className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">Avval nima bo'lgan</span>
+                className="w-full flex items-center gap-3 p-3 text-left hover:bg-elevated transition-colors">
+                <Activity className="w-4 h-4 text-faint shrink-0" />
+                <span className="text-sm font-semibold text-ink">Avval nima bo'lgan</span>
 
                 {/* Yopiq holatda ham eng muhimi ko'rinadi */}
                 {allergies.length > 0 && (
@@ -145,21 +145,21 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                     </span>
                 )}
                 {!hasAnything && (
-                    <span className="text-xs text-gray-400">yozuv yo'q — birinchi murojaat</span>
+                    <span className="text-xs text-faint">yozuv yo'q — birinchi murojaat</span>
                 )}
-                <span className="ml-auto text-gray-400">
+                <span className="ml-auto text-faint">
                     {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </span>
             </button>
 
             {open && (
-                <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                <div className="border-t border-line p-4 space-y-4">
 
                     {/* ── Allergiya — birinchi va qizil ───────────────────── */}
                     <section>
                         <div className="flex items-center gap-2 mb-2">
                             <AlertTriangle className="w-4 h-4 text-red-500" />
-                            <h4 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <h4 className="text-xs font-bold uppercase tracking-wide text-muted">
                                 Allergiya
                             </h4>
                             {canEdit && !addingAllergy && (
@@ -171,7 +171,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                         </div>
 
                         {allergies.length === 0 ? (
-                            <p className="text-sm text-gray-400">Ma'lumot yo'q</p>
+                            <p className="text-sm text-faint">Ma'lumot yo'q</p>
                         ) : (
                             <div className="space-y-1.5">
                                 {allergies.map((a: any) => (
@@ -197,19 +197,19 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                         )}
 
                         {addingAllergy && (
-                            <div className="mt-2 p-3 border border-gray-200 dark:border-gray-700 rounded-lg space-y-2">
+                            <div className="mt-2 p-3 border border-line rounded-lg space-y-2">
                                 <input value={allergyForm.substance} autoFocus
                                     onChange={(e) => setAllergyForm(f => ({ ...f, substance: e.target.value }))}
                                     placeholder="Dori yoki modda (masalan: Penitsillin)"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                    className="w-full px-3 py-2 text-sm border border-line rounded-lg bg-surface text-ink" />
                                 <input value={allergyForm.reaction}
                                     onChange={(e) => setAllergyForm(f => ({ ...f, reaction: e.target.value }))}
                                     placeholder="Qanday namoyon bo'ldi (ixtiyoriy)"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                    className="w-full px-3 py-2 text-sm border border-line rounded-lg bg-surface text-ink" />
                                 <div className="flex items-center gap-2">
                                     <select value={allergyForm.severity}
                                         onChange={(e) => setAllergyForm(f => ({ ...f, severity: e.target.value }))}
-                                        className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+                                        className="px-3 py-2 text-sm border border-line rounded-lg bg-surface text-ink">
                                         <option value="Unknown">Noma'lum</option>
                                         <option value="Mild">Yengil</option>
                                         <option value="Severe">Og'ir</option>
@@ -219,7 +219,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                                         Saqlash
                                     </button>
                                     <button onClick={() => setAddingAllergy(false)}
-                                        className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300">
+                                        className="px-3 py-2 text-sm text-muted">
                                         Bekor
                                     </button>
                                 </div>
@@ -230,13 +230,13 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                     {/* ── Surunkali kasalliklar ──────────────────────────── */}
                     {(data.chronic || []).length > 0 && (
                         <section>
-                            <h4 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                            <h4 className="text-xs font-bold uppercase tracking-wide text-muted mb-2">
                                 Surunkali kasalliklar
                             </h4>
                             <div className="flex flex-wrap gap-1.5">
                                 {data.chronic.map((c: any) => (
                                     <span key={c.id}
-                                        className="px-2 py-1 rounded-lg text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                                        className="px-2 py-1 rounded-lg text-xs bg-elevated text-ink">
                                         <b>{c.code}</b> {c.name}
                                     </span>
                                 ))}
@@ -247,18 +247,18 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                     {/* ── Norma chegarasidan chiqqan natijalar ───────────── */}
                     {(data.abnormalResults || []).length > 0 && (
                         <section>
-                            <h4 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                            <h4 className="text-xs font-bold uppercase tracking-wide text-muted mb-2">
                                 Normadan chetda
                             </h4>
                             <div className="space-y-1">
                                 {data.abnormalResults.map((r: any, i: number) => (
                                     <div key={i} className="flex items-center gap-2 text-sm">
-                                        <span className="text-gray-700 dark:text-gray-300 flex-1 min-w-0 truncate">{r.name}</span>
+                                        <span className="text-muted flex-1 min-w-0 truncate">{r.name}</span>
                                         <span className={`font-bold tabular-nums ${r.flag === 'High' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                                             {r.value} {r.unit || ''} {r.flag === 'High' ? '↑' : '↓'}
                                         </span>
                                         {(r.refLow != null || r.refHigh != null) && (
-                                            <span className="text-xs text-gray-400 shrink-0">
+                                            <span className="text-xs text-faint shrink-0">
                                                 norma {r.refLow ?? ''}–{r.refHigh ?? ''}
                                             </span>
                                         )}
@@ -271,7 +271,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                     {/* ── Oldingi qabullar, BOSHQA bo'limlar ham ─────────── */}
                     {(data.recentVisits || []).length > 0 && (
                         <section>
-                            <h4 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                            <h4 className="text-xs font-bold uppercase tracking-wide text-muted mb-2">
                                 Oldingi qabullar
                             </h4>
                             <div className="space-y-1.5">
@@ -279,14 +279,14 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                                     <div key={v.id} className="flex items-start gap-2 text-sm">
                                         <span className="w-2 h-2 rounded-full mt-1.5 shrink-0"
                                             style={{ backgroundColor: v.color || '#9CA3AF' }} />
-                                        <span className="text-xs text-gray-400 shrink-0 w-20">{fmtDate(v.date)}</span>
+                                        <span className="text-xs text-faint shrink-0 w-20">{fmtDate(v.date)}</span>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-gray-900 dark:text-white truncate">
+                                            <p className="text-ink truncate">
                                                 {v.department || 'Bo\'limsiz'}
                                                 {v.doctorName ? ` · ${v.doctorName}` : ''}
                                             </p>
                                             {v.diagnosis && (
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{v.diagnosis}</p>
+                                                <p className="text-xs text-muted truncate">{v.diagnosis}</p>
                                             )}
                                         </div>
                                     </div>
@@ -299,12 +299,12 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {(data.recentLabs || []).length > 0 && (
                             <section>
-                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted mb-2">
                                     <FlaskConical className="w-3.5 h-3.5" /> Tahlillar
                                 </h4>
                                 <div className="space-y-1">
                                     {data.recentLabs.map((o: any) => (
-                                        <p key={o.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                                        <p key={o.id} className="text-xs text-muted truncate">
                                             {fmtDate(o.completedAt)} — {(o.tests || []).join(', ')}
                                         </p>
                                     ))}
@@ -314,12 +314,12 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
 
                         {(data.recentStudies || []).length > 0 && (
                             <section>
-                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted mb-2">
                                     <Scan className="w-3.5 h-3.5" /> Tekshiruvlar
                                 </h4>
                                 <div className="space-y-1">
                                     {data.recentStudies.map((st: any) => (
-                                        <p key={st.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                                        <p key={st.id} className="text-xs text-muted truncate">
                                             {fmtDate(st.performedAt)} — {st.name}
                                             {st.conclusion ? `: ${st.conclusion}` : ''}
                                         </p>
@@ -330,12 +330,12 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
 
                         {(data.activeMedications || []).length > 0 && (
                             <section>
-                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted mb-2">
                                     <Pill className="w-3.5 h-3.5" /> Hozir qabul qilayotgan
                                 </h4>
                                 <div className="space-y-1">
                                     {data.activeMedications.map((m: any, i: number) => (
-                                        <p key={i} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                                        <p key={i} className="text-xs text-muted truncate">
                                             {m.name}{m.dosage ? ` · ${m.dosage}` : ''}{m.frequency ? ` · ${m.frequency}` : ''}
                                         </p>
                                     ))}
@@ -345,12 +345,12 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
 
                         {(data.admissions || []).length > 0 && (
                             <section>
-                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted mb-2">
                                     <BedDouble className="w-3.5 h-3.5" /> Statsionar
                                 </h4>
                                 <div className="space-y-1">
                                     {data.admissions.map((a: any) => (
-                                        <p key={a.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                                        <p key={a.id} className="text-xs text-muted truncate">
                                             {fmtDate(a.admittedAt)}
                                             {a.dischargedAt ? ` – ${fmtDate(a.dischargedAt)}` : ' — hozir yotibdi'}
                                             {a.diagnosis ? `: ${a.diagnosis}` : ''}
@@ -362,9 +362,9 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                     </div>
 
                     {data.due > 0 && (
-                        <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-2 pt-2 border-t border-line">
                             <Wallet className="w-4 h-4 text-amber-500" />
-                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                            <span className="text-sm text-muted">
                                 To'lanmagan qarz: <b className="tabular-nums">{fmt(data.due)}</b> so'm
                             </span>
                         </div>

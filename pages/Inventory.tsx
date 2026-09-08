@@ -382,7 +382,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <Package className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">Ombor</h2>
+                    <h2 className="text-xl font-bold text-ink">Ombor</h2>
                 </div>
                 {!readOnly && (
                     <Button size="sm" onClick={() => setAddOpen(true)}>
@@ -391,13 +391,13 @@ export const Inventory: React.FC<InventoryProps> = ({
             </div>
 
             {/* Bo'limlar — tor ekranda gorizontal siljiydi */}
-            <div className="flex gap-1 overflow-x-auto pb-1 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex gap-1 overflow-x-auto pb-1 border-b border-line">
                 {TABS.map((tb) => (
                     <button key={tb.id} onClick={() => setTab(tb.id)}
                         className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap rounded-t-lg transition-colors
                             ${tab === tb.id
                                 ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 border-b-2 border-primary-500'
-                                : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'}`}>
+                                : 'text-muted hover:bg-elevated'}`}>
                         <tb.icon className="w-4 h-4" />
                         {tb.name}
                     </button>
@@ -438,19 +438,19 @@ export const Inventory: React.FC<InventoryProps> = ({
 
                     {items.length === 0 ? (
                         <div className="text-center py-12">
-                            <Package className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{t('inventory.ui.empty')}</p>
+                            <Package className="w-10 h-10 mx-auto text-faint mb-2" />
+                            <p className="text-sm text-muted mb-3">{t('inventory.ui.empty')}</p>
                             {!readOnly && <Button size="sm" onClick={() => setAddOpen(true)}>{t('inventory.ui.addItem')}</Button>}
                         </div>
                     ) : (
-                        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                        <div className="divide-y divide-line">
                             {items.map((it) => {
                                 const low = (it.minQuantity || 0) > 0 && (it.quantity || 0) <= (it.minQuantity || 0);
                                 return (
                                     <div key={it.id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-3">
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{it.name}</p>
+                                                <p className="text-sm font-semibold text-ink truncate">{it.name}</p>
                                                 {it.isMedication && (
                                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
                                                         dori
@@ -472,17 +472,17 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                            <p className="text-xs text-muted mt-0.5">
                                                 minimal {fmt(it.minQuantity || 0)} {it.unit}
                                                 {it.price ? ` · tannarx ${fmt(it.price)}` : ''}
                                                 {it.nextExpiry ? ` · eng yaqin muddat ${it.nextExpiry.split('-').reverse().join('.')}` : ''}
                                             </p>
                                         </div>
                                         <div className="text-right shrink-0 min-w-[90px]">
-                                            <p className={`text-lg font-bold tabular-nums ${low ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-white'}`}>
+                                            <p className={`text-lg font-bold tabular-nums ${low ? 'text-amber-600 dark:text-amber-400' : 'text-ink'}`}>
                                                 {fmt(it.quantity || 0)}
                                             </p>
-                                            <p className="text-xs text-gray-400">{it.unit}</p>
+                                            <p className="text-xs text-faint">{it.unit}</p>
                                         </div>
                                         <div className="flex items-center gap-1.5 shrink-0">
                                             {!readOnly && (
@@ -542,32 +542,32 @@ export const Inventory: React.FC<InventoryProps> = ({
 
                     {movLoading && movements.length === 0 ? (
                         <div className="space-y-2">
-                            {[0, 1, 2, 3].map((i) => <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />)}
+                            {[0, 1, 2, 3].map((i) => <div key={i} className="h-12 bg-elevated rounded animate-pulse" />)}
                         </div>
                     ) : movements.length === 0 ? (
                         <div className="text-center py-10">
-                            <History className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                            <p className="text-sm text-gray-500 dark:text-gray-400">{t('inventory.ui.noMovesForFilter')}</p>
+                            <History className="w-8 h-8 mx-auto text-faint mb-2" />
+                            <p className="text-sm text-muted">{t('inventory.ui.noMovesForFilter')}</p>
                         </div>
                     ) : (
                         <div className="space-y-1.5">
                             {movements.map((m) => (
-                                <div key={m.id} className="flex items-center gap-3 p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <div key={m.id} className="flex items-center gap-3 p-2.5 border border-line rounded-lg">
                                     <span className={`w-16 text-sm font-bold tabular-nums shrink-0 ${m.quantity >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                                         {m.quantity >= 0 ? '+' : ''}{fmt(m.quantity)}
                                     </span>
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-sm text-gray-900 dark:text-white truncate">
-                                            {m.item?.name || '—'} <span className="text-gray-400">{m.item?.unit || ''}</span>
+                                        <p className="text-sm text-ink truncate">
+                                            {m.item?.name || '—'} <span className="text-faint">{m.item?.unit || ''}</span>
                                         </p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                        <p className="text-xs text-muted truncate">
                                             {MOVEMENT_LABEL[m.type] || m.type} · {REASON_LABEL[m.reason] || m.reason}
                                             {m.batch?.batchNumber ? ` · partiya ${m.batch.batchNumber}` : ''}
                                             {m.userName ? ` · ${m.userName}` : ''}
                                             {m.note ? ` · ${m.note}` : ''}
                                         </p>
                                     </div>
-                                    <span className="text-xs text-gray-400 shrink-0 hidden sm:block">{fmtWhen(m.createdAt)}</span>
+                                    <span className="text-xs text-faint shrink-0 hidden sm:block">{fmtWhen(m.createdAt)}</span>
                                 </div>
                             ))}
                         </div>
@@ -580,13 +580,13 @@ export const Inventory: React.FC<InventoryProps> = ({
                 <Card className="p-4">
                     {alertsLoading && !alerts ? (
                         <div className="space-y-2">
-                            {[0, 1, 2].map((i) => <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />)}
+                            {[0, 1, 2].map((i) => <div key={i} className="h-12 bg-elevated rounded animate-pulse" />)}
                         </div>
                     ) : !alerts || (alerts.expiring.length === 0 && alerts.lowStock.length === 0) ? (
                         <div className="text-center py-10">
-                            <CalendarClock className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                            <p className="text-sm text-gray-500 dark:text-gray-400">{t('inventory.ui.noAlerts')}</p>
-                            <p className="text-xs text-gray-400 mt-1">
+                            <CalendarClock className="w-8 h-8 mx-auto text-faint mb-2" />
+                            <p className="text-sm text-muted">{t('inventory.ui.noAlerts')}</p>
+                            <p className="text-xs text-faint mt-1">
                                 Partiyalar kirim paytida yaroqlilik muddati ko'rsatilganda paydo bo'ladi
                             </p>
                         </div>
@@ -594,7 +594,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <div className="space-y-5">
                             {alerts.expiring.length > 0 && (
                                 <div>
-                                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                                    <h3 className="text-sm font-semibold text-ink mb-2">
                                         Muddati o'tgan va yaqinlashgan ({alerts.expiring.length})
                                     </h3>
                                     <div className="space-y-1.5">
@@ -605,10 +605,10 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                         ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20'
                                                         : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20'}`}>
                                                 <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                                    <p className="text-sm font-medium text-ink truncate">
                                                         {b.item?.name || '—'}
                                                     </p>
-                                                    <p className="text-xs text-gray-600 dark:text-gray-300">
+                                                    <p className="text-xs text-muted">
                                                         {b.batchNumber ? `partiya ${b.batchNumber} · ` : ''}
                                                         muddat {b.expiryDate}
                                                         {b.expired ? ' · MUDDATI O\'TGAN' : ''}
@@ -625,13 +625,13 @@ export const Inventory: React.FC<InventoryProps> = ({
 
                             {alerts.lowStock.length > 0 && (
                                 <div>
-                                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                                    <h3 className="text-sm font-semibold text-ink mb-2">
                                         Minimal qoldiqdan tushgan ({alerts.lowStock.length})
                                     </h3>
                                     <div className="space-y-1.5">
                                         {alerts.lowStock.map((r: any) => (
-                                            <div key={r.id} className="flex items-center gap-3 p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                                <p className="text-sm text-gray-900 dark:text-white flex-1 truncate">{r.name}</p>
+                                            <div key={r.id} className="flex items-center gap-3 p-2.5 border border-line rounded-lg">
+                                                <p className="text-sm text-ink flex-1 truncate">{r.name}</p>
                                                 <span className="text-sm tabular-nums text-amber-600 dark:text-amber-400">
                                                     {fmt(r.quantity)} / {fmt(r.minQuantity)} {r.unit}
                                                 </span>
@@ -648,21 +648,21 @@ export const Inventory: React.FC<InventoryProps> = ({
             {/* ═══ INVENTARIZATSIYA ════════════════════════════════════════ */}
             {tab === 'audit' && (
                 <Card className="p-4">
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                    <p className="text-sm text-muted mb-4">
                         Har mahsulot uchun HAQIQIY qoldiqni kiriting. Farq pastda ko'rinadi.
                         Inventarizatsiya BUTUNLIGICHA o'tkaziladi — bittalab saqlash yo'q,
                         aks holda yarmi yopilmagan holda qolib ketadi.
                     </p>
 
                     {items.length === 0 ? (
-                        <p className="text-sm text-gray-400 py-8 text-center">{t('inventory.ui.empty')}</p>
+                        <p className="text-sm text-faint py-8 text-center">{t('inventory.ui.empty')}</p>
                     ) : (
                         <>
                             <div className="space-y-1.5 mb-4">
                                 {auditRows.map(({ item, diff }) => (
-                                    <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                        <p className="text-sm text-gray-900 dark:text-white flex-1 min-w-0 truncate">{item.name}</p>
-                                        <span className="text-xs text-gray-400 shrink-0 w-28">
+                                    <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 border border-line rounded-lg">
+                                        <p className="text-sm text-ink flex-1 min-w-0 truncate">{item.name}</p>
+                                        <span className="text-xs text-faint shrink-0 w-28">
                                             hisobda {fmt(item.quantity || 0)} {item.unit}
                                         </span>
                                         <Input type="number" step="any"
@@ -672,15 +672,15 @@ export const Inventory: React.FC<InventoryProps> = ({
                                             containerClassName="w-full sm:w-28"
                                             disabled={readOnly} />
                                         <span className={`text-sm font-bold tabular-nums shrink-0 w-24 text-right
-                                            ${diff === null ? 'text-gray-300' : diff === 0 ? 'text-gray-400' : diff > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                            ${diff === null ? 'text-faint' : diff === 0 ? 'text-faint' : diff > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                             {diff === null ? '—' : diff === 0 ? 'to\'g\'ri' : `${diff > 0 ? '+' : ''}${fmt(diff)}`}
                                         </span>
                                     </div>
                                 ))}
                             </div>
 
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                                <p className="text-sm text-gray-600 dark:text-gray-300 flex-1">{t('inventory.ui.diffRows')}<b>{auditChanged.length}</b>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-line">
+                                <p className="text-sm text-muted flex-1">{t('inventory.ui.diffRows')}<b>{auditChanged.length}</b>
                                 </p>
                                 <Button variant="secondary" onClick={() => setAuditValues({})} disabled={busy}>
                                     Tozalash
@@ -706,11 +706,11 @@ export const Inventory: React.FC<InventoryProps> = ({
                     <Input label={t('inventory.ui.costPerUnit')} type="number" value={addForm.price}
                         helperText="Xizmat retsepti tannarxni shu narxdan hisoblaydi"
                         onChange={(e: any) => setAddForm(f => ({ ...f, price: e.target.value }))} />
-                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <label className="flex items-center gap-2 text-sm text-muted">
                         <input type="checkbox" checked={addForm.isMedication} className="w-4 h-4 rounded"
                             onChange={(e) => setAddForm(f => ({ ...f, isMedication: e.target.checked }))} />{t('inventory.ui.isMedicationHint')}</label>
-                    <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
-                        <p className="text-xs text-gray-600 dark:text-gray-300">
+                    <div className="p-3 bg-elevated border border-line rounded-lg">
+                        <p className="text-xs text-muted">
                             Boshlang'ich qoldiq bu yerda kiritilmaydi: qoldiq faqat KIRIM orqali
                             paydo bo'ladi, shunda har birlikning qayerdan kelgani ko'rinadi.
                         </p>
@@ -737,13 +737,13 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <Input label={t('inventory.ui.costPerUnit')} type="number" value={editForm.price}
                             helperText="Xizmat retsepti tannarxni shu narxdan hisoblaydi"
                             onChange={(e: any) => setEditForm(f => ({ ...f, price: e.target.value }))} />
-                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <label className="flex items-center gap-2 text-sm text-muted">
                             <input type="checkbox" checked={editForm.isMedication} className="w-4 h-4 rounded"
                                 onChange={(e) => setEditForm(f => ({ ...f, isMedication: e.target.checked }))} />
                             {t('inventory.ui.isMedicationHint')}
                         </label>
-                        <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
-                            <p className="text-xs text-gray-600 dark:text-gray-300">{t('inventory.ui.qtyNotHere')}</p>
+                        <div className="p-3 bg-elevated border border-line rounded-lg">
+                            <p className="text-xs text-muted">{t('inventory.ui.qtyNotHere')}</p>
                         </div>
                         <div className="flex justify-end gap-2">
                             <Button type="button" variant="secondary" onClick={() => setEditTarget(null)}>{t('inventory.ui.cancel')}</Button>
@@ -802,15 +802,15 @@ export const Inventory: React.FC<InventoryProps> = ({
                         {/* FEFO ko'rinishi TASDIQLASHDAN OLDIN: odam nima bo'layotganini
                             tushunmasa, qoldiq bilan ishonch yo'qoladi */}
                         {outPreview.length > 0 && (
-                            <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">{t('inventory.ui.fefoPreview')}</p>
+                            <div className="p-3 bg-elevated border border-line rounded-lg">
+                                <p className="text-xs font-semibold text-muted mb-2">{t('inventory.ui.fefoPreview')}</p>
                                 <div className="space-y-1">
                                     {outPreview.map((p, i) => (
                                         <div key={i} className="flex items-center justify-between text-xs">
-                                            <span className="text-gray-600 dark:text-gray-300 truncate">
+                                            <span className="text-muted truncate">
                                                 {p.batch}{p.expiry ? ` · ${p.expiry}` : ''}
                                             </span>
-                                            <span className="tabular-nums font-medium text-gray-900 dark:text-white shrink-0 ml-2">
+                                            <span className="tabular-nums font-medium text-ink shrink-0 ml-2">
                                                 {fmt(p.take)} {outTarget.unit}
                                             </span>
                                         </div>
@@ -833,8 +833,8 @@ export const Inventory: React.FC<InventoryProps> = ({
             {moveTarget && (
                 <Modal isOpen={true} onClose={() => setMoveTarget(null)} title={`Ko'chirish — ${moveTarget.name}`}>
                     <div className="space-y-4">
-                        <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
-                            <p className="text-xs text-gray-600 dark:text-gray-300">
+                        <div className="p-3 bg-elevated border border-line rounded-lg">
+                            <p className="text-xs text-muted">
                                 Ko'chirish klinika ICHIDA bo'ladi: umumiy qoldiq o'zgarmaydi,
                                 faqat qayerdan qayerga ketgani yozib qo'yiladi.
                             </p>
@@ -873,7 +873,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             {historyItem && (
                 <Modal isOpen={true} onClose={() => setHistoryItem(null)} title={`Tarix — ${historyItem.name}`}>
                     {historyRows.length === 0 ? (
-                        <p className="text-sm text-gray-400 py-6 text-center">{t('inventory.ui.noMoves')}</p>
+                        <p className="text-sm text-faint py-6 text-center">{t('inventory.ui.noMoves')}</p>
                     ) : (
                         <div className="space-y-1.5 max-h-96 overflow-y-auto">
                             {historyRows.map((m) => (
@@ -881,11 +881,11 @@ export const Inventory: React.FC<InventoryProps> = ({
                                     <span className={`w-16 font-bold tabular-nums shrink-0 ${m.quantity >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                         {m.quantity >= 0 ? '+' : ''}{fmt(m.quantity)}
                                     </span>
-                                    <span className="flex-1 min-w-0 truncate text-gray-600 dark:text-gray-300">
+                                    <span className="flex-1 min-w-0 truncate text-muted">
                                         {MOVEMENT_LABEL[m.type] || m.type} · {REASON_LABEL[m.reason] || m.reason}
                                         {m.note ? ` · ${m.note}` : ''}
                                     </span>
-                                    <span className="text-xs text-gray-400 shrink-0">{fmtWhen(m.createdAt)}</span>
+                                    <span className="text-xs text-faint shrink-0">{fmtWhen(m.createdAt)}</span>
                                 </div>
                             ))}
                         </div>
@@ -897,14 +897,14 @@ export const Inventory: React.FC<InventoryProps> = ({
             {auditConfirm && (
                 <Modal isOpen={true} onClose={() => setAuditConfirm(false)} title="Inventarizatsiyani o'tkazish">
                     <div className="space-y-4">
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                        <p className="text-sm text-muted">
                             {auditChanged.length} ta qatorda farq bor. Har biri uchun tuzatish harakati
                             yoziladi — qoldiq haqiqiy qiymatga tenglashadi va farq tarixda qoladi.
                         </p>
                         <div className="max-h-64 overflow-y-auto space-y-1">
                             {auditChanged.map((r) => (
                                 <div key={r.item.id} className="flex items-center justify-between text-sm">
-                                    <span className="truncate text-gray-700 dark:text-gray-300">{r.item.name}</span>
+                                    <span className="truncate text-muted">{r.item.name}</span>
                                     <span className={`tabular-nums font-medium shrink-0 ml-2 ${(r.diff as number) > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                         {fmt(r.item.quantity || 0)} → {fmt(r.actual as number)}
                                     </span>

@@ -259,13 +259,13 @@ export const PatientFormModal: React.FC<Props> = ({
                                 key={d.id}
                                 type="button"
                                 onClick={() => { setDuplicates(null); close(); onSaved?.(d as Patient, 'existing'); }}
-                                className="w-full text-left p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
+                                className="w-full text-left p-2.5 bg-surface border border-line
                                            rounded-lg hover:border-primary-400 transition-colors"
                             >
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                <p className="text-sm font-medium text-ink">
                                     {formatFullName(d)}
                                 </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <p className="text-xs text-muted">
                                     {formatUzPhone(d.phone)}
                                     {d.dob ? ` · ${d.dob}` : ''}
                                     {d.cardNumber ? ` · karta ${d.cardNumber}` : ''}
@@ -408,11 +408,11 @@ export const PatientFormModal: React.FC<Props> = ({
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center text-center gap-2">
-                                        <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-800 shadow-sm flex items-center justify-center text-primary-500 group-hover:scale-110 transition-transform">
+                                        <div className="w-12 h-12 rounded-full bg-surface shadow-sm flex items-center justify-center text-primary-500 group-hover:scale-110 transition-transform">
                                             <Plus className="w-6 h-6" />
                                         </div>
-                                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Rasm yuklash</span>
-                                        <span className="text-[10px] text-gray-500 dark:text-gray-400">JPG, PNG, WEBP</span>
+                                        <span className="text-sm font-bold text-muted">Rasm yuklash</span>
+                                        <span className="text-[10px] text-muted">JPG, PNG, WEBP</span>
                                     </div>
                                 )}
                             </div>
@@ -429,7 +429,7 @@ export const PatientFormModal: React.FC<Props> = ({
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Jins</label>
+                            <label className="block text-sm font-medium text-muted mb-1">Jins</label>
                             <div className="flex gap-2">
                                 {(['Male', 'Female'] as const).map(g => (
                                     <button
@@ -437,14 +437,14 @@ export const PatientFormModal: React.FC<Props> = ({
                                         type="button"
                                         onClick={() => setForm(f => ({ ...f, gender: g }))}
                                         className={`flex-1 h-10 rounded-lg text-sm font-medium border transition-all ${form.gender === g
-                                            ? 'bg-primary text-white border-primary'
-                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-400'}`}
+                                            ? 'bg-primary-600 text-white border-primary-600'
+                                            : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                                     >
                                         {g === 'Male' ? 'Erkak' : 'Ayol'}
                                     </button>
                                 ))}
                             </div>
-                            <p className="text-[11px] text-gray-400 mt-1">
+                            <p className="text-[11px] text-faint mt-1">
                                 Jins va tug'ilgan sana tahlil normalarini to'g'ri tanlash uchun kerak.
                             </p>
                         </div>
@@ -452,7 +452,7 @@ export const PatientFormModal: React.FC<Props> = ({
                         {/* Holat — faqat tahrirlashda. Yangi bemor har doim faol. */}
                         {isEdit && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Holat</label>
+                                <label className="block text-sm font-medium text-muted mb-1">Holat</label>
                                 <div className="flex gap-2">
                                     {([['Active', 'Faol'], ['Archived', 'Arxiv']] as const).map(([val, label]) => (
                                         <button
@@ -460,8 +460,8 @@ export const PatientFormModal: React.FC<Props> = ({
                                             type="button"
                                             onClick={() => setForm(f => ({ ...f, status: val }))}
                                             className={`flex-1 h-10 rounded-lg text-sm font-medium border transition-all ${form.status === val
-                                                ? 'bg-primary text-white border-primary'
-                                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-400'}`}
+                                                ? 'bg-primary-600 text-white border-primary-600'
+                                                : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                                         >
                                             {label}
                                         </button>
@@ -471,13 +471,13 @@ export const PatientFormModal: React.FC<Props> = ({
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tibbiy tarix</label>
+                            <label className="block text-sm font-medium text-muted mb-1">Tibbiy tarix</label>
                             <textarea
                                 value={form.medicalHistory}
                                 onChange={e => setForm(f => ({ ...f, medicalHistory: e.target.value }))}
                                 rows={2}
                                 placeholder="Allergiya, surunkali kasalliklar..."
-                                className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                                className="w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                             />
                         </div>
                     </div>

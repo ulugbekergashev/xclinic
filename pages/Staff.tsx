@@ -8,6 +8,7 @@ import { formatUzPhone } from '../shared/validation';
 import { Department, Service, Doctor } from '../types';
 import { StaffForm, StaffRow, ROLES, roleMeta, StaffRole } from '../components/StaffForm';
 import { Payroll } from './Payroll';
+import { StaffAttendanceReport } from '../components/StaffAttendanceReport';
 import {
     Plus, Search, Users, Wallet, Activity, UserCheck, Percent,
 } from 'lucide-react';
@@ -37,18 +38,18 @@ interface Props {
     onStaffChanged?: () => void;
 }
 
-type Tab = 'people' | 'payroll';
+type Tab = 'people' | 'payroll' | 'attendance';
 
 /** Yuklama chizig'i — foiz bo'lmasa chiziq ham chizilmaydi. */
 const LoadBar: React.FC<{ percent: number | null }> = ({ percent }) => {
-    if (percent == null) return <span className="text-gray-400">—</span>;
+    if (percent == null) return <span className="text-faint">—</span>;
     const color = percent >= 90 ? 'bg-red-500' : percent >= 60 ? 'bg-amber-500' : 'bg-emerald-500';
     return (
         <div className="flex items-center gap-2">
-            <div className="w-24 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div className="w-24 h-1.5 rounded-full bg-elevated overflow-hidden">
                 <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, percent)}%` }} />
             </div>
-            <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{percent}%</span>
+            <span className="text-xs text-muted tabular-nums">{percent}%</span>
         </div>
     );
 };
@@ -60,15 +61,15 @@ const StatCard: React.FC<{
     <Card className="p-5">
         <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-                <p className="text-sm text-gray-500 dark:text-gray-400">{title}</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1 tabular-nums">{value}</p>
+                <p className="text-sm text-muted">{title}</p>
+                <p className="text-3xl font-bold text-ink mt-1 tabular-nums">{value}</p>
                 {hint && (
                     <p className={`text-xs mt-2 ${tone === 'warn'
                         ? 'text-amber-600 dark:text-amber-400'
-                        : 'text-gray-500 dark:text-gray-400'}`}>{hint}</p>
+                        : 'text-muted'}`}>{hint}</p>
                 )}
             </div>
-            <Icon className="w-5 h-5 text-gray-300 dark:text-gray-600 shrink-0" />
+            <Icon className="w-5 h-5 text-faint shrink-0" />
         </div>
     </Card>
 );
@@ -82,7 +83,8 @@ export const Staff: React.FC<Props> = ({
        to'g'ridan-to'g'ri o'sha bo'limni ochsin, va sahifa yangilanganda
        odam boshiga qaytmasin. */
     const [searchParams, setSearchParams] = useSearchParams();
-    const tab: Tab = searchParams.get('tab') === 'payroll' ? 'payroll' : 'people';
+    const q = searchParams.get('tab');
+    const tab: Tab = q === 'payroll' ? 'payroll' : q === 'attendance' ? 'attendance' : 'people';
     const setTab = (next: Tab) => {
         const p = new URLSearchParams(searchParams);
         if (next === 'people') p.delete('tab'); else p.set('tab', next);
@@ -158,8 +160,8 @@ export const Staff: React.FC<Props> = ({
         <div className="p-4 md:p-6 space-y-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Xodimlar</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    <h1 className="text-2xl md:text-3xl font-bold text-ink">Xodimlar</h1>
+                    <p className="text-sm text-muted mt-1">
                         Klinikada kim ishlaydi, qancha oladi va qancha yuklangan
                     </p>
                 </div>
@@ -169,13 +171,13 @@ export const Staff: React.FC<Props> = ({
                             <Plus className="w-4 h-4 mr-1" /> Yangi xodim
                         </Button>
                         {pickRole && (
-                            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-20 p-1">
+                            <div className="absolute right-0 mt-2 w-56 bg-surface border border-line rounded-xl shadow-lg z-20 p-1">
                                 {ROLES.map(r => (
                                     <button key={r.key} type="button"
                                         onClick={() => { setPickRole(false); setCreatingRole(r.key); }}
-                                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                                        <span className="block text-sm font-medium text-gray-900 dark:text-white">{r.label}</span>
-                                        <span className="block text-xs text-gray-500 dark:text-gray-400">{r.hint}</span>
+                                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-elevated">
+                                        <span className="block text-sm font-medium text-ink">{r.label}</span>
+                                        <span className="block text-xs text-muted">{r.hint}</span>
                                     </button>
                                 ))}
                             </div>
@@ -188,12 +190,16 @@ export const Staff: React.FC<Props> = ({
                 Vedomost MOLIYADAN KO'CHDI. U yerda u kassa va foyda bilan bir
                 qatorda turardi, aslida esa xodim haqidagi savol: kimga qancha
                 hisoblandi. */}
-            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-fit">
-                {([['people', 'Xodimlar'], ['payroll', 'Ulush va vedomost']] as const).map(([k, label]) => (
+            <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl w-fit">
+                {([
+                    ['people', 'Xodimlar'],
+                    ['payroll', 'Ulush va vedomost'],
+                    ['attendance', 'Davomat'],
+                ] as const).map(([k, label]) => (
                     <button key={k} type="button" onClick={() => setTab(k)}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${tab === k
-                            ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-white shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                            ? 'bg-surface text-primary-600 shadow-sm'
+                            : 'text-muted hover:text-muted'}`}>
                         {label}
                     </button>
                 ))}
@@ -201,6 +207,8 @@ export const Staff: React.FC<Props> = ({
 
             {tab === 'payroll' ? (
                 <Payroll doctors={doctors} clinicId={clinicId} addToast={addToast} />
+            ) : tab === 'attendance' ? (
+                <StaffAttendanceReport />
             ) : (
                 <>
                     {/* ── To'rtta raqam ─────────────────────────────────── */}
@@ -224,7 +232,7 @@ export const Staff: React.FC<Props> = ({
                         />
                         <StatCard
                             title="O'rtacha yuklama" icon={Activity}
-                            value={summary?.avgLoad != null ? <>{summary.avgLoad}<span className="text-lg text-gray-400"> %</span></> : '—'}
+                            value={summary?.avgLoad != null ? <>{summary.avgLoad}<span className="text-lg text-faint"> %</span></> : '—'}
                             hint={summary?.avgLoad != null
                                 ? `ish grafigi belgilangan ${summary.loadKnownFor} shifokor bo'yicha`
                                 : 'ish grafigi hech kimga belgilanmagan'}
@@ -245,46 +253,46 @@ export const Staff: React.FC<Props> = ({
                         <button type="button" onClick={() => setRoleFilter('all')}
                             className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${roleFilter === 'all'
                                 ? 'bg-primary-600 text-white border-primary-600'
-                                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400'}`}>
+                                : 'bg-surface border-line text-muted hover:border-primary-400'}`}>
                             Barchasi <span className="opacity-70">{counts.all}</span>
                         </button>
                         {ROLES.map(r => (
                             <button key={r.key} type="button" onClick={() => setRoleFilter(r.key)}
                                 className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${roleFilter === r.key
                                     ? 'bg-primary-600 text-white border-primary-600'
-                                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400'}`}>
+                                    : 'bg-surface border-line text-muted hover:border-primary-400'}`}>
                                 {r.label} <span className="opacity-70">{counts[r.key] || 0}</span>
                             </button>
                         ))}
                         {counts.archive > 0 && (
                             <button type="button" onClick={() => setRoleFilter('archive')}
                                 className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${roleFilter === 'archive'
-                                    ? 'bg-gray-600 text-white border-gray-600'
-                                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-400'}`}>
+                                    ? 'bg-elevated text-white border-line'
+                                    : 'bg-surface border-line text-muted hover:border-line'}`}>
                                 Arxiv <span className="opacity-70">{counts.archive}</span>
                             </button>
                         )}
                         <div className="relative ml-auto">
-                            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                             <input value={search} onChange={e => setSearch(e.target.value)}
                                 placeholder="Ism, lavozim yoki telefon"
-                                className="pl-9 pr-3 py-2 w-64 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-sm dark:text-white focus:ring-2 focus:ring-primary-500 outline-none" />
+                                className="pl-9 pr-3 py-2 w-64 border border-line rounded-lg bg-surface text-sm focus:ring-2 focus:ring-primary-500 outline-none" />
                         </div>
                     </div>
 
                     {/* ── Jadval ────────────────────────────────────────── */}
                     <Card className="overflow-hidden">
                         {loading ? (
-                            <div className="py-16 text-center text-gray-400">Yuklanmoqda…</div>
+                            <div className="py-16 text-center text-faint">Yuklanmoqda…</div>
                         ) : filtered.length === 0 ? (
-                            <div className="py-16 text-center text-gray-500 dark:text-gray-400">
+                            <div className="py-16 text-center text-muted">
                                 {search || roleFilter !== 'all' ? 'Mos xodim topilmadi' : "Hali xodim qo'shilmagan"}
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                                        <tr className="text-left text-xs text-muted border-b border-line">
                                             <th className="py-3 px-4 font-medium">Xodim</th>
                                             <th className="py-3 px-4 font-medium">Lavozim</th>
                                             <th className="py-3 px-4 font-medium">Rol</th>
@@ -300,7 +308,7 @@ export const Staff: React.FC<Props> = ({
                                             return (
                                                 <tr key={`${row.role}-${row.id}`}
                                                     onClick={() => navigate(`/staff/${row.role}/${row.id}`)}
-                                                    className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
+                                                    className="border-b border-line-soft last:border-0 hover:bg-elevated cursor-pointer">
                                                     <td className="py-3 px-4">
                                                         <div className="flex items-center gap-3">
                                                             <div className="h-9 w-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
@@ -308,35 +316,35 @@ export const Staff: React.FC<Props> = ({
                                                                 {(row.firstName || '?')[0]}{(row.lastName || '')[0]}
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <p className="font-medium text-gray-900 dark:text-white truncate">
+                                                                <p className="font-medium text-ink truncate">
                                                                     {formatFullName(row)}
                                                                 </p>
                                                                 {row.phone && (
-                                                                    <p className="text-xs text-gray-400 truncate">{formatUzPhone(row.phone)}</p>
+                                                                    <p className="text-xs text-faint truncate">{formatUzPhone(row.phone)}</p>
                                                                 )}
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="py-3 px-4 text-gray-600 dark:text-gray-300">
-                                                        {row.specialty || <span className="text-gray-400">—</span>}
+                                                    <td className="py-3 px-4 text-muted">
+                                                        {row.specialty || <span className="text-faint">—</span>}
                                                     </td>
                                                     <td className="py-3 px-4">
                                                         <span className={`px-2 py-1 rounded-md text-xs font-medium ${meta.badge}`}>
                                                             {meta.label}
                                                         </span>
                                                     </td>
-                                                    <td className="py-3 px-4 text-gray-600 dark:text-gray-300">
-                                                        {depName(row.departmentId) || <span className="text-gray-400">—</span>}
+                                                    <td className="py-3 px-4 text-muted">
+                                                        {depName(row.departmentId) || <span className="text-faint">—</span>}
                                                     </td>
                                                     <td className="py-3 px-4">
                                                         {row.role === 'DOCTOR'
                                                             ? <LoadBar percent={wl?.percent ?? null} />
-                                                            : <span className="text-gray-400">—</span>}
+                                                            : <span className="text-faint">—</span>}
                                                     </td>
-                                                    <td className="py-3 px-4 text-right tabular-nums text-gray-900 dark:text-white">
+                                                    <td className="py-3 px-4 text-right tabular-nums text-ink">
                                                         {row.fixedSalary
                                                             ? formatMoney(row.fixedSalary)
-                                                            : <span className="text-gray-400">—</span>}
+                                                            : <span className="text-faint">—</span>}
                                                     </td>
                                                 </tr>
                                             );
@@ -351,7 +359,7 @@ export const Staff: React.FC<Props> = ({
                         aytib qo'yamiz, aks holda bo'sh ustun «xato» bo'lib
                         ko'rinadi. */}
                     {!loading && filtered.some(r => r.role === 'DOCTOR' && workload[r.id]?.percent == null) && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                        <p className="text-xs text-muted flex items-center gap-1.5">
                             <Percent className="w-3.5 h-3.5" />
                             Yuklama ish grafigidan hisoblanadi: xodim kartasida hafta kunlari va ish
                             soatlari belgilangach ko'rinadi.

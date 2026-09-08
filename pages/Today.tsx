@@ -17,6 +17,7 @@ import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
 import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
 import { PatientFormModal } from '../components/PatientFormModal';
+import { OwnerHome } from '../components/OwnerHome';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
 const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
@@ -61,6 +62,8 @@ interface Props {
     onCreatePatient: (data: Omit<Patient, 'id' | 'clinicId'>) => Promise<Patient | void>;
     onPatientAdded: (p: Patient) => void;
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
+    /** Salomlashish uchun — eganing tasmasida ko'rinadi */
+    userName?: string;
 }
 
 /* Raqam formati BITTA joydan — `utils/format.ts`. Ilgari bu yerda
@@ -73,7 +76,7 @@ const today = () => todayISO();
 export const Today: React.FC<Props> = ({
     clinicId, patients, doctors, departments, services, currentClinic,
     userRole, doctorId: myDoctorId, showPatientPhone = true,
-    onCreatePatient, onPatientAdded, addToast,
+    onCreatePatient, onPatientAdded, addToast, userName,
 }) => {
     const showPhone = (v?: string) => showPatientPhone ? formatUzPhone(v || '') : maskPhone(v);
     const navigate = useNavigate();
@@ -482,34 +485,41 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
         w.document.close();
     };
 
-    const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
+    const inputCls = 'w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
     const stepDone = 'bg-emerald-500 text-white';
     const stepNow = 'bg-primary-600 text-white';
-    const stepIdle = 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400';
+    const stepIdle = 'bg-elevated text-muted';
 
     const step = !patient ? 1 : !departmentId ? 2 : 3;
 
     return (
+        <>
+        {/* ── EGANING TASMASI ────────────────────────────────────────────────
+            Faqat klinika egasiga. Registrator va shifokorda ekran
+            o'zgarmaydi: ularga oylik fondi ham, vedomost ham kerak emas va
+            server bu marshrutlarga 403 qaytaradi. */}
+        {userRole === UserRole.CLINIC_ADMIN && <OwnerHome userName={userName} />}
+
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             {/* ── Chap: qabul ochish ────────────────────────────────────────── */}
             <div className="xl:col-span-2 space-y-4">
                 <div className="flex flex-wrap items-center gap-3">
                     <Stethoscope className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('today.title')}</h2>
+                    <h2 className="text-xl font-bold text-ink">{t('today.title')}</h2>
                     {/* Sana loyihaning O'Z formatlagichidan. `toLocaleDateString('uz-UZ')`
                         Chrome da «M09 6, Sun» beradi — `uz` lokali to'liq emas. Xuddi
                         shu sabab bilan raqamlar ham `formatNumber` orqali chiqadi. */}
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                    <span className="text-sm text-muted">
                         {formatDateLong(new Date(), language === 'ru' ? 'ru' : 'uz')}
                     </span>
                     <div className="ml-auto flex items-center gap-2">
                         <button onClick={loadToday} aria-label={t('reception.refresh')} title={t('reception.refresh')}
-                            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg">
+                            className="p-2 text-faint hover:text-muted rounded-lg">
                             <RefreshCw className="w-4 h-4" />
                         </button>
                         {canRegister && (
                             <button onClick={() => navigate('/board')}
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400">
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-line text-muted hover:border-primary-400">
                                 <Tv className="w-4 h-4" /> {t('today.board')}
                             </button>
                         )}
@@ -529,8 +539,8 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     Ilgari bular alohida ekran edi («Mening navbatim») va
                     shifokor navbatni ko'rish uchun boshqa sahifaga o'tardi. */}
                 {isDoctorView && readyUnseen.length > 0 && (
-                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-purple-300 dark:border-purple-700 p-4">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+                    <div className="bg-surface rounded-xl border border-purple-300 dark:border-purple-700 p-4">
+                        <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
                             <BellRing className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                             {t('today.resultsReady')}
                             <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
@@ -544,8 +554,8 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                     className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-900/20 hover:border-purple-400 transition-colors">
                                     <FlaskConical className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{r.patientName}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                        <p className="text-sm font-medium text-ink truncate">{r.patientName}</p>
+                                        <p className="text-xs text-muted truncate">
                                             {r.department || '—'}
                                             {r.date && r.date !== today() ? ` · ${r.date}` : ''}
                                         </p>
@@ -561,11 +571,11 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 )}
 
                 {isDoctorView && stillWaiting.length > 0 && (
-                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+                    <div className="bg-surface rounded-xl border border-line p-4">
+                        <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
                             <CalendarClock className="w-4 h-4 text-amber-500" />
                             {t('today.awaitingResults')}
-                            <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                            <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
                                 {stillWaiting.length}
                             </span>
                         </h3>
@@ -573,10 +583,10 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             {stillWaiting.map(r => (
                                 <button key={r.visitId}
                                     onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
-                                    className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary-400 transition-colors">
+                                    className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-line hover:border-primary-400 transition-colors">
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{r.patientName}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                        <p className="text-sm font-medium text-ink truncate">{r.patientName}</p>
+                                        <p className="text-xs text-muted truncate">
                                             {r.department || '—'}
                                             {/* `0 ta kutilmoqda` hech narsa aytmaydi. Bunday
                                                 qabul aslida OSILIB QOLGAN: natija ham
@@ -586,7 +596,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                                 : ` · ${t('today.stuck')}`}
                                         </p>
                                     </div>
-                                    <ArrowRight className="w-4 h-4 text-gray-300 shrink-0" />
+                                    <ArrowRight className="w-4 h-4 text-faint shrink-0" />
                                 </button>
                             ))}
                         </div>
@@ -594,23 +604,23 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 )}
 
                 {isDoctorView && groups.done.length > 0 && (
-                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+                    <div className="bg-surface rounded-xl border border-line p-4">
+                        <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
                             <CheckCircle className="w-4 h-4 text-emerald-500" />
                             {t('today.finished')}
-                            <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                            <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
                                 {groups.done.length}
                             </span>
                         </h3>
                         <div className="space-y-1.5">
                             {groups.done.map(v => (
                                 <button key={v.id} onClick={() => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
-                                    className="w-full text-left flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                    <span className="text-xs tabular-nums text-gray-400 w-6 shrink-0">{v.queueNumber ?? '—'}</span>
-                                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">
+                                    className="w-full text-left flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-elevated">
+                                    <span className="text-xs tabular-nums text-faint w-6 shrink-0">{v.queueNumber ?? '—'}</span>
+                                    <span className="text-sm text-muted truncate flex-1">
                                         {v.patient?.lastName} {v.patient?.firstName}
                                     </span>
-                                    <span className="text-xs text-gray-400 truncate">{v.department?.name || ''}</span>
+                                    <span className="text-xs text-faint truncate">{v.department?.name || ''}</span>
                                 </button>
                             ))}
                         </div>
@@ -621,12 +631,12 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     yo'li yo'qolmaydi — kim yozilmasdan kelsa, o'sha
                     orqali kiritiladi. */}
                 {waitingAppts.length > 0 && (
-                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                    <div className="bg-surface rounded-xl border border-line p-4">
                         <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                            <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
                                 <CalendarIcon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
                                 Bugunga yozilganlar
-                                <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
                                     {waitingAppts.length}
                                 </span>
                             </h3>
@@ -638,13 +648,13 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         <div className="space-y-2 max-h-64 overflow-y-auto">
                             {waitingAppts.map(a => (
                                 <div key={a.id}
-                                    className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
-                                    <span className="text-sm font-semibold tabular-nums text-gray-500 dark:text-gray-400 w-12 shrink-0">
+                                    className="flex items-center gap-3 p-2.5 rounded-lg border border-line bg-canvas/40">
+                                    <span className="text-sm font-semibold tabular-nums text-muted w-12 shrink-0">
                                         {a.time || '—'}
                                     </span>
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{a.patientName}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                        <p className="text-sm font-medium text-ink truncate">{a.patientName}</p>
+                                        <p className="text-xs text-muted truncate">
                                             {a.type || 'Qabul'}{a.doctorName ? ` · ${a.doctorName}` : ''}
                                         </p>
                                     </div>
@@ -678,15 +688,15 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                 <span className={`w-6 h-6 rounded-full grid place-items-center text-xs font-bold ${cls}`}>
                                     {step > idx ? <CheckCircle className="w-3.5 h-3.5" /> : n}
                                 </span>
-                                <span className={step >= idx ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400'}>{label}</span>
-                                {idx < 3 && <ArrowRight className="w-4 h-4 text-gray-300 dark:text-gray-600 mx-1" />}
+                                <span className={step >= idx ? 'text-ink font-medium' : 'text-faint'}>{label}</span>
+                                {idx < 3 && <ArrowRight className="w-4 h-4 text-faint mx-1" />}
                             </React.Fragment>
                         );
                     })}
                 </div>
                 {/* 1. Bemor */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">1. Bemor</h3>
+                <div className="bg-surface rounded-xl border border-line p-4">
+                    <h3 className="text-sm font-semibold text-ink mb-3">1. Bemor</h3>
 
                     {patient ? (
                         <div className="flex items-center gap-3 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
@@ -694,20 +704,20 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                 {patient.firstName[0]}{patient.lastName[0]}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="font-medium text-gray-900 dark:text-white truncate">{formatFullName(patient)}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                <p className="font-medium text-ink truncate">{formatFullName(patient)}</p>
+                                <p className="text-xs text-muted flex items-center gap-1">
                                     <Phone className="w-3 h-3" /> {showPhone(patient.phone)}
                                 </p>
                             </div>
                             <button onClick={() => { setPatient(null); setSearch(''); }}
-                                className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-200">
+                                className="text-sm text-muted hover:text-muted">
                                 O'zgartirish
                             </button>
                         </div>
                     ) : (
                         <>
                             <div className="relative">
-                                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                                 <input ref={searchRef} autoFocus value={search}
                                     onChange={e => setSearch(e.target.value)}
                                     onKeyDown={e => {
@@ -722,28 +732,28 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             </div>
 
                             {found.length > 0 && (
-                                <div className="mt-2 border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 max-h-56 overflow-y-auto">
+                                <div className="mt-2 border border-line rounded-lg divide-y divide-line max-h-56 overflow-y-auto">
                                     {found.map(p => (
                                         <button key={p.id} onClick={() => setPatient(p)}
-                                            className="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3">
+                                            className="w-full text-left p-3 hover:bg-elevated flex items-center gap-3">
                                             <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{formatFullName(p)}</p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400">{showPhone(p.phone)}</p>
+                                                <p className="text-sm font-medium text-ink truncate">{formatFullName(p)}</p>
+                                                <p className="text-xs text-muted">{showPhone(p.phone)}</p>
                                             </div>
-                                            <ArrowRight className="w-4 h-4 text-gray-300" />
+                                            <ArrowRight className="w-4 h-4 text-faint" />
                                         </button>
                                     ))}
                                 </div>
                             )}
 
                             {search.trim().length >= 2 && searching && (
-                                <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">{t('reception.searching')}</p>
+                                <p className="mt-2 text-sm text-faint">{t('reception.searching')}</p>
                             )}
                             {searchError && (
                                 <p className="mt-2 text-sm text-red-600 dark:text-red-400">{searchError}</p>
                             )}
                             {search.trim().length >= 2 && !searching && !searchError && found.length === 0 && (
-                                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{t('reception.notFound')}</p>
+                                <p className="mt-2 text-sm text-muted">{t('reception.notFound')}</p>
                             )}
 
                             <button onClick={() => setShowNewPatient(true)}
@@ -755,14 +765,14 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 </div>
 
                 {/* 2. Bo'lim va shifokor */}
-                <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 ${!patient ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">2. Bo'lim va shifokor</h3>
+                <div className={`bg-surface rounded-xl border border-line p-4 ${!patient ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <h3 className="text-sm font-semibold text-ink mb-3">2. Bo'lim va shifokor</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {/* Yorliqlar `htmlFor` orqali maydonga ulanadi: ekran
                             o'quvchi dasturda maydon nomsiz o'qilmasin va
                             yorliqni bosganda fokus maydonga tushsin. */}
                         <div>
-                            <label htmlFor="rc-dept" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('reception.department')}</label>
+                            <label htmlFor="rc-dept" className="block text-xs font-medium text-muted mb-1.5">{t('reception.department')}</label>
                             <select id="rc-dept" ref={deptRef} value={departmentId} onChange={e => setDepartmentId(e.target.value)} className={inputCls}>
                                 <option value="">{t('reception.choose')}</option>
                                 {clinicalDepts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -772,13 +782,13 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                 yaratgan odam uni bu yerda topolmay, dastur
                                 buzuq deb o'ylardi (audit XC-05). */}
                             {hiddenDepts.length > 0 && (
-                                <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                                <p className="mt-1 text-[11px] text-faint">
                                     {hiddenDepts.map(d => d.name).join(', ')} — bu yerda yo'q: ular shifokor buyurtmasi bilan ochiladi.
                                 </p>
                             )}
                         </div>
                         <div>
-                            <label htmlFor="rc-doctor" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                            <label htmlFor="rc-doctor" className="block text-xs font-medium text-muted mb-1.5">
                                 Shifokor{isDiagnosticDept ? '' : ' *'}
                                 {deptDoctors.length === 0 && departmentId ? " (bo'limda shifokor yo'q)" : ''}
                             </label>
@@ -792,7 +802,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             </select>
                         </div>
                         <div>
-                            <label htmlFor="rc-service" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Xizmat (qabul turi)</label>
+                            <label htmlFor="rc-service" className="block text-xs font-medium text-muted mb-1.5">Xizmat (qabul turi)</label>
                             <select id="rc-service" value={serviceId} onChange={e => setServiceId(e.target.value ? Number(e.target.value) : '')}
                                 disabled={!departmentId} className={inputCls}>
                                 <option value="">{departmentId ? 'Xizmatsiz' : "Avval bo'limni tanlang"}</option>
@@ -805,17 +815,17 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             )}
                         </div>
                         <div>
-                            <label htmlFor="rc-complaints" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Shikoyat (ixtiyoriy)</label>
+                            <label htmlFor="rc-complaints" className="block text-xs font-medium text-muted mb-1.5">Shikoyat (ixtiyoriy)</label>
                             <input id="rc-complaints" value={complaints} onChange={e => setComplaints(e.target.value)} className={inputCls} placeholder={t('reception.complaintsPh')} />
                         </div>
                     </div>
                 </div>
 
                 {/* 3. Qabulni ochish */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-wrap items-center gap-4">
+                <div className="bg-surface rounded-xl border border-line p-4 flex flex-wrap items-center gap-4">
                     <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('reception.toPay')}</p>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
+                        <p className="text-sm text-muted">{t('reception.toPay')}</p>
+                        <p className="text-2xl font-bold text-ink tabular-nums">
                             {fmt(selectedService?.price || 0)} <span className="text-base font-normal">so'm</span>
                         </p>
                     </div>
@@ -842,13 +852,13 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex flex-wrap items-center gap-4">
                         <CheckCircle className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                         <div>
-                            <p className="font-medium text-gray-900 dark:text-white">
+                            <p className="font-medium text-ink">
                                 Navbat №{lastTicket.queueNumber} — {lastTicket.patient?.lastName} {lastTicket.patient?.firstName}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{t('reception.queued')}</p>
+                            <p className="text-xs text-muted">{t('reception.queued')}</p>
                         </div>
                         <button onClick={() => printTicket(lastTicket)}
-                            className="ml-auto flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700">
+                            className="ml-auto flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-sm font-medium hover:bg-elevated">
                             <Printer className="w-4 h-4" /> Talon chiqarish
                         </button>
                     </div>
@@ -859,19 +869,19 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
             {/* ── O'ng: bugungi navbat ──────────────────────────────────────── */}
             <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-gray-400" />
-                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                    <Clock className="w-5 h-5 text-faint" />
+                    <h3 className="font-semibold text-ink">
                         {userRole === UserRole.DOCTOR ? t('today.myQueue') : t('reception.todayQueue')}
                     </h3>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{groups.active.length} ta</span>
-                    <button aria-label={t('reception.refresh')} onClick={loadToday} className="ml-auto p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={t('reception.refresh')}>
+                    <span className="text-sm text-muted">{groups.active.length} ta</span>
+                    <button aria-label={t('reception.refresh')} onClick={loadToday} className="ml-auto p-1.5 text-faint hover:text-muted" title={t('reception.refresh')}>
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>
 
                 {groups.active.length === 0 ? (
-                    <div className="text-center py-10 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('reception.noVisits')}</p>
+                    <div className="text-center py-10 bg-surface rounded-xl border border-line">
+                        <p className="text-sm text-muted">{t('reception.noVisits')}</p>
                     </div>
                 ) : (
                     <div className="space-y-2 max-h-[70vh] overflow-y-auto">
@@ -879,15 +889,15 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             const waited = waitedMin(v);
                             return (
                                 <div key={v.id}
-                                    className="w-full bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center gap-3 hover:border-primary-400 transition-colors">
+                                    className="w-full bg-surface rounded-lg border border-line p-3 flex items-center gap-3 hover:border-primary-400 transition-colors">
                                     <span className="w-9 h-9 rounded-lg grid place-items-center font-bold text-sm shrink-0 bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
                                         {v.queueNumber ?? '—'}
                                     </span>
                                     <button onClick={() => openVisitCard(v)} className="min-w-0 flex-1 text-left">
-                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                        <p className="text-sm font-medium text-ink truncate">
                                             {v.patient?.lastName} {v.patient?.firstName}
                                         </p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                        <p className="text-xs text-muted truncate">
                                             {v.department?.name || '—'}{v.doctorName ? ` · ${v.doctorName}` : ''}
                                             {waited != null && v.status === 'Waiting' ? ` · ${waited} ${t('common.min')}` : ''}
                                         </p>
@@ -947,21 +957,21 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 (ertalab va kechqurun alohida murojaat bo'lishi mumkin). */}
             {duplicate && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDuplicate(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+                    <div className="bg-surface rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
                         <div className="flex items-start gap-3 mb-4">
                             <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                             <div>
-                                <h3 className="font-semibold text-gray-900 dark:text-white">
+                                <h3 className="font-semibold text-ink">
                                     Bu bemorga bugun qabul ochilgan
                                 </h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                <p className="text-sm text-muted mt-1">
                                     Shu bo'limda navbat №{duplicate.queueNumber ?? '—'}
                                     {duplicate.status ? `, holati: ${duplicate.status}` : ''}.
                                 </p>
                             </div>
                         </div>
 
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                        <p className="text-xs text-muted mb-4">
                             Yangi qabul ochilsa, konsultatsiya narxi IKKINCHI marta
                             hisobga tushadi. Bemor qaytib kelgan bo'lsa — mavjud qabulni ochish kerak.
                         </p>
@@ -977,7 +987,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             </button>
                         </div>
                         <button onClick={() => setDuplicate(null)}
-                            className="w-full mt-2 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                            className="w-full mt-2 px-4 py-2 text-sm text-muted hover:bg-elevated rounded-lg">
                             Bekor qilish
                         </button>
                     </div>
@@ -985,5 +995,6 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
             )}
 
         </div>
+        </>
     );
 };

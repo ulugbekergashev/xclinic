@@ -135,8 +135,8 @@ export const LabCatalogTab: React.FC<Props> = ({ departments }) => {
                         <FlaskConical className="w-5 h-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('lab.catalogTitle')}</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{t('lab.catalogDesc')}</p>
+                        <h2 className="text-xl font-bold text-ink">{t('lab.catalogTitle')}</h2>
+                        <p className="text-sm text-muted">{t('lab.catalogDesc')}</p>
                     </div>
                     <Button onClick={openNew}><Plus className="w-4 h-4 mr-2" /> {t('lab.addTest')}</Button>
                 </div>
@@ -153,19 +153,19 @@ export const LabCatalogTab: React.FC<Props> = ({ departments }) => {
                         <EmptyState icon={<FlaskConical className="w-12 h-12" />}
                             title={t('lab.empty')} hint={t('lab.emptyHint')} />
                     ) : (
-                        <div className="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                        <div className="divide-y divide-line border border-line rounded-xl overflow-hidden">
                             {tests.map(x => (
                                 <div key={x.id} className={`flex flex-wrap items-center gap-3 p-4 ${x.isActive ? '' : 'opacity-50'}`}>
-                                    <span className="font-mono text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
+                                    <span className="font-mono text-xs px-2 py-0.5 rounded bg-elevated text-muted shrink-0">
                                         {x.code}
                                     </span>
                                     <span className="min-w-0 flex-1">
-                                        <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">{x.name}</span>
-                                        <span className="block text-xs text-gray-500 dark:text-gray-400">
+                                        <span className="block text-sm font-medium text-ink truncate">{x.name}</span>
+                                        <span className="block text-xs text-muted">
                                             {x.sampleType} · {x.turnaroundHours} {t('visit.hours')} · {(x.parameters || []).length} {t('lab.paramsShort')}
                                         </span>
                                     </span>
-                                    <span className="text-sm tabular-nums text-gray-700 dark:text-gray-300">{formatNumber(x.price)}</span>
+                                    <span className="text-sm tabular-nums text-muted">{formatNumber(x.price)}</span>
                                     <Button variant="secondary" size="sm" onClick={() => openEdit(x)} title={t('inventory.ui.edit')}>
                                         <Pencil className="w-4 h-4" />
                                     </Button>
@@ -207,35 +207,35 @@ export const LabCatalogTab: React.FC<Props> = ({ departments }) => {
                             Norma JINS va YOSHGA bog'liq: gemoglobin 125 g/l
                             ayolda norma, erkakda past. Bo'sh qoldirilsa —
                             hammaga bir xil. */}
-                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{t('lab.params')}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{t('lab.paramsHint')}</p>
+                        <div className="pt-2 border-t border-line">
+                            <p className="text-sm font-semibold text-ink mb-1">{t('lab.params')}</p>
+                            <p className="text-xs text-muted mb-3">{t('lab.paramsHint')}</p>
 
                             <div className="space-y-2 max-h-72 overflow-y-auto">
                                 {params.map((p, i) => (
                                     <div key={i} className="grid grid-cols-12 gap-2 items-center">
                                         <input value={p.name} placeholder={t('lab.paramName')}
                                             onChange={e => setParams(a => a.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
-                                            className="col-span-12 sm:col-span-3 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                            className="col-span-12 sm:col-span-3 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink" />
                                         <input value={p.unit || ''} placeholder={t('lab.unit')}
                                             onChange={e => setParams(a => a.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))}
-                                            className="col-span-3 sm:col-span-2 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                            className="col-span-3 sm:col-span-2 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink" />
                                         <input type="number" step="any" value={p.refLow ?? ''} placeholder={t('lab.from')}
                                             onChange={e => setParams(a => a.map((x, j) => j === i ? { ...x, refLow: e.target.value as any } : x))}
-                                            className="col-span-3 sm:col-span-2 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                            className="col-span-3 sm:col-span-2 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink" />
                                         <input type="number" step="any" value={p.refHigh ?? ''} placeholder={t('lab.to')}
                                             onChange={e => setParams(a => a.map((x, j) => j === i ? { ...x, refHigh: e.target.value as any } : x))}
-                                            className="col-span-3 sm:col-span-2 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+                                            className="col-span-3 sm:col-span-2 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink" />
                                         <select value={p.sex || ''}
                                             onChange={e => setParams(a => a.map((x, j) => j === i ? { ...x, sex: (e.target.value || null) as any } : x))}
-                                            className="col-span-2 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+                                            className="col-span-2 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink">
                                             <option value="">{t('lab.anySex')}</option>
                                             <option value="Male">{t('patients.modal.male')}</option>
                                             <option value="Female">{t('patients.modal.female')}</option>
                                         </select>
                                         <button type="button" aria-label={t('common.delete')}
                                             onClick={() => setParams(a => a.filter((_, j) => j !== i))}
-                                            className="col-span-1 p-1 text-gray-300 hover:text-red-500">
+                                            className="col-span-1 p-1 text-faint hover:text-red-500">
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>

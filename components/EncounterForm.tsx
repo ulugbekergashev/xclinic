@@ -154,9 +154,9 @@ export const EncounterForm: React.FC<Props> = ({
     };
 
     const inputClass =
-        'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 ' +
-        'text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ' +
-        'disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500';
+        'w-full px-3 py-2 border border-line rounded-lg bg-surface ' +
+        'text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ' +
+        'disabled:bg-elevated disabled:text-muted';
 
     const renderField = (f: EncounterField) => {
         const v = data[f.key] ?? '';
@@ -181,8 +181,8 @@ export const EncounterForm: React.FC<Props> = ({
                     <label className="flex items-center gap-2 py-2">
                         <input type="checkbox" checked={!!v} disabled={readOnly}
                             onChange={e => update(f.key, e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                        <span className="text-sm text-gray-600 dark:text-gray-400">Ha</span>
+                            className="w-4 h-4 rounded border-line text-primary-600 focus:ring-primary-500" />
+                        <span className="text-sm text-muted">Ha</span>
                     </label>
                 );
             case 'number': {
@@ -209,7 +209,7 @@ export const EncounterForm: React.FC<Props> = ({
                                 className={`${inputClass} ${problem ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : abnormal ? 'border-amber-500' : ''}`}
                                 onChange={e => update(f.key, e.target.value)} />
                             {f.unit && (
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint pointer-events-none">
                                     {f.unit}
                                 </span>
                             )}
@@ -228,12 +228,12 @@ export const EncounterForm: React.FC<Props> = ({
     };
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className="bg-surface rounded-xl border border-line">
             {/* Sarlavha: bo'lim va shablon tanlash */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-3">
+            <div className="p-4 border-b border-line flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <ClipboardList className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                    <h3 className="font-semibold text-gray-900 dark:text-white">Qabul bayoni</h3>
+                    <h3 className="font-semibold text-ink">Qabul bayoni</h3>
                 </div>
 
                 {onDepartmentChange && (
@@ -246,7 +246,7 @@ export const EncounterForm: React.FC<Props> = ({
                             <option value="">Bo'limni tanlang</option>
                             {clinicalDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
-                        <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
                     </div>
                 )}
 
@@ -259,7 +259,7 @@ export const EncounterForm: React.FC<Props> = ({
                         >
                             {deptTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
-                        <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
                     </div>
                 )}
             </div>
@@ -267,12 +267,12 @@ export const EncounterForm: React.FC<Props> = ({
             {/* Maydonlar */}
             {!template ? (
                 <div className="p-8 text-center">
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">
+                    <p className="text-muted text-sm">
                         {departmentId
                             ? "Bu bo'lim uchun shablon yaratilmagan."
                             : "Bo'limni tanlang."}
                     </p>
-                    <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
+                    <p className="text-faint text-xs mt-1">
                         Shablonlar Sozlamalar → Bo'limlar bo'limida tahrirlanadi.
                     </p>
                 </div>
@@ -280,13 +280,13 @@ export const EncounterForm: React.FC<Props> = ({
                 <div className="p-4 space-y-6">
                     {groups.map(([groupName, fields]) => (
                         <div key={groupName}>
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-3">
                                 {groupName}
                             </h4>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {fields.map(f => (
                                     <div key={f.key} className={f.type === 'textarea' ? 'sm:col-span-2 lg:col-span-3' : ''}>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                                        <label className="block text-sm font-medium text-muted mb-1.5">
                                             {f.label}
                                         </label>
                                         {renderField(f)}
@@ -299,15 +299,15 @@ export const EncounterForm: React.FC<Props> = ({
                     {/* VKI — bo'y va vazn kiritilgan bo'lsa avtomatik.
                         Audit: «Bo'y va vazndan VKI ham hisoblanmaydi». */}
                     {bmi !== null && (
-                        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
-                            <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">VKI</span>
-                            <span className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">{bmi}</span>
-                            <span className="text-sm text-gray-600 dark:text-gray-300">{bmiLabel(bmi)}</span>
+                        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-elevated border border-line">
+                            <span className="text-xs uppercase tracking-wide text-muted">VKI</span>
+                            <span className="text-lg font-bold tabular-nums text-ink">{bmi}</span>
+                            <span className="text-sm text-muted">{bmiLabel(bmi)}</span>
                         </div>
                     )}
 
                     {!readOnly && onSave && (
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2 border-t border-line">
                             {problems.length > 0 && (
                                 <p className="text-xs text-red-600 dark:text-red-400 flex-1">
                                     {problems.length === 1 ? problems[0] : `${problems.length} ta ko'rsatkich chegaradan tashqarida`}
@@ -342,15 +342,15 @@ export const EncounterSummary: React.FC<{ template?: EncounterTemplate; value?: 
     });
 
     if (!filled.length) {
-        return <p className="text-sm text-gray-400 dark:text-gray-500">Bayon to'ldirilmagan</p>;
+        return <p className="text-sm text-faint">Bayon to'ldirilmagan</p>;
     }
 
     return (
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
             {filled.map(f => (
                 <div key={f.key} className="flex gap-2">
-                    <dt className="text-gray-500 dark:text-gray-400 shrink-0">{f.label}:</dt>
-                    <dd className="text-gray-900 dark:text-white font-medium">
+                    <dt className="text-muted shrink-0">{f.label}:</dt>
+                    <dd className="text-ink font-medium">
                         {typeof data[f.key] === 'boolean' ? 'Ha' : String(data[f.key])}
                         {f.unit ? ` ${f.unit}` : ''}
                     </dd>

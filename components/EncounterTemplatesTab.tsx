@@ -44,7 +44,7 @@ const VITAL_KEYS: { key: string; label: string }[] = [
     { key: 'spo2', label: 'SpO2' },
 ];
 
-const inputCls = 'h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-500 outline-none';
+const inputCls = 'h-10 rounded-lg border border-line bg-transparent px-3 text-sm focus:ring-2 focus:ring-primary-500 outline-none';
 
 /** Yorliqdan kalit yasaydi: «Qon bosimi» → `qonBosimi` */
 function keyFromLabel(label: string): string {
@@ -182,8 +182,8 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
         <Card className="p-6">
             <div className="flex flex-wrap justify-between items-start gap-3 mb-5">
                 <div>
-                    <h2 className="text-lg font-medium text-gray-900 dark:text-white">Ko'rik bayoni shablonlari</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <h2 className="text-lg font-medium text-ink">Ko'rik bayoni shablonlari</h2>
+                    <p className="text-sm text-muted">
                         Shifokor qabulda to'ldiradigan maydonlar. Har bo'limning o'z shabloni bo'ladi.
                     </p>
                 </div>
@@ -200,22 +200,22 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
             </div>
 
             {departments.length === 0 ? (
-                <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                <p className="py-10 text-center text-sm text-muted">
                     Avval bo'lim qo'shing — shablon bo'limga biriktiriladi.
                 </p>
             ) : loading ? (
-                <p className="py-10 text-center text-gray-400">Yuklanmoqda…</p>
+                <p className="py-10 text-center text-faint">Yuklanmoqda…</p>
             ) : shown.length === 0 ? (
-                <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                <p className="py-10 text-center text-sm text-muted">
                     Shablon yo'q. Shifokor bayonni bo'sh varaqqa yozadi.
                 </p>
             ) : (
                 <div className="space-y-2">
                     {shown.map(t => (
                         <div key={t.id}
-                            className="flex items-center justify-between gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            className="flex items-center justify-between gap-3 p-3 border border-line rounded-lg">
                             <div className="min-w-0">
-                                <p className="font-medium text-gray-900 dark:text-white truncate flex items-center gap-2">
+                                <p className="font-medium text-ink truncate flex items-center gap-2">
                                     {t.name}
                                     {t.isDefault && (
                                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
@@ -223,7 +223,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                         </span>
                                     )}
                                 </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                <p className="text-xs text-muted truncate">
                                     {depName(t.departmentId)}
                                     <span className="mx-1.5">·</span>
                                     {(t.fields || []).length} maydon
@@ -240,7 +240,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                     <Edit className="w-4 h-4" />
                                 </button>
                                 <button onClick={() => remove(t)} title="O'chirish"
-                                    className="p-2 text-gray-400 hover:text-red-600 rounded-md">
+                                    className="p-2 text-faint hover:text-red-600 rounded-md">
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
@@ -279,7 +279,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                             onChange={e => setForm(f => ({ ...f, maxAge: e.target.value }))} placeholder="—" />
                     </div>
 
-                    <label className="flex items-center gap-2.5 text-sm text-gray-700 dark:text-gray-300">
+                    <label className="flex items-center gap-2.5 text-sm text-muted">
                         <input type="checkbox" checked={form.isDefault}
                             onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))}
                             className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500" />
@@ -287,13 +287,13 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                     </label>
 
                     {/* ── Maydonlar ── */}
-                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                    <div className="border-t border-line pt-4">
+                        <p className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
                             Maydonlar ({fields.length})
                         </p>
 
                         {fields.length === 0 ? (
-                            <p className="text-sm text-gray-400 py-4 text-center">
+                            <p className="text-sm text-faint py-4 text-center">
                                 Maydon yo'q — shablon bo'sh bayon beradi
                             </p>
                         ) : (
@@ -301,14 +301,14 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                 {fields.map((f, i) => {
                                     const range = rangeForField(f.key);
                                     return (
-                                        <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+                                        <div key={i} className="rounded-xl border border-line p-3 space-y-2">
                                             <div className="flex items-start gap-2">
                                                 <div className="flex flex-col pt-1.5">
                                                     <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
-                                                        className="text-gray-300 hover:text-gray-600 disabled:opacity-30 leading-none">▲</button>
-                                                    <GripVertical className="w-4 h-4 text-gray-300" />
+                                                        className="text-faint hover:text-muted disabled:opacity-30 leading-none">▲</button>
+                                                    <GripVertical className="w-4 h-4 text-faint" />
                                                     <button type="button" onClick={() => move(i, 1)} disabled={i === fields.length - 1}
-                                                        className="text-gray-300 hover:text-gray-600 disabled:opacity-30 leading-none">▼</button>
+                                                        className="text-faint hover:text-muted disabled:opacity-30 leading-none">▼</button>
                                                 </div>
 
                                                 <div className="flex-1 grid grid-cols-2 gap-2">
@@ -327,7 +327,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                                 </div>
 
                                                 <button type="button" onClick={() => setFields(fs => fs.filter((_, j) => j !== i))}
-                                                    className="p-2 text-gray-400 hover:text-red-600">
+                                                    className="p-2 text-faint hover:text-red-600">
                                                     <X className="w-4 h-4" />
                                                 </button>
                                             </div>
@@ -376,7 +376,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                         <div className="flex flex-wrap items-center gap-2 mt-3">
                             <button type="button"
                                 onClick={() => setFields(fs => [...fs, { key: '', label: '', type: 'text' }])}
-                                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated">
                                 <Plus className="w-4 h-4" /> Maydon
                             </button>
                             {/* Tayyor o'lchovlar: kalit TO'G'RI yozilsin — chegara
@@ -387,7 +387,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                         key: v.key, label: v.label, type: 'number',
                                         unit: rangeForField(v.key)?.unit, group: "Ko'rsatkichlar",
                                     }])}
-                                    className="px-2.5 py-1.5 text-xs font-medium border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 hover:border-primary-400 hover:text-primary-600">
+                                    className="px-2.5 py-1.5 text-xs font-medium border border-dashed border-line rounded-lg text-muted hover:border-primary-400 hover:text-primary-600">
                                     + {v.label}
                                 </button>
                             ))}

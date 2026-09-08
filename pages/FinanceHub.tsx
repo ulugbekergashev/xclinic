@@ -121,12 +121,12 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
         <div className="space-y-5 animate-fade-in">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Moliya</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{current.subtitle}</p>
+                    <h1 className="text-2xl font-bold text-ink">Moliya</h1>
+                    <p className="text-sm text-muted">{current.subtitle}</p>
                 </div>
 
                 {visibleTabs.length > 1 && (
-                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                    <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl">
                         {visibleTabs.map(tab => {
                             const Icon = tab.icon;
                             const active = tab.key === activeTab;
@@ -135,8 +135,8 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                                     key={tab.key}
                                     onClick={() => selectTab(tab.key)}
                                     className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${active
-                                        ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-white shadow-sm'
-                                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                        ? 'bg-surface text-primary-600 shadow-sm'
+                                        : 'text-muted hover:text-muted'
                                         }`}
                                 >
                                     <Icon className="w-4 h-4" />

@@ -159,3 +159,90 @@ kelajakdagi kunga davomat yozilmaydi · modul faqat klinika egasiga ochiq.
   bo'lsa, u alohida ish: to'lov jadvali va qoldiq hisobi qo'shiladi.
 - **Davomatni turniket yoki bot orqali avtomatik yig'ish.** Hozir qo'lda
   belgilanadi.
+
+---
+
+## 7. Eganing tasmasi — «Bugun hal qilinsin»
+
+Ikkinchi bosqich (2026-09-09, o'sha kuni). Foydalanuvchi bergan
+reference'dagi bosh sahifadan olingan.
+
+**Muammo.** Klinika egasi kirganda birinchi ko'radigan ekran «Bugun»,
+ya'ni REGISTRATORNING ish stoli. Eganing savoli boshqa: «bugun nimaga
+aralashishim kerak?» Javob olti ekranga tarqalgan edi — yopilmagan smena
+Kassada, muddati o'tgan dori Omborda, natijasiz tahlil Laboratoriyada,
+vedomost Xodimlarda. Har biriga kirib ko'rmaguncha, muammo borligi
+bilinmasdi.
+
+**Yechim — alohida sahifa emas, «Bugun» tepasidagi tasma.** Faqat egaga
+ko'rinadi. Menyu endigina 15 dan 10 ga tushgan, yana bitta punkt qo'shish
+o'sha ishni orqaga qaytarardi.
+
+Tasmada to'rtta raqam (bugun kassaga · qarz · bugungi qabullar · bemorlar)
+va **«Bugun hal qilinsin»** ro'yxati. Ro'yxat bandlari:
+
+| Band | Manba |
+|---|---|
+| N ta bemor 30+ kun to'lamagan | `VisitCharge` (qabul sanasi bo'yicha yoshi) |
+| Kassa smenasi yopilmagan | harakat bor, `CashRegisterDay` yo'q kun |
+| Muddati o'tgan / 30 kunda tugaydigan partiya | `InventoryBatch` |
+| Minimumdan past mahsulot | `InventoryItem.minQuantity` |
+| Natijasi kiritilmagan tahlil / diagnostika | `status = 'Ordered'`, 1 kundan ortiq |
+| O'tgan yozuv yopilmagan | `Appointment` `Pending`/`Confirmed` |
+| Bu oyga vedomost tuzilmagan | `PayrollRun` |
+| Oyligi kiritilmagan xodim | to'rt jadval bo'ylab |
+
+**Ikkita qoida.** Nol bo'lgan band ro'yxatga **umuman tushmaydi** —
+«0 ta muddati o'tgan dori» degan qator bezak, va u orasida haqiqiy muammo
+ko'rinmay qoladi. Har band bosilganda aynan o'sha ish bajariladigan
+ekranga olib boradi: raqamning o'zi hech narsani hal qilmaydi.
+
+**`/api/reports/dashboard` tirildi.** U bor edi, ishlardi, sinovdan
+o'tardi — lekin uni **hech kim chaqirmasdi**: eski bosh sahifa
+o'chirilgan, `App.tsx:316` dagi izoh esa hali ham «bosh sahifadagi
+raqamlar shundan keladi» deb turardi. Endi chaqiriladi va ustiga **qarz
+yoshi** qo'shildi: umumiy summa qaror chiqarmaydi, «107 ta bemor 30 kundan
+oshgan» esa qo'ng'iroq qilinadigan ro'yxat.
+
+### Reference'dan yana nima olindi
+
+**Xodimlar davomati ro'yxati + CSV** — Xodimlar moduliga uchinchi vkladka.
+Karta ichidagi davomat bitta odam haqida; «bu oy kim qancha ishladi»
+degan savolga javob berish uchun har kartani ochib chiqish kerak edi.
+
+Foiz **belgilangan kunlardan** hisoblanadi, kalendar kunlaridan emas:
+oyning o'rtasida ishga olingan odam aks holda 50% ko'rsatardi. Kechikkan
+kun KELGAN deb sanaladi — odam ishga chiqqan; u alohida ustunda ko'rinadi.
+Belgilanmagan xodimda foiz o'rniga «—» turadi, nol emas: nol «kelmagan»
+degani, holbuki uni hech kim belgilamagan.
+
+### Reference'dan ATAYLAB olinmagani
+
+1. **ROI ko'rsatkichi.** Reference'da u −83.2% turibdi: tushum tanlangan
+   davrniki, xarajat esa boshqa davrniki. Ikki xil oynadan olingan
+   raqamlarning nisbati — ma'nosiz son. XClinic da foyda bo'lim kesimida
+   va bitta davr ichida hisoblanadi (Moliya → Hisobot).
+
+2. **Bosh sahifadagi tushum grafigi.** U Moliya → Hisobotda bor. Ikki
+   joyda bitta raqam — «har narsaning bitta joyi» qoidasining buzilishi.
+   Endpointga qo'shilgan olti oylik qator shu sababli **olib tashlandi**,
+   o'lik kod qolmasin.
+
+3. **«Hisobotlar tizimi» — beshta vkladkali markaz.** Reference'da bosh
+   sahifada ham, hisobot markazida ham bir xil ko'rsatkichlar bor va ular
+   MOS KELMAYDI: bosh sahifada «Faol o'quvchilar 268», hisobotda «Jami
+   talabalar 9». Ikkinchisi boshqa qamrovni sanaydi. XClinic da hisobot
+   bitta joyda qoladi.
+
+**Kelgusi uchun** (hozir qilinmadi): reference'dagi **Jadval xaritasi** —
+kabinet bandligi jadvali (xona × vaqt). Klinikada ma'nosi bor: kabinet
+`Doctor.room` da, qabul uzunligi `Appointment.duration` da allaqachon bor.
+Alohida ish sifatida qaralsin.
+
+### Sinovlar
+
+`hr` to'plami 53 dan **71** ga chiqdi: davomat yig'masi (7) va eganing
+tasmasi (11). Yo'l-yo'lakay sinov haqiqiy xatoni topdi — `LabOrder` va
+`DiagnosticStudy` da maydon `createdAt` emas, `orderedAt`; noto'g'ri nom
+Prisma da tushunarsiz 500 berardi (BUILD-SPEC dagi 27 va 33-xatolar aynan
+shu tur).

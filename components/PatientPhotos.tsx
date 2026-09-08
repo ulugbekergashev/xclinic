@@ -171,7 +171,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">{t('patients.details.photos.title')}</h3>
+                <h3 className="text-lg font-medium text-ink">{t('patients.details.photos.title')}</h3>
                 <Button onClick={() => setIsUploadModalOpen(true)}>
                     <Upload className="w-4 h-4 mr-2" />
                     {t('patients.details.photos.uploadBtn')}
@@ -179,11 +179,11 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
             </div>
 
             {loading ? (
-                <div className="text-center py-10 text-gray-500">{t('common.loading')}</div>
+                <div className="text-center py-10 text-muted">{t('common.loading')}</div>
             ) : photos.length === 0 ? (
-                <div className="text-center py-10 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
-                    <Camera className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                    <p className="text-gray-500">{t('patients.details.photos.noPhotos')}</p>
+                <div className="text-center py-10 bg-elevated rounded-lg border border-dashed border-line">
+                    <Camera className="w-12 h-12 mx-auto text-faint mb-3" />
+                    <p className="text-muted">{t('patients.details.photos.noPhotos')}</p>
                     <Button variant="ghost" size="sm" className="mt-2" onClick={() => setIsUploadModalOpen(true)}>
                         {t('patients.details.photos.uploadFirst')}
                     </Button>
@@ -191,7 +191,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {photos.map(photo => (
-                        <div key={photo.id} className="group relative aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all">
+                        <div key={photo.id} className="group relative aspect-square bg-elevated rounded-lg overflow-hidden border border-line hover:shadow-md transition-all">
                             <img
                                 src={getFileUrl('patient-photo', photo.id)}
                                 alt={photo.description || 'Patient photo'}
@@ -214,7 +214,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
                                     {photo.description && (
                                         <p className="text-white text-xs truncate">{photo.description}</p>
                                     )}
-                                    <p className="text-gray-300 text-[10px]">
+                                    <p className="text-faint text-[10px]">
                                         {new Date(photo.date).toLocaleDateString()}
                                     </p>
                                 </div>
@@ -231,7 +231,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
                 title={t('patients.details.photos.uploadModalTitle')}
             >
                 <div className="space-y-4">
-                    <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 text-center hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer relative">
+                    <div className="border-2 border-dashed border-line rounded-lg p-6 text-center hover:bg-elevated transition-colors cursor-pointer relative">
                         <input
                             type="file"
                             accept="image/*"
@@ -254,9 +254,9 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
                             </div>
                         ) : (
                             <div className="py-4">
-                                <Upload className="w-12 h-12 mx-auto text-gray-400 mb-2" />
-                                <p className="text-sm text-gray-500">{t('patients.details.photos.clickToSelect')}</p>
-                                <p className="text-xs text-gray-400 mt-1">PNG, JPG, JPEG</p>
+                                <Upload className="w-12 h-12 mx-auto text-faint mb-2" />
+                                <p className="text-sm text-muted">{t('patients.details.photos.clickToSelect')}</p>
+                                <p className="text-xs text-faint mt-1">PNG, JPG, JPEG</p>
                             </div>
                         )}
                     </div>
@@ -307,9 +307,9 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
                                         {categories.find(c => c.value === viewPhoto.category)?.label}
                                     </h4>
                                     {viewPhoto.description && (
-                                        <p className="text-gray-300 mt-1">{viewPhoto.description}</p>
+                                        <p className="text-faint mt-1">{viewPhoto.description}</p>
                                     )}
-                                    <p className="text-gray-400 text-sm mt-1">
+                                    <p className="text-faint text-sm mt-1">
                                         {formatDateTime(viewPhoto.date)}
                                     </p>
                                 </div>

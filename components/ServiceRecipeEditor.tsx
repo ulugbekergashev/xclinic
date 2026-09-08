@@ -20,7 +20,7 @@ import { formatMoney } from '../utils/format';
    qaraydi. U maydon olib tashlandi.
    ───────────────────────────────────────────────────────────────────────────── */
 
-const inputCls = 'h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-500 outline-none';
+const inputCls = 'h-10 rounded-lg border border-line bg-transparent px-3 text-sm focus:ring-2 focus:ring-primary-500 outline-none';
 
 interface Props {
     /** Yangi xizmatda `null` — saqlangandan keyin retsept kiritiladi */
@@ -87,7 +87,7 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
 
     if (serviceId == null) {
         return (
-            <p className="text-xs text-gray-400 py-3">
+            <p className="text-xs text-faint py-3">
                 Materiallarni xizmat saqlangandan keyin kiritish mumkin.
             </p>
         );
@@ -96,8 +96,8 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
     return (
         <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-4 text-xs">
-                <span className="text-gray-500 dark:text-gray-400">
-                    Tannarx: <b className="tabular-nums text-gray-900 dark:text-white">{formatMoney(cost)}</b>
+                <span className="text-muted">
+                    Tannarx: <b className="tabular-nums text-ink">{formatMoney(cost)}</b>
                 </span>
                 <span className={margin >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
                     Marja: <b className="tabular-nums">{formatMoney(margin)}</b>
@@ -108,9 +108,9 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
             {loading ? (
-                <p className="text-sm text-gray-400 py-4 text-center">Yuklanmoqda…</p>
+                <p className="text-sm text-faint py-4 text-center">Yuklanmoqda…</p>
             ) : rows.length === 0 ? (
-                <p className="text-sm text-gray-400 py-4 text-center">
+                <p className="text-sm text-faint py-4 text-center">
                     Material biriktirilmagan — hisobotda tannarx nol bo'ladi
                 </p>
             ) : (
@@ -131,14 +131,14 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
                                 <input type="number" step="0.001" value={r.quantity} placeholder="0"
                                     onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, quantity: e.target.value } : x))}
                                     className={inputCls + ' w-24 text-right'} />
-                                <span className="text-xs text-gray-400 w-10">{it?.unit || ''}</span>
+                                <span className="text-xs text-faint w-10">{it?.unit || ''}</span>
 
-                                <span className="text-xs tabular-nums text-gray-500 w-24 text-right">
+                                <span className="text-xs tabular-nums text-muted w-24 text-right">
                                     {formatMoney((Number(r.quantity) || 0) * (it?.price || 0))}
                                 </span>
 
                                 <button type="button" onClick={() => setRows(rs => rs.filter((_, j) => j !== i))}
-                                    className="p-2 text-gray-400 hover:text-red-600">
+                                    className="p-2 text-faint hover:text-red-600">
                                     <X className="w-4 h-4" />
                                 </button>
                             </div>
@@ -150,7 +150,7 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
             <div className="flex items-center gap-2">
                 <button type="button"
                     onClick={() => setRows(rs => [...rs, { itemId: '', quantity: '', note: '' }])}
-                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated">
                     <Plus className="w-4 h-4" /> Material qo'shish
                 </button>
                 <button type="button" onClick={save} disabled={busy}

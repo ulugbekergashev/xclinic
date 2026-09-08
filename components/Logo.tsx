@@ -71,7 +71,7 @@ export const Logo: React.FC<Props> = ({ className = 'w-10 h-10', bare = false })
 export const LogoWordmark: React.FC<{ size?: 'sm' | 'md' }> = ({ size = 'md' }) => (
     <div className={`flex items-center ${size === 'md' ? 'gap-3' : 'gap-2'} shrink-0`}>
         <Logo className={size === 'md' ? 'w-10 h-10' : 'w-8 h-8'} />
-        <span className={`font-extrabold tracking-tight text-gray-900 dark:text-white ${
+        <span className={`font-extrabold tracking-tight text-ink ${
             size === 'md' ? 'text-2xl' : 'text-xl'
         }`}>
             X<span className="text-primary dark:text-primary-400">Clinic</span>

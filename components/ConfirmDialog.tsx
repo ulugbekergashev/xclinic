@@ -57,7 +57,7 @@ export const ConfirmDialog: React.FC = () => {
             onClick={() => close(false)}
         >
             <div
-                className="w-full max-w-sm rounded-xl bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-700 p-5"
+                className="w-full max-w-sm rounded-xl bg-surface shadow-xl border border-line p-5"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-start gap-3">
@@ -67,11 +67,11 @@ export const ConfirmDialog: React.FC = () => {
                         </div>
                     )}
                     <div className="min-w-0">
-                        <h3 id="confirm-title" className="text-base font-semibold text-gray-900 dark:text-white">
+                        <h3 id="confirm-title" className="text-base font-semibold text-ink">
                             {opts.title}
                         </h3>
                         {opts.body && (
-                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{opts.body}</p>
+                            <p className="mt-1 text-sm text-muted">{opts.body}</p>
                         )}
                     </div>
                 </div>
@@ -80,8 +80,8 @@ export const ConfirmDialog: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => close(false)}
-                        className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600
-                                   text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800
+                        className="px-4 py-2 rounded-lg text-sm font-medium border border-line
+                                   text-muted hover:bg-elevated
                                    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
                     >
                         {opts.cancelLabel || 'Bekor qilish'}

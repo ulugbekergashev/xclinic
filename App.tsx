@@ -47,7 +47,7 @@ import { InstallPWAButton } from './components/InstallPWAButton';
 import { BottomNav } from './components/BottomNav';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Flag } from './components/Flag';
-import { LogoWordmark } from './components/Logo';
+import { Logo, LogoWordmark } from './components/Logo';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { useHotkeys } from './hooks/useHotkeys';
 import { startLiveUpdates, stopLiveUpdates } from './hooks/useLiveUpdates';
@@ -76,11 +76,18 @@ const DEMO_ROLE_PROFILES: Record<string, { label: string; name: string; doctorId
   [UserRole.NURSE]: { label: 'Hamshira', name: 'Hamshira' },
 };
 
-// Helper: get page label key from path
+/* Manzil → sahifa nomi. Yuqori qatorda klinika nomi ostida turadi va
+   brauzer tabining sarlavhasiga ham shu tushadi.
+
+   XODIMLAR TUSHIB QOLGAN EDI: `/staff` uchun qoida yo'q edi va oxirgi
+   `return 'today.title'` ishlab ketardi — Xodimlar sahifasida yuqorida
+   «Bugun» deb turardi. Ilgari bu ko'rinmasdi, chunki sahifa nomi faqat
+   brauzer tabida edi; endi ekranda ham chiqadi. */
 const getPageLabelKey = (pathname: string): any => {
   if (pathname === '/' || pathname === '/dashboard') return 'today.title';
   if (pathname.startsWith('/patients/')) return 'nav.patients'; // Will translate as "Patients", detail page handles own title
   if (pathname === '/patients') return 'nav.patients';
+  if (pathname.startsWith('/staff')) return 'nav.staff';
   if (pathname === '/calendar') return 'nav.calendar';
   if (pathname === '/finance') return 'nav.finance';
   if (pathname === '/inventory') return 'inventory.title';
@@ -114,13 +121,18 @@ const AppContent: React.FC = () => {
   const [receptionistId, setReceptionistId] = useState<string>('');
   const [technicianId, setTechnicianId] = useState<string>('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  /* Standart holat — QORONG'I. Ilgari tizim sozlamasidan olinardi, ya'ni
+     ko'pchilik kompyuterda dastur yorug' temada ochilardi. Yangi palitra
+     qorong'i uchun tuzilgan va dasturning asosiy ko'rinishi shu; yorug'
+     tema qoladi, lekin uni foydalanuvchi ataylab tanlaydi.
+
+     Boshlang'ich qiymat `index.html` dagi skript bilan MOS bo'lishi shart:
+     u sinfni React ishga tushishidan oldin qo'yadi (oq lop etib chiqmasin),
+     bu yer esa o'sha qarorni takrorlaydi. */
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    // Dark mode holatini saqlash: localStorage в†’ tizim sozlamasi
     try {
-      const stored = localStorage.getItem('xclinic_theme');
-      if (stored) return stored === 'dark';
-      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    } catch { return false; }
+      return localStorage.getItem('xclinic_theme') !== 'light';
+    } catch { return true; }
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -989,97 +1001,42 @@ const sinceDate = (n: number) =>
      Typecheck ham, 170 ta backend sinovi ham buni ko'rmadi — xato faqat
      brauzerda ko'rinadi. Shuning uchun hook chaqiruvlari erta `return`
      lardan YUQORIDA turishi kerak. */
-  /* NAV PANELINING SURILISHI (S5.1, audit B-03).
+  /* NAV PANELINING GORIZONTAL SURILISHI — OLIB TASHLANDI.
 
-     `navOverflow` — qaysi tomonga surish mumkinligini aytadi; gradient
-     faqat o'sha tomonda chiziladi. Ikkalasi ham `false` bo'lsa hech
-     narsa ko'rinmaydi — panel to'liq sig'gan.
+     Bu yerda ~95 qator turardi: `navOverflow` holati, chekkadagi
+     gradientlar, faol tugmani markazga suruvchi `requestAnimationFrame`
+     halqasi va `ResizeObserver`. Hammasi BITTA muammoni yamardi —
+     menyu gorizontal chiziq bo'lgani uchun 9 ta modul ekranga sig'masdi
+     va oxirgilari ko'rinmay qolardi (audit B-03).
 
-     ⚠️ Bu hooklar erta `return` lardan OLDIN turishi shart (yuqoridagi
-     ogohlantirishga qarang). */
-  const navRef = React.useRef<HTMLDivElement | null>(null);
-  const [navOverflow, setNavOverflow] = useState({ left: false, right: false });
+     Menyu endi CHAPDAGI VERTIKAL USTUN. To'qqizta punkt istalgan
+     noutbuk balandligiga bemalol sig'adi, ya'ni surish ham, gradient
+     ham, markazlashtirish ham kerak emas — muammoning o'zi yo'q.
+     Yamoqni saqlab qolish esa ishlamaydigan kodni saqlash bo'lardi. */
 
-  const updateNavOverflow = React.useCallback(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const max = el.scrollWidth - el.clientWidth;
-    setNavOverflow({
-      left: el.scrollLeft > 4,
-      // 4px — yaxlitlash xatosi uchun zaxira: `scrollWidth` kasr bo'lishi mumkin
-      right: el.scrollLeft < max - 4,
-    });
-  }, []);
+  /* QARZDORLAR — yuqori qatordagi ko'rsatkich.
 
-  useEffect(() => {
-    updateNavOverflow();
-    window.addEventListener('resize', updateNavOverflow);
-    return () => window.removeEventListener('resize', updateNavOverflow);
-  }, [updateNavOverflow, visibleNavigation.length]);
+     `charges` da faqat to'lanmagan qatorlar turadi (`status: 'Unpaid'`),
+     lekin qisman to'lov ham bo'ladi — shuning uchun qoldiq
+     `total - paidAmount` bo'yicha hisoblanadi, qatorlar soni bo'yicha
+     emas. Bitta bemorning beshta to'lanmagan qatori — bitta qarzdor,
+     shuning uchun `Set`.
 
-  /* Faol modulni ko'rinishga surish. `#/settings` da panel `scrollLeft = 0`
-     bo'lib qolardi va faol tugma ekrandan tashqarida turardi (audit B-03).
-
-     `scrollIntoView` ATAYLAB ishlatilmadi: birinchi renderda panel hali
-     o'lchamga ega emas (`clientWidth = 0`) va u hech narsa qilmaydi —
-     brauzer E2E sinovi aynan shuni ko'rsatdi («viewport ratio 0»).
-
-     `requestAnimationFrame` layoutdan KEYIN ishlaydi, `scrollLeft` esa
-     qo'lda hisoblanadi: faol element markazga tushadi. Ikkinchi kadr —
-     shrift yuklangandan keyin kenglik biroz o'zgarishi mumkin. */
-  useEffect(() => {
-    let raf = 0, timer = 0;
-    const deadline = Date.now() + 3000;
-
-    /* `true` qaytarsa — surish HAQIQATAN bajarildi. */
-    const center = (): boolean => {
-      const el = navRef.current;
-      if (!el || el.clientWidth === 0) return false;
-      const active = el.querySelector('[aria-current="page"]') as HTMLElement | null;
-      if (!active || active.offsetWidth === 0) return false;
-      const target = active.offsetLeft - (el.clientWidth - active.offsetWidth) / 2;
-      el.scrollLeft = Math.max(0, Math.min(target, el.scrollWidth - el.clientWidth));
-      updateNavOverflow();
-      return true;
-    };
-
-    /* MUVAFFAQIYATGACHA TAKRORLASH.
-
-       Ilgari uchta urinish bor edi: ikkita `requestAnimationFrame` va
-       250ms lik zaxira. Ular panel hali render bo'lmaganda ham «ishlab»
-       ketardi — `clientWidth = 0` bo'lgani uchun funksiya jimgina
-       qaytardi, uchala urinish sarflanardi va boshqa hech qachon
-       takrorlanmasdi. Faol tugma ekrandan tashqarida qolib ketardi.
-
-       Bu tasodifiy edi: E2E sinovi to'plam bilan birga yurganda
-       (sekinroq) yiqilardi, yolg'iz yurganda o'tardi — ya'ni xato
-       sinovda emas, shu yerda edi.
-
-       Endi 3 soniya davomida har kadrda urinib ko'riladi va birinchi
-       muvaffaqiyatda to'xtaydi. */
-    const tick = () => {
-      if (center() || Date.now() > deadline) return;
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-
-    /* Shrift kech yuklansa element kengligi o'zgaradi va markaz suriladi
-       — o'lcham o'zgarishini kuzatib qayta markazlashtiramiz. */
-    let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined' && navRef.current) {
-      ro = new ResizeObserver(() => {
-        clearTimeout(timer);
-        timer = window.setTimeout(center, 60);
-      });
-      ro.observe(navRef.current);
+     `patientId` bo'sh bo'lishi mumkin (kartaga bog'lanmagan qator) —
+     bunday holda ism kalit bo'ladi, aks holda hammasi bitta `null`
+     kaliti ostida qo'shilib, bitta qarzdor bo'lib ko'rinardi. */
+  const { debtorCount, debtTotal } = useMemo(() => {
+    const ids = new Set<string>();
+    let sum = 0;
+    for (const c of charges) {
+      const left = (c.total || 0) - (c.paidAmount || 0);
+      if (left <= 0) continue;
+      sum += left;
+      ids.add(c.patientId || `name:${c.patientName}`);
     }
+    return { debtorCount: ids.size, debtTotal: sum };
+  }, [charges]);
 
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(timer);
-      ro?.disconnect();
-    };
-  }, [location.pathname, updateNavOverflow, visibleNavigation.length]);
 
   /* SAHIFA SARLAVHASI (S5.7, audit B-36).
 
@@ -1207,11 +1164,11 @@ const sinceDate = (n: number) =>
   // Loading Screen
   if (isLoading && !error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-primary-600 dark:text-primary-400 animate-spin mx-auto mb-4" />
-          <p className="text-lg font-medium text-gray-700 dark:text-gray-300">{t('common.loading')}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{t('common.pleaseWait')}</p>
+          <p className="text-lg font-medium text-muted">{t('common.loading')}</p>
+          <p className="text-sm text-muted mt-2">{t('common.pleaseWait')}</p>
         </div>
       </div>
     );
@@ -1220,13 +1177,13 @@ const sinceDate = (n: number) =>
   // Error Screen
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 text-center">
+      <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-surface rounded-lg shadow-lg p-8 text-center">
           <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
             <AlertTriangle className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{t('common.error')}</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">{error}</p>
+          <h2 className="text-xl font-bold text-ink mb-2">{t('common.error')}</h2>
+          <p className="text-muted mb-6">{error}</p>
           <div className="space-y-3">
             <button
               onClick={retryLoadData}
@@ -1238,12 +1195,12 @@ const sinceDate = (n: number) =>
             </button>
             <button
               onClick={handleLogout}
-              className="w-full px-6 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors"
+              className="w-full px-6 py-3 bg-elevated hover:bg-elevated text-ink rounded-lg font-medium transition-colors"
             >
               {t('common.logout')}
             </button>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-6">
+          <p className="text-xs text-muted mt-6">
             Ma'lumotlaringiz xavfsiz. Bu faqat ulanish muammosi.
           </p>
         </div>
@@ -1261,33 +1218,63 @@ const sinceDate = (n: number) =>
 
   const pageLabel = t(getPageLabelKey(location.pathname));
 
+  /* Rol nomi — ilgari bu uch qavatli shartli ifoda IKKI JOYDA (yuqori
+     qator va telefon menyusi) nusxalangan edi va ular ajralib ketgandi:
+     birida `t('roles.admin')`, ikkinchisida qo'lda yozilgan
+     «Administrator». Endi bitta joyda. */
+  const roleLabel =
+    userRole === UserRole.CLINIC_ADMIN ? t('roles.admin')
+      : userRole === UserRole.RECEPTIONIST ? t('roles.receptionist')
+        : userRole === UserRole.LAB_TECHNICIAN ? 'Laborant'
+          : userRole === UserRole.NURSE ? 'Hamshira'
+            : t('roles.doctor');
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-canvas text-ink font-sans">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       {/* Tasdiqlash oynasi — ilovada BIR MARTA. Qolgan joylar uni
           `confirmAction()` orqali chaqiradi (S3.6). */}
       <ConfirmDialog />
       <InstallPWAButton />
 
-      {/* Mobile Header (Hidden on Desktop) */}
-      <div className="lg:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
+      {/* ═══════════════════════════════════════════════════════════════
+          QOBIQ
+
+          Ilgari navigatsiya YUQORIDA, ikki qavatli sarlavhada turardi:
+          birinchi qatorda logotip va qidiruv, ikkinchisida esa to'qqizta
+          modul gorizontal chiziq bo'lib. Bu ikkita narsani buzardi —
+          modullar ekranga sig'masdi (audit B-03) va sahifaning eng qimmat
+          joyi, yuqori 112 piksel, menyuga ketardi.
+
+          Endi menyu CHAPDA, tor vertikal ustunda (ikonka + yozuv), yuqorida
+          esa bitta qator qoladi: klinika nomi, qidiruv va o'ng chekkadagi
+          boshqaruvlar. Ish maydoni balandligi ~36px ga oshdi va menyuga
+          modul qo'shilsa ham sig'adi.
+          ═══════════════════════════════════════════════════════════════ */}
+
+      {/* ─── TELEFON: yuqori qator ──────────────────────────────── */}
+      <div className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 h-16 bg-canvas/90 backdrop-blur-xl border-b border-line">
         <LogoWordmark size="sm" />
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-600 dark:text-gray-300">
-          {isSidebarOpen ? <X /> : <Menu />}
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-2 -mr-2 text-muted hover:text-ink rounded-xl hover:bg-elevated transition-colors"
+          aria-label={t('common.menu')}
+        >
+          {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* Mobile Sidebar Drawer (Hidden on Desktop) */}
-      <aside className={`lg:hidden fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* ─── TELEFON: chekka menyu ──────────────────────────────── */}
+      <aside className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 bg-rail border-r border-line transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full pb-16">
-          <div className="h-16 flex items-center px-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="h-16 flex items-center px-5 border-b border-line">
             <LogoWordmark size="sm" />
-            <button onClick={() => setIsSidebarOpen(false)} className="ml-auto p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <button onClick={() => setIsSidebarOpen(false)} className="ml-auto p-2 text-faint hover:text-ink hover:bg-elevated rounded-xl transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
             {visibleNavigation.map((item) => {
               const to = item.id === 'dashboard' ? '/' : `/${item.id}`;
               return (
@@ -1297,46 +1284,42 @@ const sinceDate = (n: number) =>
                   end={item.id === 'dashboard'}
                   onClick={() => setIsSidebarOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center w-full px-3 py-2.5 text-sm font-medium rounded-lg transition-colors group ${isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'))
-                      ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                      : 'text-gray-700 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                    `flex items-center gap-3 w-full px-3 py-3 text-sm font-semibold rounded-2xl transition-colors ${isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'))
+                      ? 'bg-primary-500/12 text-primary-700 dark:text-primary-300'
+                      : 'text-muted hover:text-ink hover:bg-elevated'
                     }`
                   }
                 >
-                  <item.icon className={`w-5 h-5 mr-3 ${location.pathname === to || (item.id === 'patients' && location.pathname.startsWith('/patients'))
-                    ? 'text-primary dark:text-primary-400'
-                    : 'text-gray-400 group-hover:text-gray-500'
-                    }`} />
+                  <item.icon className="w-5 h-5 shrink-0" strokeWidth={1.9} />
                   {t(item.labelKey as any)}
                 </NavLink>
               );
             })}
           </nav>
 
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+          <div className="p-4 border-t border-line">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center overflow-hidden flex-1 mr-2">
-                <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-xs uppercase bg-primary`}>
+                <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-xs uppercase bg-gradient-to-br from-primary-500 to-primary-700">
                   {userName ? userName.slice(0, 2) : 'A'}
                 </div>
                 <div className="ml-3 truncate">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate" title={userName}>{userName}</p>
-                  <p className="text-xs text-gray-500 capitalize">{userRole === UserRole.CLINIC_ADMIN ? 'Administrator' : userRole === UserRole.RECEPTIONIST ? 'Resepshn' : userRole === UserRole.LAB_TECHNICIAN ? 'Laborant' : userRole === UserRole.NURSE ? 'Hamshira' : 'Shifokor'}</p>
+                  <p className="text-sm font-semibold text-ink truncate" title={userName}>{userName}</p>
+                  <p className="text-xs text-faint">{roleLabel}</p>
                 </div>
               </div>
-              <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Chiqish">
+              <button onClick={handleLogout} className="p-2 text-faint hover:text-danger rounded-xl hover:bg-elevated shrink-0 transition-colors" title={t('common.logout')}>
                 <LogOut className="w-5 h-5" />
               </button>
             </div>
-            {/* Language Toggle */}
-            <div className="flex items-center bg-gray-200/70 dark:bg-gray-700/60 rounded-full p-0.5 gap-0.5 border border-gray-200 dark:border-gray-600">
+            <div className="flex items-center bg-elevated rounded-full p-1 gap-1 border border-line">
               {(['uz', 'ru'] as const).map((lang) => (
                 <button
                   key={lang}
                   onClick={() => setLanguage(lang)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${language === lang
-                      ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400'
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-xs font-bold transition-colors ${language === lang
+                    ? 'bg-surface text-ink'
+                    : 'text-faint'
                     }`}
                 >
                   <Flag code={lang} />
@@ -1348,288 +1331,300 @@ const sinceDate = (n: number) =>
         </div>
       </aside>
 
-      {/* Desktop Top Navbar (Hidden on Mobile) */}
-      <header className="hidden lg:block fixed top-0 inset-x-0 z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm transition-colors duration-200">
-        {/* Center container for alignment with main content */}
-        <div className="w-full px-4 sm:px-6 lg:px-10 xl:px-14">
-          {/* Top Row: Logo, Search, Actions */}
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-6">
-              {/* Logo */}
-              <LogoWordmark />
+      {/* ─── KOMPYUTER: chapdagi menyu ustuni ───────────────────────
+          Kengligi — `--spacing-rail` (index.css). `w-rail`, `left-rail` va
+          `pl-rail` bitta qiymatdan oziqlanadi, ya'ni ustun kengligini
+          o'zgartirish uchun bitta joyni tahrirlash yetarli. */}
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-40 w-rail flex-col bg-rail border-r border-line">
+        {/* Logotip — yuqori qator bilan bir xil balandlikda, shunda
+            ikkalasining ostki chizig'i bitta gorizontal chiziq bo'lib ketadi. */}
+        <div className="h-topbar flex items-center justify-center border-b border-line shrink-0">
+          <Logo className="w-11 h-11" />
+        </div>
 
-              {clinicId === 'demo-clinic-1' && (
-                <span className="px-2 py-1 text-xs font-bold bg-primary-100 dark:bg-primary-900/40 text-primary dark:text-primary-400 rounded-full border border-primary-200 dark:border-primary-800">
-                  🧪 DEMO MODE
-                </span>
-              )}
-
-              {/* Search and Branch Control */}
-              {/* Qidiruv — keng va yumaloq. Ilgari u qo'shimcha ramkali quti
-                  ichida, tor (w-72) va to'rtburchak edi; qidiruv esa bu
-                  dasturdagi eng ko'p ishlatiladigan maydon. */}
-              <div className="flex items-center gap-3 ml-2 flex-1 max-w-xl">
-                <div className="relative group w-full">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-primary-500 transition-colors" />
-                  <input
-                    type="text"
-                    placeholder={t('header.search')}
-                    value={searchBarTerm}
-                    onChange={(e) => setSearchBarTerm(e.target.value)}
-                    onFocus={() => setIsSearchFocused(true)}
-                    className="pl-11 pr-4 py-2.5 w-full bg-gray-100 dark:bg-white/[0.07] border border-gray-200 dark:border-white/10 focus:border-primary-500/40 rounded-full text-sm focus:ring-2 focus:ring-primary-500/15 placeholder-gray-400 transition-all outline-none"
-                  />
-
-                  {/* Search Results Dropdown */}
-                  {isSearchFocused && searchBarTerm.length >= 2 && (
+        {/* ‘no-scrollbar’ ATAYLAB YO'Q. Kichik noutbukda (720px) o'nta
+            modul + chiqish zo'rg'a sig'adi; ruxsatlarga qarab yana punkt
+            qo'shilsa oxirgisi ko'rinmay qoladi. Yashirin scrollbar aynan
+            shu holatni — «davomi bor» degan yagona belgini — o'chiradi.
+            Bu eski gorizontal panelning xatosi edi, uni takrorlamaymiz. */}
+        <nav className="flex-1 w-full px-2 py-2 space-y-0.5 overflow-y-auto">
+          {visibleNavigation.map((item) => {
+            const to = item.id === 'dashboard' ? '/' : `/${item.id}`;
+            return (
+              <NavLink
+                key={item.id}
+                to={to}
+                end={item.id === 'dashboard'}
+                title={t(item.labelKey as any)}
+                className={({ isActive }) => {
+                  const active = isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'));
+                  return `group relative flex flex-col items-center justify-center gap-1 w-full py-2 rounded-2xl transition-colors ${active
+                    ? 'bg-primary-500/12 text-primary-700 dark:text-primary-300'
+                    : 'text-faint hover:text-ink hover:bg-elevated'
+                    }`;
+                }}
+              >
+                {({ isActive }) => {
+                  const active = isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'));
+                  return (
                     <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsSearchFocused(false)}></div>
-                      <div className="absolute top-full left-0 mt-2 w-[340px] bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 dark:border-gray-700/50 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-300">
-                        {searchResults.patients.length === 0 && searchResults.doctors.length === 0 ? (
-                          <div className="p-8 text-center">
-                            <div className="w-12 h-12 bg-gray-50 dark:bg-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <Search className="w-5 h-5 text-gray-400" />
-                            </div>
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">Natija topilmadi</p>
-                            <p className="text-xs text-gray-500 mt-1">Boshqa so'z bilan urinib ko'ring</p>
-                          </div>
-                        ) : (
-                          <div className="max-h-[420px] overflow-y-auto no-scrollbar py-2">
-                            {searchResults.patients.length > 0 && (
-                              <div className="px-2 mb-2">
-                                <div className="px-3 py-2 flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                  <Users className="w-3 h-3" />
-                                  Bemorlar
-                                </div>
-                                {searchResults.patients.map(p => (
-                                  <button
-                                    key={p.id}
-                                    onClick={() => {
-                                      navigate(`/patients/${p.id}`);
-                                      setSearchBarTerm('');
-                                      setIsSearchFocused(false);
-                                    }}
-                                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-primary/5 dark:hover:bg-primary-400/10 group transition-all text-left"
-                                  >
-                                    <div className="w-9 h-9 rounded-lg bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-600 dark:text-primary-400 font-bold text-xs shrink-0 group-hover:scale-110 transition-transform">
-                                      {p.firstName[0]}{p.lastName[0]}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                                        {p.firstName} {p.lastName}
-                                      </p>
-                                      <p className="text-[11px] text-gray-500 truncate">{p.phone}</p>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-
-                            {searchResults.doctors.length > 0 && (
-                              <div className="px-2 border-t border-gray-100 dark:border-gray-700/50 pt-2">
-                                <div className="px-3 py-2 flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                  <Activity className="w-3 h-3" />
-                                  Shifokorlar
-                                </div>
-                                {searchResults.doctors.map(d => (
-                                  <button
-                                    key={d.id}
-                                    onClick={() => {
-                                      navigate(`/doctors/${d.id}`);
-                                      setSearchBarTerm('');
-                                      setIsSearchFocused(false);
-                                    }}
-                                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-primary/5 dark:hover:bg-primary-400/10 group transition-all text-left"
-                                  >
-                                    <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-xs shrink-0 group-hover:scale-110 transition-transform">
-                                      {d.firstName[0]}{d.lastName[0]}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                                        Dr. {d.firstName} {d.lastName}
-                                      </p>
-                                      <p className="text-[11px] text-gray-500 truncate">{d.specialty}</p>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <div className="p-3 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-100 dark:border-gray-700/50 text-center">
-                          <p className="text-[10px] text-gray-400 font-medium">Barcha natijalarni ko'rish uchun "Enter" ni bosing</p>
-                        </div>
-                      </div>
+                      {/* Chap qirradagi ingichka chiziq — faol modulni fon
+                          rangiga qaramay aniq ko'rsatadi. */}
+                      {active && (
+                        <span aria-hidden="true"
+                          className="absolute left-0 top-1/2 -translate-y-1/2 h-7 w-[3px] rounded-r-full bg-primary" />
+                      )}
+                      <item.icon className="w-5 h-5" strokeWidth={active ? 2.3 : 1.8} />
+                      <span className="text-[10px] font-semibold leading-tight text-center px-0.5">
+                        {t(item.labelKey as any)}
+                      </span>
                     </>
+                  );
+                }}
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <div className="px-2 py-2 border-t border-line shrink-0">
+          <button
+            onClick={handleLogout}
+            title={t('common.logout')}
+            className="flex flex-col items-center justify-center gap-1 w-full py-2 rounded-2xl text-faint hover:text-danger hover:bg-danger-500/10 transition-colors"
+          >
+            <LogOut className="w-5 h-5" strokeWidth={1.8} />
+            <span className="text-[10px] font-semibold leading-none">{t('common.logout')}</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ─── KOMPYUTER: yuqori qator ───────────────────────────── */}
+      <header className="hidden lg:flex fixed top-0 right-0 left-rail z-30 h-topbar items-center gap-4 px-6 bg-canvas/85 backdrop-blur-xl border-b border-line">
+        {/* Klinika nomi + turgan sahifa. Ilgari bu yerda yana bitta logotip
+            turardi — chapdagi ustunda logotip bor ekan, uni takrorlash
+            joyni bekorga egallaydi. Klinika nomi esa foydali: bitta
+            kompyuterda ikkita nusxa ochilsa qaysi biri ekani ko'rinadi. */}
+        <div className="min-w-0 shrink-0 max-w-[200px]">
+          <p className="text-[15px] font-extrabold tracking-tight text-ink truncate uppercase">
+            {currentClinic?.name || 'XClinic'}
+          </p>
+          <p className="text-[11px] font-medium text-faint truncate">{pageLabel}</p>
+        </div>
+
+        {clinicId === 'demo-clinic-1' && (
+          <span className="shrink-0 px-2.5 py-1 text-[10px] font-bold bg-primary-500/12 text-primary-700 dark:text-primary-300 rounded-full border border-primary-500/25">
+            DEMO
+          </span>
+        )}
+
+        {/* Sana — reference dagi filial tanlagichning o'rnida. XClinic bitta
+            klinika uchun, filial tushunchasi yo'q; kunlik ishda esa eng ko'p
+            keraklisi aynan bugungi sana. */}
+        <div className="hidden 2xl:flex shrink-0 items-center gap-2 h-10 px-4 rounded-full border border-line bg-surface text-sm font-semibold text-muted">
+          <CalendarIcon className="w-4 h-4 text-faint" />
+          {formatHeaderDate(new Date(), language)}
+        </div>
+
+        {/* Qidiruv — markazda va keng. Dasturdagi eng ko'p ishlatiladigan
+            maydon, shuning uchun eng ko'rinadigan joyda turadi. */}
+        <div className="flex-1 flex justify-center min-w-0">
+          <div className="relative group w-full max-w-2xl">
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-faint group-focus-within:text-primary transition-colors" />
+            <input
+              type="text"
+              placeholder={t('header.search')}
+              value={searchBarTerm}
+              onChange={(e) => setSearchBarTerm(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              className="w-full h-11 pl-12 pr-4 bg-surface border border-line rounded-full text-sm text-ink
+                         placeholder:text-faint outline-none transition-colors
+                         focus:border-primary-500/50 focus:ring-4 focus:ring-primary-500/10"
+            />
+
+            {/* Qidiruv natijalari */}
+            {isSearchFocused && searchBarTerm.length >= 2 && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsSearchFocused(false)}></div>
+                <div className="absolute top-full left-0 right-0 mt-2 panel overflow-hidden z-50 animate-in">
+                  {searchResults.patients.length === 0 && searchResults.doctors.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <div className="w-12 h-12 bg-elevated rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Search className="w-5 h-5 text-faint" />
+                      </div>
+                      <p className="text-sm font-semibold text-ink">Natija topilmadi</p>
+                      <p className="text-xs text-faint mt-1">Boshqa so'z bilan urinib ko'ring</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-[420px] overflow-y-auto py-2">
+                      {searchResults.patients.length > 0 && (
+                        <div className="px-2 mb-1">
+                          <div className="px-3 py-2 flex items-center gap-2 text-[10px] font-bold text-faint uppercase tracking-widest">
+                            <Users className="w-3 h-3" />
+                            Bemorlar
+                          </div>
+                          {searchResults.patients.map(p => (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                navigate(`/patients/${p.id}`);
+                                setSearchBarTerm('');
+                                setIsSearchFocused(false);
+                              }}
+                              className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-elevated transition-colors text-left"
+                            >
+                              <div className="w-9 h-9 rounded-full bg-primary-500/12 flex items-center justify-center text-primary-700 dark:text-primary-300 font-bold text-xs shrink-0">
+                                {p.firstName[0]}{p.lastName[0]}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-ink truncate">
+                                  {p.firstName} {p.lastName}
+                                </p>
+                                <p className="text-[11px] text-faint truncate">{p.phone}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {searchResults.doctors.length > 0 && (
+                        <div className="px-2 border-t border-line-soft pt-1">
+                          <div className="px-3 py-2 flex items-center gap-2 text-[10px] font-bold text-faint uppercase tracking-widest">
+                            <Activity className="w-3 h-3" />
+                            Shifokorlar
+                          </div>
+                          {searchResults.doctors.map(d => (
+                            <button
+                              key={d.id}
+                              onClick={() => {
+                                navigate(`/doctors/${d.id}`);
+                                setSearchBarTerm('');
+                                setIsSearchFocused(false);
+                              }}
+                              className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-elevated transition-colors text-left"
+                            >
+                              <div className="w-9 h-9 rounded-full bg-success-500/12 flex items-center justify-center text-success font-bold text-xs shrink-0">
+                                {d.firstName[0]}{d.lastName[0]}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-ink truncate">
+                                  Dr. {d.firstName} {d.lastName}
+                                </p>
+                                <p className="text-[11px] text-faint truncate">{d.specialty}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-
-
-              </div>
-            </div>
-
-            <div className="flex items-center gap-5">
-              {/* AI yordamchi — ilgari faqat bosh panel ichidagi tab edi, ya'ni
-                  uni bilmagan odam umuman topmasdi. Endi har bir sahifadan
-                  bitta bosishda ochiladi. Hamshira moliyaviy panelni ko'rmaydi,
-                  shuning uchun unga tugma ham chiqmaydi. */}
-              {userRole !== UserRole.NURSE && (
-                <button
-                  onClick={() => setAiOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white
-                             bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500
-                             shadow-sm hover:shadow-md transition-all shrink-0"
-                  title={t('ai.tab')}
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span className="hidden xl:inline">{t('ai.tab')}</span>
-                </button>
-              )}
-              <span className="hidden 2xl:inline text-sm font-medium text-gray-500 dark:text-gray-400">
-                {formatHeaderDate(new Date(), language)}
-              </span>
-              <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
-              <button
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
-              >
-                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
-
-              {/* Language Switcher - Pill Toggle */}
-              <div className="flex items-center bg-gray-100 dark:bg-gray-700/60 rounded-full p-0.5 gap-0.5 border border-gray-200 dark:border-gray-600">
-                {(['uz', 'ru'] as const).map((lang) => (
-                  <button
-                    key={lang}
-                    onClick={() => setLanguage(lang)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${language === lang
-                        ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                      }`}
-                  >
-                    <Flag code={lang} />
-                    <span className="uppercase tracking-wide">{lang}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* ── NAMOYISHDA ROLNI ALMASHTIRISH ────────────────────────
-                  Namoyish nusxasi HAR DOIM ega sifatida kirardi va boshqa
-                  rol ko'rinishini ko'rsatishning yo'li yo'q edi: shifokor
-                  nima ko'radi, registrator nima ko'radi — hech biri. Aynan
-                  shu klinikada tushuntirishning yarmi edi.
-
-                  Faqat namoyish nusxasida. Klinikaga tarqatiladigan
-                  bundle'da bu tugma umuman yo'q. */}
-              {IS_DEMO_BUILD && (
-                <select
-                  aria-label="Demo: rol"
-                  value={userRole}
-                  onChange={(e) => {
-                    const r = e.target.value as UserRole;
-                    const who = DEMO_ROLE_PROFILES[r];
-                    auth.setSession({
-                      role: r, name: who.name, clinicId: 'demo-clinic-1',
-                      username: 'demo', token: 'demo-token', isDemo: true,
-                      ...(who.doctorId ? { doctorId: who.doctorId } : {}),
-                    } as any);
-                    handleLogin(r, who.name, 'demo-clinic-1', who.doctorId);
-                  }}
-                  className="px-2 py-1.5 text-xs font-semibold rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300"
-                >
-                  {Object.entries(DEMO_ROLE_PROFILES).map(([role, who]) => (
-                    <option key={role} value={role}>{who.label}</option>
-                  ))}
-                </select>
-              )}
-
-              {/* User Profile Info */}
-              <div className="flex items-center gap-3 pl-4 border-l border-gray-200 dark:border-gray-700 ml-2">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm uppercase shadow-sm bg-primary`}>
-                  {userName ? userName.slice(0, 2) : 'A'}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{userName}</span>
-                  <span className="text-xs text-gray-500 capitalize leading-tight">
-                    {userRole === UserRole.CLINIC_ADMIN ? t('roles.admin') : userRole === UserRole.RECEPTIONIST ? t('roles.receptionist') : userRole === UserRole.LAB_TECHNICIAN ? 'Laborant' : userRole === UserRole.NURSE ? 'Hamshira' : t('roles.doctor')}
-                  </span>
-                </div>
-                <button onClick={handleLogout} className="ml-2 p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title={t('common.logout')}>
-                  <LogOut className="w-5 h-5" />
-                </button>
-              </div>
-
-            </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Bottom Row: Navigation Links */}
-        <div className="border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/80">
-          <div className="w-full px-4 sm:px-6 lg:px-10 xl:px-14">
-            {/* NAV PANELI (S5.1, audit B-03).
+        {/* ─── O'ng chekka ─────────────────────────────────── */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {/* QARZDORLAR. Ilgari to'lanmagan hisoblar faqat Moliya bo'limiga
+              kirgandagina ko'rinardi, ya'ni ularni ataylab qidirish kerak
+              edi. Endi raqam har sahifada turadi va bosilganda kassaga
+              olib boradi. Nol bo'lsa — tugma umuman chiqmaydi. */}
+          {debtorCount > 0 && showFinanceForRole && (
+            <button
+              onClick={() => navigate('/finance')}
+              title={`To'lanmagan: ${debtTotal.toLocaleString('ru-RU')} so'm`}
+              className="flex items-center gap-2 h-10 px-4 rounded-full text-sm font-bold
+                         bg-danger-500/10 text-danger border border-danger-500/25
+                         hover:bg-danger-500/20 transition-colors"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-danger" />
+              {debtorCount} {t('common.debtors')}
+            </button>
+          )}
 
-                Audit: «Panel kengligi 1990px, ekranda 1193px ko'rinadi —
-                15 modulning 6 tasi tashqarida. Scrollbar `no-scrollbar`
-                bilan yashirilgan, chekkada gradient yoki o'q ham yo'q,
-                ya'ni davomi borligini bildiradigan hech narsa yo'q».
+          {/* AI yordamchi — sahifa USTIDA ochiladi, turgan joyni tashlab
+              ketmasdan. Hamshira moliyaviy panelni ko'rmaydi, unga tugma
+              ham chiqmaydi. */}
+          {userRole !== UserRole.NURSE && (
+            <button
+              onClick={() => setAiOpen(true)}
+              className="flex items-center gap-2 h-10 px-4 rounded-full text-sm font-bold text-white
+                         bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500
+                         transition-colors shrink-0"
+              title={t('ai.tab')}
+            >
+              <Sparkles className="w-4 h-4" />
+              <span className="hidden 2xl:inline">{t('ai.tab')}</span>
+            </button>
+          )}
 
-                Ikkita narsa qo'shildi:
-                  • chekkalarda gradient — faqat surish MUMKIN bo'lgan
-                    tomonda ko'rinadi, ya'ni u ma'lumot beradi, bezak emas;
-                  • route o'zgarganda faol element ko'rinishga suriladi —
-                    `#/settings` da panel `scrollLeft = 0` bo'lib qolardi
-                    va «Sozlamalar» umuman ko'rinmasdi. */}
-            <div className="relative">
-              {navOverflow.left && (
-                <div aria-hidden="true"
-                  className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10
-                             bg-gradient-to-r from-gray-50 dark:from-gray-800 to-transparent" />
-              )}
-              {navOverflow.right && (
-                <div aria-hidden="true"
-                  className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10
-                             bg-gradient-to-l from-gray-50 dark:from-gray-800 to-transparent" />
-              )}
-            <div ref={navRef} onScroll={updateNavOverflow}
-                 className="h-12 flex items-center gap-2 overflow-x-auto no-scrollbar">
-              {visibleNavigation.map((item) => {
-                const to = item.id === 'dashboard' ? '/' : `/${item.id}`;
-                return (
-                  <NavLink
-                    key={item.id}
-                    to={to}
-                    end={item.id === 'dashboard'}
-                    className={({ isActive }) => {
-                      const active = isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'));
-                      return `relative flex items-center h-12 px-4 text-sm font-medium transition-colors whitespace-nowrap group ${active
-                        ? 'text-primary dark:text-primary-400 bg-primary-50/60 dark:bg-primary-900/20'
-                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`
-                    }}
-                  >
-                    {({ isActive }) => {
-                      const active = isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'));
-                      return (
-                        <>
-                          <item.icon className={`w-4 h-4 mr-2 ${active ? 'text-primary dark:text-primary-400' : 'text-gray-400 group-hover:text-gray-500 dark:group-hover:text-gray-300'}`} />
-                          {t(item.labelKey as any)}
-                          {active && (
-                            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-primary dark:bg-primary-400 rounded-t-full"></span>
-                          )}
-                        </>
-                      );
-                    }}
-                  </NavLink>
-                );
-              })}
+          {/* Til */}
+          <div className="flex items-center h-10 bg-surface rounded-full p-1 gap-0.5 border border-line">
+            {(['uz', 'ru'] as const).map((lang) => (
+              <button
+                key={lang}
+                onClick={() => setLanguage(lang)}
+                className={`flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-bold transition-colors ${language === lang
+                  ? 'bg-primary-500/15 text-primary'
+                  : 'text-faint hover:text-muted'
+                  }`}
+              >
+                <Flag code={lang} />
+                <span className="uppercase tracking-wide">{lang}</span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="w-10 h-10 flex items-center justify-center rounded-full border border-line bg-surface text-muted hover:text-ink transition-colors"
+            title={isDarkMode ? "Yorug' tema" : "Qorong'i tema"}
+          >
+            {isDarkMode ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+          </button>
+
+          {/* ── NAMOYISHDA ROLNI ALMASHTIRISH ─────────────────────
+              Faqat namoyish nusxasida. Klinikaga tarqatiladigan bundle'da
+              bu tugma umuman yo'q. */}
+          {IS_DEMO_BUILD && (
+            <select
+              aria-label="Demo: rol"
+              value={userRole}
+              onChange={(e) => {
+                const r = e.target.value as UserRole;
+                const who = DEMO_ROLE_PROFILES[r];
+                auth.setSession({
+                  role: r, name: who.name, clinicId: 'demo-clinic-1',
+                  username: 'demo', token: 'demo-token', isDemo: true,
+                  ...(who.doctorId ? { doctorId: who.doctorId } : {}),
+                } as any);
+                handleLogin(r, who.name, 'demo-clinic-1', who.doctorId);
+              }}
+              className="h-10 px-3 text-xs font-bold rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300"
+            >
+              {Object.entries(DEMO_ROLE_PROFILES).map(([role, who]) => (
+                <option key={role} value={role}>{who.label}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Kim kirgan. Klinikada bitta kompyuterda navbatma-navbat
+              ishlashadi — ism ko'rinib turishi shart. Chiqish tugmasi bu
+              yerdan chapdagi ustun ostiga ko'chdi. */}
+          <div className="flex items-center gap-2.5 pl-2.5 ml-0.5 border-l border-line">
+            <div className="hidden xl:block text-right leading-tight">
+              <p className="text-sm font-bold text-ink max-w-[140px] truncate" title={userName}>{userName}</p>
+              <p className="text-[11px] text-faint">{roleLabel}</p>
             </div>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm uppercase bg-gradient-to-br from-primary-500 to-primary-700">
+              {userName ? userName.slice(0, 2) : 'A'}
             </div>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 lg:pt-28 min-h-screen flex flex-col items-center">
-        <div className="w-full px-4 sm:px-6 lg:px-10 xl:px-14 py-4 sm:py-6 lg:py-8 flex-1 overflow-x-hidden pb-24 lg:pb-8">
+      <main className="min-h-screen flex flex-col lg:pl-rail lg:pt-topbar">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-7 flex-1 overflow-x-hidden pb-24 lg:pb-10">
           <ErrorBoundary key={location.pathname} section={t(getPageLabelKey(location.pathname))}>
           {/* `Suspense` — `React.lazy` bilan bo'lingan sahifalar uchun (S5.5).
               Yuklash indikatori ERROR BOUNDARY ICHIDA: chunk yuklanmasa
@@ -1637,7 +1632,7 @@ const sinceDate = (n: number) =>
               bo'lmasin. */}
           <React.Suspense fallback={
             <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
-              <div className="w-8 h-8 rounded-full border-2 border-gray-300 dark:border-gray-600 border-t-primary-600 animate-spin" />
+              <div className="w-8 h-8 rounded-full border-2 border-line border-t-primary-600 animate-spin" />
               <span className="sr-only">Yuklanmoqda…</span>
             </div>
           }>
@@ -1808,6 +1803,7 @@ const sinceDate = (n: number) =>
                   onCreatePatient={addPatient}
                   onPatientAdded={(p: Patient) => setPatients(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev])}
                   addToast={addToast}
+                  userName={userName}
                 />
               )} />
 
