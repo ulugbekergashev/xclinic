@@ -574,6 +574,11 @@ export interface RoleAccess {
 export interface AccessControl {
   doctor?: RoleAccess;
   receptionist?: RoleAccess;
+  /* Laborant va hamshira ham cheklanadi. Ilgari ular ro'yxatda YO'Q edi:
+     ruxsatlar ekrani ularni umuman ko'rsatmasdi va «hammasi ochiq»
+     bo'lib qolardi. */
+  labTechnician?: RoleAccess;
+  nurse?: RoleAccess;
 }
 
 export interface ICD10Code {

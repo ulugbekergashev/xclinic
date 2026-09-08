@@ -3,30 +3,23 @@ import { Appointment, Doctor, Patient, Transaction, Clinic, SubscriptionPlan } f
 
 // Sozlamalar → Ruxsatlar bo'limida rol bo'yicha yashirish mumkin bo'lgan modullar.
 // id lari App.tsx dagi CLINIC_NAVIGATION id lari bilan bir xil. Dashboard ataylab yo'q — bosh sahifa har doim ochiq.
-export const ACCESS_MODULES: { id: string; label: string; roles: ('DOCTOR' | 'RECEPTIONIST')[] }[] = [
-  { id: 'reception', label: 'Registratura', roles: ['RECEPTIONIST'] },
-  { id: 'myqueue', label: 'Mening navbatim', roles: ['DOCTOR', 'RECEPTIONIST'] },
-  { id: 'leads', label: 'Lidlar', roles: ['RECEPTIONIST'] },
-  { id: 'patients', label: 'Bemorlar', roles: ['DOCTOR', 'RECEPTIONIST'] },
-  { id: 'calendar', label: 'Kalendar', roles: ['DOCTOR', 'RECEPTIONIST'] },
-  { id: 'finance', label: 'Moliya (Kassa)', roles: ['RECEPTIONIST'] },
-  { id: 'doctors', label: 'Shifokorlar', roles: ['RECEPTIONIST'] },
-  { id: 'inventory', label: 'Ombor', roles: ['RECEPTIONIST'] },
-  { id: 'board', label: 'Navbat tablosi', roles: ['RECEPTIONIST'] },
-  { id: 'lab', label: 'Laboratoriya', roles: ['DOCTOR', 'RECEPTIONIST'] },
-  { id: 'diagnostics', label: 'Diagnostika', roles: ['DOCTOR', 'RECEPTIONIST'] },
-  { id: 'inpatient', label: 'Statsionar', roles: ['DOCTOR', 'RECEPTIONIST'] },
-  { id: 'messages', label: 'Xabarlar', roles: ['RECEPTIONIST'] },
-  { id: 'settings', label: 'Sozlamalar', roles: ['RECEPTIONIST'] },
-];
+/* `ACCESS_MODULES` OLIB TASHLANDI — u menyuning qo'lda yozilgan nusxasi
+   edi va undan ajralib ketgandi: ro'yxatda allaqachon olib tashlangan
+   bo'limlar turardi, «Bugun» esa yo'q edi. Endi ro'yxat menyudan
+   hosil bo'ladi: `utils/navigation.ts` → `accessModulesFor(role)`. */
 
-// "Sodda ko'rinish" preseti — kundalik ishga kerak bo'lmagan modullarni bir bosishda yashiradi.
-// Menyu qancha qisqa bo'lsa, yangi xodim shuncha tez o'rganadi.
-export const SIMPLE_VIEW_HIDDEN_MODULES: Record<'DOCTOR' | 'RECEPTIONIST', string[]> = {
-  // Registratorga kerak: bemor, kalendar, kassa, navbat. Qolganlari direktor ishi.
-  RECEPTIONIST: ['doctors', 'inventory', 'lab', 'messages', 'settings', 'leads', 'board'],
-  // Shifokorga kerak: bemor, kalendar, navbat.
-  DOCTOR: ['lab', 'board'],
+// "Sodda ko'rinish" preseti — kundalik ishga kerak bo'lmagan modullarni bir
+// bosishda yashiradi. Menyu qancha qisqa bo'lsa, yangi xodim shuncha tez
+// o'rganadi. Kalitlar — menyu id lari (`utils/navigation.ts`).
+export const SIMPLE_VIEW_HIDDEN_MODULES: Record<string, string[]> = {
+  // Registratorga kerak: bugun, bemor, kalendar, kassa.
+  RECEPTIONIST: ['inventory', 'lab', 'diagnostics', 'inpatient', 'settings'],
+  // Shifokorga kerak: bugun, bemor, kalendar.
+  DOCTOR: ['inpatient'],
+  // Laborant faqat laboratoriyada ishlaydi.
+  LAB_TECHNICIAN: ['patients'],
+  // Hamshira — statsionar va bugungi ro'yxat.
+  NURSE: ['calendar', 'patients'],
 };
 
 // Helper to get dates relative to today

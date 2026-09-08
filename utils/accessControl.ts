@@ -17,8 +17,18 @@ export function parseAccessControl(clinic?: Clinic): AccessControl {
 export function getRoleAccess(ac: AccessControl, role: UserRole): RoleAccess | undefined {
     if (role === UserRole.DOCTOR) return ac.doctor;
     if (role === UserRole.RECEPTIONIST) return ac.receptionist;
-    return undefined; // admin va boshqa rollar cheklanmaydi
+    if (role === UserRole.LAB_TECHNICIAN) return ac.labTechnician;
+    if (role === UserRole.NURSE) return ac.nurse;
+    return undefined; // klinika egasi cheklanmaydi
 }
+
+/** Sozlamalardagi kalit — rol bo'yicha. Ekran ham, o'qish ham shundan. */
+export const ACCESS_ROLE_KEYS: { role: UserRole; key: keyof AccessControl; title: string; desc: string }[] = [
+    { role: UserRole.RECEPTIONIST, key: 'receptionist', title: 'Registrator', desc: 'Qabulxona xodimlari uchun' },
+    { role: UserRole.DOCTOR, key: 'doctor', title: 'Shifokor', desc: 'Shifokorlar uchun' },
+    { role: UserRole.LAB_TECHNICIAN, key: 'labTechnician', title: 'Laborant', desc: 'Tahlil natijalarini kiritadi' },
+    { role: UserRole.NURSE, key: 'nurse', title: 'Hamshira', desc: 'Dori beradi, palatani olib boradi' },
+];
 
 export function isModuleHidden(ac: AccessControl, role: UserRole, moduleId: string): boolean {
     return !!getRoleAccess(ac, role)?.hiddenModules?.includes(moduleId);

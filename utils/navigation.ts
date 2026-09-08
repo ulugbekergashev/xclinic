@@ -52,6 +52,23 @@ export const NAVIGATION: NavItemDef[] = [
     { id: 'settings', path: '/settings', labelKey: 'nav.settings', icon: SettingsIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
 ];
 
+/* ─── RUXSAT MODULLARI ──────────────────────────────────────
+
+   Ro'yxat MENYUDAN hosil bo'ladi — alohida yozilmaydi.
+
+   Ilgari u `constants.ts` da qo'lda yozilgan nusxa edi va menyudan
+   ajralib ketgan: unda allaqachon olib tashlangan bo'limlar turardi
+   («Registratura», «Mening navbatim», «Lidlar», «Shifokorlar»,
+   «Navbat tablosi»), «Bugun» esa umuman yo'q edi. Ya'ni ruxsatlar
+   ekrani mavjud bo'lmagan sahifalarni yashirishni taklif qilardi va
+   mavjudini yashira olmasdi.
+
+   Klinika egasi cheklanmaydi, shuning uchun u ro'yxatga kirmaydi. */
+export function accessModulesFor(role: UserRole): NavItemDef[] {
+    return NAVIGATION.filter(item =>
+        item.roles.includes(role) && role !== UserRole.CLINIC_ADMIN);
+}
+
 /** Rol va «Ruxsatlar» sozlamasiga ko'ra ko'rinadigan punktlar */
 export function visibleNavigation(role: UserRole, ac: AccessControl): NavItemDef[] {
     return NAVIGATION.filter(item =>

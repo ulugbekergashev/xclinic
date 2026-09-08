@@ -13,7 +13,8 @@ import { useLanguage } from '../context/LanguageContext';
 import { parseAccessControl } from '../utils/accessControl';
 import { NetworkAccessTab } from '../components/NetworkAccessTab';
 import { LabCatalogTab } from '../components/LabCatalogTab';
-import { ACCESS_MODULES, SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
+import { SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
+import { accessModulesFor } from '../utils/navigation';
 
 /** Bo'lim rangi — navbat tablosi va kalendar shu ranglarni ishlatadi */
 const DEPT_COLORS = [
@@ -101,28 +102,31 @@ export const Settings: React.FC<SettingsProps> = ({
    const [cashShiftsSaving, setCashShiftsSaving] = useState(false);
    const [accessSaved, setAccessSaved] = useState(false);
 
-   const updateRoleAccess = (roleKey: 'doctor' | 'receptionist', patch: Partial<RoleAccess>) => {
+   /* Ruxsatlar TO'RT rol uchun. Ilgari faqat shifokor va registrator bor
+      edi: laborant va hamshira ruxsatlar ekranida umuman ko'rinmasdi va
+      ularda «hammasi ochiq» bo'lib qolardi. */
+   type AccessRoleKey = 'doctor' | 'receptionist' | 'labTechnician' | 'nurse';
+
+   const updateRoleAccess = (roleKey: AccessRoleKey, patch: Partial<RoleAccess>) => {
       setAccessForm(prev => ({ ...prev, [roleKey]: { ...prev[roleKey], ...patch } }));
    };
 
-   const toggleModule = (roleKey: 'doctor' | 'receptionist', moduleId: string) => {
+   const toggleModule = (roleKey: AccessRoleKey, moduleId: string) => {
       const hidden = accessForm[roleKey]?.hiddenModules || [];
       const next = hidden.includes(moduleId) ? hidden.filter(m => m !== moduleId) : [...hidden, moduleId];
       updateRoleAccess(roleKey, { hiddenModules: next });
    };
 
    // Tayyor presetlar: "Sodda" — faqat kundalik ish uchun kerak modullar, "Hammasi" — cheklovsiz
-   const applyPreset = (roleKey: 'doctor' | 'receptionist', preset: 'simple' | 'all') => {
-      const roleId = roleKey === 'doctor' ? 'DOCTOR' : 'RECEPTIONIST';
+   const applyPreset = (roleKey: AccessRoleKey, roleId: string, preset: 'simple' | 'all') => {
       updateRoleAccess(roleKey, {
-         hiddenModules: preset === 'simple' ? [...SIMPLE_VIEW_HIDDEN_MODULES[roleId]] : [],
+         hiddenModules: preset === 'simple' ? [...(SIMPLE_VIEW_HIDDEN_MODULES[roleId] || [])] : [],
       });
    };
 
-   const isSimplePreset = (roleKey: 'doctor' | 'receptionist') => {
-      const roleId = roleKey === 'doctor' ? 'DOCTOR' : 'RECEPTIONIST';
+   const isSimplePreset = (roleKey: AccessRoleKey, roleId: string) => {
       const hidden = [...(accessForm[roleKey]?.hiddenModules || [])].sort();
-      const target = [...SIMPLE_VIEW_HIDDEN_MODULES[roleId]].sort();
+      const target = [...(SIMPLE_VIEW_HIDDEN_MODULES[roleId] || [])].sort();
       return hidden.length === target.length && hidden.every((m, i) => m === target[i]);
    };
 
@@ -1989,12 +1993,18 @@ export const Settings: React.FC<SettingsProps> = ({
                      </Card>
 
                      {([
-                        { roleKey: 'receptionist' as const, roleId: 'RECEPTIONIST' as const, title: 'Resepshn', desc: 'Qabulxona xodimlari uchun' },
-                        { roleKey: 'doctor' as const, roleId: 'DOCTOR' as const, title: 'Shifokor', desc: 'Shifokorlar uchun' },
+                        { roleKey: 'receptionist' as const, roleId: UserRole.RECEPTIONIST, title: 'Registrator', desc: 'Qabulxona xodimlari uchun' },
+                        { roleKey: 'doctor' as const, roleId: UserRole.DOCTOR, title: 'Shifokor', desc: 'Shifokorlar uchun' },
+                        { roleKey: 'labTechnician' as const, roleId: UserRole.LAB_TECHNICIAN, title: 'Laborant', desc: 'Tahlil natijalarini kiritadi' },
+                        { roleKey: 'nurse' as const, roleId: UserRole.NURSE, title: 'Hamshira', desc: 'Dori beradi, palatani olib boradi' },
                      ]).map(({ roleKey, roleId, title, desc }) => {
                         const roleAccess = accessForm[roleKey] || {};
                         const hidden = roleAccess.hiddenModules || [];
-                        const modules = ACCESS_MODULES.filter(m => m.roles.includes(roleId));
+                        /* Modullar MENYUDAN olinadi — alohida ro'yxat yo'q.
+                           Ilgari nusxa bor edi va u menyudan ajralib
+                           ketgandi: mavjud bo'lmagan sahifalarni yashirishni
+                           taklif qilardi. */
+                        const modules = accessModulesFor(roleId);
                         return (
                            <Card key={roleKey} className="p-6">
                               <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -2004,13 +2014,13 @@ export const Settings: React.FC<SettingsProps> = ({
                                  </div>
                                  <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
                                     {([
-                                       { key: 'simple' as const, label: 'Sodda', active: isSimplePreset(roleKey) },
+                                       { key: 'simple' as const, label: 'Sodda', active: isSimplePreset(roleKey, roleId) },
                                        { key: 'all' as const, label: 'Hammasi', active: (accessForm[roleKey]?.hiddenModules || []).length === 0 },
                                     ]).map(p => (
                                        <button
                                           key={p.key}
                                           type="button"
-                                          onClick={() => applyPreset(roleKey, p.key)}
+                                          onClick={() => applyPreset(roleKey, roleId, p.key)}
                                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${p.active
                                              ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-white shadow-sm'
                                              : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
@@ -2042,7 +2052,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                              onChange={() => toggleModule(roleKey, m.id)}
                                              className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500"
                                           />
-                                          {m.label}
+                                          {t(m.labelKey as any)}
                                        </label>
                                     );
                                  })}
