@@ -6,7 +6,7 @@ import { toast } from '../services/toast';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 
 import { UserRole, Doctor, Receptionist, Clinic, Service, ServiceCategory, Review, LabTechnician, AccessControl, RoleAccess, LeadApiKeyInfo, DepartmentType, DEPARTMENT_TYPE_LABELS } from '../types';
-import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History, ArrowRight, Wifi, Cloud, Check } from 'lucide-react';
+import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History, ArrowRight, Wifi, Cloud, Check, FileText } from 'lucide-react';
 import { api, API_URL, getAuthToken, isDemoMode } from '../services/api';
 import type { AiSettingsResponse } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -32,6 +32,7 @@ const DEPT_COLORS = [
 
 import { StaffTab } from '../components/StaffTab';
 import { ServiceRecipeEditor } from '../components/ServiceRecipeEditor';
+import { EncounterTemplatesTab } from '../components/EncounterTemplatesTab';
 
 const DOCTOR_COLORS = [
    { name: 'Ko\'k', value: '#3B82F6' },
@@ -95,7 +96,7 @@ export const Settings: React.FC<SettingsProps> = ({
    /* Kompyuterdagi bulut papkalari — «Xizmat ko'rsatish» bo'limi ochilganda
       bir marta so'raladi. Topilmasa oddiy papka tanlash qoladi. */
    const [cloudFolders, setCloudFolders] = useState<{ path: string; label: string }[]>([]);
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'staff' | 'integrations' | 'access' | 'maintenance' | 'network' | 'labCatalog' | 'departments'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'staff' | 'integrations' | 'access' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'templates'>('services');
 
    // Ruxsatlar (access control) formasi — klinika sozlamalaridan boshlang'ich qiymat
    const [accessForm, setAccessForm] = useState<AccessControl>(() => parseAccessControl(currentClinic));
@@ -786,7 +787,8 @@ export const Settings: React.FC<SettingsProps> = ({
    React.useEffect(() => {
       /* Bo'lim ro'yxati «Xodimlar» da ham kerak: forma bo'limni
          tanlaydi va ro'yxatda bo'lim nomi ko'rinadi. */
-      if ((activeTab === 'departments' || activeTab === 'staff' || activeTab === 'services')
+      if ((activeTab === 'departments' || activeTab === 'staff' || activeTab === 'services'
+         || activeTab === 'templates')
          && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
       if (activeTab === 'services' && inventoryItems.length === 0 && currentClinic?.id) {
          api.inventory.getAll(currentClinic.id).then(setInventoryItems).catch(() => setInventoryItems([]));
@@ -1069,6 +1071,11 @@ export const Settings: React.FC<SettingsProps> = ({
                      bo'lganda AYNAN shu yerga yuborardi, lekin bunday
                      vkladka mavjud emas edi. */
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'labCatalog', name: t('lab.tab'), icon: FlaskConical }] : []),
+                  /* KO'RIK BAYONI SHABLONLARI. Shablonlar bazada bor va
+                     qabul paneli ularni ochadi, lekin YARATADIGAN ekran
+                     yo'q edi: klinika o'rnatishda kelganlari bilan qolib
+                     ketardi va bironta maydon qo'sha olmasdi. */
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'templates', name: "Ko'rik shablonlari", icon: FileText }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: 'Xizmat ko’rsatish', icon: HardDrive }] : []),
                ].map((item) => (
                   <button
@@ -2257,6 +2264,10 @@ export const Settings: React.FC<SettingsProps> = ({
                         </>
                      )}
                   </Card>
+               )}
+
+               {activeTab === 'templates' && userRole === UserRole.CLINIC_ADMIN && (
+                  <EncounterTemplatesTab departments={deptList} />
                )}
 
                {activeTab === 'services' && (
