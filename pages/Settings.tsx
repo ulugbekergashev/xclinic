@@ -29,6 +29,8 @@ const DEPT_COLORS = [
    { name: 'Jigarrang', value: '#B45309' },
 ];
 
+import { StaffTab } from '../components/StaffTab';
+
 const DOCTOR_COLORS = [
    { name: 'Ko\'k', value: '#3B82F6' },
    { name: 'Yashil', value: '#10B981' },
@@ -77,17 +79,19 @@ interface SettingsProps {
    onDeleteLabTechnician?: (id: string) => void;
    currentClinic?: Clinic;
    reviews: Review[];
+   /** Xodimlar ro'yxati o'zgardi — App o'z keshini yangilaydi */
+   onStaffChanged?: () => void;
 }
 
 export const Settings: React.FC<SettingsProps> = ({
-   userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, reviews
+   userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, reviews, onStaffChanged
 }) => {
    const { t } = useLanguage();
    const navigate = useNavigate();
    /* Kompyuterdagi bulut papkalari — «Xizmat ko'rsatish» bo'limi ochilganda
       bir marta so'raladi. Topilmasa oddiy papka tanlash qoladi. */
    const [cloudFolders, setCloudFolders] = useState<{ path: string; label: string }[]>([]);
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'doctors' | 'receptionists' | 'labTechnicians' | 'nurses' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'ai'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'staff' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'ai'>('services');
 
    // Ruxsatlar (access control) formasi — klinika sozlamalaridan boshlang'ich qiymat
    const [accessForm, setAccessForm] = useState<AccessControl>(() => parseAccessControl(currentClinic));
@@ -169,29 +173,8 @@ export const Settings: React.FC<SettingsProps> = ({
    const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
    const [serviceForm, setServiceForm] = useState({ name: '', price: '', cost: '', categoryId: '' });
 
-   // Doctor Modal State
-   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
-   const [editingDoctorId, setEditingDoctorId] = useState<string | null>(null);
-   const [doctorForm, setDoctorForm] = useState({ firstName: '', lastName: '', specialty: '', phone: '', secondaryPhone: '', username: '', password: '', percentage: '', salaryType: 'none' as 'none' | 'fixed' | 'fixed_kpi' | 'kpi', fixedSalary: '', color: DOCTOR_COLORS[0].value, startHour: '', endHour: '', room: '' });
-
-   // Receptionist Modal State
-   const [isReceptionistModalOpen, setIsReceptionistModalOpen] = useState(false);
-   const [editingReceptionistId, setEditingReceptionistId] = useState<string | null>(null);
-   const [receptionistForm, setReceptionistForm] = useState({ firstName: '', lastName: '', phone: '', username: '', password: '' });
-
-   // LabTechnician Modal State
-   const [isLabTechModalOpen, setIsLabTechModalOpen] = useState(false);
-   const [editingLabTechId, setEditingLabTechId] = useState<string | null>(null);
-   const [labTechForm, setLabTechForm] = useState({ firstName: '', lastName: '', specialty: '', phone: '', username: '', password: '' });
-
-   // Upgrade Plan Modal State
-
-   // Delete Confirmation Modals
-   const [deleteConfirmDoctor, setDeleteConfirmDoctor] = useState<Doctor | null>(null);
-   const [deleteConfirmLabTech, setDeleteConfirmLabTech] = useState<LabTechnician | null>(null);
-   const [deleteConfirmReceptionist, setDeleteConfirmReceptionist] = useState<Receptionist | null>(null);
-
-
+   /* XODIM FORMALARINING HOLATI OLIB TASHLANDI — «Xodimlar» ekrani
+      (`components/StaffTab.tsx`) o'zi boshqaradi. */
 
    // General Form State
    const [generalForm, setGeneralForm] = useState({
@@ -413,135 +396,6 @@ export const Settings: React.FC<SettingsProps> = ({
       if (!await confirmAction({ title: 'Kategoriyani o\'chirmoqchimisiz?' })) return;
       onDeleteCategory(id);
       if (selectedCategory === id) setSelectedCategory(null);
-   };
-
-   const handleOpenDoctorModal = (doctor?: Doctor) => {
-      /* TARIF BO'YICHA SHIFOKOR CHEGARASI OLIB TASHLANDI.
-         XClinic bitta klinikaga o'rnatiladi va obuna sifatida sotilmaydi —
-         klinika nechta shifokor ochishini o'zi hal qiladi. Server tomondagi
-         tekshiruv ham shu bilan birga olib tashlandi. */
-
-      if (doctor) {
-         setEditingDoctorId(doctor.id);
-         setDoctorForm({
-            firstName: doctor.firstName,
-            lastName: doctor.lastName,
-            specialty: doctor.specialty,
-            phone: doctor.phone,
-            secondaryPhone: doctor.secondaryPhone || '',
-            username: doctor.username || '',
-            password: '',
-            percentage: (doctor.percentage || 0).toString(),
-            salaryType: (doctor.salaryType || 'none') as 'none' | 'fixed' | 'fixed_kpi' | 'kpi',
-            fixedSalary: (doctor.fixedSalary || 0).toString(),
-            color: doctor.color || DOCTOR_COLORS[0].value,
-            startHour: doctor.startHour != null ? String(doctor.startHour) : '',
-            endHour: doctor.endHour != null ? String(doctor.endHour) : '',
-            room: doctor.room || '',
-         });
-      } else {
-         setEditingDoctorId(null);
-         setDoctorForm({ firstName: '', lastName: '', specialty: '', phone: '', secondaryPhone: '', username: '', password: '', percentage: '', salaryType: 'none', fixedSalary: '', color: DOCTOR_COLORS[0].value, startHour: '', endHour: '', room: '' });
-      }
-      setIsDoctorModalOpen(true);
-   };
-
-   const handleDoctorSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (editingDoctorId) {
-         const updateData: any = { ...doctorForm };
-         if (!updateData.password) delete updateData.password;
-         updateData.percentage = Number(updateData.percentage) || 0;
-         updateData.fixedSalary = Number(updateData.fixedSalary) || 0;
-         updateData.startHour = doctorForm.startHour !== '' ? Number(doctorForm.startHour) : null;
-         updateData.endHour = doctorForm.endHour !== '' ? Number(doctorForm.endHour) : null;
-         onUpdateDoctor(editingDoctorId, updateData);
-      } else {
-         onAddDoctor({
-            ...doctorForm,
-            percentage: Number(doctorForm.percentage) || 0,
-            fixedSalary: Number(doctorForm.fixedSalary) || 0,
-            startHour: doctorForm.startHour !== '' ? Number(doctorForm.startHour) : null,
-            endHour: doctorForm.endHour !== '' ? Number(doctorForm.endHour) : null,
-            status: 'Active'
-         });
-      }
-      setIsDoctorModalOpen(false);
-   };
-
-   const handleOpenReceptionistModal = (receptionist?: Receptionist) => {
-      if (receptionist) {
-         setEditingReceptionistId(receptionist.id);
-         setReceptionistForm({
-            firstName: receptionist.firstName,
-            lastName: receptionist.lastName,
-            phone: receptionist.phone,
-            username: receptionist.username,
-            password: ''
-         });
-      } else {
-         setEditingReceptionistId(null);
-         setReceptionistForm({ firstName: '', lastName: '', phone: '', username: '', password: '' });
-      }
-      setIsReceptionistModalOpen(true);
-   };
-
-   const handleReceptionistSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (editingReceptionistId) {
-         if (onUpdateReceptionist) {
-            const updateData: any = { ...receptionistForm };
-            if (!updateData.password) {
-               delete updateData.password;
-            }
-            onUpdateReceptionist(editingReceptionistId, updateData);
-         }
-      } else {
-         if (onAddReceptionist) {
-            onAddReceptionist({
-               ...receptionistForm,
-               status: 'Active',
-               clinicId: currentClinic?.id || ''
-            });
-         }
-      }
-      setIsReceptionistModalOpen(false);
-   };
-
-   const handleOpenLabTechModal = (tech?: LabTechnician) => {
-      if (tech) {
-         setEditingLabTechId(tech.id);
-         setLabTechForm({
-            firstName: tech.firstName,
-            lastName: tech.lastName,
-            specialty: tech.specialty,
-            phone: tech.phone,
-            username: tech.username || '',
-            password: ''
-         });
-      } else {
-         setEditingLabTechId(null);
-         setLabTechForm({ firstName: '', lastName: '', specialty: '', phone: '', username: '', password: '' });
-      }
-      setIsLabTechModalOpen(true);
-   };
-
-   const handleLabTechSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      const data: any = {
-         firstName: labTechForm.firstName,
-         lastName: labTechForm.lastName,
-         specialty: labTechForm.specialty,
-         phone: labTechForm.phone,
-         username: labTechForm.username || undefined,
-      };
-      if (labTechForm.password) data.password = labTechForm.password;
-      if (editingLabTechId) {
-         if (onUpdateLabTechnician) onUpdateLabTechnician(editingLabTechId, data);
-      } else {
-         if (onAddLabTechnician) onAddLabTechnician(data);
-      }
-      setIsLabTechModalOpen(false);
    };
 
    const handleSmsSave = async (e: React.FormEvent) => {
@@ -910,7 +764,10 @@ export const Settings: React.FC<SettingsProps> = ({
    }, []);
 
    React.useEffect(() => {
-      if (activeTab === 'departments' && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
+      /* Bo'lim ro'yxati «Xodimlar» da ham kerak: forma bo'limni
+         tanlaydi va ro'yxatda bo'lim nomi ko'rinadi. */
+      if ((activeTab === 'departments' || activeTab === 'staff')
+         && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
    }, [activeTab, userRole, loadDepartments]);
 
    /* ─── Kirish jurnali (reliz 6) ─────────────────────────────────────────
@@ -946,89 +803,8 @@ export const Settings: React.FC<SettingsProps> = ({
       if (activeTab === 'accessLog' && userRole === UserRole.CLINIC_ADMIN) loadAccessLog();
    }, [activeTab, userRole, loadAccessLog]);
 
-   /* ─── Hamshiralar (reliz 4) ────────────────────────────────────────────
-      Ro'yxat ota-komponentdan kelmaydi: bu bo'lim faqat egaga ko'rinadi va
-      butun ilovaga hamshiralar keshi kerak emas. */
-   const [nurses, setNurses] = useState<any[]>([]);
-   const [nurseLoading, setNurseLoading] = useState(false);
-   const [nurseError, setNurseError] = useState('');
-   const [nurseModal, setNurseModal] = useState<any | null>(null);
-   const [nurseForm, setNurseForm] = useState({
-      firstName: '', lastName: '', phone: '', departmentId: '', username: '', password: '', status: 'Active',
-   });
-   const [nurseSaving, setNurseSaving] = useState(false);
-   const [deleteNurse, setDeleteNurse] = useState<any | null>(null);
-
-   const loadNurses = React.useCallback(async () => {
-      setNurseLoading(true);
-      setNurseError('');
-      try {
-         setNurses(await api.nurses.getAll());
-      } catch (e: any) {
-         setNurseError(e?.message || "Ro'yxatni yuklab bo'lmadi");
-      } finally {
-         setNurseLoading(false);
-      }
-   }, []);
-
-   React.useEffect(() => {
-      if (activeTab === 'nurses' && userRole === UserRole.CLINIC_ADMIN) {
-         loadNurses();
-         // Bo'lim nomlarini ko'rsatish uchun ro'yxat kerak
-         if (deptList.length === 0) loadDepartments();
-      }
-   }, [activeTab, userRole, loadNurses]);
-
-   const openNurseModal = (nr?: any) => {
-      setNurseForm({
-         firstName: nr?.firstName || '',
-         lastName: nr?.lastName || '',
-         phone: nr?.phone || '',
-         departmentId: nr?.departmentId || '',
-         username: nr?.username || '',
-         // Parol hech qachon serverdan kelmaydi: bo'sh qoldirilsa o'zgarmaydi
-         password: '',
-         status: nr?.status || 'Active',
-      });
-      setNurseModal(nr || {});
-   };
-
-   const saveNurse = async () => {
-      if (!nurseForm.firstName.trim() || !nurseForm.lastName.trim()) return;
-      setNurseSaving(true);
-      try {
-         const payload: any = {
-            firstName: nurseForm.firstName.trim(),
-            lastName: nurseForm.lastName.trim(),
-            phone: nurseForm.phone.trim() || undefined,
-            departmentId: nurseForm.departmentId || null,
-            username: nurseForm.username.trim() || undefined,
-            status: nurseForm.status,
-         };
-         if (nurseForm.password.trim()) payload.password = nurseForm.password.trim();
-
-         if (nurseModal?.id) await api.nurses.update(nurseModal.id, payload);
-         else await api.nurses.create(payload);
-
-         setNurseModal(null);
-         await loadNurses();
-      } catch (e: any) {
-         setNurseError(e?.message || 'Saqlanmadi');
-      } finally {
-         setNurseSaving(false);
-      }
-   };
-
-   const confirmDeleteNurse = async () => {
-      if (!deleteNurse?.id) return;
-      try {
-         await api.nurses.remove(deleteNurse.id);
-         setDeleteNurse(null);
-         await loadNurses();
-      } catch (e: any) {
-         setNurseError(e?.message || "O'chirilmadi");
-      }
-   };
+   /* HAMSHIRALAR BO'LIMI OLIB TASHLANDI — u endi «Xodimlar» ichida
+      (`components/StaffTab.tsx`), qolgan uch rol bilan birga. */
 
    /* KOD NOMDAN O'ZI YASALADI.
 
@@ -1247,11 +1023,13 @@ export const Settings: React.FC<SettingsProps> = ({
                      undan kira olardi — backend rolni tekshirmasdi. Endi
                      server 403 qaytaradi, shuning uchun bo'limlarning o'zi
                      ham yashiriladi: bosib bo'lmaydigan tugma ko'rsatmaymiz. */
+                  /* TO'RTTA VKLADKA O'RNIGA BITTA. Ilgari «Shifokorlar»,
+                     «Resepshnlar», «Laborantlar» va «Hamshiralar» alohida
+                     turardi: xodimni topish uchun avval uning ROLINI eslash
+                     kerak edi, va har birining o'z ro'yxati, o'z formasi,
+                     o'z o'chirish oynasi bor edi. */
                   ...(userRole === UserRole.CLINIC_ADMIN ? [
-                     { id: 'doctors', name: t('settings.tabs.doctors'), icon: Users },
-                     { id: 'receptionists', name: t('settings.tabs.receptionists'), icon: Phone },
-                     { id: 'labTechnicians', name: t('settings.tabs.labTechnicians'), icon: FlaskConical },
-                     { id: 'nurses', name: 'Hamshiralar', icon: HeartPulse },
+                     { id: 'staff', name: 'Xodimlar', icon: Users },
                   ] : []),
                   /* Tarmoq havolasi — registrator ham ko'radi: telefonini
                      ulash yoki ikkinchi kompyuterni sozlash uning ishi. */
@@ -2442,334 +2220,19 @@ export const Settings: React.FC<SettingsProps> = ({
                )}
 
                {/* Doctors Tab */}
-               {activeTab === 'doctors' && (
-                  <Card className="p-6">
-                     <div className="flex justify-between items-center mb-6">
-                        <div>
-                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">{t('settings.staff.doctorsTitle')}</h2>
-                           <p className="text-sm text-gray-500">{t('settings.staff.doctorsSubtitle')}</p>
-                        </div>
-                        <Button size="sm" onClick={() => handleOpenDoctorModal()}>{t('settings.staff.addDoctor')}</Button>
-                     </div>
-                     <div className="grid grid-cols-1 gap-4">
-                        {doctors.map(doc => (
-                           <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
-                              <div className="flex items-center gap-4">
-                                 <div className="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm" style={{ backgroundColor: doc.color || '#3B82F6' }}>
-                                    {doc.firstName[0]}{doc.lastName[0]}
-                                 </div>
-                                 <div>
-                                    <p className="font-medium text-gray-900 dark:text-white">Dr. {formatFullName(doc)}</p>
-                                    <p className="text-xs text-gray-500">{doc.specialty}</p>
-                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                 <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">{doc.status === 'Active' ? t('settings.staff.statusActive') : t('settings.staff.statusVoc')}</span>
-                                 <button
-                                    onClick={() => handleOpenDoctorModal(doc)}
-                                    className="p-2 text-primary-600 hover:bg-primary-50 rounded-md"
-                                 >
-                                    <Edit className="w-4 h-4" />
-                                 </button>
-                                 <button
-                                    className="p-2 text-gray-400 hover:text-red-600"
-                                    onClick={() => setDeleteConfirmDoctor(doc)}
-                                 >
-                                    <Trash2 className="w-4 h-4" />
-                                 </button>
-                              </div>
-                           </div>
-                        ))}
-                     </div>
-                  </Card>
-               )}
+               {/* XODIMLAR — BITTA EKRAN (`components/StaffTab.tsx`).
 
-                {/* Receptionists Tab */}
-               {activeTab === 'receptionists' && (
-                  <Card className="p-6">
-                     <div className="flex justify-between items-center mb-6">
-                        <div>
-                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Resepshnlar Boshqaruvi</h2>
-                           <p className="text-sm text-gray-500">Qabul xodimlarini boshqarish.</p>
-                        </div>
-                        <Button size="sm" onClick={() => handleOpenReceptionistModal()}>Resepshn Qo'shish</Button>
-                     </div>
-                     <div className="grid grid-cols-1 gap-4">
-                        {receptionists.map(rec => (
-                           <div key={rec.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
-                              <div className="flex items-center gap-4">
-                                 <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold">
-                                    {rec.firstName[0]}{rec.lastName[0]}
-                                 </div>
-                                 <div>
-                                    <p className="font-medium text-gray-900 dark:text-white">{formatFullName(rec)}</p>
-                                    <p className="text-xs text-gray-500">{rec.phone}</p>
-                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                 <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">{rec.status === 'Active' ? t('settings.staff.statusActive') : t('settings.staff.statusVoc')}</span>
-                                 <button
-                                    onClick={() => handleOpenReceptionistModal(rec)}
-                                    className="p-2 text-primary-600 hover:bg-primary-50 rounded-md"
-                                 >
-                                    <Edit className="w-4 h-4" />
-                                 </button>
-                                 <button
-                                    className="p-2 text-gray-400 hover:text-red-600"
-                                    onClick={() => setDeleteConfirmReceptionist(rec)}
-                                 >
-                                    <Trash2 className="w-4 h-4" />
-                                 </button>
-                              </div>
-                           </div>
-                        ))}
-                        {receptionists.length === 0 && (
-                           <div className="text-center py-8 text-gray-500 text-sm">
-                              Hozircha resepshnlar qo'shilmagan
-                           </div>
-                        )}
-                     </div>
-                  </Card>
-               )}
+                   Bu yerda to'rtta bo'lim, to'rtta ro'yxat va o'nlab oyna
+                   bor edi. Maydonlar ham tasodifan farq qilardi: bo'lim
+                   faqat shifokor va hamshirada, kabinet va ish soatlari
+                   faqat shifokorda — chunki har rol o'z vaqtida, o'z
+                   ehtiyoji bilan qo'shilgan edi.
 
-               {/* Lab Technicians Tab */}
-               {activeTab === 'labTechnicians' && (
-                  <Card className="p-6">
-                     <div className="flex justify-between items-center mb-6">
-                        <div>
-                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Lab Texniklar Boshqaruvi</h2>
-                           <p className="text-sm text-gray-500">Stomatologik laboratoriya texniklarini boshqarish.</p>
-                        </div>
-                        <Button size="sm" onClick={() => handleOpenLabTechModal()}>Texnik Qo'shish</Button>
-                     </div>
-                     <div className="grid grid-cols-1 gap-4">
-                        {labTechnicians.map(tech => (
-                           <div key={tech.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
-                              <div className="flex items-center gap-4">
-                                 <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold">
-                                    {tech.firstName[0]}{tech.lastName[0]}
-                                 </div>
-                                 <div>
-                                    <p className="font-medium text-gray-900 dark:text-white">{formatFullName(tech)}</p>
-                                    <p className="text-xs text-gray-500">{tech.specialty} · {tech.phone}</p>
-                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${tech.status === 'Active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
-                                    {tech.status === 'Active' ? 'Faol' : 'Faol emas'}
-                                 </span>
-                                 <button
-                                    onClick={() => handleOpenLabTechModal(tech)}
-                                    className="p-2 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-md"
-                                 >
-                                    <Edit className="w-4 h-4" />
-                                 </button>
-                                 <button
-                                    className="p-2 text-gray-400 hover:text-red-600"
-                                    onClick={() => setDeleteConfirmLabTech(tech)}
-                                 >
-                                    <Trash2 className="w-4 h-4" />
-                                 </button>
-                              </div>
-                           </div>
-                        ))}
-                        {labTechnicians.length === 0 && (
-                           <div className="text-center py-8 text-gray-500 text-sm">
-                              Hozircha lab texniklar qo'shilmagan
-                           </div>
-                        )}
-                     </div>
-                  </Card>
-               )}
-
-               {/* ── Hamshiralar (reliz 4) ──────────────────────────────────
-                   Dorini hamshira beradi va dori varag'iga o'z nomidan belgi
-                   qo'yadi. Shuning uchun uning alohida logini bo'lishi kerak:
-                   shifokor logini bilan yozilgan belgi — yolg'on hujjat. */}
-               {activeTab === 'nurses' && userRole === UserRole.CLINIC_ADMIN && (
-                  <Card className="p-6">
-                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-                        <div>
-                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Hamshiralar</h2>
-                           <p className="text-sm text-gray-500">
-                              Statsionarda dori berish belgisini hamshira o'z nomidan qo'yadi.
-                           </p>
-                        </div>
-                        <Button size="sm" onClick={() => openNurseModal()}>
-                           <Plus className="w-4 h-4 mr-1.5" /> Hamshira qo'shish
-                        </Button>
-                     </div>
-
-                     {nurseError && (
-                        <div className="flex items-start gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                           <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                           <p className="text-sm text-red-700 dark:text-red-300 flex-1">{nurseError}</p>
-                           <button onClick={loadNurses} className="text-sm font-medium text-red-700 dark:text-red-300 hover:underline">
-                              Qayta urinish
-                           </button>
-                        </div>
-                     )}
-
-                     {nurseLoading ? (
-                        <div className="space-y-2">
-                           {[0, 1].map(i => (
-                              <div key={i} className="h-16 bg-gray-100 dark:bg-gray-700/40 rounded-lg animate-pulse" />
-                           ))}
-                        </div>
-                     ) : nurses.length === 0 ? (
-                        <div className="text-center py-10">
-                           <HeartPulse className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                           <p className="text-sm text-gray-500">Hamshira qo'shilmagan</p>
-                           <p className="text-xs text-gray-400 mt-1">
-                              Loginsiz ham qo'shish mumkin — u holda hamshira ro'yxatda turadi, lekin tizimga kirmaydi.
-                           </p>
-                        </div>
-                     ) : (
-                        <div className="grid grid-cols-1 gap-3">
-                           {nurses.map(nr => (
-                              <div key={nr.id} className="flex items-center justify-between gap-3 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
-                                 <div className="flex items-center gap-3 min-w-0">
-                                    <div className="h-10 w-10 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center text-rose-600 dark:text-rose-400 font-bold shrink-0">
-                                       {(nr.firstName || '?')[0]}{(nr.lastName || '')[0]}
-                                    </div>
-                                    <div className="min-w-0">
-                                       <p className="font-medium text-gray-900 dark:text-white truncate">
-                                          {formatFullName(nr)}
-                                       </p>
-                                       <p className="text-xs text-gray-500 truncate">
-                                          {deptList.find(d => d.id === nr.departmentId)?.name || "Bo'lim belgilanmagan"}
-                                          {nr.phone ? ` · ${nr.phone}` : ''}
-                                          {nr.username ? ` · login: ${nr.username}` : ' · loginsiz'}
-                                       </p>
-                                    </div>
-                                 </div>
-                                 <div className="flex items-center gap-2 shrink-0">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${nr.status === 'Active'
-                                       ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                                       : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
-                                       {nr.status === 'Active' ? 'Faol' : 'Faol emas'}
-                                    </span>
-                                    <button onClick={() => openNurseModal(nr)}
-                                       className="p-2 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-md">
-                                       <Edit className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => setDeleteNurse(nr)}
-                                       className="p-2 text-gray-400 hover:text-red-600">
-                                       <Trash2 className="w-4 h-4" />
-                                    </button>
-                                 </div>
-                              </div>
-                           ))}
-                        </div>
-                     )}
-                  </Card>
-               )}
-
-               {/* ── Kirish jurnali (reliz 6) ───────────────────────────────
-                   Kim bemor kartasini ochgani va o'zgartirgani. Huquqiy asos —
-                   vrach siri (25-modda 3-qismi).
-
-                   FAQAT EGAGA: "kim kartani ko'rdi" yozuvining o'zi ham nozik
-                   ma'lumot, va shifokor kim uning murojaatlarini tekshirganini
-                   ko'rmasligi kerak. Server ham shu rolni talab qiladi. */}
-               {activeTab === 'accessLog' && userRole === UserRole.CLINIC_ADMIN && (
-                  <Card className="p-6">
-                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-5">
-                        <div>
-                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Kirish jurnali</h2>
-                           <p className="text-sm text-gray-500">
-                              Bemor kartasini kim ochgani va o'zgartirgani.
-                              {logData?.retentionMonths ? ` ${logData.retentionMonths} oy saqlanadi.` : ''}
-                           </p>
-                        </div>
-                        <Button size="sm" variant="secondary" onClick={loadAccessLog} disabled={logLoading}>
-                           <RefreshCw className={`w-4 h-4 mr-1.5 ${logLoading ? 'animate-spin' : ''}`} /> Yangilash
-                        </Button>
-                     </div>
-
-                     <div className="flex flex-wrap items-end gap-3 mb-4">
-                        <div>
-                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Boshlanish</label>
-                           <input type="date" value={logFrom} onChange={e => setLogFrom(e.target.value)}
-                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm" />
-                        </div>
-                        <div>
-                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Tugash</label>
-                           <input type="date" value={logTo} onChange={e => setLogTo(e.target.value)}
-                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm" />
-                        </div>
-                        <div>
-                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Amal</label>
-                           <select value={logAction} onChange={e => setLogAction(e.target.value)}
-                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm">
-                              <option value="">Barchasi</option>
-                              <option value="View">Ko'rish</option>
-                              <option value="Create">Yaratish</option>
-                              <option value="Update">O'zgartirish</option>
-                              <option value="Print">Bosish</option>
-                           </select>
-                        </div>
-                     </div>
-
-                     {logError && (
-                        <div className="flex items-start gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                           <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                           <p className="text-sm text-red-700 dark:text-red-300">{logError}</p>
-                        </div>
-                     )}
-
-                     {logLoading && !logData ? (
-                        <div className="space-y-2">
-                           {[0, 1, 2].map(i => <div key={i} className="h-10 bg-gray-100 dark:bg-gray-700/40 rounded animate-pulse" />)}
-                        </div>
-                     ) : !logData || logData.items.length === 0 ? (
-                        <div className="text-center py-10">
-                           <Shield className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                           <p className="text-sm text-gray-500">Bu davrda yozuv yo'q</p>
-                        </div>
-                     ) : (
-                        <>
-                           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-                              <table className="w-full min-w-[640px]">
-                                 <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
-                                    <tr>
-                                       {['Vaqt', 'Kim', 'Roli', 'Amal', 'Nima', 'Bemor'].map(h => (
-                                          <th key={h} className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                             {h}
-                                          </th>
-                                       ))}
-                                    </tr>
-                                 </thead>
-                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                    {logData.items.map((l: any) => (
-                                       <tr key={l.id}>
-                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                                             {new Date(l.at).toLocaleString('uz-UZ')}
-                                          </td>
-                                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">{l.userName || '—'}</td>
-                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{ROLE_LABEL[l.userRole] || l.userRole || '—'}</td>
-                                          <td className="px-3 py-2">
-                                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${l.action === 'View'
-                                                ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
-                                                {ACTION_LABEL[l.action] || l.action}
-                                             </span>
-                                          </td>
-                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{ENTITY_LABEL[l.entityType] || l.entityType}</td>
-                                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">{l.patientName || '—'}</td>
-                                       </tr>
-                                    ))}
-                                 </tbody>
-                              </table>
-                           </div>
-                           <p className="text-[11px] text-gray-400 mt-2">
-                              {logData.total} yozuv
-                              {logData.truncated ? ` — oxirgi ${logData.items.length} tasi ko'rsatilgan, davrni toraytiring` : ''}.
-                              Jurnalga faqat server yozadi: tashqaridan yozib bo'lmaydi.
-                           </p>
-                        </>
-                     )}
-                  </Card>
+                   Migratsiya 0035 maydonlarni tenglashtirdi, ekran esa
+                   yagona forma bilan ishlaydi: maydonlar ROLGA qarab
+                   ko'rinadi. */}
+               {activeTab === 'staff' && userRole === UserRole.CLINIC_ADMIN && (
+                  <StaffTab departments={deptList} onChanged={onStaffChanged} />
                )}
 
                {/* SMS va Telegram Tab (birlashtirilgan) */}
@@ -3053,311 +2516,14 @@ export const Settings: React.FC<SettingsProps> = ({
 
 
 
-         {/* Add/Edit Doctor Modal */}
-         <Modal isOpen={isDoctorModalOpen} onClose={() => setIsDoctorModalOpen(false)} title={editingDoctorId ? t('settings.staff.editDoctor') : t('settings.staff.addDoctorModal')}>
-            <form onSubmit={handleDoctorSubmit} className="space-y-4">
-               <div className="grid grid-cols-2 gap-4">
-                  <Input label={t('settings.staff.firstName')} value={doctorForm.firstName} onChange={e => setDoctorForm({ ...doctorForm, firstName: e.target.value })} required />
-                  <Input label={t('settings.staff.lastName')} value={doctorForm.lastName} onChange={e => setDoctorForm({ ...doctorForm, lastName: e.target.value })} required />
-               </div>
-               <Input label={t('settings.staff.specialty')} value={doctorForm.specialty} onChange={e => setDoctorForm({ ...doctorForm, specialty: e.target.value })} required />
-               {/* Kabinet — talonda va navbat tablosida chiqadi, bemor qaysi
-                   xonaga borishini bilishi uchun */}
-               <Input label="Kabinet" value={doctorForm.room}
-                  onChange={e => setDoctorForm({ ...doctorForm, room: e.target.value })}
-                  placeholder="Masalan: 204"
-                  helperText="Talonda bemorga ko'rsatiladi" />
-               <div className="grid grid-cols-2 gap-4">
-                  <Input label={t('settings.staff.phone')} value={doctorForm.phone} onChange={e => setDoctorForm({ ...doctorForm, phone: e.target.value })} required />
-                  <Input label="Qo'shimcha raqam (Ixtiyoriy)" value={doctorForm.secondaryPhone} onChange={e => setDoctorForm({ ...doctorForm, secondaryPhone: e.target.value })} />
-               </div>
+         {/* SHIFOKOR, REGISTRATOR VA LABORANT OYNALARI OLIB TASHLANDI.
 
-               <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">{t('settings.staff.authTitle')}</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                     <Input
-                        label="Login (Username)"
-                        value={doctorForm.username}
-                        onChange={e => setDoctorForm({ ...doctorForm, username: e.target.value })}
-                        required={!editingDoctorId}
-                        placeholder="shifokor_login"
-                     />
-                     <Input
-                        label={t('settings.staff.password')}
-                        type="password"
-                        value={doctorForm.password}
-                        onChange={e => setDoctorForm({ ...doctorForm, password: e.target.value })}
-                        required={!editingDoctorId}
-                        placeholder={editingDoctorId ? "O'zgartirish uchun kiriting" : "********"}
-                     />
-                  </div>
+             Oltita oyna edi: uchtasi qo'shish/tahrirlash, uchtasi
+             o'chirishni tasdiqlash. Hammasi bir xil ishni qilardi,
+             faqat maydonlari biroz farq qilardi — va farq mantiqiy
+             emas edi: bo'lim faqat shifokorda, kabinet ham faqat unda.
 
-                  <div className="mt-4">
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Maosh turi</label>
-                     <div className="grid grid-cols-4 gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1">
-                        {([
-                           ['none', "Bo'sh"],
-                           ['fixed', 'Fix'],
-                           ['fixed_kpi', 'Fix+KPI'],
-                           ['kpi', 'KPI'],
-                        ] as const).map(([val, label]) => (
-                           <button
-                              key={val}
-                              type="button"
-                              onClick={() => setDoctorForm({ ...doctorForm, salaryType: val })}
-                              className={`px-2 py-2 rounded-lg text-xs font-bold transition-all ${doctorForm.salaryType === val
-                                 ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-sm'
-                                 : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                           >
-                              {label}
-                           </button>
-                        ))}
-                     </div>
-                     <p className="text-xs text-gray-500 mt-1.5">
-                        {/* Matn VEDOMOST nima qilishini aytadi. Ilgari bu
-                            maydonlar hech qayerda o'qilmasdi va izoh ham
-                            haqiqatga mos emas edi. */}
-                        {doctorForm.salaryType === 'none' && "Belgilanmagan — vedomost faqat xizmat foizini hisoblaydi."}
-                        {doctorForm.salaryType === 'fixed' && "Faqat qat'iy summa. Xizmat foizi hisoblanmaydi."}
-                        {doctorForm.salaryType === 'fixed_kpi' && "Qat'iy summa + xizmat foizi — ikkalasi ham vedomostga tushadi."}
-                        {doctorForm.salaryType === 'kpi' && "Faqat xizmat foizi (to'langan qatorlardan)."}
-                     </p>
-
-                     {(doctorForm.salaryType === 'fixed' || doctorForm.salaryType === 'fixed_kpi') && (
-                        <Input
-                           label="Fix maosh (UZS)"
-                           type="number"
-                           value={doctorForm.fixedSalary}
-                           onChange={e => setDoctorForm({ ...doctorForm, fixedSalary: e.target.value })}
-                           placeholder="2000000"
-                           containerClassName="w-full mt-3"
-                        />
-                     )}
-
-                     {(doctorForm.salaryType === 'fixed_kpi' || doctorForm.salaryType === 'kpi') && (
-                        <Input
-                           label="Shifokor Ulushi (%)"
-                           type="number"
-                           value={doctorForm.percentage}
-                           onChange={e => setDoctorForm({ ...doctorForm, percentage: e.target.value })}
-                           placeholder="50"
-                           helperText="Sof foydadan shifokor olishi kerak bo'lgan foiz"
-                           containerClassName="w-full mt-3"
-                        />
-                     )}
-                  </div>
-
-                  <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Kalendar rangi</label>
-                     <div className="flex flex-wrap gap-3">
-                        {DOCTOR_COLORS.map((color) => (
-                           <button
-                              key={color.value}
-                              type="button"
-                              onClick={() => setDoctorForm({ ...doctorForm, color: color.value })}
-                              className={`w-8 h-8 rounded-full border-2 transition-all ${doctorForm.color === color.value ? 'border-primary-500 scale-110 shadow-md' : 'border-transparent hover:scale-105'}`}
-                              style={{ backgroundColor: color.value }}
-                              title={color.name}
-                           />
-                        ))}
-                     </div>
-                     <p className="text-xs text-gray-500 mt-2">Bu rang kalendarda shifokor qabullarini belgilash uchun ishlatiladi.</p>
-                  </div>
-               </div>
-
-               <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">Ishlash vaqti (Ixtiyoriy)</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Bo'sh qoldirsa, klinika umumiy vaqti ishlatiladi</p>
-                  <div className="grid grid-cols-2 gap-4">
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Boshlanish vaqti</label>
-                        <select
-                           value={doctorForm.startHour}
-                           onChange={e => setDoctorForm({ ...doctorForm, startHour: e.target.value })}
-                           className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        >
-                           <option value="">— Klinika vaqti —</option>
-                           {Array.from({ length: 18 }, (_, i) => i + 6).map(h => (
-                              <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                           ))}
-                        </select>
-                     </div>
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tugash vaqti</label>
-                        <select
-                           value={doctorForm.endHour}
-                           onChange={e => setDoctorForm({ ...doctorForm, endHour: e.target.value })}
-                           className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        >
-                           <option value="">— Klinika vaqti —</option>
-                           {Array.from({ length: 18 }, (_, i) => i + 6).map(h => (
-                              <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                           ))}
-                        </select>
-                     </div>
-                  </div>
-               </div>
-
-               <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="secondary" onClick={() => setIsDoctorModalOpen(false)}>{t('common.cancel')}</Button>
-                  <Button type="submit">{t('common.save')}</Button>
-               </div>
-            </form>
-         </Modal>
-
-
-         {/* Delete Doctor Confirmation Modal */}
-         <Modal isOpen={!!deleteConfirmDoctor} onClose={() => setDeleteConfirmDoctor(null)} title={t('settings.staff.deleteDoctorConfirm')}>
-            <div className="text-center space-y-4">
-               <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                  <Trash2 className="w-6 h-6 text-red-600" />
-               </div>
-               <h2 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h2>
-               <p className="text-gray-600 dark:text-gray-300">
-                  {t('settings.staff.deleteDoctorConfirm')} <br />
-                   <strong>Dr. {deleteConfirmDoctor?.firstName} {deleteConfirmDoctor?.lastName}</strong>. {t('common.confirmDeleteDesc')}
-               </p>
-               <div className="flex justify-center gap-3 pt-4">
-                  <Button variant="secondary" onClick={() => setDeleteConfirmDoctor(null)}>{t('common.cancel')}</Button>
-                  <Button
-                     className="bg-red-600 hover:bg-red-700 text-white border-none"
-                     onClick={() => {
-                        if (deleteConfirmDoctor) {
-                           onDeleteDoctor(deleteConfirmDoctor.id);
-                           setDeleteConfirmDoctor(null);
-                        }
-                     }}
-                  >
-                     Ha, O'chirish
-                  </Button>
-               </div>
-            </div>
-         </Modal>
-
-         {/* Add/Edit Receptionist Modal */}
-         <Modal isOpen={isReceptionistModalOpen} onClose={() => setIsReceptionistModalOpen(false)} title={editingReceptionistId ? t('settings.staff.editReceptionist') : t('settings.staff.addReceptionistModal')}>
-            <form onSubmit={handleReceptionistSubmit} className="space-y-4">
-               <div className="grid grid-cols-2 gap-4">
-                  <Input label={t('settings.staff.firstName')} value={receptionistForm.firstName} onChange={e => setReceptionistForm({ ...receptionistForm, firstName: e.target.value })} required />
-                  <Input label={t('settings.staff.lastName')} value={receptionistForm.lastName} onChange={e => setReceptionistForm({ ...receptionistForm, lastName: e.target.value })} required />
-               </div>
-               <Input label={t('settings.staff.phone')} value={receptionistForm.phone} onChange={e => setReceptionistForm({ ...receptionistForm, phone: e.target.value })} required />
-
-               <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">{t('settings.staff.authTitle')}</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                     <Input
-                        label="Login (Username)"
-                        value={receptionistForm.username}
-                        onChange={e => setReceptionistForm({ ...receptionistForm, username: e.target.value })}
-                        required={!editingReceptionistId}
-                        placeholder="resepshn_login"
-                     />
-                     <Input
-                        label={t('settings.staff.password')}
-                        type="password"
-                        value={receptionistForm.password}
-                        onChange={e => setReceptionistForm({ ...receptionistForm, password: e.target.value })}
-                        required={!editingReceptionistId}
-                        placeholder={editingReceptionistId ? "O'zgartirish uchun kiriting" : "********"}
-                     />
-                  </div>
-               </div>
-               <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="secondary" onClick={() => setIsReceptionistModalOpen(false)}>{t('common.cancel')}</Button>
-                  <Button type="submit">{t('common.save')}</Button>
-               </div>
-            </form>
-         </Modal>
-
-         {/* Add/Edit Lab Technician Modal */}
-         <Modal isOpen={isLabTechModalOpen} onClose={() => setIsLabTechModalOpen(false)} title={editingLabTechId ? 'Texnikni Tahrirlash' : 'Texnik Qo\'shish'}>
-            <form onSubmit={handleLabTechSubmit} className="space-y-4">
-               <div className="grid grid-cols-2 gap-4">
-                  <Input label="Ism" value={labTechForm.firstName} onChange={e => setLabTechForm({ ...labTechForm, firstName: e.target.value })} required />
-                  <Input label="Familiya" value={labTechForm.lastName} onChange={e => setLabTechForm({ ...labTechForm, lastName: e.target.value })} required />
-               </div>
-               <Input label="Mutaxassislik" value={labTechForm.specialty} onChange={e => setLabTechForm({ ...labTechForm, specialty: e.target.value })} placeholder="Koronka, Protez, Veneer..." required />
-               <Input label="Telefon" value={labTechForm.phone} onChange={e => setLabTechForm({ ...labTechForm, phone: e.target.value })} required />
-               <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Tizimga kirish (ixtiyoriy)</p>
-                  <div className="grid grid-cols-2 gap-4">
-                     <Input
-                        label="Login (Username)"
-                        value={labTechForm.username}
-                        onChange={e => setLabTechForm({ ...labTechForm, username: e.target.value })}
-                        placeholder="texnik_login"
-                     />
-                     <Input
-                        label="Parol"
-                        type="password"
-                        value={labTechForm.password}
-                        onChange={e => setLabTechForm({ ...labTechForm, password: e.target.value })}
-                        placeholder={editingLabTechId ? "O'zgartirish uchun kiriting" : "********"}
-                     />
-                  </div>
-               </div>
-               <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="secondary" onClick={() => setIsLabTechModalOpen(false)}>{t('common.cancel')}</Button>
-                  <Button type="submit">{t('common.save')}</Button>
-               </div>
-            </form>
-         </Modal>
-
-         {/* Delete Lab Technician Confirmation Modal */}
-         <Modal isOpen={!!deleteConfirmLabTech} onClose={() => setDeleteConfirmLabTech(null)} title="Texnikni O'chirish">
-            <div className="text-center space-y-4">
-               <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                  <Trash2 className="w-6 h-6 text-red-600" />
-               </div>
-               <h2 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h2>
-               <p className="text-gray-600 dark:text-gray-300">
-                  <strong>{deleteConfirmLabTech?.firstName} {deleteConfirmLabTech?.lastName}</strong> texnikni o'chirasizmi? {t('common.confirmDeleteDesc')}
-               </p>
-               <div className="flex justify-center gap-3 pt-4">
-                  <Button variant="secondary" onClick={() => setDeleteConfirmLabTech(null)}>{t('common.cancel')}</Button>
-                  <Button
-                     className="bg-red-600 hover:bg-red-700 text-white border-none"
-                     onClick={() => {
-                        if (deleteConfirmLabTech && onDeleteLabTechnician) {
-                           onDeleteLabTechnician(deleteConfirmLabTech.id);
-                           setDeleteConfirmLabTech(null);
-                        }
-                     }}
-                  >
-                     Ha, O'chirish
-                  </Button>
-               </div>
-            </div>
-         </Modal>
-
-         {/* Delete Receptionist Confirmation Modal */}
-         <Modal isOpen={!!deleteConfirmReceptionist} onClose={() => setDeleteConfirmReceptionist(null)} title={t('settings.staff.deleteReceptionistConfirm')}>
-            <div className="text-center space-y-4">
-               <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                  <Trash2 className="w-6 h-6 text-red-600" />
-               </div>
-               <h2 className="text-lg font-medium text-gray-900 dark:text-white">Ishonchingiz komilmi?</h2>
-               <p className="text-gray-600 dark:text-gray-300">
-                  {t('settings.staff.deleteReceptionistConfirm')} <br />
-                   <strong>{deleteConfirmReceptionist?.firstName} {deleteConfirmReceptionist?.lastName}</strong>. {t('common.confirmDeleteDesc')}
-               </p>
-               <div className="flex justify-center gap-3 pt-4">
-                  <Button variant="secondary" onClick={() => setDeleteConfirmReceptionist(null)}>{t('common.cancel')}</Button>
-                  <Button
-                     className="bg-red-600 hover:bg-red-700 text-white border-none"
-                     onClick={() => {
-                        if (deleteConfirmReceptionist && onDeleteReceptionist) {
-                           onDeleteReceptionist(deleteConfirmReceptionist.id);
-                           setDeleteConfirmReceptionist(null);
-                        }
-                     }}
-                  >
-                     Ha, O'chirish
-                  </Button>
-               </div>
-            </div>
-         </Modal>
+             Endi bitta forma — `components/StaffTab.tsx`. */}
       {/* Bo'lim yaratish va tahrirlash */}
       {deptModal && (
          <Modal isOpen={true} onClose={() => setDeptModal(null)}
@@ -3502,84 +2668,8 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
          </Modal>
       )}
-         {/* ── Hamshira: qo'shish va tahrirlash ── */}
-         <Modal
-            isOpen={!!nurseModal}
-            onClose={() => setNurseModal(null)}
-            title={nurseModal?.id ? 'Hamshirani tahrirlash' : "Hamshira qo'shish"}
-            className="max-w-md"
-         >
-            <div className="space-y-4">
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input label="Ism" value={nurseForm.firstName} autoFocus
-                     onChange={e => setNurseForm(f => ({ ...f, firstName: e.target.value }))} />
-                  <Input label="Familiya" value={nurseForm.lastName}
-                     onChange={e => setNurseForm(f => ({ ...f, lastName: e.target.value }))} />
-               </div>
-               <Input label="Telefon" value={nurseForm.phone}
-                  onChange={e => setNurseForm(f => ({ ...f, phone: e.target.value }))} />
-
-               <Select label="Bo'lim" value={nurseForm.departmentId}
-                  onChange={e => setNurseForm(f => ({ ...f, departmentId: e.target.value }))}>
-                  <option value="">Belgilanmagan</option>
-                  {deptList.filter(d => d.isActive).map(d => (
-                     <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-               </Select>
-               <p className="text-xs text-gray-400 -mt-2">
-                  Bo'lim tanlansa, kunlik dori varag'i o'sha bo'lim bo'yicha ochiladi.
-               </p>
-
-               <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                     Tizimga kirish (ixtiyoriy)
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                     <Input label="Login" value={nurseForm.username}
-                        onChange={e => setNurseForm(f => ({ ...f, username: e.target.value }))} />
-                     <Input label="Parol" type="password" value={nurseForm.password}
-                        placeholder={nurseModal?.id ? "o'zgartirmaslik uchun bo'sh qoldiring" : ''}
-                        onChange={e => setNurseForm(f => ({ ...f, password: e.target.value }))} />
-                  </div>
-               </div>
-
-               {nurseModal?.id && (
-                  <Select label="Holat" value={nurseForm.status}
-                     onChange={e => setNurseForm(f => ({ ...f, status: e.target.value }))}>
-                     <option value="Active">Faol</option>
-                     <option value="Inactive">Faol emas</option>
-                  </Select>
-               )}
-
-               <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="secondary" onClick={() => setNurseModal(null)}>Bekor</Button>
-                  <Button onClick={saveNurse}
-                     disabled={nurseSaving || !nurseForm.firstName.trim() || !nurseForm.lastName.trim()}>
-                     Saqlash
-                  </Button>
-               </div>
-            </div>
-         </Modal>
-
-         {/* ── Hamshirani o'chirish ── */}
-         <Modal isOpen={!!deleteNurse} onClose={() => setDeleteNurse(null)} title="O'chirish" className="max-w-sm">
-            {deleteNurse && (
-               <div className="space-y-4">
-                  <p className="text-sm text-gray-700 dark:text-gray-300">
-                     <b>{formatFullName(deleteNurse)}</b> ro'yxatdan chiqariladi va
-                     tizimga kira olmaydi.
-                  </p>
-                  <p className="text-xs text-gray-500">
-                     Dori berish belgilarida uning ismi QOLADI — tibbiy yozuvni xodim ketgani
-                     uchun o'chirib bo'lmaydi.
-                  </p>
-                  <div className="flex justify-end gap-2">
-                     <Button variant="secondary" onClick={() => setDeleteNurse(null)}>Bekor</Button>
-                     <Button variant="danger" onClick={confirmDeleteNurse}>O'chirish</Button>
-                  </div>
-               </div>
-            )}
-         </Modal>
+         {/* Hamshira oynalari OLIB TASHLANDI — «Xodimlar» ekranidagi
+             yagona forma ularni ham ochadi. */}
 
       </div>
    );

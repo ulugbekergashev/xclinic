@@ -1882,6 +1882,22 @@ const sinceDate = (n: number) =>
                       onUpdateLabTechnician={updateLabTechnician}
                       onDeleteLabTechnician={deleteLabTechnician}
                       currentClinic={currentClinic}
+                      /* Xodim qo'shilgan yoki o'zgargan — App dagi ro'yxatlar
+                         yangilanadi. Ular hamma joyda ishlatiladi: kalendar
+                         shifokorni filtrlaydi, kassa ismini ko'rsatadi. */
+                      onStaffChanged={async () => {
+                        if (!clinicId) return;
+                        try {
+                          const [docs, recs, techs] = await Promise.all([
+                            api.doctors.getAll(clinicId),
+                            api.receptionists.getAll(clinicId),
+                            api.labTechnicians.getAll(clinicId),
+                          ]);
+                          setDoctors(docs);
+                          setReceptionists(recs);
+                          setLabTechnicians(techs || []);
+                        } catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
+                      }}
                           reviews={reviews}
                     />
                   )} />

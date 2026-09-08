@@ -4656,8 +4656,11 @@ app.post('/api/lab-technicians', authenticateToken, STAFF, async (req: any, res:
         if (!clinicId) {
             return res.status(400).json({ error: 'clinicId is required' });
         }
-        if (!firstName || !lastName || !phone) {
-            return res.status(400).json({ error: 'Barcha maydonlar to\'ldirilishi shart' });
+        /* Telefon MAJBURIY emas: shifokorda ham, hamshirada ham ixtiyoriy.
+           Farq mantiqiy emas — marshrutlar har xil vaqtda yozilgani uchun
+           shunday chiqqan. Yagona forma esa hamma rolga bir xil qaraydi. */
+        if (!firstName || !lastName) {
+            return res.status(400).json({ error: 'Ism va familiya majburiy' });
         }
         if (username) {
             const existing = await (prisma as any).labTechnician.findUnique({ where: { username } });
@@ -4667,7 +4670,8 @@ app.post('/api/lab-technicians', authenticateToken, STAFF, async (req: any, res:
         if (!common.ok) return res.status(400).json({ error: common.error });
 
         const data: any = {
-            firstName, lastName, specialty: specialty || 'Umumiy', phone, clinicId,
+            firstName, lastName, specialty: specialty || 'Umumiy',
+            phone: phone || '', clinicId,
             status: 'Active', ...common.data,
         };
         if (username) data.username = username;

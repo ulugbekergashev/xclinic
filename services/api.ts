@@ -1912,6 +1912,28 @@ export const api = {
             return fetchJson<CashAuditLog[]>(`/cash-audit?clinicId=${clinicId}${q}`);
         },
     },
+    /* HAMMA XODIM — BITTA RO'YXAT.
+
+       «Klinikada kim ishlaydi?» degan savolga javob berish uchun TO'RTTA
+       so'rov yuborish va natijani qo'lda birlashtirish kerak edi.
+       Sozlamalarda ham shuning uchun to'rtta alohida vkladka turardi.
+
+       Demoda ham xuddi shunday yig'iladi — namoyishda ekran bo'sh
+       qolmasin. */
+    staff: {
+        getAll: () => {
+            if (isDemoMode()) {
+                const withRole = (rows: any[], role: string) => rows.map(r => ({ ...r, role }));
+                return demoRead<any[]>([
+                    ...withRole(DEMO_DOCTORS, 'DOCTOR'),
+                    ...withRole(DEMO_RECEPTIONISTS, 'RECEPTIONIST'),
+                    ...withRole(DEMO_LAB_TECHNICIANS, 'LAB_TECHNICIAN'),
+                    ...withRole(DEMO_NURSES, 'NURSE'),
+                ].sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)));
+            }
+            return fetchJson<any[]>('/staff');
+        },
+    },
     doctors: {
         getAll: (clinicId: string) => {
             if (isDemoMode()) return Promise.resolve(DEMO_DOCTORS);
