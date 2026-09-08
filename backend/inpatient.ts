@@ -782,7 +782,25 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         id: true, firstName: true, lastName: true, phone: true,
         status: true, clinicId: true, departmentId: true,
         username: true, createdAt: true,
+        // Umumiy xodim maydonlari (migratsiya 0035)
+        room: true, startHour: true, endHour: true, specialty: true,
         // `password` ATAYLAB yo'q: hech qachon tashqariga chiqmaydi
+    };
+
+    /* Kabinet, ish soatlari va mutaxassislik — boshqa rollardagi bilan
+       BIR XIL nomlanadi (0035). Soat chegarasi ham bir xil: 0..23. */
+    const nurseCommon = (body: any): { ok: true; data: any } | { ok: false; error: string } => {
+        const data: any = {};
+        if (body.room !== undefined) data.room = body.room ? String(body.room).trim() : null;
+        if (body.specialty !== undefined) data.specialty = body.specialty ? String(body.specialty).trim() : null;
+        for (const f of ['startHour', 'endHour'] as const) {
+            if (body[f] === undefined) continue;
+            if (body[f] === null || body[f] === '') { data[f] = null; continue; }
+            const n = Math.floor(Number(body[f]));
+            if (!(n >= 0 && n <= 23)) return { ok: false, error: "Ish soati 0 dan 23 gacha bo'lishi kerak" };
+            data[f] = n;
+        }
+        return { ok: true, data };
     };
 
     route('get', '/api/nurses', async (req, res, clinicId) => {
@@ -809,6 +827,9 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
             if (busy) return res.status(400).json({ error: 'Bu login allaqachon band' });
         }
 
+        const common = nurseCommon(req.body || {});
+        if (!common.ok) return res.status(400).json({ error: common.error });
+
         const data: any = {
             clinicId,
             firstName: String(firstName).trim(),
@@ -816,6 +837,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
             phone: phone ? String(phone).trim() : null,
             departmentId: departmentId ? String(departmentId) : null,
             status: 'Active',
+            ...common.data,
         };
         if (username) data.username = String(username).trim();
         if (password) data.password = await bcrypt.hash(String(password), await bcrypt.genSalt(10));
@@ -841,7 +863,10 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
             if (busy && busy.id !== existing.id) return res.status(400).json({ error: 'Bu login allaqachon band' });
         }
 
-        const data: any = {};
+        const commonUp = nurseCommon(req.body || {});
+        if (!commonUp.ok) return res.status(400).json({ error: commonUp.error });
+
+        const data: any = { ...commonUp.data };
         if (firstName !== undefined) data.firstName = String(firstName).trim();
         if (lastName !== undefined) data.lastName = String(lastName).trim();
         if (phone !== undefined) data.phone = phone ? String(phone).trim() : null;

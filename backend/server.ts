@@ -4313,6 +4313,13 @@ app.post('/api/doctors', authenticateToken, STAFF, async (req, res) => {
             const salt = await bcrypt.genSalt(10);
             passwordData = await bcrypt.hash(password, salt);
         }
+        /* BO'LIM. Ilgari bu marshrut uni QABUL QILMASDI: forma yuborardi,
+           server jimgina tashlab yuborardi. Natijada har yangi shifokor
+           hamma joyda «bo'limsiz» bo'lardi — «Bugun», karta va kalendar
+           esa shifokorlarni aynan bo'lim bo'yicha filtrlaydi. */
+        const common = await staffCommonFields(req, clinicId as string, req.body);
+        if (!common.ok) return res.status(400).json({ error: common.error });
+
         const data: any = {
             firstName, lastName, specialty, phone, clinicId, username, password: passwordData,
             /* Sxemada `status` MAJBURIY va standart qiymati yo'q. Forma uni
@@ -4322,7 +4329,8 @@ app.post('/api/doctors', authenticateToken, STAFF, async (req, res) => {
             percentage: percentage || 0,
             salaryType: salaryType || 'none',
             fixedSalary: fixedSalary ? Number(fixedSalary) : 0,
-            room: room ? String(room).trim() : null   // Migratsiya 0004: kabinet
+            room: room ? String(room).trim() : null,   // Migratsiya 0004: kabinet
+            ...common.data,
         };
         if (email) data.email = email;
 
@@ -4401,6 +4409,112 @@ app.delete('/api/doctors/:id', authenticateToken, STAFF, async (req, res) => {
 });
 
 // --- Receptionists ---
+/* ─── XODIMNING UMUMIY MAYDONLARI ──────────────────────────────
+
+   Bo'lim, kabinet va ish soatlari — endi TO'RT rolda ham (migratsiya
+   0035). Ilgari ular faqat shifokorda bor edi va farq mantiqiy emas,
+   o'sish tartibi shunday chiqqan edi: har rol o'z vaqtida qo'shilgan.
+
+   Bo'lim begona klinikaniki bo'lmasligini bir joyda tekshiramiz —
+   to'rt marta nusxa ko'chirmaslik uchun. */
+async function staffCommonFields(
+    req: any, clinicId: string, body: any,
+): Promise<{ ok: true; data: any } | { ok: false; error: string }> {
+    const data: any = {};
+    if (body.departmentId !== undefined) {
+        if (!body.departmentId) {
+            data.departmentId = null;
+        } else {
+            const dep = await prisma.department.findUnique({ where: { id: String(body.departmentId) } });
+            if (!dep || dep.clinicId !== clinicId) {
+                return { ok: false, error: "Bo'lim topilmadi yoki boshqa klinikaga tegishli" };
+            }
+            data.departmentId = dep.id;
+        }
+    }
+    if (body.room !== undefined) data.room = body.room ? String(body.room).trim() : null;
+    /* Soat 0..23. Chegaradan tashqari qiymat jadvalni jimgina buzadi:
+       kalendar bo'sh ustun chizadi va sabab ko'rinmaydi. */
+    for (const f of ['startHour', 'endHour'] as const) {
+        if (body[f] === undefined) continue;
+        if (body[f] === null || body[f] === '') { data[f] = null; continue; }
+        const n = Math.floor(Number(body[f]));
+        if (!(n >= 0 && n <= 23)) return { ok: false, error: 'Ish soati 0 dan 23 gacha bo\'lishi kerak' };
+        data[f] = n;
+    }
+    return { ok: true, data };
+}
+
+/* ═══ HAMMA XODIM — BITTA RO'YXAT ════════════════════════════
+
+   «Klinikada kim ishlaydi?» — oddiy savol, lekin unga javob berish uchun
+   TO'RTTA so'rov yuborish va natijani qo'lda birlashtirish kerak edi.
+   Sozlamalarda ham shuning uchun to'rtta alohida vkladka turardi va
+   xodimni topish uchun avval uning ROLINI eslash kerak edi.
+
+   Jadvallar birlashtirilmaydi: ularga tizimga kirish va qabullar,
+   yozuvlar, tahlillar bilan bog'lam osilgan. Birlashadigan narsa —
+   ekran, va u shu marshrutdan o'qiydi.
+
+   Parol HECH QACHON chiqmaydi: har rolda maydonlar aniq sanab
+   o'tilgan. */
+app.get('/api/staff', authenticateToken, async (req, res) => {
+    try {
+        const clinicId = getScopedClinicId(req);
+        if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
+
+        const notDeleted = { clinicId: clinicId as string, status: { not: 'Deleted' } };
+        const [doctors, receptionists, technicians, nurses] = await Promise.all([
+            prisma.doctor.findMany({
+                where: notDeleted,
+                select: {
+                    id: true, firstName: true, lastName: true, phone: true, email: true,
+                    specialty: true, status: true, username: true, departmentId: true,
+                    room: true, startHour: true, endHour: true, color: true,
+                    percentage: true, salaryType: true, fixedSalary: true, secondaryPhone: true,
+                },
+            }),
+            prisma.receptionist.findMany({
+                where: notDeleted,
+                select: {
+                    id: true, firstName: true, lastName: true, phone: true,
+                    status: true, username: true, departmentId: true,
+                    room: true, startHour: true, endHour: true,
+                },
+            }),
+            prisma.labTechnician.findMany({
+                where: notDeleted,
+                select: {
+                    id: true, firstName: true, lastName: true, phone: true,
+                    specialty: true, status: true, username: true, departmentId: true,
+                    room: true, startHour: true, endHour: true,
+                },
+            }),
+            prisma.nurse.findMany({
+                where: notDeleted,
+                select: {
+                    id: true, firstName: true, lastName: true, phone: true,
+                    specialty: true, status: true, username: true, departmentId: true,
+                    room: true, startHour: true, endHour: true,
+                },
+            }),
+        ]);
+
+        const withRole = (rows: any[], role: string) => rows.map(r => ({ ...r, role }));
+        const all = [
+            ...withRole(doctors, 'DOCTOR'),
+            ...withRole(receptionists, 'RECEPTIONIST'),
+            ...withRole(technicians, 'LAB_TECHNICIAN'),
+            ...withRole(nurses, 'NURSE'),
+        ].sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`));
+
+        res.json(all);
+    } catch (error: any) {
+        console.error('Staff list error:', error?.message || error);
+        res.status(500).json({ error: "Xodimlar ro'yxatini olib bo'lmadi" });
+    }
+});
+
 app.get('/api/receptionists', authenticateToken, async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
@@ -4444,9 +4558,13 @@ app.post('/api/receptionists', authenticateToken, STAFF, async (req, res) => {
             const salt = await bcrypt.genSalt(10);
             passwordData = await bcrypt.hash(password, salt);
         }
+        const common = await staffCommonFields(req, clinicId as string, req.body);
+        if (!common.ok) return res.status(400).json({ error: common.error });
+
         const data: any = {
             firstName, lastName, phone, username, password: passwordData, clinicId,
-            status: 'Active'
+            status: 'Active',
+            ...common.data,
         };
 
         const newReceptionist = await prisma.receptionist.create({ data });
@@ -4473,7 +4591,11 @@ app.put('/api/receptionists/:id', authenticateToken, STAFF, async (req, res) => 
         // Ilgari bu yerda `{ ...req.body }` edi: mijoz `clinicId` ni ham
         // o'zgartirib, registratorni boshqa klinikaga ko'chira olardi.
         const b = req.body || {};
-        const updateData: any = {};
+        const scoped = getScopedClinicId(req);
+        const common = await staffCommonFields(req, scoped as string, b);
+        if (!common.ok) return res.status(400).json({ error: common.error });
+
+        const updateData: any = { ...common.data };
         for (const f of ['firstName', 'lastName', 'phone', 'username', 'status']) {
             if (b[f] !== undefined) updateData[f] = b[f];
         }
@@ -4541,7 +4663,13 @@ app.post('/api/lab-technicians', authenticateToken, STAFF, async (req: any, res:
             const existing = await (prisma as any).labTechnician.findUnique({ where: { username } });
             if (existing) return res.status(400).json({ error: 'Bu login allaqachon band.' });
         }
-        const data: any = { firstName, lastName, specialty: specialty || 'Umumiy', phone, clinicId, status: 'Active' };
+        const common = await staffCommonFields(req, clinicId as string, req.body);
+        if (!common.ok) return res.status(400).json({ error: common.error });
+
+        const data: any = {
+            firstName, lastName, specialty: specialty || 'Umumiy', phone, clinicId,
+            status: 'Active', ...common.data,
+        };
         if (username) data.username = username;
         if (password) {
             const salt = await bcrypt.genSalt(10);
@@ -4564,7 +4692,11 @@ app.put('/api/lab-technicians/:id', authenticateToken, STAFF, async (req: any, r
                 return res.status(400).json({ error: 'Bu login allaqachon band.' });
             }
         }
-        const data: any = {};
+        const scopedLab = getScopedClinicId(req);
+        const commonLab = await staffCommonFields(req, scopedLab as string, req.body);
+        if (!commonLab.ok) return res.status(400).json({ error: commonLab.error });
+
+        const data: any = { ...commonLab.data };
         if (firstName !== undefined) data.firstName = firstName;
         if (lastName !== undefined) data.lastName = lastName;
         if (specialty !== undefined) data.specialty = specialty;

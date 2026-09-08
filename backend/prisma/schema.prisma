@@ -45,16 +45,24 @@ model Doctor {
 }
 
 model Receptionist {
-  id        String    @id @default(uuid())
-  firstName String
-  lastName  String
-  phone     String
-  username  String    @unique
-  password  String
-  status    String
-  clinicId  String
-  clinic    Clinic    @relation(fields: [clinicId], references: [id])
-  expenses  Expense[]
+  id           String      @id @default(uuid())
+  firstName    String
+  lastName     String
+  phone        String
+  username     String      @unique
+  password     String
+  status       String
+  clinicId     String
+  /// Umumiy xodim maydonlari (migratsiya 0035): to'rt rolda ham bir xil
+  departmentId String?
+  room         String?
+  startHour    Int?
+  endHour      Int?
+  clinic       Clinic      @relation(fields: [clinicId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id])
+  expenses     Expense[]
+
+  @@index([departmentId])
 }
 
 model Patient {
@@ -797,19 +805,26 @@ model SalesAgent {
 }
 
 model LabTechnician {
-  id        String     @id @default(uuid())
-  firstName String
-  lastName  String
-  specialty String
-  phone     String
-  status    String     @default("Active")
-  clinicId  String
-  username  String?    @unique
-  password  String?
-  clinic    Clinic     @relation(fields: [clinicId], references: [id])
-  labOrders LabOrder[]
+  id           String      @id @default(uuid())
+  firstName    String
+  lastName     String
+  specialty    String
+  phone        String
+  status       String      @default("Active")
+  clinicId     String
+  username     String?     @unique
+  password     String?
+  /// Umumiy xodim maydonlari (migratsiya 0035)
+  departmentId String?
+  room         String?
+  startHour    Int?
+  endHour      Int?
+  clinic       Clinic      @relation(fields: [clinicId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id])
+  labOrders    LabOrder[]
 
   @@index([clinicId])
+  @@index([departmentId])
 }
 
 /// Tahlil yo'llanmasi. Ilgari stomatologik protez buyurtmasi edi
@@ -879,6 +894,9 @@ model Department {
   stockTo      StockMovement[] @relation("StockMovementTo")
   referrals    Referral[]
   nurses       Nurse[]
+  /// Migratsiya 0035: bo'lim endi hamma xodim rolida bor
+  receptionists  Receptionist[]
+  labTechnicians LabTechnician[]
   expenses     Expense[]
   doctorRates  DoctorServiceRate[]
   transferFrom AdmissionTransfer[] @relation("TransferFromDept")
@@ -1577,6 +1595,12 @@ model Nurse {
   username     String?  @unique
   password     String?
   createdAt    DateTime @default(now())
+  /// Umumiy xodim maydonlari (migratsiya 0035)
+  room         String?
+  startHour    Int?
+  endHour      Int?
+  /// Palata, operatsiya, protsedura hamshirasi
+  specialty    String?
 
   clinic     Clinic      @relation(fields: [clinicId], references: [id])
   department Department? @relation(fields: [departmentId], references: [id])
