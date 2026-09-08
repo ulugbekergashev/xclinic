@@ -34,13 +34,19 @@ npm run electron:dev
 ### O'rnatuvchi (.exe) yasash
 
 ```bash
-cd backend && npm run bundle && cd ..
 npm run electron:build        # dist-electron/ ichida NSIS o'rnatuvchi
 ```
 
-`npm run bundle` uch ishni bajaradi: server kodini bitta faylga yig'adi,
+Bu buyruq ICHIDA server ham qayta yig'iladi (`npm run backend:bundle`).
+
+ILGARI U ALOHIDA QADAM EDI va aynan shu yerda xato tug'ilardi: interfeys
+yangi, server esa ESKI bo'lib qolgan `.exe` chiqardi. Tashqaridan
+farqlab bo'lmaydi — dastur ochiladi, lekin yangi migratsiyalar paketda
+yo'q va toza o'rnatmada Prisma bazada yo'q ustunni so'rab yiqiladi.
+
+`backend:bundle` uch ishni bajaradi: server kodini bitta faylga yig'adi,
 `starter.db` ni yasaydi (faqat sxema, ma'lumotsiz) va migratsiyalarni
-paket yoniga ko'chiradi. Ikkalasisiz o'rnatilgan dastur ishga tushmaydi.
+paket yoniga ko'chiradi.
 
 Ikonka `build/icon.ico` dan olinadi. Fayl bo'lmasa electron-builder
 OGOHLANTIRISH yozib, standart Electron belgisini qo'yadi:

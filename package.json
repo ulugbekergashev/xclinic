@@ -16,7 +16,8 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
     "electron:compile": "tsc -p tsconfig.electron.json && node scripts/markCjs.mjs electron-main",
-    "electron:build": "npm run build && npm run electron:compile && electron-builder"
+    "backend:bundle": "npm --prefix backend run bundle",
+    "electron:build": "npm run build && npm run backend:bundle && npm run electron:compile && electron-builder"
   },
   "build": {
     "appId": "uz.xclinic.local",
