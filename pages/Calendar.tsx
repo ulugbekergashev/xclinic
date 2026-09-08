@@ -17,6 +17,7 @@ import {
 import { Appointment, Patient, Doctor, UserRole, Clinic, ServiceCategory, Service } from '../types';
 import { PatientFormModal } from '../components/PatientFormModal';
 import { AppointmentFormModal } from '../components/AppointmentFormModal';
+import { SendMessageModal } from '../components/SendMessageModal';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
@@ -130,10 +131,11 @@ export const Calendar: React.FC<CalendarProps> = ({
   const [editingApptId, setEditingApptId] = useState<string | null>(null);
 
   // Message Modal State
+  /* Xabar oynasi — YAGONA komponent (`SendMessageModal`). Bu yerda
+     o'z nusxasi bor edi va matn kodga yozilgan shablondan yig'ilardi:
+     klinika uni o'zgartira olmasdi. */
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-  const [messageText, setMessageText] = useState('');
-  const [messageType, setMessageType] = useState('Custom');
-  const [messagePatientId, setMessagePatientId] = useState<string | null>(null);
+  const [messageAppt, setMessageAppt] = useState<Appointment | null>(null);
 
   // Add Form State
   const [formData, setFormData] = useState({
@@ -337,27 +339,6 @@ export const Calendar: React.FC<CalendarProps> = ({
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!messagePatientId) return;
-
-    try {
-      await api.patients.sendMessage(messagePatientId, messageText);
-      toast.success('Xabar muvaffaqiyatli yuborildi!');
-      setIsMessageModalOpen(false);
-      setMessageText('');
-    } catch (error: any) {
-      console.error('Error sending message:', error);
-      if (error.message === 'Bot not configured' || error.error === 'Bot not configured') {
-        toast.error('⚠️ Bot sozlanmagan. Iltimos, Sozlamalar bo\'limida bot tokenini kiriting.');
-      } else if (error.message === 'Patient telegram not linked' || error.error === 'Patient telegram not linked') {
-        toast.error('⚠️ Bemor Telegram botga ulanmagan. Iltimos, bemorga bot havolasini yuboring.');
-      } else {
-        toast.error(`Xatolik: ${error.message || 'Xabar yuborishda xatolik yuz berdi.'}`);
-      }
-    }
-  };
-
   /* ESLATMA — SERVER shabloni bilan.
 
      Ilgari eslatma matni SHU YERDA, brauzerda yig'ilardi va oddiy
@@ -383,12 +364,8 @@ export const Calendar: React.FC<CalendarProps> = ({
     }
   };
 
-  /* Erkin matnli xabar — alohida yo'l. Shablon endi bu yerda
-     tayyorlanmaydi. */
   const openMessageModal = (appt: Appointment) => {
-    setMessagePatientId(appt.patientId);
-    setMessageType('Custom');
-    setMessageText('');
+    setMessageAppt(appt);
     setIsMessageModalOpen(true);
   };
 
@@ -1048,29 +1025,17 @@ export const Calendar: React.FC<CalendarProps> = ({
         </Modal>
       )}
       {/* Message Modal */}
-      <Modal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} title={t('calendar.sendMessage')}>
-        <form onSubmit={handleSendMessage} className="space-y-4">
-          {/* «Xabar turi» tanlovi OLIB TASHLANDI: uning uchta varianti
-              faqat matnni oldindan to'ldirardi va hech qayerda
-              saqlanmasdi. Eslatma endi alohida tugmada, server
-              shabloni bilan. Bu yer — erkin matn uchun. */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('calendar.messageText')}</label>
-            <textarea
-              className="w-full border rounded-md p-3 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 focus:outline-none"
-              rows={4}
-              placeholder={t('calendar.messageText')}
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              required
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button type="button" variant="secondary" onClick={() => setIsMessageModalOpen(false)}>{t('common.cancel')}</Button>
-            <Button type="submit">{t('common.send')}</Button>
-          </div>
-        </form>
-      </Modal>
+      {/* Xabar — yagona oyna: shablonlar bazadan, qarz serverdan.
+          Yozuv sanasi va vaqti shablondagi {sana}/{vaqt} ga tushadi. */}
+      <SendMessageModal
+        isOpen={isMessageModalOpen}
+        onClose={() => { setIsMessageModalOpen(false); setMessageAppt(null); }}
+        patient={patients.find(p => p.id === messageAppt?.patientId) || null}
+        clinic={currentClinic}
+        appointment={messageAppt
+          ? { date: messageAppt.date, time: messageAppt.time, doctorName: messageAppt.doctorName }
+          : null}
+      />
 
       {/* Add Patient Modal */}
       {/* Yangi bemor — yagona forma. Yaratilgach yozuv formasida

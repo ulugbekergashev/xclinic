@@ -16,6 +16,7 @@ import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import { AdvanceModal } from '../components/AdvanceModal';
 import { PatientFormModal } from '../components/PatientFormModal';
 import { AppointmentFormModal } from '../components/AppointmentFormModal';
+import { SendMessageModal } from '../components/SendMessageModal';
 import { printPrescription } from '../utils/printForms';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription, VisitCharge } from '../types';
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
@@ -128,8 +129,13 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
    // Message Modal State
    const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-   const [messageText, setMessageText] = useState('');
-   const [messageType, setMessageType] = useState('Custom'); // Custom, Tomorrow, Debt, Missed
+   /* Xabar oynasi — YAGONA komponent (`SendMessageModal`). Bu yerda o'z
+      nusxasi va KODGA YOZILGAN matnlari bor edi. Ular orasida «qarz
+      eslatmasi» ham bor edi va u qarzni `Transaction.status === 'Pending'`
+      dan sanardi — qarzning eski, UCHINCHI ta'rifi. Bunday chek endi
+      umuman yaratilmaydi (1-bosqich), ya'ni summa har doim nol chiqardi
+      va haqiqiy qarzi bor bemor «qarzdorligingiz yo'q» degan SMS
+      olardi. */
 
    /* Keyingi tashrif — YAGONA forma (`AppointmentFormModal`). Bu yerda
       o'zining nusxasi va O'ZINING to'qnashuv tekshiruvi bor edi; u
@@ -472,24 +478,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
 
 
-   const handleSendMessage = async (e: React.FormEvent) => {
-      e.preventDefault();
-      try {
-         await api.patients.sendMessage(patient.id, messageText);
-         toast.error(t('patients.details.alerts.messageSent'));
-         setIsMessageModalOpen(false);
-         setMessageText('');
-      } catch (error: any) {
-         console.error('Error sending message:', error);
-         if (error.message === 'Bot not configured' || error.error === 'Bot not configured') {
-            setIsMessageModalOpen(false);
-            toast.error(`⚠️ ${t('patients.details.alerts.botNotConfigured')}`);
-         } else {
-            toast.error(`${t('common.error')}: ${error.message || t('common.error')}`);
-         }
-      }
-   };
-
    const openApptModal = () => setIsApptModalOpen(true);
 
    return (
@@ -600,11 +588,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         <Button variant="secondary" size="sm" onClick={() => setIsAssignDoctorModalOpen(true)}>
                            <UserPlus className="w-4 h-4 mr-2" /> {patient.doctorId ? t('patients.details.changeDoctor') : t('patients.details.assignDoctor')}
                         </Button>
-                        <Button variant="secondary" size="sm" onClick={() => {
-                           setMessageType('Custom');
-                           setMessageText('');
-                           setIsMessageModalOpen(true);
-                        }}>
+                        <Button variant="secondary" size="sm" onClick={() => setIsMessageModalOpen(true)}>
                            <Send className="w-4 h-4 mr-2" /> {t('patients.details.sendMessage')}
                         </Button>
                         <Button variant="secondary" size="sm" onClick={handleEditOpen}>
@@ -1368,72 +1352,13 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                 (yuqoridagi «To'lov qabul qilish»), avans esa
                 `AdvanceModal` orqali ketadi. */}
 
-            <Modal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} title={t('patients.details.modals.messageTitle')}>
-               <form onSubmit={handleSendMessage} className="space-y-4">
-                  <Select
-                     label={t('patients.details.modals.messageType')}
-                     value={messageType}
-                     onChange={(e) => {
-                        const type = e.target.value;
-                        setMessageType(type);
-
-                        if (type === 'Custom') {
-                           setMessageText('');
-                        } else if (type === 'Tomorrow') {
-                           // Find tomorrow's appointment
-                           const tomorrow = new Date();
-                           tomorrow.setDate(tomorrow.getDate() + 1);
-                           const tomorrowStr = tomorrow.toISOString().split('T')[0];
-                           const appt = patientAppointments.find(a => a.date === tomorrowStr);
-
-                           if (appt) {
-                              // Format date nicely
-                              const dateObj = new Date(appt.date);
-                              const dayNames = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'];
-                              const monthNames = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
-                              const dayName = dayNames[dateObj.getDay()];
-                              const day = dateObj.getDate();
-                              const month = monthNames[dateObj.getMonth()];
-
-                              setMessageText(`🏥 Qabul eslatmasi\n\nHurmatli ${formatFullName(patient)}!\n\nSizni ertaga, ${day}-${month} (${dayName}) kuni soat ${appt.time} da ${appt.doctorName} qabuliga kutamiz.\n\n📍 Manzil: Klinikamiz\n⏰ Vaqt: ${appt.time}\n👨‍⚕️ Shifokor: ${appt.doctorName}\n\nIltimos, vaqtida kelishingizni so'raymiz.\n\nSavol bo'lsa, biz bilan bog'laning.`);
-                           } else {
-                              setMessageText(`🏥 Qabul eslatmasi\n\nHurmatli ${formatFullName(patient)}!\n\nSizni ertaga klinikamizga qabulga kutamiz.\n\nIltimos, aniq vaqtni aniqlash uchun biz bilan bog'laning.`);
-                           }
-                        } else if (type === 'Debt') {
-                           const debt = patientTransactions.filter(t => t.status === 'Pending').reduce((acc, t) => acc + t.amount, 0);
-                           if (debt > 0) {
-                              setMessageText(`💳 To'lov eslatmasi\n\nHurmatli ${formatFullName(patient)}!\n\nSizning ${formatNumber(debt)} UZS miqdorida qarzdorligingiz mavjud.\n\nIltimos, to'lovni amalga oshiring.\n\n📞 To'lov bo'yicha savol bo'lsa, biz bilan bog'laning.`);
-                           } else {
-                              setMessageText(`✅ To'lovlar\n\nHurmatli ${formatFullName(patient)}!\n\nSizning qarzdorligingiz yo'q.\n\nRahmat!`);
-                           }
-                        } else if (type === 'Missed') {
-                           setMessageText(`⚠️ Qoldirilgan qabul\n\nHurmatli ${formatFullName(patient)}!\n\nSiz bugungi qabulga kelmadingiz.\n\nIltimos, yangi vaqt belgilash uchun biz bilan bog'laning.\n\n📞 Telefon: [klinika telefoni]`);
-                        }
-                     }}
-                     options={[
-                        { value: 'Custom', label: t('patients.details.modals.msgCustom') },
-                        { value: 'Tomorrow', label: t('patients.details.modals.msgTomorrow') },
-                        { value: 'Debt', label: t('patients.details.modals.msgDebt') },
-                        { value: 'Missed', label: t('patients.details.modals.msgMissed') }
-                     ]}
-                  />
-                  <div>
-                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('patients.details.modals.msgText')}</label>
-                     <textarea
-                        className="w-full border rounded-md p-3 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                        rows={4}
-                        placeholder={t('patients.details.modals.msgPlaceholder')}
-                        value={messageText}
-                        onChange={(e) => setMessageText(e.target.value)}
-                        required
-                     />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-4">
-                     <Button type="button" variant="secondary" onClick={() => setIsMessageModalOpen(false)}>{t('common.cancel')}</Button>
-                     <Button type="submit">{t('patients.details.modals.send')}</Button>
-                  </div>
-               </form>
-            </Modal>
+            {/* Xabar — yagona oyna: shablonlar bazadan, qarz serverdan. */}
+            <SendMessageModal
+               isOpen={isMessageModalOpen}
+               onClose={() => setIsMessageModalOpen(false)}
+               patient={patient}
+               clinic={currentClinic}
+            />
 
             {/* New Appointment Modal */}
             <AppointmentFormModal
