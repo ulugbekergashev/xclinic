@@ -203,7 +203,10 @@ export const Settings: React.FC<SettingsProps> = ({
       ownerPhone: '',
       startHour: 8,
       endHour: 20,
-      enableReceipts: false
+      enableReceipts: false,
+      // Bosma blank rekvizitlari (migratsiya 0013)
+      licenseNumber: '',
+      letterheadNote: '',
    });
    const [generalSaved, setGeneralSaved] = useState(false);
 
@@ -268,7 +271,9 @@ export const Settings: React.FC<SettingsProps> = ({
             ownerPhone: currentClinic.ownerPhone || '',
             startHour: currentClinic.startHour ?? 8,
             endHour: currentClinic.endHour ?? 20,
-            enableReceipts: currentClinic.enableReceipts ?? false
+            enableReceipts: currentClinic.enableReceipts ?? false,
+            licenseNumber: currentClinic.licenseNumber || '',
+            letterheadNote: currentClinic.letterheadNote || '',
          });
       }
    }, [currentClinic]);
@@ -519,7 +524,9 @@ export const Settings: React.FC<SettingsProps> = ({
             ownerPhone: generalForm.ownerPhone,
             startHour: Number(generalForm.startHour),
             endHour: Number(generalForm.endHour),
-            enableReceipts: generalForm.enableReceipts
+            enableReceipts: generalForm.enableReceipts,
+            licenseNumber: generalForm.licenseNumber,
+            letterheadNote: generalForm.letterheadNote,
          });
 
          if (response && response.id) {
@@ -788,7 +795,7 @@ export const Settings: React.FC<SettingsProps> = ({
       /* Bo'lim ro'yxati «Xodimlar» da ham kerak: forma bo'limni
          tanlaydi va ro'yxatda bo'lim nomi ko'rinadi. */
       if ((activeTab === 'departments' || activeTab === 'staff' || activeTab === 'services'
-         || activeTab === 'templates')
+         || activeTab === 'templates' || activeTab === 'labCatalog')
          && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
       if (activeTab === 'services' && inventoryItems.length === 0 && currentClinic?.id) {
          api.inventory.getAll(currentClinic.id).then(setInventoryItems).catch(() => setInventoryItems([]));
@@ -1171,6 +1178,39 @@ export const Settings: React.FC<SettingsProps> = ({
                               </label>
                            </div>
 
+                           {/* ── BOSMA BLANK ───────────────────────────────
+                               Litsenziya raqami va varaq pastidagi izoh
+                               sxemada BOR va chop etiladigan hujjatlarda
+                               ISHLATILADI (`utils/printDocument.ts`), lekin
+                               ularni kiritadigan joy yo'q edi — har bosma
+                               varaqda litsenziya bo'sh qolardi. */}
+                           <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                              <div>
+                                 <p className="text-sm font-medium text-gray-900 dark:text-white">Bosma blank</p>
+                                 <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    Tahlil natijasi, xulosa va ma'lumotnomalarda chop etiladi.
+                                 </p>
+                              </div>
+                              <Input
+                                 label="Litsenziya raqami"
+                                 value={generalForm.licenseNumber}
+                                 onChange={e => setGeneralForm({ ...generalForm, licenseNumber: e.target.value })}
+                                 placeholder="Masalan: LIC-001234"
+                              />
+                              <div>
+                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Varaq pastidagi izoh
+                                 </label>
+                                 <textarea
+                                    value={generalForm.letterheadNote}
+                                    onChange={e => setGeneralForm({ ...generalForm, letterheadNote: e.target.value })}
+                                    rows={2}
+                                    placeholder="Masalan: Natija faqat shu klinika uchun amal qiladi."
+                                    className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm dark:border-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none"
+                                 />
+                              </div>
+                           </div>
+
                            <div className="pt-4 flex items-center gap-4">
                               <Button type="submit">{t('common.save')}</Button>
                               {generalSaved && <span className="text-green-600 text-sm flex items-center"><CheckCircle className="w-4 h-4 mr-1" /> {t('settings.general.saved')}</span>}
@@ -1479,8 +1519,11 @@ export const Settings: React.FC<SettingsProps> = ({
 
                {/* Services Tab */}
                {/* Access Control Tab — faqat klinika admini */}
+               {/* Bo'limlar ro'yxati BO'SH massiv bilan uzatilardi: katalogda
+                   «bo'lim» tanlovi bor, lekin unda hech qachon hech narsa
+                   yo'q edi. */}
                {activeTab === 'labCatalog' && userRole === UserRole.CLINIC_ADMIN && (
-                  <LabCatalogTab departments={[]} />
+                  <LabCatalogTab departments={deptList} />
                )}
 
                {/* Tarmoq va kirish — havola, QR va internet tumbleri */}

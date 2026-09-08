@@ -1849,8 +1849,23 @@ const sinceDate = (n: number) =>
                     />
                   )} />
 
+                  {/* XABARLAR — FAQAT EGAGA.
+
+                      Bu sahifa menyuda yo'q, shuning uchun `guard()` uni
+                      cheklamasdi: `canOpenModule` menyuda bo'lmagan
+                      sahifani «ochiq» deb hisoblaydi. Ya'ni hamshira,
+                      laborant yoki shifokor manzilni qo'lda yozib kirsa,
+                      butun bemorlar bazasi bo'yicha ommaviy jo'natish
+                      oynasini ko'rardi.
+
+                      Server yozishni allaqachon to'sardi (`permissions.ts`
+                      da `send-bulk` — faqat ega), lekin ekranning O'ZI
+                      ochilardi: shablonlar, segmentlar va bemor ro'yxati
+                      ko'rinib turardi. */}
                   <Route path="/messages" element={
-                    <MessagesManagement
+                    userRole !== UserRole.CLINIC_ADMIN
+                      ? <Navigate to={homeFor(userRole)} replace />
+                      : <MessagesManagement
                       clinicId={clinicId}
                       currentClinic={currentClinic}
                       doctors={doctors}

@@ -5775,7 +5775,8 @@ app.post('/api/visits/:id/dmed-sync', authenticateToken, async (req, res) => {
 app.put('/api/clinics/:id/general', authenticateToken, async (req, res) => {
     try {
         if (!canAccessClinic(req, req.params.id)) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
-        const { name, address, phone, email, ownerPhone, startHour, endHour, enableReceipts } = req.body;
+        const { name, address, phone, email, ownerPhone, startHour, endHour, enableReceipts,
+                licenseNumber, letterheadNote } = req.body;
         const clinic = await prisma.clinic.update({
             where: { id: req.params.id },
             data: {
@@ -5786,7 +5787,15 @@ app.put('/api/clinics/:id/general', authenticateToken, async (req, res) => {
                 ownerPhone: ownerPhone !== undefined ? (ownerPhone || null) : undefined,
                 startHour: startHour !== undefined ? Number(startHour) : undefined,
                 endHour: endHour !== undefined ? Number(endHour) : undefined,
-                enableReceipts: enableReceipts !== undefined ? !!enableReceipts : undefined
+                enableReceipts: enableReceipts !== undefined ? !!enableReceipts : undefined,
+                /* BOSMA BLANK REKVIZITLARI. Ular sxemada bor (migratsiya
+                   0013) va chop etiladigan hujjatlarda ISHLATILADI
+                   (`utils/printDocument.ts`: litsenziya raqami sarlavhada,
+                   izoh pastda), lekin ularni KIRITADIGAN joy yo'q edi —
+                   ya'ni har bosma varaqda litsenziya raqami bo'sh
+                   qolardi. */
+                licenseNumber: licenseNumber !== undefined ? (String(licenseNumber).trim() || null) : undefined,
+                letterheadNote: letterheadNote !== undefined ? (String(letterheadNote).trim() || null) : undefined,
             }
         });
         res.json(clinic);

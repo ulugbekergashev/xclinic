@@ -525,6 +525,12 @@ export interface SubscriptionPlan {
 }
 
 export interface Clinic {
+  /* BOSMA BLANK REKVIZITLARI (migratsiya 0013). Chop etiladigan
+     hujjatlarda ishlatiladi (`utils/printDocument.ts`): litsenziya raqami
+     sarlavhada, izoh varaq pastida. Ilgari ularni kiritadigan joy yo'q
+     edi — har bosma varaqda litsenziya bo'sh qolardi. */
+  licenseNumber?: string | null;
+  letterheadNote?: string | null;
   id: string;
   name: string;
   adminName: string;
