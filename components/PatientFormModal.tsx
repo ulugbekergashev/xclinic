@@ -7,6 +7,7 @@ import { api } from '../services/api';
 import { ChevronDown, Search, Loader2, Plus } from 'lucide-react';
 import { normalizeUzPhone } from '../utils/phone';
 import { validatePatient, formatUzPhone } from '../shared/validation';
+import { DoctorPicker } from './DoctorPicker';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    BEMOR FORMASI — YAGONA.
@@ -418,17 +419,13 @@ export const PatientFormModal: React.FC<Props> = ({
                         )}
 
                         {!isDoctor && doctors.length > 0 && (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Biriktirilgan shifokor</label>
-                                <select
-                                    value={form.doctorId}
-                                    onChange={e => setForm(f => ({ ...f, doctorId: e.target.value }))}
-                                    className="w-full h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-500 outline-none"
-                                >
-                                    <option value="">Tanlanmagan</option>
-                                    {doctors.map(d => <option key={d.id} value={d.id}>{formatFullName(d)}</option>)}
-                                </select>
-                            </div>
+                            <DoctorPicker
+                                label="Biriktirilgan shifokor"
+                                doctors={doctors}
+                                value={form.doctorId}
+                                emptyLabel="Tanlanmagan"
+                                onChange={(id) => setForm(f => ({ ...f, doctorId: id }))}
+                            />
                         )}
 
                         <div>

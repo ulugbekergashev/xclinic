@@ -8,6 +8,7 @@ import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
 import { Plus, Loader2 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { DoctorPicker } from './DoctorPicker';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    YOZUV FORMASI — YAGONA.
@@ -196,11 +197,11 @@ export const AppointmentFormModal: React.FC<Props> = ({
                     </div>
                 )}
 
-                <Select
+                <DoctorPicker
                     label={t('calendar.doctor')}
-                    options={doctors.map(d => ({ value: d.id, label: formatDoctorName(d) }))}
+                    doctors={doctors}
                     value={form.doctorId}
-                    onChange={(e) => setForm(f => ({ ...f, doctorId: e.target.value }))}
+                    onChange={(id) => setForm(f => ({ ...f, doctorId: id }))}
                 />
 
                 {categories.length > 0 && (

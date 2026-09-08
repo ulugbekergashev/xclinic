@@ -139,6 +139,36 @@ async function main() {
             || `${rows[i - 1].lastName} ${rows[i - 1].firstName}`
                 .localeCompare(`${r.lastName} ${r.firstName}`) <= 0));
 
+    console.log("\n═══ 4. TAHLIL QATORI SHIFOKORGA BOG'LANADI ══════");
+    /* Laboratoriya ekrani yo'llanmaga faqat shifokor NOMINI yuborardi,
+       identifikatorni emas. Server esa hisob qatorini `order.doctorId`
+       bilan yaratadi — ya'ni qator `doctorId: null` bilan tug'ilardi va
+       shifokor tahlil pulidan ULUSH OLMASDI. Vedomost buni «shifokor
+       ko'rsatilmagan» deb tashlab ketardi, hech kim sezmasdi. */
+    const tests = (await call('GET', '/lab-tests', undefined, token)).data || [];
+    const patientsList = (await call('GET', '/patients', undefined, token)).data || [];
+    const p1 = patientsList[0];
+    ok('tahlil katalogi va bemor topildi', tests.length > 0 && !!p1,
+        `tahlil: ${tests.length}`);
+
+    if (tests.length && p1 && doc.data?.id) {
+        const order = await call('POST', '/lab-orders', {
+            patientId: p1.id, patientName: `${p1.lastName} ${p1.firstName}`,
+            doctorId: doc.data.id, doctorName: 'Shifokorov Bolim',
+            testIds: [tests[0].id],
+        }, token);
+        ok('yo\'llanma yaratildi', order.status === 200,
+            `status: ${order.status}, ${JSON.stringify(order.data).slice(0, 140)}`);
+        ok('yo\'llanmada shifokor identifikatori bor',
+            order.data?.doctorId === doc.data.id, String(order.data?.doctorId));
+
+        const charges = (await call('GET', `/charges?patientId=${p1.id}`, undefined, token)).data || [];
+        const row = charges.find((c: any) => c.source === 'Lab' && c.sourceId === order.data?.id);
+        ok('tahlil uchun hisob qatori yaratildi', !!row, String(charges.length));
+        ok('QATOR SHIFOKORGA BOG\'LANDI', row?.doctorId === doc.data.id,
+            `kutilgan ${doc.data.id}, bor ${row?.doctorId}`);
+    }
+
     finish();
 }
 

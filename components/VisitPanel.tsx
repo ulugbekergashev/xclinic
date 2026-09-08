@@ -15,6 +15,7 @@ import { printReferral, printPrescription } from '../utils/printForms';
 import { formatNumber } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { calcAge, todayISO } from '../utils/dateUtils';
+import { pickableDoctors } from './DoctorPicker';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    JORIY QABUL — bemor kartasining o'ng ustuni.
@@ -457,7 +458,10 @@ export const VisitPanel: React.FC<Props> = ({
 
     /* Ochiq qabul yo'q — panel o'rniga qabul ochish formasi */
     if (!visit) {
-        const formDoctors = doctors.filter(d => !openForm.departmentId || !d.departmentId || d.departmentId === openForm.departmentId);
+        /* Yagona qoida (`pickableDoctors`): faqat FAOL shifokorlar, kerak
+           bo'lsa bo'lim bo'yicha. Ilgari bu yerda holat umuman
+           tekshirilmasdi va ta'tildagi shifokorga qabul ochib bo'lardi. */
+        const formDoctors = pickableDoctors(doctors, openForm.departmentId || null, openForm.doctorId);
         const formServices = services.filter(s => !openForm.departmentId || !s.departmentId || s.departmentId === openForm.departmentId);
         return (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
@@ -729,7 +733,7 @@ export const VisitPanel: React.FC<Props> = ({
                         <select className={inputCls} value={consultForm.doctorId} disabled={!consultForm.departmentId}
                             onChange={e => setConsultForm(f => ({ ...f, doctorId: e.target.value }))}>
                             <option value="">{t('visit.anyDoctor')}</option>
-                            {doctors.filter(d => !d.departmentId || d.departmentId === consultForm.departmentId)
+                            {pickableDoctors(doctors, consultForm.departmentId || null, consultForm.doctorId)
                                 .map(d => <option key={d.id} value={d.id}>{d.firstName} {d.lastName}</option>)}
                         </select>
                     </div>

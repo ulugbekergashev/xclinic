@@ -17,6 +17,7 @@ import { Clinic } from '../types';
 import { printDischarge } from '../utils/printForms';
 import { VitalsChart } from '../components/VitalsChart';
 import { todayISO } from '../utils/dateUtils';
+import { DoctorPicker } from '../components/DoctorPicker';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Statsionar — palata, koyka, yotqizish, obxod.
@@ -727,13 +728,17 @@ export const Inpatient: React.FC<Props> = ({
                                     {patients.map(p => <option key={p.id} value={p.id}>{formatFullName(p)}</option>)}
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.attendingDoctor')}</label>
-                                <select value={admitForm.doctorId} onChange={e => setAdmitForm(f => ({ ...f, doctorId: e.target.value }))} className={inputCls}>
-                                    <option value="">—</option>
-                                    {doctors.map((d: any) => <option key={d.id} value={d.id}>{formatFullName(d)}</option>)}
-                                </select>
-                            </div>
+                            {/* Yagona tanlov qoidasi: faqat FAOL shifokorlar.
+                                Ilgari bu ro'yxat filtrsiz edi va ta'tildagi
+                                yoki ishdan ketgan shifokorni ham yotqizishga
+                                biriktirib bo'lardi. */}
+                            <DoctorPicker
+                                label={t('inp.attendingDoctor')}
+                                doctors={doctors as any}
+                                value={admitForm.doctorId}
+                                emptyLabel="—"
+                                onChange={(id) => setAdmitForm(f => ({ ...f, doctorId: id }))}
+                            />
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('inp.admitReason')}</label>
                                 <input value={admitForm.reason} onChange={e => setAdmitForm(f => ({ ...f, reason: e.target.value }))} className={inputCls} />

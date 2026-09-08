@@ -13,6 +13,7 @@ import { PatientFormModal } from '../components/PatientFormModal';
 import { useLanguage } from '../context/LanguageContext';
 import { calcAge, formatDay } from '../utils/dateUtils';
 import { maskPhone } from '../utils/accessControl';
+import { DoctorPicker } from '../components/DoctorPicker';
 
 interface PatientsProps {
   userRole: string;
@@ -583,16 +584,12 @@ export const Patients: React.FC<PatientsProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Shifokorni tanlang</label>
-              <select
+              <DoctorPicker
+                doctors={doctors}
                 value={assignDoctorId}
-                onChange={(e) => setAssignDoctorId(e.target.value)}
-                className="w-full h-10 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white px-3 focus:ring-2 focus:ring-primary-500"
-              >
-                <option value="">— Biriktirilmagan —</option>
-                {doctors.filter((d) => d.status === 'Active').map((d) => (
-                  <option key={d.id} value={d.id}>{formatFullName(d)} ({d.specialty})</option>
-                ))}
-              </select>
+                emptyLabel="— Biriktirilmagan —"
+                onChange={setAssignDoctorId}
+              />
             </div>
 
             <div className="flex justify-end gap-3 pt-2">

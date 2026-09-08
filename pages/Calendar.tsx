@@ -49,9 +49,6 @@ export const Calendar: React.FC<CalendarProps> = ({
   appointments, patients, doctors, services, categories, onAddAppointment, onUpdateAppointment, onDeleteAppointment, onAddPatient, userRole, doctorId, currentClinic, onPatientClick
 }) => {
   const { t } = useLanguage();
-  const startHour = currentClinic?.startHour ?? 8;
-  const endHour = currentClinic?.endHour ?? 20;
-  const HOURS = Array.from({ length: Math.max(1, endHour - startHour + 1) }, (_, i) => i + startHour);
 
   // State
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -82,6 +79,36 @@ export const Calendar: React.FC<CalendarProps> = ({
   /* Shifokor filtri (S5.3). `null` — hammasi.
      E'lon shu yerda, chunki quyidagi `filteredAppointments` unga tayanadi. */
   const [doctorFilter, setDoctorFilter] = useState<string | null>(null);
+
+  /* ─── SETKA SHIFOKOR SOATLARI BO'YICHA ────────────────────────────────
+
+     Ilgari u FAQAT klinikaning umumiy soatidan qurilardi (8:00–20:00),
+     holbuki har shifokorning o'z ish vaqti bor. Natijada ertalab 7 da
+     boshlaydigan shifokorning birinchi qabuli setkadan tashqarida
+     qolardi: yozuv bazada bor, kalendarda ko'rinmaydi — va buni
+     tekshirishning yo'li yo'q edi.
+
+     Bitta shifokor tanlangan bo'lsa uning soatlari; aks holda hamma faol
+     shifokorning eng keng oralig'i. Hech kimda soat ko'rsatilmagan bo'lsa
+     klinikanikiga qaytamiz. */
+  const { startHour, endHour } = useMemo(() => {
+    const pool = doctors.filter(d =>
+      d.status === 'Active' && (!doctorFilter || d.id === doctorFilter));
+    const starts = pool.map(d => d.startHour).filter((h): h is number => h != null);
+    const ends = pool.map(d => d.endHour).filter((h): h is number => h != null);
+
+    const clinicStart = currentClinic?.startHour ?? 8;
+    const clinicEnd = currentClinic?.endHour ?? 20;
+    let from = starts.length ? Math.min(...starts) : clinicStart;
+    let to = ends.length ? Math.max(...ends) : clinicEnd;
+
+    // Buzuq qiymatdan himoya: setka teskari yoki bo'sh bo'lib qolmasin
+    if (!(from >= 0 && from <= 23)) from = clinicStart;
+    if (!(to >= 0 && to <= 23) || to <= from) to = Math.max(from + 1, clinicEnd);
+    return { startHour: from, endHour: to };
+  }, [doctors, doctorFilter, currentClinic?.startHour, currentClinic?.endHour]);
+
+  const HOURS = Array.from({ length: Math.max(1, endHour - startHour + 1) }, (_, i) => i + startHour);
 
   /* Ikki xil cheklov, ikkalasi ham qo'llanadi:
        • SHIFOKOR o'zi kirganda faqat o'z qabullarini ko'radi (ruxsat);
@@ -145,9 +172,9 @@ export const Calendar: React.FC<CalendarProps> = ({
   // Open Add Modal with default values selected if available
   const openAddModal = (initialDate?: string, initialTime?: string, initialDoctorId?: string) => {
     setEditingApptId(null);
-    // Check if clinic is on individual plan
-    const isIndividualPlan = currentClinic?.planId === 'individual';
-
+    /* `individual` tarifi merosi olib tashlandi: o'zgaruvchi hisoblanardi,
+       lekin hech qayerda ishlatilmasdi. XClinic bitta klinikaga
+       o'rnatiladi — tarif tushunchasi yo'q. */
     setFormData({
       patientId: patients.length > 0 ? patients[0].id : '',
       // Defolt shifokor: berilgan → kirgan shifokor (DOCTOR roli) → birinchi shifokor

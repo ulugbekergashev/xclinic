@@ -11,6 +11,7 @@ import { EmptyState } from '../components/Common';
 import { useLanguage } from '../context/LanguageContext';
 import { printLabResult } from '../utils/printForms';
 import { useNavigate } from 'react-router-dom';
+import { DoctorPicker } from '../components/DoctorPicker';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Laboratoriya — tahlillar.
@@ -83,7 +84,14 @@ export const LabOrders: React.FC<Props> = ({
     const [error, setError] = useState('');
 
     // Yangi yo'llanma formasi
-    const [form, setForm] = useState({ patientId: '', patientName: '', doctorName: defaultDoctorName || '', testIds: [] as string[], priority: 'Normal' });
+    /* Shifokor IDENTIFIKATOR bilan saqlanadi.
+
+        Ilgari bu yerda faqat NOM turardi va so'rovga ham faqat nom
+        ketardi. Natijada yo'llanmadan tug'iladigan hisob qatori
+        `doctorId: null` bilan yaratilardi — ya'ni shifokor tahlil
+        pulidan ULUSH OLMASDI. Vedomost buni «shifokor
+        ko'rsatilmagan» deb tashlab ketardi va hech kim sezmasdi. */
+    const [form, setForm] = useState({ patientId: '', patientName: '', doctorId: '', doctorName: defaultDoctorName || '', testIds: [] as string[], priority: 'Normal' });
 
     useEffect(() => { api.labTests.getAll().then(setTests).catch(console.error); }, []);
 
@@ -116,13 +124,14 @@ export const LabOrders: React.FC<Props> = ({
             await api.labOrders.create({
                 patientId: form.patientId || undefined,
                 patientName: form.patientName.trim(),
+                doctorId: form.doctorId || undefined,
                 doctorName: form.doctorName,
                 testIds: form.testIds,
                 priority: form.priority,
             });
             await reload();
             setShowNew(false);
-            setForm({ patientId: '', patientName: '', doctorName: defaultDoctorName || '', testIds: [], priority: 'Normal' });
+            setForm({ patientId: '', patientName: '', doctorId: '', doctorName: defaultDoctorName || '', testIds: [], priority: 'Normal' });
         } catch (e: any) {
             setError(e.message || 'Yo\'llanma yaratilmadi');
         } finally { setSaving(false); }
@@ -373,15 +382,21 @@ export const LabOrders: React.FC<Props> = ({
                                         </p>
                                     )}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('common.doctor')}</label>
-                                    <select value={form.doctorName} onChange={e => setForm(f => ({ ...f, doctorName: e.target.value }))} className={inputCls}>
-                                        <option value="">—</option>
-                                        {doctors.map((d: any) => (
-                                            <option key={d.id} value={`${formatFullName(d)}`}>{formatFullName(d)}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <DoctorPicker
+                                    label={t('common.doctor')}
+                                    doctors={doctors as any}
+                                    value={form.doctorId}
+                                    emptyLabel="—"
+                                    onChange={(id) => {
+                                        const d = (doctors as any[]).find(x => x.id === id);
+                                        setForm(f => ({
+                                            ...f,
+                                            doctorId: id,
+                                            // Nom — SNIMOK: yo'llanmada o'sha paytdagi nom qoladi
+                                            doctorName: d ? formatFullName(d) : '',
+                                        }));
+                                    }}
+                                />
                             </div>
 
                             <div>
