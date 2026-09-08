@@ -2242,7 +2242,13 @@ export const Settings: React.FC<SettingsProps> = ({
                    yagona forma bilan ishlaydi: maydonlar ROLGA qarab
                    ko'rinadi. */}
                {activeTab === 'staff' && userRole === UserRole.CLINIC_ADMIN && (
-                  <StaffTab departments={deptList} onChanged={onStaffChanged} />
+                  <StaffTab
+                     departments={deptList}
+                     services={services}
+                     clinicId={currentClinic?.id}
+                     addToast={(type, msg) => type === 'error' ? toast.error(msg) : toast.success(msg)}
+                     onChanged={onStaffChanged}
+                  />
                )}
 
                {/* SMS va Telegram Tab (birlashtirilgan) */}

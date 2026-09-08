@@ -5,7 +5,9 @@ import { toast } from '../services/toast';
 import { confirmAction } from '../services/confirm';
 import { formatFullName } from '../utils/format';
 import { formatUzPhone } from '../shared/validation';
-import { Department } from '../types';
+import { Department, Service } from '../types';
+import { DoctorRatesEditor } from './DoctorRatesEditor';
+import { formatMoney } from '../utils/format';
 import {
     Plus, Edit, Trash2, Loader2, Search, Users, Phone, FlaskConical, HeartPulse,
 } from 'lucide-react';
@@ -92,11 +94,20 @@ const emptyForm = {
 
 interface Props {
     departments?: Department[];
+    services?: Service[];
+    clinicId?: string;
+    addToast?: (type: 'success' | 'error' | 'info', msg: string) => void;
     /** Ro'yxat o'zgargach ota-ekran o'z keshini yangilashi uchun */
     onChanged?: () => void;
 }
 
-export const StaffTab: React.FC<Props> = ({ departments = [], onChanged }) => {
+/* Karta bo'limlari. Yaratishda faqat birinchisi ochiq: stavka ham,
+   tarix ham hali mavjud bo'lmagan xodimga tegishli bo'lolmaydi. */
+type CardTab = 'info' | 'rates' | 'history';
+
+export const StaffTab: React.FC<Props> = ({
+    departments = [], services = [], clinicId, addToast, onChanged,
+}) => {
     const [rows, setRows] = useState<StaffRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -106,6 +117,18 @@ export const StaffTab: React.FC<Props> = ({ departments = [], onChanged }) => {
     const [creatingRole, setCreatingRole] = useState<Role | null>(null);
     const [form, setForm] = useState({ ...emptyForm });
     const [saving, setSaving] = useState(false);
+    const [cardTab, setCardTab] = useState<CardTab>('info');
+
+    /* Hisoblash va to'lash tarixi — kartaning ichida.
+
+       «Bu shifokorga shu paytgacha qancha hisoblandi va qancha
+       to'landi?» degan savolga javob berish uchun ilgari hamma
+       vedomostni ochib chiqish kerak edi. */
+    const [history, setHistory] = useState<{
+        lines: { id: string; periodFrom: string; periodTo: string; runStatus: string; accrued: number; paid: number }[];
+        totals: { accrued: number; paid: number };
+    } | null>(null);
+    const [historyLoading, setHistoryLoading] = useState(false);
 
     const load = useCallback(async () => {
         try {
@@ -127,12 +150,16 @@ export const StaffTab: React.FC<Props> = ({ departments = [], onChanged }) => {
     const openCreate = (r: Role) => {
         setEditing(null);
         setCreatingRole(r);
+        setCardTab('info');
+        setHistory(null);
         setForm({ ...emptyForm });
     };
 
     const openEdit = (row: StaffRow) => {
         setCreatingRole(null);
         setEditing(row);
+        setCardTab('info');
+        setHistory(null);
         setForm({
             firstName: row.firstName || '',
             lastName: row.lastName || '',
@@ -154,7 +181,20 @@ export const StaffTab: React.FC<Props> = ({ departments = [], onChanged }) => {
         });
     };
 
-    const close = () => { setEditing(null); setCreatingRole(null); };
+    const close = () => { setEditing(null); setCreatingRole(null); setHistory(null); };
+
+    /* Tarix FAQAT o'sha bo'lim ochilganda so'raladi — kartani ochish
+       og'irlashmasin. */
+    useEffect(() => {
+        if (cardTab !== 'history' || !editing || editing.role !== 'DOCTOR') return;
+        let alive = true;
+        setHistoryLoading(true);
+        api.payroll.staffHistory(editing.id)
+            .then(d => { if (alive) setHistory(d); })
+            .catch(() => { if (alive) setHistory(null); })
+            .finally(() => { if (alive) setHistoryLoading(false); });
+        return () => { alive = false; };
+    }, [cardTab, editing]);
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -352,6 +392,102 @@ export const StaffTab: React.FC<Props> = ({ departments = [], onChanged }) => {
             <Modal isOpen={isOpen} onClose={close}
                 title={editing ? `${formatFullName(editing)} — ${roleMeta(role).label}` : `Yangi ${roleMeta(role).label.toLowerCase()}`}
                 className="max-w-2xl">
+
+                {/* KARTA BO'LIMLARI. Stavka va tarix — faqat mavjud
+                    shifokorda: yangi xodimda ular tegishli bo'lolmaydi,
+                    laborant va hamshirada esa ulush tizimi yo'q. */}
+                {editing && role === 'DOCTOR' && (
+                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl mb-4">
+                        {([
+                            ['info', "Ma'lumotlar"],
+                            ['rates', 'Stavkalar'],
+                            ['history', 'Hisob-kitob'],
+                        ] as const).map(([k, label]) => (
+                            <button key={k} type="button" onClick={() => setCardTab(k)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${cardTab === k
+                                    ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-white shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* ── Stavkalar ── Moliya → Ulush dan KO'CHDI. U yerda birinchi
+                    ish shifokorni ro'yxatdan tanlash edi: odam xodim
+                    kartasidan chiqib, boshqa bo'limga borib, o'sha odamni
+                    qaytadan qidirishi kerak bo'lardi. */}
+                {editing && role === 'DOCTOR' && cardTab === 'rates' && (
+                    <DoctorRatesEditor
+                        doctorId={editing.id}
+                        fallbackPercent={editing.percentage ?? null}
+                        departments={departments}
+                        services={services}
+                        clinicId={clinicId}
+                        addToast={addToast}
+                    />
+                )}
+
+                {/* ── Hisob-kitob tarixi ── */}
+                {editing && role === 'DOCTOR' && cardTab === 'history' && (
+                    <div className="space-y-3">
+                        {historyLoading ? (
+                            <p className="text-sm text-gray-400 py-8 text-center">Yuklanmoqda…</p>
+                        ) : !history || history.lines.length === 0 ? (
+                            <p className="text-sm text-gray-400 py-8 text-center">
+                                Hali vedomostga tushmagan
+                            </p>
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                                        <p className="text-[11px] text-gray-400 uppercase tracking-wide">Hisoblangan</p>
+                                        <p className="text-xl font-black tabular-nums text-gray-900 dark:text-white">
+                                            {formatMoney(history.totals.accrued)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                                        <p className="text-[11px] text-gray-400 uppercase tracking-wide">To'langan</p>
+                                        <p className="text-xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                                            {formatMoney(history.totals.paid)}
+                                        </p>
+                                        {history.totals.accrued - history.totals.paid > 0 && (
+                                            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                                                qoldiq {formatMoney(history.totals.accrued - history.totals.paid)}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-800 max-h-72 overflow-y-auto">
+                                    {history.lines.map(l => (
+                                        <div key={l.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                                            <div className="min-w-0">
+                                                <p className="text-sm text-gray-900 dark:text-white">
+                                                    {l.periodFrom} — {l.periodTo}
+                                                </p>
+                                                <p className="text-[11px] text-gray-400">{l.runStatus}</p>
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <p className="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
+                                                    {formatMoney(l.accrued)}
+                                                </p>
+                                                <p className={`text-[11px] tabular-nums ${l.paid > 0
+                                                    ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                                                    {l.paid > 0 ? `to'landi ${formatMoney(l.paid)}` : "to'lanmagan"}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                        <div className="flex justify-end pt-1">
+                            <Button type="button" variant="secondary" onClick={close}>Yopish</Button>
+                        </div>
+                    </div>
+                )}
+
+                {(cardTab === 'info' || !editing || role !== 'DOCTOR') && (
                 <form onSubmit={save} className="space-y-4">
                     <p className="text-xs text-gray-500 dark:text-gray-400">{roleMeta(role).hint}</p>
 
@@ -476,6 +612,7 @@ export const StaffTab: React.FC<Props> = ({ departments = [], onChanged }) => {
                         </Button>
                     </div>
                 </form>
+                )}
             </Modal>
         </Card>
     );

@@ -410,6 +410,38 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
         });
     });
 
+    /* ─── BITTA XODIMNING TARIXI ────────────────────────────────
+
+       «Bu shifokorga shu paytgacha qancha hisoblandi va qancha
+       to'landi?» — xodim kartasidagi asosiy savol. Ilgari unga javob
+       berish uchun hamma vedomostni ochib chiqish kerak edi. */
+    route('get', '/api/payroll/staff/:doctorId', async (req, res, clinicId) => {
+        const doc = await prisma.doctor.findUnique({ where: { id: req.params.doctorId } });
+        if (!doc || doc.clinicId !== clinicId) return res.status(404).json({ error: 'Shifokor topilmadi' });
+
+        const lines = await prisma.payrollLine.findMany({
+            where: { doctorId: doc.id, run: { clinicId } },
+            include: { run: { select: { periodFrom: true, periodTo: true, status: true, approvedAt: true } } },
+            orderBy: { run: { periodFrom: 'desc' } },
+            take: 60,
+        });
+
+        res.json({
+            lines: lines.map((l: any) => ({
+                id: l.id,
+                periodFrom: l.run.periodFrom,
+                periodTo: l.run.periodTo,
+                runStatus: l.run.status,
+                accrued: round(l.accrued),
+                paid: round(l.paid),
+            })),
+            totals: {
+                accrued: round(lines.reduce((s: number, l: any) => s + (l.accrued || 0), 0)),
+                paid: round(lines.reduce((s: number, l: any) => s + (l.paid || 0), 0)),
+            },
+        });
+    });
+
     route('get', '/api/payroll/runs', async (req, res, clinicId) => {
         res.json(await prisma.payrollRun.findMany({
             where: { clinicId },

@@ -169,6 +169,24 @@ async function main() {
             `kutilgan ${doc.data.id}, bor ${row?.doctorId}`);
     }
 
+    console.log("\n═══ 5. XODIM KARTASIDAGI HISOB-KITOB TARIXI ════");
+    /* «Bu shifokorga shu paytgacha qancha hisoblandi va qancha to'landi?»
+       — karta ochilganda beriladigan asosiy savol. Ilgari unga javob
+       berish uchun hamma vedomostni ochib chiqish kerak edi. */
+    if (doc.data?.id) {
+        const hist = await call('GET', `/payroll/staff/${doc.data.id}`, undefined, token);
+        ok('tarix so\'rovi javob berdi', hist.status === 200, `status: ${hist.status}`);
+        ok('javobda qatorlar va yig\'indi bor',
+            Array.isArray(hist.data?.lines) && hist.data?.totals != null,
+            JSON.stringify(hist.data).slice(0, 120));
+        // Yangi shifokor hali vedomostga tushmagan
+        ok('yangi shifokorda tarix bo\'sh', (hist.data?.lines || []).length === 0,
+            String((hist.data?.lines || []).length));
+
+        const alienHist = await call('GET', '/payroll/staff/yoq-shifokor', undefined, token);
+        ok('begona shifokor 404', alienHist.status === 404, `status: ${alienHist.status}`);
+    }
+
     finish();
 }
 

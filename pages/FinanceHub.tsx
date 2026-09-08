@@ -153,7 +153,6 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
             ) : activeTab === 'ulush' ? (
                 <Payroll
                     doctors={doctors}
-                    departments={props.departments}
                     clinicId={props.clinicId || currentClinic?.id || ''}
                     addToast={props.addToast}
                 />

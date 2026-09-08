@@ -3360,6 +3360,29 @@ export const api = {
             return fetchJson<any[]>(`/doctor-rates/${doctorId}`, { method: 'PUT', body: JSON.stringify({ rates }) });
         },
 
+        /** Bitta xodimning hisoblash va to'lash tarixi — karta uchun */
+        staffHistory: (doctorId: string) => {
+            if (isDemoMode()) {
+                const lines = DEMO_PAYROLL_RUNS.flatMap((r: any) => (r.lines || [])
+                    .filter((l: any) => l.doctorId === doctorId)
+                    .map((l: any) => ({
+                        id: l.id, periodFrom: r.periodFrom, periodTo: r.periodTo,
+                        runStatus: r.status, accrued: l.accrued || 0, paid: l.paid || 0,
+                    })));
+                return demoRead<any>({
+                    lines,
+                    totals: {
+                        accrued: lines.reduce((s: number, l: any) => s + l.accrued, 0),
+                        paid: lines.reduce((s: number, l: any) => s + l.paid, 0),
+                    },
+                });
+            }
+            return fetchJson<{
+                lines: { id: string; periodFrom: string; periodTo: string; runStatus: string; accrued: number; paid: number }[];
+                totals: { accrued: number; paid: number };
+            }>(`/payroll/staff/${doctorId}`);
+        },
+
         /** Vedomost yaratmasdan raqamni ko'rish */
         preview: (from: string, to: string) => {
             if (isDemoMode()) return demoRead<any>(demoPayrollPreview(from, to));

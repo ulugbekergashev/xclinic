@@ -4,7 +4,7 @@ import {
     Percent, Plus, X, AlertCircle, Check, Loader2, Trash2,
     FileText, Wallet, CheckCircle, ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react';
-import { Doctor, Department, Service } from '../types';
+import { Doctor } from '../types';
 import { api } from '../services/api';
 import { todayISO, formatDateToISO, formatDay } from '../utils/dateUtils';
 
@@ -28,7 +28,8 @@ import { todayISO, formatDateToISO, formatDay } from '../utils/dateUtils';
 
 interface Props {
     doctors?: Doctor[];
-    departments?: Department[];
+    /* `departments` OLIB TASHLANDI — u faqat stavkalar jadvali uchun
+       kerak edi, u esa xodim kartasiga ko'chdi. */
     /** Xizmat ro'yxatini yuklash uchun kerak */
     clinicId?: string;
     addToast?: (type: 'success' | 'error' | 'info', msg: string) => void;
@@ -57,12 +58,8 @@ const RUN_UI: Record<string, { label: string; cls: string }> = {
     Paid: { label: "To'langan", cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
 };
 
-export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clinicId = '', addToast }) => {
-    const [tab, setTab] = useState<'runs' | 'rates'>('runs');
-    /* Xizmatlar ro'yxati SHU EKRANDA yuklanadi. Ota-komponentdagi `services`
-       propida `id` yo'q (u faqat nom/narx/davomiylik), stavka esa aynan
-       xizmat id siga bog'lanadi. */
-    const [services, setServices] = useState<Service[]>([]);
+export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast }) => {
+    const [tab, setTab] = useState<'runs'>('runs');
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
 
@@ -149,58 +146,13 @@ export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clini
         } finally { setBusy(false); }
     };
 
-    /* ═══ STAVKALAR ══════════════════════════════════════════════════════════ */
+    /* STAVKALAR BO'LIMI XODIM KARTASIGA KO'CHDI
+       (`components/DoctorRatesEditor.tsx`, Sozlamalar → Xodimlar).
 
-    const [rateDoctor, setRateDoctor] = useState('');
-    const [rateRows, setRateRows] = useState<{ serviceId: string; departmentId: string; percent: string; role: string }[]>([]);
-    const [ratesLoading, setRatesLoading] = useState(false);
-
-    const activeDoctors = useMemo(
-        () => doctors.filter(d => d.status !== 'Deleted'),
-        [doctors],
-    );
-
-    const loadRates = useCallback(async (doctorId: string) => {
-        if (!doctorId) { setRateRows([]); return; }
-        setRatesLoading(true); setError('');
-        try {
-            const list = await api.payroll.rates(doctorId);
-            setRateRows(list.map((r: any) => ({
-                serviceId: r.serviceId != null ? String(r.serviceId) : '',
-                departmentId: r.departmentId || '',
-                percent: String(r.percent),
-                role: r.role || 'Doctor',
-            })));
-        } catch (e: any) {
-            setError(e?.message || 'Stavkalar yuklanmadi');
-        } finally { setRatesLoading(false); }
-    }, []);
-
-    useEffect(() => { if (tab === 'rates' && rateDoctor) loadRates(rateDoctor); }, [tab, rateDoctor, loadRates]);
-
-    useEffect(() => {
-        if (tab !== 'rates' || services.length > 0 || !clinicId) return;
-        api.services.getAll(clinicId).then(setServices).catch(() => setServices([]));
-    }, [tab, services.length, clinicId]);
-
-    const saveRates = async () => {
-        if (!rateDoctor) return;
-        setBusy(true); setError('');
-        try {
-            await api.payroll.saveRates(rateDoctor, rateRows.map(r => ({
-                serviceId: r.serviceId ? Number(r.serviceId) : null,
-                departmentId: r.departmentId || null,
-                percent: Number(r.percent) || 0,
-                role: r.role,
-            })));
-            addToast?.('success', 'Stavkalar saqlandi');
-            await loadRates(rateDoctor);
-        } catch (e: any) {
-            setError(e?.message || 'Saqlanmadi');
-        } finally { setBusy(false); }
-    };
-
-    const doctorFallback = activeDoctors.find(d => d.id === rateDoctor)?.percentage;
+       Bu yerda birinchi ish shifokorni RO'YXATDAN TANLASH edi: odam
+       xodim kartasidan chiqib, Moliyaga borib, o'sha odamni qaytadan
+       qidirishi kerak bo'lardi. Endi stavka kim ochilgan bo'lsa
+       o'shaniki. */
 
     return (
         <div className="space-y-5">
@@ -212,7 +164,7 @@ export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clini
             </div>
 
             <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-                {([['runs', 'Vedomost'], ['rates', 'Stavkalar']] as const).map(([k, label]) => (
+                {([['runs', 'Vedomost']] as const).map(([k, label]) => (
                     <button key={k} onClick={() => setTab(k)}
                         className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === k
                             ? 'border-primary-600 text-primary-600 dark:text-primary-400'
@@ -404,102 +356,13 @@ export const Payroll: React.FC<Props> = ({ doctors = [], departments = [], clini
             )}
 
             {/* ═══ STAVKALAR ══════════════════════════════════════════════════ */}
-            {tab === 'rates' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
-                    <div className="flex flex-wrap items-end gap-3">
-                        <div className="min-w-[220px]">
-                            <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Shifokor</label>
-                            <select value={rateDoctor} onChange={e => setRateDoctor(e.target.value)} className={inputCls + ' w-full'}>
-                                <option value="">Tanlang</option>
-                                {activeDoctors.map(d => (
-                                    <option key={d.id} value={d.id}>{formatFullName(d)}</option>
-                                ))}
-                            </select>
-                        </div>
-                        {rateDoctor && (
-                            <button onClick={() => setRateRows(rows => [...rows, { serviceId: '', departmentId: '', percent: '', role: 'Doctor' }])}
-                                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
-                                <Plus className="w-4 h-4" /> Qator qo'shish
-                            </button>
-                        )}
-                        {rateDoctor && (
-                            <button onClick={saveRates} disabled={busy}
-                                className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                                Saqlash
-                            </button>
-                        )}
-                    </div>
+            {/* «STAVKALAR» VKLADKASI OLIB TASHLANDI — u xodim kartasiga
+                ko'chdi (Sozlamalar → Xodimlar → shifokor → «Stavkalar»).
 
-                    {!rateDoctor ? (
-                        <p className="text-sm text-gray-400 py-8 text-center">
-                            Stavkalarni ko'rish uchun shifokorni tanlang
-                        </p>
-                    ) : ratesLoading ? (
-                        <p className="text-sm text-gray-400 py-8 text-center">Yuklanmoqda...</p>
-                    ) : (
-                        <>
-                            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
-                                <p className="text-xs text-gray-600 dark:text-gray-300">
-                                    Stavka ANIQROQDAN umumiyga qarab tanlanadi: xizmat → bo'lim →
-                                    umumiy stavka → shifokor kartasidagi foiz
-                                    {doctorFallback != null ? ` (${doctorFallback}%)` : ''}.
-                                    Ya'ni bu jadval bo'sh bo'lsa, hisob avvalgidek ishlaydi.
-                                </p>
-                            </div>
-
-                            {rateRows.length === 0 ? (
-                                <p className="text-sm text-gray-400 py-6 text-center">
-                                    Stavka yo'q — kartadagi umumiy foiz ishlatiladi
-                                </p>
-                            ) : (
-                                <div className="space-y-2">
-                                    {rateRows.map((r, i) => (
-                                        <div key={i} className="flex flex-wrap items-center gap-2">
-                                            <select value={r.serviceId}
-                                                onChange={e => setRateRows(rows => rows.map((x, j) => j === i ? { ...x, serviceId: e.target.value } : x))}
-                                                className={inputCls + ' flex-1 min-w-[180px]'}>
-                                                <option value="">Barcha xizmatlar</option>
-                                                {services.map(sv => (
-                                                    <option key={sv.id} value={String(sv.id)}>{sv.name}</option>
-                                                ))}
-                                            </select>
-
-                                            <select value={r.departmentId}
-                                                onChange={e => setRateRows(rows => rows.map((x, j) => j === i ? { ...x, departmentId: e.target.value } : x))}
-                                                className={inputCls + ' min-w-[150px]'}>
-                                                <option value="">Barcha bo'limlar</option>
-                                                {departments.filter(d => d.isActive).map(d => (
-                                                    <option key={d.id} value={d.id}>{d.name}</option>
-                                                ))}
-                                            </select>
-
-                                            <select value={r.role}
-                                                onChange={e => setRateRows(rows => rows.map((x, j) => j === i ? { ...x, role: e.target.value } : x))}
-                                                className={inputCls + ' min-w-[120px]'}>
-                                                <option value="Doctor">Shifokor</option>
-                                                <option value="Assistant">Assistent</option>
-                                            </select>
-
-                                            <div className="relative w-24">
-                                                <input type="number" value={r.percent} placeholder="0"
-                                                    onChange={e => setRateRows(rows => rows.map((x, j) => j === i ? { ...x, percent: e.target.value } : x))}
-                                                    className={inputCls + ' w-full text-right pr-7'} />
-                                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
-                                            </div>
-
-                                            <button onClick={() => setRateRows(rows => rows.filter((_, j) => j !== i))}
-                                                className="p-2 text-gray-400 hover:text-red-600">
-                                                <X className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
-            )}
+                Bu yerda birinchi ish shifokorni RO'YXATDAN TANLASH edi.
+                Ya'ni xodimni sozlash uchun uning kartasidan chiqib,
+                Moliyaga borib, o'sha odamni qaytadan qidirish kerak
+                bo'lardi. */}
 
             {/* ── Vedomost kartasi ─────────────────────────────────────────── */}
             {openRun && (
