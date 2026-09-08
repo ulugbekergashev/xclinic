@@ -264,10 +264,16 @@ async function main() {
             username: `${firstName.toLowerCase()}.${lastName.toLowerCase()}`.replace(/'/g, ''),
             password: 'Shifokor2026!',
             percentage, salaryType, fixedSalary,
+            /* Bo'lim endi YARATISHDA ham qabul qilinadi. Ilgari server uni
+               tashlab yuborardi va bu yerda `prisma.doctor.update` bilan
+               qo'lda yozilardi — ya'ni skript o'z qoidasini («hammasi HTTP
+               orqali») aynan shu joyda buzardi. */
+            departmentId: dep?.id || null,
+            /* Ish grafigi — haftalik yuklama shundan hisoblanadi (0036). */
+            workDays: '1,2,3,4,5',
+            startHour: 9, endHour: 17,
         });
         if (doc?.id) {
-            // Bo'lim alohida yangilanadi: yaratishda bu maydon qabul qilinmaydi
-            await prisma.doctor.update({ where: { id: doc.id }, data: { departmentId: dep?.id || null } });
             doctors.push({ ...doc, departmentId: dep?.id, depCode });
         }
     }
@@ -289,14 +295,19 @@ async function main() {
         console.log(`   ${doctors.length} shifokor`);
     }
 
+    const receptionists: any[] = [];
     for (const [f, l] of [['Zilola', 'Sattorova'], ['Kamola', 'Nazarova']]) {
-        await api('POST', '/receptionists', {
-            firstName: f, lastName: l,
+        const r = await api('POST', '/receptionists', {
+            firstName: f, lastName: l, specialty: 'Registrator',
             phone: `+99890${int(1000000, 9999999)}`,
             username: `${f.toLowerCase()}.reg`, password: 'Registrator2026!',
+            /* Oylik endi to'rt rolda ham (0036). Ilgari u faqat shifokorda
+               bor edi va registratorning maoshi daftarda qolardi. */
+            fixedSalary: 4500000, workDays: '1,2,3,4,5,6', startHour: 8, endHour: 18,
         });
+        if (r?.id) receptionists.push(r);
     }
-    console.log('   2 registrator');
+    console.log(`   ${receptionists.length} registrator`);
 
     const labTechs: any[] = [];
     for (const [f, l] of [['Umida', 'Ismoilova'], ['Temur', 'Sobirov']]) {
@@ -304,6 +315,7 @@ async function main() {
             firstName: f, lastName: l, specialty: 'Laborant',
             phone: `+99893${int(1000000, 9999999)}`,
             username: `${f.toLowerCase()}.lab`, password: 'Laborant2026!',
+            fixedSalary: 3800000, workDays: '1,2,3,4,5', startHour: 8, endHour: 16,
         });
         if (t?.id) labTechs.push(t);
     }
@@ -313,10 +325,11 @@ async function main() {
     const nurses: any[] = [];
     for (const [f, l] of [['Gulnora', 'Mirzayeva'], ['Iroda', 'Umarova'], ['Barno', 'Xasanova']]) {
         const n = await api('POST', '/nurses', {
-            firstName: f, lastName: l,
+            firstName: f, lastName: l, specialty: 'Palata hamshirasi',
             phone: `+99894${int(1000000, 9999999)}`,
             departmentId: stacDep?.id || null,
             username: `${f.toLowerCase()}.hamshira`, password: 'Hamshira2026!',
+            fixedSalary: 3200000, workDays: '1,2,3,4,5,6,7', startHour: 8, endHour: 20,
         });
         if (n?.id) nurses.push(n);
     }
@@ -1021,6 +1034,76 @@ async function main() {
     } else {
         console.log('   vedomost yaratilmadi (davr band bo\'lishi mumkin)');
     }
+
+    /* ── XODIMLAR MODULI: bonus, jarima, davomat va oylik ────────────────
+
+       Namoyishda modul BO'SH ko'rinmasligi kerak: bonus qo'shish oynasi
+       bor-u, hech qanday yozuv yo'q bo'lsa, ekran ishlamayotgandek
+       tuyuladi.
+
+       Shifokorga ATAYLAB oylik to'lanmaydi: uning asosiy maoshi va ulushi
+       yuqoridagi VEDOMOST orqali chiqadi. Kartadan faqat bonus to'lanadi —
+       modulning asosiy qoidasi shu va u demoda ham ko'rinib tursin. */
+    const hrPeriod = dayStr(0).slice(0, 7);
+    const prevPeriod = (() => {
+        const [y, m] = hrPeriod.split('-').map(Number);
+        const d = new Date(Date.UTC(y, m - 2, 1));
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    })();
+
+    let hrAdj = 0, hrDays = 0, hrPaid = 0;
+    for (const r of receptionists) {
+        await api('POST', `/hr/staff/RECEPTIONIST/${r.id}/adjustments`, {
+            period: hrPeriod, type: 'Bonus', reason: 'Oylik reja bajarildi', amount: 500000,
+        });
+        hrAdj++;
+    }
+    if (receptionists[0]) {
+        await api('POST', `/hr/staff/RECEPTIONIST/${receptionists[0].id}/adjustments`, {
+            period: hrPeriod, type: 'Penalty', reason: 'Kechikish (2 kun)', amount: 150000,
+        });
+        hrAdj++;
+
+        /* O'tgan oy TO'LANGAN holda qoladi — «to'langan oy qotadi»
+           qoidasini namoyishda ko'rsatish uchun. */
+        const paid = await api('POST', `/hr/staff/RECEPTIONIST/${receptionists[0].id}/pay`,
+            { period: prevPeriod, method: 'Cash' });
+        if (paid?.payment?.id) hrPaid++;
+    }
+    for (const n of nurses.slice(0, 2)) {
+        await api('POST', `/hr/staff/NURSE/${n.id}/adjustments`, {
+            period: hrPeriod, type: 'Bonus', reason: 'Tungi navbatchilik', amount: 300000,
+        });
+        hrAdj++;
+    }
+    for (const d of doctors.slice(0, 2)) {
+        await api('POST', `/hr/staff/DOCTOR/${d.id}/adjustments`, {
+            period: hrPeriod, type: 'Bonus', reason: 'Murakkab holat', amount: 400000,
+        });
+        hrAdj++;
+    }
+
+    /* Davomat — oxirgi 20 kun. Dam olish kuni tashlab ketiladi, ba'zi
+       kunlar esa ataylab «kelmadi» va «sababli» bo'ladi: hisobot bir xil
+       yashil ustun bo'lib qolmasin. */
+    for (const person of [
+        ...receptionists.map((r: any) => ['RECEPTIONIST', r.id]),
+        ...nurses.slice(0, 2).map((n: any) => ['NURSE', n.id]),
+    ] as [string, string][]) {
+        for (let back = 1; back <= 20; back++) {
+            const date = dayStr(-back);
+            const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
+            if (dow === 0) continue;                       // yakshanba
+            const status = chance(0.08) ? 'Absent' : chance(0.06) ? 'Excused'
+                : chance(0.08) ? 'Late' : 'Present';
+            const r = await api('POST', `/hr/staff/${person[0]}/${person[1]}/attendance`,
+                { date, status });
+            if (r) hrDays++;
+        }
+    }
+    console.log(`
+12b. Xodimlar moduli`);
+    console.log(`   ${hrAdj} bonus/jarima, ${hrDays} davomat kuni, ${hrPaid} to'langan oylik`);
 
     // -- 13. VAQT BELGILARINI TARQATISH -------------------------------------
     /* MUAMMO (S5.8, audit B-38).

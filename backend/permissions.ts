@@ -171,6 +171,13 @@ export const RULES: Rule[] = [
     { method: 'POST', path: '/api/payroll/runs/:id/approve', roles: owner() },
     { method: 'POST', path: '/api/payroll/lines/:id/pay', roles: owner() },
     { method: 'DELETE', path: '/api/payroll/runs/:id', roles: owner() },
+
+    /* Xodimlar moduli (HR). Oylik, bonus va jarima — faqat klinika egasi.
+       Davomat ham shu yerda: kim kelmagani ish haqiga sabab bo'ladi. */
+    { method: 'POST', path: '/api/hr/staff/:role/:id/adjustments', roles: owner() },
+    { method: 'DELETE', path: '/api/hr/adjustments/:id', roles: owner() },
+    { method: 'POST', path: '/api/hr/staff/:role/:id/pay', roles: owner() },
+    { method: 'POST', path: '/api/hr/staff/:role/:id/attendance', roles: owner() },
     { method: 'POST', path: '/api/admin/recalculate-balances', roles: owner() },
 
     /* ─── Laboratoriya ─────────────────────────────────────────────────────

@@ -41,6 +41,7 @@ const ROUTES: { path: string; name: string }[] = [
     { path: '/diagnostics', name: 'Diagnostika' },
     { path: '/inpatient', name: 'Statsionar' },
     { path: '/messages', name: 'Xabarlar' },
+    { path: '/staff', name: 'Xodimlar' },
     { path: '/settings', name: 'Sozlamalar' },
 ];
 

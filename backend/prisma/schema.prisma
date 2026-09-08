@@ -8,33 +8,36 @@ datasource db {
 }
 
 model Doctor {
-  id               String            @id @default(uuid())
+  id               String              @id @default(uuid())
   firstName        String
   lastName         String
   specialty        String
   phone            String
   email            String?
   status           String
-  username         String?           @unique
+  username         String?             @unique
   password         String?
   clinicId         String
   telegramChatId   String?
-  percentage       Float             @default(0)
-  salaryType       String            @default("none") // 'none' | 'fixed' | 'fixed_kpi' | 'kpi'
-  fixedSalary      Float             @default(0)
+  percentage       Float               @default(0)
+  salaryType       String              @default("none") // 'none' | 'fixed' | 'fixed_kpi' | 'kpi'
+  fixedSalary      Float               @default(0)
   color            String?
   secondaryPhone   String?
   startHour        Int?
   endHour          Int?
   /// Kabinet raqami — talonda va navbat tablosida ko'rsatiladi. Migratsiya 0004.
   room             String?
+  /// Haftaning ish kunlari: «1,2,3,4,5» (1 = dushanba). NULL — belgilanmagan.
+  /// Migratsiya 0036.
+  workDays         String?
   /// Qaysi bo'limda ishlaydi. `specialty` ko'rsatish uchun qoladi,
   /// filtr va hisobot esa shu maydon bo'yicha ishlaydi.
   departmentId     String?
-  department       Department?       @relation(fields: [departmentId], references: [id])
+  department       Department?         @relation(fields: [departmentId], references: [id])
   appointments     Appointment[]
   visits           Visit[]
-  clinic           Clinic            @relation(fields: [clinicId], references: [id])
+  clinic           Clinic              @relation(fields: [clinicId], references: [id])
   installmentPlans InstallmentPlan[]
   patients         Patient[]
   expenses         Expense[]
@@ -58,6 +61,12 @@ model Receptionist {
   room         String?
   startHour    Int?
   endHour      Int?
+  /// Xodimlar moduli (migratsiya 0036). Foiz ATAYLAB yo'q: ulush faqat
+  /// shifokorda hisoblanadi, qolgan rollarda u hech qachon pul chiqarmaydi.
+  specialty    String?
+  email        String?
+  fixedSalary  Float       @default(0)
+  workDays     String?
   clinic       Clinic      @relation(fields: [clinicId], references: [id])
   department   Department? @relation(fields: [departmentId], references: [id])
   expenses     Expense[]
@@ -266,7 +275,7 @@ model TreatmentProcedure {
 }
 
 model Transaction {
-  id              String    @id @default(uuid())
+  id              String          @id @default(uuid())
   patientName     String
   date            String
   amount          Float
@@ -278,16 +287,16 @@ model Transaction {
   doctorName      String?
   patientId       String?
   visitId         String?
-  discountAmount  Float?    @default(0)
-  discountPercent Float?    @default(0)
-  createdAt       DateTime? @default(now())
+  discountAmount  Float?          @default(0)
+  discountPercent Float?          @default(0)
+  createdAt       DateTime?       @default(now())
   /// Pulni kim qabul qildi. Rollar har xil jadvalda (Receptionist/Doctor/Clinic admin)
   /// bo'lgani uchun FK emas — id va ism nusxasi saqlanadi.
   receivedById    String?
   receivedByName  String?
-  clinic          Clinic    @relation(fields: [clinicId], references: [id])
-  patient         Patient?  @relation(fields: [patientId], references: [id])
-  visit           Visit?    @relation(fields: [visitId], references: [id])
+  clinic          Clinic          @relation(fields: [clinicId], references: [id])
+  patient         Patient?        @relation(fields: [patientId], references: [id])
+  visit           Visit?          @relation(fields: [visitId], references: [id])
   chargePayments  ChargePayment[]
 
   /// Migratsiya 0029. Bu jadvalda ilgari BIRONTA indeks yo'q edi, holbuki u
@@ -300,7 +309,7 @@ model Transaction {
 }
 
 model Expense {
-  id              String        @id @default(uuid())
+  id              String               @id @default(uuid())
   date            String
   amount          Float
   category        String
@@ -310,18 +319,19 @@ model Expense {
   clinicId        String
   doctorId        String?
   receptionistId  String?
-  labOrderId      String?       @unique
+  labOrderId      String?              @unique
   inventoryItemId String?
   /// Xarajat qaysi bo'limga tegishli. NULL — umumiy xarajat, hisobotda
   /// alohida qatorda ko'rinadi. Migratsiya 0022.
   departmentId    String?
-  createdAt       DateTime      @default(now())
-  clinic          Clinic        @relation(fields: [clinicId], references: [id])
-  doctor          Doctor?       @relation(fields: [doctorId], references: [id])
-  receptionist    Receptionist? @relation(fields: [receptionistId], references: [id])
-  labOrder        LabOrder?     @relation(fields: [labOrderId], references: [id])
-  department      Department?   @relation(fields: [departmentId], references: [id])
+  createdAt       DateTime             @default(now())
+  clinic          Clinic               @relation(fields: [clinicId], references: [id])
+  doctor          Doctor?              @relation(fields: [doctorId], references: [id])
+  receptionist    Receptionist?        @relation(fields: [receptionistId], references: [id])
+  labOrder        LabOrder?            @relation(fields: [labOrderId], references: [id])
+  department      Department?          @relation(fields: [departmentId], references: [id])
   payrollLines    PayrollLine[]
+  salaryPayments  StaffSalaryPayment[]
 
   @@index([clinicId])
   @@index([doctorId])
@@ -330,17 +340,17 @@ model Expense {
 }
 
 model Service {
-  id           Int              @id @default(autoincrement())
+  id           Int                 @id @default(autoincrement())
   name         String
   price        Float
   duration     Int
   clinicId     String
-  cost         Float            @default(0)
+  cost         Float               @default(0)
   categoryId   String?
   departmentId String?
-  category     ServiceCategory? @relation(fields: [categoryId], references: [id])
-  department   Department?      @relation(fields: [departmentId], references: [id])
-  clinic       Clinic           @relation(fields: [clinicId], references: [id])
+  category     ServiceCategory?    @relation(fields: [categoryId], references: [id])
+  department   Department?         @relation(fields: [departmentId], references: [id])
+  clinic       Clinic              @relation(fields: [clinicId], references: [id])
   recipe       ServiceRecipe[]
   charges      VisitCharge[]
   rates        DoctorServiceRate[]
@@ -369,10 +379,10 @@ model SubscriptionPlan {
 }
 
 model Clinic {
-  id                      String              @id @default(uuid())
+  id                      String                     @id @default(uuid())
   name                    String
   adminName               String
-  username                String              @unique
+  username                String                     @unique
   password                String?
   phone                   String
   status                  String
@@ -386,47 +396,47 @@ model Clinic {
   /// uchun baza boshqa kompyuterga ko'chirilsa kalit yaroqsiz bo'ladi.
   /// Migratsiya 0032.
   licenseKey              String?
-  subscriptionType        String              @default("Paid")
-  smsBalance              Float               @default(0)
-  smsLimit                Int                 @default(0)
-  smsUsedThisMonth        Int                 @default(0)
+  subscriptionType        String                     @default("Paid")
+  smsBalance              Float                      @default(0)
+  smsLimit                Int                        @default(0)
+  smsUsedThisMonth        Int                        @default(0)
   ownerPhone              String?
   facebookPageAccessToken String?
   facebookPageId          String?
   facebookPageName        String?
   facebookUserAccessToken String?
   customPrice             Float?
-  endHour                 Int                 @default(20)
-  startHour               Int                 @default(8)
+  endHour                 Int                        @default(20)
+  startHour               Int                        @default(8)
   address                 String?
   email                   String?
-  enableReceipts          Boolean             @default(false)
-  notificationMode        String              @default("telegram_only")
+  enableReceipts          Boolean                    @default(false)
+  notificationMode        String                     @default("telegram_only")
   eskizEmail              String?
   eskizPassword           String?
   eskizToken              String?
   eskizTokenExpiry        DateTime?
   eskizNick               String?
-  dmedEnabled             Boolean             @default(false)
+  dmedEnabled             Boolean                    @default(false)
   dmedApiKey              String?
   dmedApiSecret           String?
   dmedClinicId            String?
   dmedToken               String?
   dmedTokenExpiry         DateTime?
-  prepaymentEnabled       Boolean             @default(false)
+  prepaymentEnabled       Boolean                    @default(false)
   prepaymentCardNumber    String?
   prepaymentAmount        Float?
   accessControl           String?
   /// Tashqi lid manbalari (yuboraman va h.k.) uchun kirish kaliti.
   /// POST /api/public/leads da X-API-Key sarlavhasi orqali klinika shu kalit bo'yicha topiladi.
-  leadApiKey              String?             @unique
+  leadApiKey              String?                    @unique
   leadApiKeyCreatedAt     DateTime?
   /// Bosma blank uchun: litsenziya raqami va blank pastidagi erkin satr.
   /// Migratsiya 0013.
   licenseNumber           String?
   letterheadNote          String?
   appointments            Appointment[]
-  plan                    SubscriptionPlan    @relation(fields: [planId], references: [id])
+  plan                    SubscriptionPlan           @relation(fields: [planId], references: [id])
   doctors                 Doctor[]
   installmentPlans        InstallmentPlan[]
   inventoryItems          InventoryItem[]
@@ -440,12 +450,15 @@ model Clinic {
   transactions            Transaction[]
   visits                  Visit[]
   salesAgentId            String?
-  salesAgent              SalesAgent?         @relation(fields: [salesAgentId], references: [id])
+  salesAgent              SalesAgent?                @relation(fields: [salesAgentId], references: [id])
   labTechnicians          LabTechnician[]
   nurses                  Nurse[]
   referrals               Referral[]
   doctorRates             DoctorServiceRate[]
   payrollRuns             PayrollRun[]
+  staffAdjustments        StaffAdjustment[]
+  staffAttendance         StaffAttendance[]
+  staffSalaryPayments     StaffSalaryPayment[]
   documents               PatientDocument[]
   accessLogs              AccessLog[]
   administrations         MedicationAdministration[]
@@ -458,7 +471,7 @@ model Clinic {
   cashMovements           CashMovement[]
   cashAuditLogs           CashAuditLog[]
   /// Kuniga nechta kassa smenasi (1 yoki 2). Klinikaga qarab sozlanadi.
-  cashShiftsPerDay        Int                 @default(1)
+  cashShiftsPerDay        Int                        @default(1)
   departments             Department[]
   encounterTemplates      EncounterTemplate[]
   labTests                LabTest[]
@@ -478,21 +491,21 @@ model Clinic {
 /// Kassa smenasini yopish: sanalgan naqd/terminal/Click hisob bilan solishtiriladi.
 /// Bir kunda bir nechta smena bo'lishi mumkin (klinika sozlamasiga qarab).
 model CashRegisterDay {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   clinicId      String
   date          String
   /// Smena raqami. Bitta smenali klinikada har doim 1.
-  shift         Int      @default(1)
+  shift         Int       @default(1)
   shiftStart    String?
   shiftEnd      String?
   /// Smena boshidagi naqd qoldiq (oldingi yopilishdan ko'chib keladi)
-  openingCash   Float    @default(0)
+  openingCash   Float     @default(0)
   /// Kassir haqiqatda sanagan naqd
   countedCash   Float
   /// Yopilgan daqiqadagi hisob bo'yicha naqd qoldiq (snapshot)
   expectedCash  Float
   /// countedCash − expectedCash (kam/ortiq)
-  difference    Float    @default(0)
+  difference    Float     @default(0)
   /// Terminal Z-hisoboti bo'yicha summa (kiritilmasa null — solishtirilmaydi)
   countedCard   Float?
   expectedCard  Float?
@@ -502,15 +515,15 @@ model CashRegisterDay {
   note          String?
   closedByName  String?
   closedByRole  String?
-  closedAt      DateTime @default(now())
+  closedAt      DateTime  @default(now())
   /// Smenani KIM ochgani. Ilgari faqat yopilish yozilardi. Migratsiya 0008.
   /// Qator bor-yo'qligi endi "yopilgan" degani emas: ochilgan smenada ham
   /// qator bo'ladi. Migratsiya 0012.
-  isClosed      Boolean  @default(true)
+  isClosed      Boolean   @default(true)
   openedAt      DateTime?
   openedByName  String?
   openedByRole  String?
-  clinic        Clinic   @relation(fields: [clinicId], references: [id])
+  clinic        Clinic    @relation(fields: [clinicId], references: [id])
 
   @@unique([clinicId, date, shift])
   @@index([clinicId])
@@ -819,6 +832,10 @@ model LabTechnician {
   room         String?
   startHour    Int?
   endHour      Int?
+  /// Xodimlar moduli (migratsiya 0036)
+  email        String?
+  fixedSalary  Float       @default(0)
+  workDays     String?
   clinic       Clinic      @relation(fields: [clinicId], references: [id])
   department   Department? @relation(fields: [departmentId], references: [id])
   labOrders    LabOrder[]
@@ -880,27 +897,27 @@ model Department {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  clinic       Clinic              @relation(fields: [clinicId], references: [id])
-  doctors      Doctor[]
-  services     Service[]
-  appointments Appointment[]
-  visits       Visit[]
-  templates    EncounterTemplate[]
-  labTests     LabTest[]
-  studies      DiagnosticStudy[]
-  wards        Ward[]
-  admissions   Admission[]
-  stockFrom    StockMovement[] @relation("StockMovementFrom")
-  stockTo      StockMovement[] @relation("StockMovementTo")
-  referrals    Referral[]
-  nurses       Nurse[]
+  clinic         Clinic              @relation(fields: [clinicId], references: [id])
+  doctors        Doctor[]
+  services       Service[]
+  appointments   Appointment[]
+  visits         Visit[]
+  templates      EncounterTemplate[]
+  labTests       LabTest[]
+  studies        DiagnosticStudy[]
+  wards          Ward[]
+  admissions     Admission[]
+  stockFrom      StockMovement[]     @relation("StockMovementFrom")
+  stockTo        StockMovement[]     @relation("StockMovementTo")
+  referrals      Referral[]
+  nurses         Nurse[]
   /// Migratsiya 0035: bo'lim endi hamma xodim rolida bor
   receptionists  Receptionist[]
   labTechnicians LabTechnician[]
-  expenses     Expense[]
-  doctorRates  DoctorServiceRate[]
-  transferFrom AdmissionTransfer[] @relation("TransferFromDept")
-  transferTo   AdmissionTransfer[] @relation("TransferToDept")
+  expenses       Expense[]
+  doctorRates    DoctorServiceRate[]
+  transferFrom   AdmissionTransfer[] @relation("TransferFromDept")
+  transferTo     AdmissionTransfer[] @relation("TransferToDept")
 
   @@unique([clinicId, code])
   @@index([clinicId])
@@ -1103,25 +1120,25 @@ model Bed {
 
 /// Yotqizish. Chiqarilgunicha ochiq turadi; koyka haqi har kuni hisoblanadi.
 model Admission {
-  id               String    @id @default(uuid())
-  clinicId         String
-  patientId        String
-  patientName      String
-  departmentId     String?
-  doctorId         String?
-  doctorName       String?
-  bedId            String?
-  admittedAt       DateTime  @default(now())
-  dischargedAt     DateTime?
+  id                 String    @id @default(uuid())
+  clinicId           String
+  patientId          String
+  patientName        String
+  departmentId       String?
+  doctorId           String?
+  doctorName         String?
+  bedId              String?
+  admittedAt         DateTime  @default(now())
+  dischargedAt       DateTime?
   /// Active | Discharged
-  status           String    @default("Active")
-  reason           String?
-  diagnosis        String?
-  dischargeSummary String?
-  dailyRate        Float     @default(0)
+  status             String    @default("Active")
+  reason             String?
+  diagnosis          String?
+  dischargeSummary   String?
+  dailyRate          Float     @default(0)
   /// Oxirgi marta koyka haqi yozilgan sana (YYYY-MM-DD) — takroriy yozuvni oldini oladi
-  lastChargedDate  String?
-  totalCharges     Float     @default(0)
+  lastChargedDate    String?
+  totalCharges       Float     @default(0)
   /// Chiqarish epikrizining to'rt qismi. `dischargeSummary` eski yotishlar
   /// uchun joyida qoladi. Migratsiya 0019.
   admissionDiagnosis String?
@@ -1129,10 +1146,10 @@ model Admission {
   treatmentGiven     String?
   recommendations    String?
 
-  clinic           Clinic            @relation(fields: [clinicId], references: [id])
-  patient          Patient           @relation(fields: [patientId], references: [id])
-  department       Department?       @relation(fields: [departmentId], references: [id])
-  bed              Bed?              @relation(fields: [bedId], references: [id])
+  clinic           Clinic                     @relation(fields: [clinicId], references: [id])
+  patient          Patient                    @relation(fields: [patientId], references: [id])
+  department       Department?                @relation(fields: [departmentId], references: [id])
+  bed              Bed?                       @relation(fields: [bedId], references: [id])
   rounds           InpatientRound[]
   medicationOrders MedicationOrder[]
   administrations  MedicationAdministration[]
@@ -1173,7 +1190,7 @@ model InventoryBatch {
   cost        Float    @default(0)
   receivedAt  DateTime @default(now())
 
-  item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  item      InventoryItem   @relation(fields: [itemId], references: [id], onDelete: Cascade)
   movements StockMovement[]
 
   @@index([itemId])
@@ -1255,38 +1272,38 @@ model MedicationOrder {
 /// Qator har bir buyurtmada avtomatik yaratiladi: xizmat qo'shilganda, tahlilga
 /// yuborilganda, tekshiruv buyurilganda.
 model VisitCharge {
-  id            String    @id @default(uuid())
-  clinicId      String
-  visitId       String?
-  patientId     String?
-  patientName   String
+  id                String    @id @default(uuid())
+  clinicId          String
+  visitId           String?
+  patientId         String?
+  patientName       String
   /// Service | Lab | Study | Medication | Bed | Other
-  source        String
+  source            String
   /// Manba yozuvining id si (TreatmentProcedure, LabOrder, DiagnosticStudy...)
-  sourceId      String?
-  name          String
-  quantity      Float     @default(1)
-  unitPrice     Float
-  discount      Float     @default(0)
-  total         Float
+  sourceId          String?
+  name              String
+  quantity          Float     @default(1)
+  unitPrice         Float
+  discount          Float     @default(0)
+  total             Float
   /// Unpaid | Paid | Cancelled
-  status        String    @default("Unpaid")
+  status            String    @default("Unpaid")
   /// Qisman to'lovni qo'llab-quvvatlaydi: total ga yetganda status Paid bo'ladi
-  paidAmount    Float     @default(0)
-  paidAt        DateTime?
-  transactionId String?
-  createdAt     DateTime  @default(now())
-  createdByName String?
+  paidAmount        Float     @default(0)
+  paidAt            DateTime?
+  transactionId     String?
+  createdAt         DateTime  @default(now())
+  createdByName     String?
   /// Qator KIMNING ishi. Chekka emas, qatorga yoziladi: bitta chek bir necha
   /// shifokorning xizmatini o'z ichiga oladi. Migratsiya 0007.
-  doctorId      String?
-  doctorName    String?
+  doctorId          String?
+  doctorName        String?
   /// Statsionar yotishiga bog'lanish: koyka haqi va dorilarda qabul yo'q.
   /// Migratsiya 0015.
-  admissionId   String?
+  admissionId       String?
   /// Xizmat katalogiga bog'lanish. Nom o'zgaradi, id o'zgarmaydi —
   /// hisobot va shifokor ulushi shunga tayanadi. Migratsiya 0021.
-  serviceId     Int?
+  serviceId         Int?
   /// Qator bo'lib to'lash rejasiga kiritilgan. Reja PULNI yozmaydi — u
   /// faqat jadval; to'lov shu qatorlar orqali o'tadi. Migratsiya 0033.
   installmentPlanId String?
@@ -1310,7 +1327,6 @@ model VisitCharge {
   @@index([installmentPlanId])
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════
 //  OMBOR HARAKATLARI VA XIZMAT RETSEPTI
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1320,39 +1336,39 @@ model VisitCharge {
 /// Qoldiq hech qachon qo'lda tahrirlanmaydi — u shu qatorlarning yig'indisi.
 /// Aks holda "kim oldi, qachon yo'qoldi" degan savolga javob bo'lmaydi.
 model StockMovement {
-  id        String   @id @default(uuid())
-  clinicId  String
-  itemId    String
-  batchId   String?
+  id               String   @id @default(uuid())
+  clinicId         String
+  itemId           String
+  batchId          String?
   /// In | Out | Adjust | Writeoff
-  type      String
+  type             String
   /// Musbat — kirim, manfiy — chiqim
-  quantity  Float
+  quantity         Float
   /// Purchase | Service | Expired | Damaged | Inventory | Manual | Legacy
   /// `Legacy` — 0028 da eski `InventoryLog` dan ko'chirilgan qatorlar.
   /// Ular xizmat tannarxiga qo'shilmaydi (reports.ts faqat `Service` ni sanaydi).
-  reason    String   @default("Manual")
-  visitId   String?
-  serviceId Int?
-  note      String?
-  userName  String?
-  createdAt DateTime @default(now())
+  reason           String   @default("Manual")
+  visitId          String?
+  serviceId        Int?
+  note             String?
+  userName         String?
+  createdAt        DateTime @default(now())
   /// Bo'limlar orasida ko'chirish (type = 'Transfer'). Migratsiya 0005.
   fromDepartmentId String?
   toDepartmentId   String?
   /// Bemor kartasidan sarflangan material. Migratsiya 0028 — ilgari bu
   /// ma'lumot faqat eski `InventoryLog` da bor edi.
-  patientId String?
+  patientId        String?
   /// Bekor qilingan chiqimning teskarisi. Harakat hech qachon o'chirilmaydi:
   /// uning o'rniga qarama-qarshi qator yoziladi va shu yerda bog'lanadi.
-  reversalOfId String?
+  reversalOfId     String?
 
-  clinic Clinic          @relation(fields: [clinicId], references: [id])
-  item   InventoryItem   @relation(fields: [itemId], references: [id])
-  batch  InventoryBatch? @relation(fields: [batchId], references: [id])
-  patient Patient?       @relation(fields: [patientId], references: [id])
-  fromDepartment Department? @relation("StockMovementFrom", fields: [fromDepartmentId], references: [id])
-  toDepartment   Department? @relation("StockMovementTo", fields: [toDepartmentId], references: [id])
+  clinic         Clinic          @relation(fields: [clinicId], references: [id])
+  item           InventoryItem   @relation(fields: [itemId], references: [id])
+  batch          InventoryBatch? @relation(fields: [batchId], references: [id])
+  patient        Patient?        @relation(fields: [patientId], references: [id])
+  fromDepartment Department?     @relation("StockMovementFrom", fields: [fromDepartmentId], references: [id])
+  toDepartment   Department?     @relation("StockMovementTo", fields: [toDepartmentId], references: [id])
 
   @@index([clinicId, createdAt])
   @@index([itemId])
@@ -1494,10 +1510,10 @@ model Referral {
   /// bemor qo'lidagi qog'oz bilan tizim bir xil qolishi kerak.
   payload            String?
 
-  clinic            Clinic      @relation(fields: [clinicId], references: [id])
-  patient           Patient     @relation(fields: [patientId], references: [id])
-  visit             Visit?      @relation(fields: [visitId], references: [id])
-  targetDepartment  Department? @relation(fields: [targetDepartmentId], references: [id])
+  clinic           Clinic      @relation(fields: [clinicId], references: [id])
+  patient          Patient     @relation(fields: [patientId], references: [id])
+  visit            Visit?      @relation(fields: [visitId], references: [id])
+  targetDepartment Department? @relation(fields: [targetDepartmentId], references: [id])
 
   @@unique([clinicId, number])
   @@index([clinicId, status])
@@ -1601,6 +1617,10 @@ model Nurse {
   endHour      Int?
   /// Palata, operatsiya, protsedura hamshirasi
   specialty    String?
+  /// Xodimlar moduli (migratsiya 0036)
+  email        String?
+  fixedSalary  Float    @default(0)
+  workDays     String?
 
   clinic     Clinic      @relation(fields: [clinicId], references: [id])
   department Department? @relation(fields: [departmentId], references: [id])
@@ -1683,6 +1703,89 @@ model PayrollLine {
 /// `textSnapshot` — imzolangan paytdagi MATN. Shablon keyin o'zgaradi, hujjat
 /// esa o'zgarmasligi kerak: bemor imzolagani aynan shu matn. Bu maydonsiz
 /// hujjatning huquqiy kuchi yo'q.
+/// ═══ XODIMLAR MODULI (migratsiya 0036) ══════════════════════════════════════
+
+/// Bonus yoki jarima — bir xodimga, bir oyga.
+///
+/// `staffRole` + `staffId`: to'rtta xodim jadvaliga bitta tashqi kalit qo'yib
+/// bo'lmaydi, shuning uchun bog'lam rol nomi bilan yuritiladi. Xodim
+/// o'chirilmaydi — ro'yxatdan chiqariladi, ya'ni yozuv osilib qolmaydi.
+model StaffAdjustment {
+  id            String   @id @default(uuid())
+  clinicId      String
+  /// DOCTOR | RECEPTIONIST | LAB_TECHNICIAN | NURSE
+  staffRole     String
+  staffId       String
+  /// Qaysi oyga tegishli: 'YYYY-MM'
+  period        String
+  /// Bonus | Penalty
+  type          String
+  reason        String
+  amount        Float
+  createdAt     DateTime @default(now())
+  createdByName String?
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId, staffRole, staffId, period])
+}
+
+/// Xodim davomati: bir xodim, bir kun — bitta yozuv.
+///
+/// Oylikdan AVTOMATIK ushlanmaydi. Kelmagan kun uchun qancha ushlash —
+/// direktorning qarori; dastur o'zi ushlasa, hech kim so'ramagan pul
+/// ushlanib qoladi. Kelmagan kun ko'rinadi, ushlash esa jarima orqali
+/// qo'lda yoziladi.
+model StaffAttendance {
+  id        String   @id @default(uuid())
+  clinicId  String
+  staffRole String
+  staffId   String
+  /// 'YYYY-MM-DD', Toshkent vaqti bo'yicha
+  date      String
+  /// Present | Absent | Excused | Late
+  status    String
+  note      String?
+  createdAt DateTime @default(now())
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@unique([staffRole, staffId, date])
+  @@index([clinicId, date])
+}
+
+/// Oylik to'lovi — ASOSIY maosh (+bonus −jarima).
+///
+/// Shifokorning ULUSHI bu yerga kirmaydi: u to'langan xizmatdan hisoblanadi
+/// va vedomost (`PayrollRun`) orqali to'lanadi. Ikki yo'l ataylab ajratilgan —
+/// aks holda bitta pul ikki marta berilishi mumkin edi. Xodim kartasi
+/// ikkalasini yonma-yon ko'rsatadi.
+///
+/// Nusxa maydonlari (`staffName`, `base`, `bonus`, `penalty`) ataylab: to'lov
+/// hujjat, va u keyin stavka o'zgarganda o'zgarmasligi kerak.
+model StaffSalaryPayment {
+  id         String   @id @default(uuid())
+  clinicId   String
+  staffRole  String
+  staffId    String
+  staffName  String
+  period     String
+  base       Float    @default(0)
+  bonus      Float    @default(0)
+  penalty    Float    @default(0)
+  amount     Float
+  method     String?
+  expenseId  String?
+  paidAt     DateTime @default(now())
+  paidByName String?
+
+  clinic  Clinic   @relation(fields: [clinicId], references: [id])
+  expense Expense? @relation(fields: [expenseId], references: [id])
+
+  @@unique([staffRole, staffId, period])
+  @@index([clinicId, period])
+}
+
 model PatientDocument {
   id                String    @id @default(uuid())
   clinicId          String

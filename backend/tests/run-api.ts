@@ -27,7 +27,7 @@ const BASE = `http://localhost:${PORT}`;
 
 /* Tartib qat'iy: integrity oxirida (yuqoridagi sababga ko'ra),
    auth va restore esa alohida shart talab qiladi — pastda. */
-const SUITES = ['permissions', 'consistency', 'icd10', 'attendance', 'license', 'templates', 'scheduling', 'staff', 'expiry', 'validation', 'visitclose', 'payments', 'moneybugs', 'stock', 'patients', 'events', 'money', 'integrity'];
+const SUITES = ['permissions', 'consistency', 'icd10', 'attendance', 'license', 'templates', 'scheduling', 'staff', 'hr', 'expiry', 'validation', 'visitclose', 'payments', 'moneybugs', 'stock', 'patients', 'events', 'money', 'integrity'];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

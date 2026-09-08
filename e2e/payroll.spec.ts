@@ -1,4 +1,8 @@
-/* SHIFOKOR ULUSHI — «Moliya → Ulush» ekrani.
+/* SHIFOKOR ULUSHI — «Xodimlar → Ulush va vedomost» ekrani.
+ *
+ * EKRAN KO'CHDI: ilgari u Moliyada, kassa va foyda bilan bir qatorda
+ * turardi. Aslida bu xodim haqidagi savol — kimga qancha hisoblandi —
+ * shuning uchun endi Xodimlar modulida.
  *
  * NIMA UCHUN KERAK. Ekran bo'sh chiqqanda ilgari bitta umumiy gap
  * ko'rsatilardi: «ulush faqat to'langan xizmatlardan hisoblanadi va
@@ -26,8 +30,8 @@ test.describe('Shifokor ulushi', () => {
         page.on('pageerror', e => errors.push(e.message.split('\n')[0].slice(0, 200)));
 
         await login(page);
-        await go(page, '/finance');
-        await page.getByRole('button', { name: 'Ulush' }).click();
+        await go(page, '/staff');
+        await page.getByRole('button', { name: 'Ulush va vedomost' }).click();
         await page.waitForTimeout(2500);
 
         expect(errors, 'Ulush vkladkasi JS xatosisiz ochilishi kerak').toEqual([]);
@@ -36,8 +40,8 @@ test.describe('Shifokor ulushi', () => {
 
     test("Davr boshi oyning BIRINCHI kuni (Toshkent vaqti bo'yicha)", async ({ page }) => {
         await login(page);
-        await go(page, '/finance');
-        await page.getByRole('button', { name: 'Ulush' }).click();
+        await go(page, '/staff');
+        await page.getByRole('button', { name: 'Ulush va vedomost' }).click();
         await page.waitForTimeout(2000);
 
         /* `toISOString()` UTC beradi va Toshkentda (UTC+5) oy boshini
@@ -49,8 +53,8 @@ test.describe('Shifokor ulushi', () => {
 
     test('Bo\'sh davrda ekran SABABNI aytadi', async ({ page }) => {
         await login(page);
-        await go(page, '/finance');
-        await page.getByRole('button', { name: 'Ulush' }).click();
+        await go(page, '/staff');
+        await page.getByRole('button', { name: 'Ulush va vedomost' }).click();
         await page.waitForTimeout(2000);
 
         /* Ataylab to'lov bo'lmagan davrni tanlaymiz — kelasi yil. */

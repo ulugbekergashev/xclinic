@@ -1,6 +1,6 @@
 import {
     Stethoscope, Users, Calendar as CalendarIcon, Wallet, Package,
-    FlaskConical, Scan, BedDouble, Settings as SettingsIcon,
+    FlaskConical, Scan, BedDouble, Settings as SettingsIcon, UserCog,
 } from 'lucide-react';
 import { UserRole, AccessControl } from '../types';
 import type { TranslationKey } from '../i18n/translations';
@@ -49,6 +49,15 @@ export const NAVIGATION: NavItemDef[] = [
     { id: 'lab', path: '/lab', labelKey: 'nav.lab', icon: FlaskConical, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST, UserRole.LAB_TECHNICIAN] },
     { id: 'diagnostics', path: '/diagnostics', labelKey: 'nav.diagnostics', icon: Scan, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
     { id: 'inpatient', path: '/inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: ALL },
+    /* XODIMLAR — alohida modul.
+
+       U Sozlamalar ichidagi vkladka edi, ulush va vedomost esa Moliyada.
+       Ya'ni «bu odam qancha oladi va qancha ishladi» degan bitta savolga
+       javob izlash uchun ikkita bo'limni kezib chiqish kerak edi.
+
+       Faqat klinika egasida: oylik, bonus va jarima — registratorning
+       ishi emas, server ham bu marshrutlarga 403 qaytaradi. */
+    { id: 'staff', path: '/staff', labelKey: 'nav.staff', icon: UserCog, roles: [UserRole.CLINIC_ADMIN] },
     { id: 'settings', path: '/settings', labelKey: 'nav.settings', icon: SettingsIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
 ];
 

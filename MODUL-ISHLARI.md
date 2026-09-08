@@ -84,6 +84,15 @@ tranzaksiyada.
 
 ## 6. Shifokorlar va ish haqi — ✅ bajarildi
 
+**2026-09-09 dan boshlab bu modul alohida:** «Xodimlar» (`/staff`). Unda
+to'rt rolning ro'yxati, xodim kartasi (oylik, bonus/jarima, ish grafigi,
+davomat, stavkalar) va vedomost bor. Moliyadagi «Ulush» vkladkasi olib
+tashlandi. Tafsilot — `PLAN-HR.md`.
+
+Muhim qoida: vedomost shifokorga fix maoshni ham hisoblaydi, shuning
+uchun xodim kartasi shifokorga asosiy oylikni to'lamaydi — faqat bonus.
+
+
 Shifokor kartasi `?doctorId=` bilan to'liq tarixni oladi (qabullar, to'lovlar
 va bemorlar).
 

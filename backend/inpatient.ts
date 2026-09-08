@@ -25,6 +25,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { serializeWorkDays } from './hr';
 import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
 import { writeOff } from './inventory';
@@ -784,6 +785,8 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         username: true, createdAt: true,
         // Umumiy xodim maydonlari (migratsiya 0035)
         room: true, startHour: true, endHour: true, specialty: true,
+        // Xodimlar moduli (migratsiya 0036)
+        email: true, fixedSalary: true, workDays: true,
         // `password` ATAYLAB yo'q: hech qachon tashqariga chiqmaydi
     };
 
@@ -793,6 +796,15 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         const data: any = {};
         if (body.room !== undefined) data.room = body.room ? String(body.room).trim() : null;
         if (body.specialty !== undefined) data.specialty = body.specialty ? String(body.specialty).trim() : null;
+        /* Xodimlar moduli (0036): oylik, pochta va ish kunlari — qolgan
+           uch rol bilan bir xil nomda va bir xil qoidada. */
+        if (body.email !== undefined) data.email = body.email ? String(body.email).trim() : null;
+        if (body.fixedSalary !== undefined) {
+            const n = Number(body.fixedSalary);
+            if (!(n >= 0)) return { ok: false, error: "Oylik manfiy bo'lishi mumkin emas" };
+            data.fixedSalary = Math.round(n);
+        }
+        if (body.workDays !== undefined) data.workDays = serializeWorkDays(body.workDays);
         for (const f of ['startHour', 'endHour'] as const) {
             if (body[f] === undefined) continue;
             if (body[f] === null || body[f] === '') { data[f] = null; continue; }

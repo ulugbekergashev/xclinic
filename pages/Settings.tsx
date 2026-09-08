@@ -30,7 +30,6 @@ const DEPT_COLORS = [
    { name: 'Jigarrang', value: '#B45309' },
 ];
 
-import { StaffTab } from '../components/StaffTab';
 import { ServiceRecipeEditor } from '../components/ServiceRecipeEditor';
 import { EncounterTemplatesTab } from '../components/EncounterTemplatesTab';
 
@@ -96,7 +95,7 @@ export const Settings: React.FC<SettingsProps> = ({
    /* Kompyuterdagi bulut papkalari — «Xizmat ko'rsatish» bo'limi ochilganda
       bir marta so'raladi. Topilmasa oddiy papka tanlash qoladi. */
    const [cloudFolders, setCloudFolders] = useState<{ path: string; label: string }[]>([]);
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'staff' | 'integrations' | 'access' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'templates'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'integrations' | 'access' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'templates'>('services');
 
    // Ruxsatlar (access control) formasi — klinika sozlamalaridan boshlang'ich qiymat
    const [accessForm, setAccessForm] = useState<AccessControl>(() => parseAccessControl(currentClinic));
@@ -191,8 +190,8 @@ export const Settings: React.FC<SettingsProps> = ({
       name: '', price: '', categoryId: '', departmentId: '', duration: '60',
    });
 
-   /* XODIM FORMALARINING HOLATI OLIB TASHLANDI — «Xodimlar» ekrani
-      (`components/StaffTab.tsx`) o'zi boshqaradi. */
+   /* XODIM FORMALARINING HOLATI OLIB TASHLANDI — xodimlar endi alohida
+      modul: `pages/Staff.tsx` va `pages/StaffCard.tsx`. */
 
    // General Form State
    const [generalForm, setGeneralForm] = useState({
@@ -792,9 +791,7 @@ export const Settings: React.FC<SettingsProps> = ({
    }, []);
 
    React.useEffect(() => {
-      /* Bo'lim ro'yxati «Xodimlar» da ham kerak: forma bo'limni
-         tanlaydi va ro'yxatda bo'lim nomi ko'rinadi. */
-      if ((activeTab === 'departments' || activeTab === 'staff' || activeTab === 'services'
+      if ((activeTab === 'departments' || activeTab === 'services'
          || activeTab === 'templates' || activeTab === 'labCatalog')
          && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
       if (activeTab === 'services' && inventoryItems.length === 0 && currentClinic?.id) {
@@ -835,8 +832,8 @@ export const Settings: React.FC<SettingsProps> = ({
       if (activeTab === 'access' && userRole === UserRole.CLINIC_ADMIN) loadAccessLog();
    }, [activeTab, userRole, loadAccessLog]);
 
-   /* HAMSHIRALAR BO'LIMI OLIB TASHLANDI — u endi «Xodimlar» ichida
-      (`components/StaffTab.tsx`), qolgan uch rol bilan birga. */
+   /* HAMSHIRALAR BO'LIMI OLIB TASHLANDI — u endi «Xodimlar» modulida
+      (`pages/Staff.tsx`), qolgan uch rol bilan birga. */
 
    /* KOD NOMDAN O'ZI YASALADI.
 
@@ -1055,14 +1052,13 @@ export const Settings: React.FC<SettingsProps> = ({
                      undan kira olardi — backend rolni tekshirmasdi. Endi
                      server 403 qaytaradi, shuning uchun bo'limlarning o'zi
                      ham yashiriladi: bosib bo'lmaydigan tugma ko'rsatmaymiz. */
-                  /* TO'RTTA VKLADKA O'RNIGA BITTA. Ilgari «Shifokorlar»,
-                     «Resepshnlar», «Laborantlar» va «Hamshiralar» alohida
-                     turardi: xodimni topish uchun avval uning ROLINI eslash
-                     kerak edi, va har birining o'z ro'yxati, o'z formasi,
-                     o'z o'chirish oynasi bor edi. */
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [
-                     { id: 'staff', name: 'Xodimlar', icon: Users },
-                  ] : []),
+                  /* XODIMLAR BU YERDA EMAS — u alohida MODUL bo'ldi (/staff).
+
+                     Sozlamalarda u vkladka edi, ulush va vedomost esa
+                     Moliyada. Ya'ni «bu odam qancha oladi va qancha
+                     ishladi» degan bitta savolga javob izlash uchun
+                     ikkita bo'limni kezib chiqish kerak edi. Endi
+                     ro'yxat, karta, stavkalar va vedomost bitta joyda. */
                   /* Tarmoq havolasi — registrator ham ko'radi: telefonini
                      ulash yoki ikkinchi kompyuterni sozlash uning ishi. */
                   { id: 'network', name: t('net.tab'), icon: Wifi },
@@ -2411,28 +2407,6 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                )}
 
-               {/* Doctors Tab */}
-               {/* XODIMLAR — BITTA EKRAN (`components/StaffTab.tsx`).
-
-                   Bu yerda to'rtta bo'lim, to'rtta ro'yxat va o'nlab oyna
-                   bor edi. Maydonlar ham tasodifan farq qilardi: bo'lim
-                   faqat shifokor va hamshirada, kabinet va ish soatlari
-                   faqat shifokorda — chunki har rol o'z vaqtida, o'z
-                   ehtiyoji bilan qo'shilgan edi.
-
-                   Migratsiya 0035 maydonlarni tenglashtirdi, ekran esa
-                   yagona forma bilan ishlaydi: maydonlar ROLGA qarab
-                   ko'rinadi. */}
-               {activeTab === 'staff' && userRole === UserRole.CLINIC_ADMIN && (
-                  <StaffTab
-                     departments={deptList}
-                     services={services}
-                     clinicId={currentClinic?.id}
-                     addToast={(type, msg) => type === 'error' ? toast.error(msg) : toast.success(msg)}
-                     onChanged={onStaffChanged}
-                  />
-               )}
-
                {/* SMS va Telegram Tab (birlashtirilgan) */}
                {activeTab === 'integrations' && (
                   <div className="space-y-6">
@@ -2759,7 +2733,7 @@ export const Settings: React.FC<SettingsProps> = ({
              faqat maydonlari biroz farq qilardi — va farq mantiqiy
              emas edi: bo'lim faqat shifokorda, kabinet ham faqat unda.
 
-             Endi bitta forma — `components/StaffTab.tsx`. */}
+             Endi bitta forma — `components/StaffForm.tsx`. */}
       {/* Bo'lim yaratish va tahrirlash */}
       {deptModal && (
          <Modal isOpen={true} onClose={() => setDeptModal(null)}

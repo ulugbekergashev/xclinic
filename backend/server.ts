@@ -113,6 +113,7 @@ import { tashkentDateStr, tashkentDayBounds } from './tashkentTime';
 import { registerClinicalRoutes } from './clinical';
 import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
 import { registerPayrollRoutes } from './payroll';
+import { registerHrRoutes, serializeWorkDays } from './hr';
 import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
 import { check as checkPermission } from './permissions';
 import { validatePatient, validatePhone } from '../shared/validation';
@@ -4357,7 +4358,23 @@ app.put('/api/doctors/:id', authenticateToken, STAFF, async (req, res) => {
         }
         // Sanitize body to only include valid Doctor fields
         const { firstName, lastName, specialty, phone, email, status, password, percentage, salaryType, fixedSalary, secondaryPhone, color, clinicId, startHour, endHour, room } = req.body;
-        const updateData: any = {};
+
+        /* BO'LIM — bu marshrutda YO'Q EDI.
+
+           Shifokor YARATILGANDA bo'lim qabul qilinardi (yuqoridagi POST),
+           TAHRIRLANGANDA esa jimgina tashlab yuborilardi: forma
+           `departmentId` yuboradi, server uni ro'yxatga ham kiritmagan.
+           Ya'ni bir marta noto'g'ri qo'yilgan bo'limni tuzatib
+           bo'lmasdi, «Bugun», karta va kalendar esa shifokorlarni aynan
+           bo'lim bo'yicha filtrlaydi.
+
+           Endi umumiy maydonlar boshqa uch rol bilan BITTA yo'ldan
+           o'tadi — ish kunlari va oylik ham shu yerdan keladi. */
+        const scopedDoc = getScopedClinicId(req);
+        const commonDoc = await staffCommonFields(req, scopedDoc as string, req.body);
+        if (!commonDoc.ok) return res.status(400).json({ error: commonDoc.error });
+
+        const updateData: any = { ...commonDoc.data };
         if (firstName !== undefined) updateData.firstName = firstName;
         if (lastName !== undefined) updateData.lastName = lastName;
         if (specialty !== undefined) updateData.specialty = specialty;
@@ -4433,6 +4450,31 @@ async function staffCommonFields(
         }
     }
     if (body.room !== undefined) data.room = body.room ? String(body.room).trim() : null;
+
+    /* ─── XODIMLAR MODULI (0036) ────────────────────────────────
+
+       Oylik, ish kunlari, pochta va lavozim — endi to'rt rolda ham.
+       Ular shu yerda turadi, chunki har rolning marshrutida qaytadan
+       yozilsa, farq yana tasodifan paydo bo'ladi (0035 dan oldin aynan
+       shunday bo'lgan edi).
+
+       `specialty` faqat BO'SH BO'LMAGANDA yoziladi: shifokorda u
+       sxema bo'yicha majburiy va `null` unga tushib qolsa Prisma
+       tushunarsiz 500 qaytaradi. */
+    if (body.specialty !== undefined) {
+        const v = String(body.specialty || '').trim();
+        if (v) data.specialty = v;
+    }
+    if (body.email !== undefined) data.email = body.email ? String(body.email).trim() : null;
+    if (body.fixedSalary !== undefined) {
+        const n = Number(body.fixedSalary);
+        if (!(n >= 0)) return { ok: false, error: "Oylik manfiy bo'lishi mumkin emas" };
+        data.fixedSalary = Math.round(n);
+    }
+    /* Ish kunlari: «1,2,3» yoki [1,2,3]. Tozalash bitta joyda —
+       `hr.ts` dagi `serializeWorkDays`. */
+    if (body.workDays !== undefined) data.workDays = serializeWorkDays(body.workDays);
+
     /* Soat 0..23. Chegaradan tashqari qiymat jadvalni jimgina buzadi:
        kalendar bo'sh ustun chizadi va sabab ko'rinmaydi. */
     for (const f of ['startHour', 'endHour'] as const) {
@@ -4472,6 +4514,7 @@ app.get('/api/staff', authenticateToken, async (req, res) => {
                     specialty: true, status: true, username: true, departmentId: true,
                     room: true, startHour: true, endHour: true, color: true,
                     percentage: true, salaryType: true, fixedSalary: true, secondaryPhone: true,
+                    workDays: true,
                 },
             }),
             prisma.receptionist.findMany({
@@ -4480,6 +4523,7 @@ app.get('/api/staff', authenticateToken, async (req, res) => {
                     id: true, firstName: true, lastName: true, phone: true,
                     status: true, username: true, departmentId: true,
                     room: true, startHour: true, endHour: true,
+                    specialty: true, email: true, fixedSalary: true, workDays: true,
                 },
             }),
             prisma.labTechnician.findMany({
@@ -4488,6 +4532,7 @@ app.get('/api/staff', authenticateToken, async (req, res) => {
                     id: true, firstName: true, lastName: true, phone: true,
                     specialty: true, status: true, username: true, departmentId: true,
                     room: true, startHour: true, endHour: true,
+                    email: true, fixedSalary: true, workDays: true,
                 },
             }),
             prisma.nurse.findMany({
@@ -4496,6 +4541,7 @@ app.get('/api/staff', authenticateToken, async (req, res) => {
                     id: true, firstName: true, lastName: true, phone: true,
                     specialty: true, status: true, username: true, departmentId: true,
                     room: true, startHour: true, endHour: true,
+                    email: true, fixedSalary: true, workDays: true,
                 },
             }),
         ]);
@@ -6116,6 +6162,7 @@ registerReportRoutes(app, { prisma, authenticateToken, getScopedClinicId });
    ishlaydi — ular aynan tizimga hali kirib bo'lmaydigan holat uchun. */
 registerLicenseRoutes(app, { prisma });
 registerPayrollRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerHrRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerComplianceRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
 registerFileRoutes(app, { prisma, authenticateToken, getScopedClinicId, uploadsDir });
 

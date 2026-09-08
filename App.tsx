@@ -29,6 +29,8 @@ const Today = React.lazy(() => import('./pages/Today').then(m => ({ default: m.T
 const VisitWorkspace = React.lazy(() => import('./pages/VisitWorkspace').then(m => ({ default: m.VisitWorkspace })));
 const Inpatient = React.lazy(() => import('./pages/Inpatient').then(m => ({ default: m.Inpatient })));
 const MessagesManagement = React.lazy(() => import('./pages/MessagesManagement').then(m => ({ default: m.MessagesManagement })));
+const Staff = React.lazy(() => import('./pages/Staff').then(m => ({ default: m.Staff })));
+const StaffCard = React.lazy(() => import('./pages/StaffCard').then(m => ({ default: m.StaffCard })));
 import { todayISO } from './utils/dateUtils';
 import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -952,6 +954,24 @@ const sinceDate = (n: number) =>
      yashirilgan bo'lsa ham `#/inventory` ni qo'lda yozib kirish mumkin
      edi. Endi sahifaning o'zi ham tekshiradi va ruxsat bo'lmasa rolning
      bosh sahifasiga qaytaradi. */
+  /* Xodim qo'shildi yoki o'zgardi — App dagi ro'yxatlar yangilanadi.
+     Ular hamma joyda ishlatiladi: kalendar shifokorni filtrlaydi, kassa
+     ismini ko'rsatadi. Ilgari bu funksiya Sozlamalar marshrutining
+     ichida yozilgan edi; endi uni Xodimlar moduli ham chaqiradi. */
+  const refreshStaffLists = React.useCallback(async () => {
+    if (!clinicId) return;
+    try {
+      const [docs, recs, techs] = await Promise.all([
+        api.doctors.getAll(clinicId),
+        api.receptionists.getAll(clinicId),
+        api.labTechnicians.getAll(clinicId),
+      ]);
+      setDoctors(docs);
+      setReceptionists(recs);
+      setLabTechnicians(techs || []);
+    } catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
+  }, [clinicId]);
+
   const guard = (moduleId: string, element: React.ReactNode) =>
     canOpenModule(userRole, accessControl, moduleId)
       ? element
@@ -1738,6 +1758,32 @@ const sinceDate = (n: number) =>
                 } />
               )}
 
+              {/* ── XODIMLAR ────────────────────────────────────────────
+                  Ro'yxat va xodim kartasi. Ulush va vedomost ham shu
+                  yerda — ilgari ular Moliyada, xodimlar esa Sozlamalarda
+                  edi va bitta savol ikkita bo'limga bo'lingan edi. */}
+              <Route path="/staff" element={
+                guard('staff',
+                  <Staff
+                    departments={departments}
+                    services={services}
+                    doctors={doctors}
+                    clinicId={clinicId}
+                    addToast={addToast}
+                    onStaffChanged={refreshStaffLists}
+                  />)
+              } />
+              <Route path="/staff/:role/:id" element={
+                guard('staff',
+                  <StaffCard
+                    departments={departments}
+                    services={services}
+                    clinicId={clinicId}
+                    addToast={addToast}
+                    onStaffChanged={refreshStaffLists}
+                  />)
+              } />
+
               <Route path="/board" element={<QueueBoard clinicId={clinicId} />} />
               {/* Kiosk ko'rinishi — televizorga chiqariladigan alohida oyna.
                   Bu marshrut FAQAT kirmagan holat uchun e'lon qilingan edi
@@ -1911,19 +1957,7 @@ const sinceDate = (n: number) =>
                         try { setCurrentClinic(await api.clinics.getById(clinicId)); }
                         catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
                       }}
-                      onStaffChanged={async () => {
-                        if (!clinicId) return;
-                        try {
-                          const [docs, recs, techs] = await Promise.all([
-                            api.doctors.getAll(clinicId),
-                            api.receptionists.getAll(clinicId),
-                            api.labTechnicians.getAll(clinicId),
-                          ]);
-                          setDoctors(docs);
-                          setReceptionists(recs);
-                          setLabTechnicians(techs || []);
-                        } catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
-                      }}
+                      onStaffChanged={refreshStaffLists}
                           reviews={reviews}
                     />
                   )} />

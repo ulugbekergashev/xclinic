@@ -1,9 +1,8 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Wallet, BarChart3, Percent, CalendarCheck } from 'lucide-react';
+import { Wallet, BarChart3, CalendarCheck } from 'lucide-react';
 import { CashBook } from './CashBook';
 import { FinanceReport } from './FinanceReport';
-import { Payroll } from './Payroll';
 import { AttendanceTab } from '../components/AttendanceReport';
 import { UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
     LabOrder, Receptionist, CashRegisterDay, CashMovement, VisitCharge, Department, Service } from '../types';
@@ -17,7 +16,14 @@ import type { CashCloseArgs } from './CashBook';
 // "To'lanmagan" ro'yxatiga qo'shiladi — alohida ekran QURILMAGAN, chunki
 // CashBook allaqachon to'lov qabul qiladi va qarz yopadi.
 
-type TabKey = 'kassa' | 'hisobot' | 'ulush' | 'davomat';
+/* «Ulush» BU YERDA EMAS — u Xodimlar moduliga ko'chdi.
+
+   Stavkalar va vedomost xodim haqidagi savol: kimga qancha hisoblandi.
+   Moliyada u kassa va foyda bilan bir qatorda turardi, stavkani
+   o'zgartirish uchun esa avval shifokorni RO'YXATDAN tanlash kerak
+   edi — ya'ni xodim kartasidan chiqib, boshqa bo'limga borib, o'sha
+   odamni qaytadan qidirish. Endi ikkalasi ham /staff da. */
+type TabKey = 'kassa' | 'hisobot' | 'davomat';
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType; subtitle: string }[] = [
     {
@@ -31,12 +37,6 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType; subtitle: str
         label: 'Hisobot',
         icon: BarChart3,
         subtitle: "Qancha ishlab topdik — foyda, qarz, bo'limlar va chiqimlar",
-    },
-    {
-        key: 'ulush',
-        label: 'Ulush',
-        icon: Percent,
-        subtitle: 'Shifokor stavkalari va oylik vedomost',
     },
     {
         /* DAVOMAT KALENDARDAN KO'CHDI.
@@ -100,10 +100,10 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
 
     const [searchParams, setSearchParams] = useSearchParams();
     const requested = searchParams.get('tab') as TabKey | null;
-    /* Hisobot va ulush — faqat egaga. Registrator kassada ishlaydi va
-       manzilga qo'lda `?tab=ulush` yozib kirib olmasligi kerak. */
+    /* Hisobot — faqat egaga. Registrator kassada ishlaydi va manzilga
+       qo'lda `?tab=hisobot` yozib kirib olmasligi kerak. */
     const activeTab: TabKey = canSeeReports
-        && (requested === 'hisobot' || requested === 'ulush' || requested === 'davomat')
+        && (requested === 'hisobot' || requested === 'davomat')
         ? requested
         : 'kassa';
 
@@ -150,12 +150,6 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
 
             {activeTab === 'davomat' ? (
                 <AttendanceTab />
-            ) : activeTab === 'ulush' ? (
-                <Payroll
-                    doctors={doctors}
-                    clinicId={props.clinicId || currentClinic?.id || ''}
-                    addToast={props.addToast}
-                />
             ) : activeTab === 'kassa' ? (
                 <CashBook
                     embedded

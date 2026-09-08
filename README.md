@@ -330,7 +330,11 @@ baribir server beradi, ya'ni tablo va navbat mantiqi buzilmaydi.
 
 ### Moliya
 
-Ikkita tab: **Kassa** (pul harakati, smena) va **Hisobot** (bo'limlar bo'yicha foyda).
+Uchta tab: **Kassa** (pul harakati, smena), **Hisobot** (bo'limlar bo'yicha
+foyda) va **Davomat** (bemorlarning kelishi).
+
+> **Ulush va vedomost bu yerda emas.** Ular Xodimlar moduliga ko'chdi —
+> «kimga qancha hisoblandi» xodim haqidagi savol, kassa haqidagi emas.
 
 Hisobot qaytadan qurilgan. denta7 dagisi bitta o'lchovda edi — shifokorlar.
 Ko'p profilli klinikada asosiy savol boshqa: **qaysi bo'lim qancha keltiradi va
@@ -351,6 +355,34 @@ Shifokor buyurgan xizmatlarning to'lanmagan qatorlari Kassa tabidagi
 mavjud **«To'lanmagan»** ro'yxatiga qo'shiladi — «Shifokor buyurgan» yorlig'i
 bilan. Alohida to'lov ekrani **yo'q**: `CashBook` allaqachon to'lov qabul
 qiladi va qarz yopadi.
+
+### Xodimlar
+
+Bitta modul: ro'yxat, xodim kartasi, stavkalar va vedomost.
+
+Ro'yxatning tepasida to'rtta raqam — jami xodim, bu hafta qabul qilayotgan
+shifokorlar, o'rtacha yuklama va oylik fondi. Hammasi serverda sanaladi.
+
+**Xodim kartasi** — alohida sahifa, uchta (shifokorda to'rtta) bo'lim bilan:
+
+| Bo'lim | Nima |
+|---|---|
+| Umumiy | shu oy oyligi, davomat, aloqa ma'lumotlari |
+| Maosh | asosiy oylik, bonus, jarima, oy bo'yicha hisob va to'lov |
+| Ish grafigi | haftaning ish kunlari va oylik davomat kalendari |
+| Stavkalar | shifokorning xizmat bo'yicha ulush foizlari |
+
+**Pul qayerdan chiqadi — qoida.** Vedomost shifokorga ulushni ham, fix
+maoshni ham hisoblaydi. Shuning uchun xodim kartasi shifokorga asosiy
+oylikni **to'lamaydi** (bitta pul ikki marta berilmasligi uchun) — undan
+faqat bonus chiqadi. Registrator, laborant va hamshirada esa vedomost
+umuman ishlamaydi: ularning oyligi aynan kartadan to'lanadi va kassaga
+xarajat bo'lib tushadi.
+
+**Davomat oylikdan avtomatik ushlamaydi.** Kelmagan kun ko'rinadi, qancha
+ushlash esa direktorning qarori — u jarima bo'lib qo'lda yoziladi.
+
+Tafsilot: `PLAN-HR.md`.
 
 ### To'lov modeli
 

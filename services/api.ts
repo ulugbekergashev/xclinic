@@ -1149,6 +1149,102 @@ const demoDoctorsReport = (from: string, to: string) => {
     };
 };
 
+/* ─── XODIMLAR MODULI: DEMO ──────────────────────────────────────────────────
+
+   Demo namoyish uchun, shuning uchun raqamlar HAQIQIY demo ma'lumotidan
+   sanaladi — o'ylab topilgan sonlar qo'yilsa, namoyishda modul ishlayotgandek
+   ko'rinadi-yu, ichida hech narsa bo'lmaydi. */
+const DEMO_HR_ADJUSTMENTS: any[] = [];
+const DEMO_HR_PAYMENTS: any[] = [];
+const DEMO_HR_ATTENDANCE: any[] = [];
+
+/** Demo xodimlari — hamma rol bitta ro'yxatda, rol nomi bilan. */
+const demoStaffAll = () => ([
+    ...DEMO_DOCTORS.map((r: any) => ({ ...r, role: 'DOCTOR' })),
+    ...DEMO_RECEPTIONISTS.map((r: any) => ({ ...r, role: 'RECEPTIONIST' })),
+    ...DEMO_LAB_TECHNICIANS.map((r: any) => ({ ...r, role: 'LAB_TECHNICIAN' })),
+    ...DEMO_NURSES.map((r: any) => ({ ...r, role: 'NURSE' })),
+]);
+
+const demoWeekBounds = () => {
+    const now = new Date();
+    const dow = now.getDay() === 0 ? 7 : now.getDay();
+    const mon = new Date(now.getTime() - (dow - 1) * 864e5);
+    const sun = new Date(mon.getTime() + 6 * 864e5);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    return { from: iso(mon), to: iso(sun) };
+};
+
+const demoHrWorkload = () => {
+    const week = demoWeekBounds();
+    const appts = DEMO_APPOINTMENTS.filter((a: any) =>
+        a.date >= week.from && a.date <= week.to && a.status !== 'Cancelled');
+    return {
+        week,
+        rows: DEMO_DOCTORS.map((d: any) => {
+            const own = appts.filter((a: any) => a.doctorId === d.id);
+            const minutes = own.reduce((s: number, a: any) => s + (a.duration || 30), 0);
+            /* Sig'im ish grafigidan. Demo shifokorlarida grafik bo'lmasa
+               foiz KO'RSATILMAYDI — haqiqiy serverdagi qoida bilan bir xil. */
+            const days = String(d.workDays || '').split(',').filter(Boolean).length;
+            const cap = days && d.startHour != null && d.endHour != null && d.endHour > d.startHour
+                ? days * (d.endHour - d.startHour) * 60 : null;
+            return {
+                doctorId: d.id, appointments: own.length, minutes,
+                capacityMinutes: cap,
+                percent: cap ? Math.min(200, Math.round((minutes / cap) * 100)) : null,
+            };
+        }),
+    };
+};
+
+const demoHrSummary = () => {
+    const all = demoStaffAll();
+    const active = all.filter((r: any) => r.status === 'Active');
+    const load = demoHrWorkload();
+    const known = load.rows.filter((r: any) => r.percent != null).map((r: any) => r.percent);
+    return {
+        total: active.length,
+        archived: all.length - active.length,
+        byRole: {
+            DOCTOR: DEMO_DOCTORS.filter((r: any) => r.status === 'Active').length,
+            RECEPTIONIST: DEMO_RECEPTIONISTS.filter((r: any) => r.status === 'Active').length,
+            LAB_TECHNICIAN: DEMO_LAB_TECHNICIANS.filter((r: any) => r.status === 'Active').length,
+            NURSE: DEMO_NURSES.filter((r: any) => r.status === 'Active').length,
+        },
+        working: load.rows.filter((r: any) => r.appointments > 0).length,
+        doctors: DEMO_DOCTORS.length,
+        avgLoad: known.length ? Math.round(known.reduce((s: number, v: number) => s + v, 0) / known.length) : null,
+        loadKnownFor: known.length,
+        salaryFund: active.reduce((s: number, r: any) => s + (Number(r.fixedSalary) || 0), 0),
+        noSalary: active.filter((r: any) => !(Number(r.fixedSalary) > 0)).length,
+    };
+};
+
+const demoHrMonth = (role: string, id: string, period: string) => {
+    const staff = demoStaffAll().find((r: any) => r.role === role && r.id === id);
+    const adj = DEMO_HR_ADJUSTMENTS.filter(a => a.staffRole === role && a.staffId === id && a.period === period);
+    const bonus = adj.filter(a => a.type === 'Bonus').reduce((s, a) => s + (a.amount || 0), 0);
+    const penalty = adj.filter(a => a.type === 'Penalty').reduce((s, a) => s + (a.amount || 0), 0);
+    const base = role === 'DOCTOR' ? 0 : Number(staff?.fixedSalary) || 0;
+    const payment = DEMO_HR_PAYMENTS.find(p => p.staffRole === role && p.staffId === id && p.period === period);
+    return {
+        period,
+        staff: {
+            id, role, name: staff ? `${staff.lastName} ${staff.firstName}` : '',
+            fixedSalary: Number(staff?.fixedSalary) || 0,
+            salaryType: staff?.salaryType || null,
+            percentage: staff?.percentage ?? null,
+            workDays: String(staff?.workDays || '').split(',').filter(Boolean).map(Number),
+        },
+        base, bonus, penalty, due: base + bonus - penalty,
+        adjustments: adj,
+        payment: payment ? { ...payment, amount: base + bonus - penalty } : null,
+        share: role === 'DOCTOR' ? { accrued: 0, paid: 0, runs: [] } : null,
+        attendance: { present: 0, absent: 0, excused: 0, late: 0 },
+    };
+};
+
 const DEMO_NURSES: any[] = [
     { id: 'demo-nurse-1', clinicId: 'demo-clinic-1', firstName: 'Nilufar', lastName: 'Yo\'ldosheva', phone: '+998 90 555 66 77', departmentId: 'demo-inp', username: 'nilufar', status: 'Active' },
     { id: 'demo-nurse-2', clinicId: 'demo-clinic-1', firstName: 'Zuhra', lastName: 'Ismoilova', phone: '+998 91 222 33 44', departmentId: 'demo-inp', username: 'zuhra', status: 'Active' },
@@ -3437,6 +3533,75 @@ export const api = {
                 return demoRead<any>({ success: true });
             }
             return fetchJson<any>(`/payroll/lines/${lineId}/pay`, { method: 'POST', body: JSON.stringify(data || {}) });
+        },
+    },
+
+    /* ─── XODIMLAR MODULI (HR) ────────────────────────────────────────────────
+
+       Oylik hisobi, bonus/jarima, davomat va haftalik yuklama. Raqamlar
+       HAMMASI serverdan keladi — ekranda hech narsa qayta sanalmaydi.
+       Sabab MODUL-ISHLARI da yozilgan: proplardan sanalgan raqam ro'yxat
+       qisqarganda jimgina yolg'on ko'rsatadi. */
+    hr: {
+        summary: () => {
+            if (isDemoMode()) return demoRead<any>(demoHrSummary());
+            return fetchJson<any>('/hr/summary');
+        },
+        workload: () => {
+            if (isDemoMode()) return demoRead<any>(demoHrWorkload());
+            return fetchJson<any>('/hr/workload');
+        },
+        month: (role: string, id: string, period: string) => {
+            if (isDemoMode()) return demoRead<any>(demoHrMonth(role, id, period));
+            return fetchJson<any>(`/hr/staff/${role}/${id}/month?period=${period}`);
+        },
+        addAdjustment: (role: string, id: string, data: { period: string; type: 'Bonus' | 'Penalty'; reason: string; amount: number }) => {
+            if (isDemoMode()) {
+                const row = { id: demoId('demo-adj'), staffRole: role, staffId: id, ...data, createdAt: new Date().toISOString() };
+                DEMO_HR_ADJUSTMENTS.push(row);
+                return demoRead<any>(row);
+            }
+            return fetchJson<any>(`/hr/staff/${role}/${id}/adjustments`, {
+                method: 'POST', body: JSON.stringify(data),
+            });
+        },
+        deleteAdjustment: (adjustmentId: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_HR_ADJUSTMENTS.findIndex(x => x.id === adjustmentId);
+                if (i > -1) DEMO_HR_ADJUSTMENTS.splice(i, 1);
+                return demoRead<{ success: true }>({ success: true });
+            }
+            return fetchJson<{ success: true }>(`/hr/adjustments/${adjustmentId}`, { method: 'DELETE' });
+        },
+        pay: (role: string, id: string, data: { period: string; method?: string }) => {
+            if (isDemoMode()) {
+                const row = { id: demoId('demo-salary'), staffRole: role, staffId: id, ...data, paidAt: new Date().toISOString() };
+                DEMO_HR_PAYMENTS.push(row);
+                return demoRead<any>({ payment: row });
+            }
+            return fetchJson<any>(`/hr/staff/${role}/${id}/pay`, {
+                method: 'POST', body: JSON.stringify(data),
+            });
+        },
+        attendance: (role: string, id: string, period: string) => {
+            if (isDemoMode()) {
+                return demoRead<any>({
+                    period, workDays: [1, 2, 3, 4, 5],
+                    days: DEMO_HR_ATTENDANCE.filter(d => d.staffRole === role && d.staffId === id && d.date.startsWith(period)),
+                });
+            }
+            return fetchJson<any>(`/hr/staff/${role}/${id}/attendance?period=${period}`);
+        },
+        markAttendance: (role: string, id: string, data: { date: string; status: string; note?: string }) => {
+            if (isDemoMode()) {
+                const i = DEMO_HR_ATTENDANCE.findIndex(d => d.staffRole === role && d.staffId === id && d.date === data.date);
+                if (i > -1) DEMO_HR_ATTENDANCE.splice(i, 1);
+                if (data.status) DEMO_HR_ATTENDANCE.push({ staffRole: role, staffId: id, ...data });
+                return demoRead<any>({ success: true });
+            }
+            return fetchJson<any>(`/hr/staff/${role}/${id}/attendance`, {
+                method: 'POST', body: JSON.stringify(data),
+            });
         },
     },
 
