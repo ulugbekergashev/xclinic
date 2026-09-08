@@ -82,17 +82,19 @@ interface SettingsProps {
    reviews: Review[];
    /** Xodimlar ro'yxati o'zgardi — App o'z keshini yangilaydi */
    onStaffChanged?: () => void;
+   /** Klinika sozlamasi o'zgardi — App `currentClinic` ni qayta o'qiydi */
+   onClinicUpdated?: () => void;
 }
 
 export const Settings: React.FC<SettingsProps> = ({
-   userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, reviews, onStaffChanged
+   userRole, services, categories, doctors, receptionists = [], labTechnicians = [], onAddService, onUpdateService, onDeleteService, onAddCategory, onDeleteCategory, onAddDoctor, onUpdateDoctor, onDeleteDoctor, onAddReceptionist, onUpdateReceptionist, onDeleteReceptionist, onAddLabTechnician, onUpdateLabTechnician, onDeleteLabTechnician, currentClinic, reviews, onStaffChanged, onClinicUpdated
 }) => {
    const { t } = useLanguage();
    const navigate = useNavigate();
    /* Kompyuterdagi bulut papkalari — «Xizmat ko'rsatish» bo'limi ochilganda
       bir marta so'raladi. Topilmasa oddiy papka tanlash qoladi. */
    const [cloudFolders, setCloudFolders] = useState<{ path: string; label: string }[]>([]);
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'staff' | 'messaging' | 'dmed' | 'access' | 'accessLog' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'ai'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'staff' | 'integrations' | 'access' | 'maintenance' | 'network' | 'labCatalog' | 'departments'>('services');
 
    // Ruxsatlar (access control) formasi — klinika sozlamalaridan boshlang'ich qiymat
    const [accessForm, setAccessForm] = useState<AccessControl>(() => parseAccessControl(currentClinic));
@@ -157,10 +159,11 @@ export const Settings: React.FC<SettingsProps> = ({
       try {
          await api.clinics.updateAccessControl(currentClinic.id, accessForm);
          setAccessSaved(true);
-         setTimeout(() => {
-            setAccessSaved(false);
-            window.location.reload();
-         }, 1000);
+         setTimeout(() => setAccessSaved(false), 2000);
+         /* Ilgari bu yerda `window.location.reload()` turardi: butun ilova
+            qaytadan yuklanardi, xotiradagi hamma ro'yxat yo'qolardi.
+            Endi faqat klinika yozuvi qayta o'qiladi. */
+         onClinicUpdated?.();
       } catch (error: any) {
          console.error('Failed to save access control:', error);
          toast.error(error?.message || 'Ruxsatlarni saqlashda xatolik. Backend yangilanganiga ishonch hosil qiling.');
@@ -304,7 +307,7 @@ export const Settings: React.FC<SettingsProps> = ({
             }
          }
       };
-      if (activeTab === 'messaging') {
+      if (activeTab === 'integrations') {
           fetchSms();
       }
    }, [currentClinic?.id, activeTab]);
@@ -461,7 +464,7 @@ export const Settings: React.FC<SettingsProps> = ({
          });
          setDmedSaved(true);
          setTimeout(() => setDmedSaved(false), 3000);
-         window.location.reload(); 
+         onClinicUpdated?.();
       } catch (error) {
          console.error('Failed to save DMED settings:', error);
          toast.error('DMED sozlamalarini saqlashda xatolik yuz berdi');
@@ -506,10 +509,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
          if (response && response.id) {
             setGeneralSaved(true);
-            setTimeout(() => {
-               setGeneralSaved(false);
-               window.location.reload();
-            }, 1000);
+            setTimeout(() => setGeneralSaved(false), 2000);
+            onClinicUpdated?.();
          }
       } catch (error) {
          console.error('Failed to save general settings:', error);
@@ -524,10 +525,8 @@ export const Settings: React.FC<SettingsProps> = ({
       try {
          await api.clinics.updateSettings(currentClinic.id, { botToken });
          setBotSaved(true);
-         setTimeout(() => {
-            setBotSaved(false);
-            window.location.reload();
-         }, 1000);
+         setTimeout(() => setBotSaved(false), 2000);
+         onClinicUpdated?.();
       } catch (error) {
          console.error('Failed to save bot settings:', error);
          toast.error(t('common.error'));
@@ -804,7 +803,7 @@ export const Settings: React.FC<SettingsProps> = ({
    }, [logFrom, logTo, logAction]);
 
    React.useEffect(() => {
-      if (activeTab === 'accessLog' && userRole === UserRole.CLINIC_ADMIN) loadAccessLog();
+      if (activeTab === 'access' && userRole === UserRole.CLINIC_ADMIN) loadAccessLog();
    }, [activeTab, userRole, loadAccessLog]);
 
    /* HAMSHIRALAR BO'LIMI OLIB TASHLANDI — u endi «Xodimlar» ichida
@@ -954,7 +953,7 @@ export const Settings: React.FC<SettingsProps> = ({
    }, []);
 
    React.useEffect(() => {
-      if (activeTab === 'ai' && userRole === UserRole.CLINIC_ADMIN) loadAiSettings();
+      if (activeTab === 'integrations' && userRole === UserRole.CLINIC_ADMIN) loadAiSettings();
    }, [activeTab, userRole, loadAiSettings]);
 
    const handleAiSave = async (e: React.FormEvent) => {
@@ -1038,18 +1037,19 @@ export const Settings: React.FC<SettingsProps> = ({
                   /* Tarmoq havolasi — registrator ham ko'radi: telefonini
                      ulash yoki ikkinchi kompyuterni sozlash uning ishi. */
                   { id: 'network', name: t('net.tab'), icon: Wifi },
-                  { id: 'messaging', name: "SMS va Telegram", icon: MessageSquare },
-                  { id: 'dmed', name: "DMED (IT-MED)", icon: Activity },
+                  /* UCHTA VKLADKA BITTAGA: SMS/Telegram, DMED va AI —
+                     hammasi TASHQI XIZMAT ulanishi. «DMED (IT-MED)» nima
+                     ekanini faqat u bilan ishlagan odam bilardi. */
+                  { id: 'integrations', name: 'Integratsiyalar', icon: MessageSquare },
+                  /* Qoida va uning IZI bir joyda: «kim nimani ko'radi» va
+                     «kim nimani ko'rdi» — bitta savolning ikki tomoni. */
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: 'Ruxsatlar', icon: Shield }] : []),
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'accessLog', name: 'Kirish jurnali', icon: History }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: 'Bo’limlar', icon: Building2 }] : []),
                   /* Tahlillar katalogi. Laboratoriya ekrani katalog bo'sh
                      bo'lganda AYNAN shu yerga yuborardi, lekin bunday
                      vkladka mavjud emas edi. */
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'labCatalog', name: t('lab.tab'), icon: FlaskConical }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: 'Xizmat ko’rsatish', icon: HardDrive }] : []),
-                  // AI kalitlari pul turadigan resurs — faqat klinika egasi ko'radi.
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'ai', name: 'AI yordamchi', icon: Bot }] : []),
                ].map((item) => (
                   <button
                      key={item.id}
@@ -1227,7 +1227,7 @@ export const Settings: React.FC<SettingsProps> = ({
                )}
 
                {/* DMED Tab */}
-               {activeTab === 'ai' && userRole === UserRole.CLINIC_ADMIN && (
+               {activeTab === 'integrations' && userRole === UserRole.CLINIC_ADMIN && (
                   <div className="space-y-6">
                      <Card className="p-6">
                         <div className="flex items-center gap-4 mb-6">
@@ -1368,7 +1368,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                )}
 
-               {activeTab === 'dmed' && (
+               {activeTab === 'integrations' && (
                   <div className="space-y-6">
                      <Card className="p-6">
                         <div className="flex items-center gap-4 mb-6">
@@ -2131,6 +2131,114 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                )}
 
+               {/* KIRISH JURNALI — endi «Ruxsatlar» ning ichida.
+
+                   Qoida va uning IZI bir joyda: «kim nimani ko'radi» va
+                   «kim nimani ko'rdi» — bitta savolning ikki tomoni.
+
+                   (Bu blok 131f1d6 da xodimlar bo'limini birlashtirishda
+                   tasodifan o'chib ketgan edi: jurnal yuklanardi, lekin
+                   ekranda ko'rinmasdi.) */}
+               {activeTab === 'access' && userRole === UserRole.CLINIC_ADMIN && (
+                  <Card className="p-6">
+                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-5">
+                        <div>
+                           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Kirish jurnali</h2>
+                           <p className="text-sm text-gray-500">
+                              Bemor kartasini kim ochgani va o'zgartirgani.
+                              {logData?.retentionMonths ? ` ${logData.retentionMonths} oy saqlanadi.` : ''}
+                           </p>
+                        </div>
+                        <Button size="sm" variant="secondary" onClick={loadAccessLog} disabled={logLoading}>
+                           <RefreshCw className={`w-4 h-4 mr-1.5 ${logLoading ? 'animate-spin' : ''}`} /> Yangilash
+                        </Button>
+                     </div>
+
+                     <div className="flex flex-wrap items-end gap-3 mb-4">
+                        <div>
+                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Boshlanish</label>
+                           <input type="date" value={logFrom} onChange={e => setLogFrom(e.target.value)}
+                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm" />
+                        </div>
+                        <div>
+                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Tugash</label>
+                           <input type="date" value={logTo} onChange={e => setLogTo(e.target.value)}
+                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm" />
+                        </div>
+                        <div>
+                           <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Amal</label>
+                           <select value={logAction} onChange={e => setLogAction(e.target.value)}
+                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm">
+                              <option value="">Barchasi</option>
+                              <option value="View">Ko'rish</option>
+                              <option value="Create">Yaratish</option>
+                              <option value="Update">O'zgartirish</option>
+                              <option value="Print">Bosish</option>
+                           </select>
+                        </div>
+                     </div>
+
+                     {logError && (
+                        <div className="flex items-start gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                           <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                           <p className="text-sm text-red-700 dark:text-red-300">{logError}</p>
+                        </div>
+                     )}
+
+                     {logLoading && !logData ? (
+                        <div className="space-y-2">
+                           {[0, 1, 2].map(i => <div key={i} className="h-10 bg-gray-100 dark:bg-gray-700/40 rounded animate-pulse" />)}
+                        </div>
+                     ) : !logData || logData.items.length === 0 ? (
+                        <div className="text-center py-10">
+                           <Shield className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                           <p className="text-sm text-gray-500">Bu davrda yozuv yo'q</p>
+                        </div>
+                     ) : (
+                        <>
+                           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                              <table className="w-full min-w-[640px]">
+                                 <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+                                    <tr>
+                                       {['Vaqt', 'Kim', 'Roli', 'Amal', 'Nima', 'Bemor'].map(h => (
+                                          <th key={h} className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                             {h}
+                                          </th>
+                                       ))}
+                                    </tr>
+                                 </thead>
+                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                    {logData.items.map((l: any) => (
+                                       <tr key={l.id}>
+                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                             {new Date(l.at).toLocaleString('uz-UZ')}
+                                          </td>
+                                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">{l.userName || '—'}</td>
+                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{ROLE_LABEL[l.userRole] || l.userRole || '—'}</td>
+                                          <td className="px-3 py-2">
+                                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${l.action === 'View'
+                                                ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                                                {ACTION_LABEL[l.action] || l.action}
+                                             </span>
+                                          </td>
+                                          <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{ENTITY_LABEL[l.entityType] || l.entityType}</td>
+                                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">{l.patientName || '—'}</td>
+                                       </tr>
+                                    ))}
+                                 </tbody>
+                              </table>
+                           </div>
+                           <p className="text-[11px] text-gray-400 mt-2">
+                              {logData.total} yozuv
+                              {logData.truncated ? ` — oxirgi ${logData.items.length} tasi ko'rsatilgan, davrni toraytiring` : ''}.
+                              Jurnalga faqat server yozadi: tashqaridan yozib bo'lmaydi.
+                           </p>
+                        </>
+                     )}
+                  </Card>
+               )}
+
                {activeTab === 'services' && (
 
                   <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -2252,7 +2360,7 @@ export const Settings: React.FC<SettingsProps> = ({
                )}
 
                {/* SMS va Telegram Tab (birlashtirilgan) */}
-               {activeTab === 'messaging' && (
+               {activeTab === 'integrations' && (
                   <div className="space-y-6">
                   {/* XABARLAR MENYUDAN CHIQDI.
 

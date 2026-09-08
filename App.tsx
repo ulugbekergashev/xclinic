@@ -1885,6 +1885,17 @@ const sinceDate = (n: number) =>
                       /* Xodim qo'shilgan yoki o'zgargan — App dagi ro'yxatlar
                          yangilanadi. Ular hamma joyda ishlatiladi: kalendar
                          shifokorni filtrlaydi, kassa ismini ko'rsatadi. */
+                      /* Klinika sozlamasi o'zgardi — `currentClinic` ni
+                         qayta o'qiymiz. Ilgari Sozlamalar TO'RT joyda
+                         `window.location.reload()` chaqirardi: butun ilova
+                         qaytadan yuklanardi, xotiradagi hamma ro'yxat
+                         yo'qolardi va Electron oynasida bu sezilarli
+                         to'xtash edi. */
+                      onClinicUpdated={async () => {
+                        if (!clinicId) return;
+                        try { setCurrentClinic(await api.clinics.getById(clinicId)); }
+                        catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
+                      }}
                       onStaffChanged={async () => {
                         if (!clinicId) return;
                         try {
