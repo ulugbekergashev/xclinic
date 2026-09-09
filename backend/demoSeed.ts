@@ -307,7 +307,18 @@ async function main() {
         });
         if (r?.id) receptionists.push(r);
     }
-    console.log(`   ${receptionists.length} registrator`);
+    /* QAYTA ISHGA TUSHIRISH. Shifokorda bu zaxira yo'l bor edi, qolgan
+       uch rolda esa YO'Q: ikkinchi marta yuritilganda loginlar band
+       bo'lib chiqar, ro'yxat bo'sh qolar va shu ro'yxatga tayangan
+       hamma narsa (bonus, davomat, oylik) jimgina o'tkazib yuborilardi.
+       Xuddi shu narsa amalda kuzatildi: «0 davomat kuni». */
+    if (receptionists.length === 0) {
+        const existing: any[] = (await api('GET', '/receptionists')) || [];
+        receptionists.push(...existing.filter((x: any) => x.status === 'Active'));
+        console.log(`   ${receptionists.length} registrator (mavjudlari olindi)`);
+    } else {
+        console.log(`   ${receptionists.length} registrator`);
+    }
 
     const labTechs: any[] = [];
     for (const [f, l] of [['Umida', 'Ismoilova'], ['Temur', 'Sobirov']]) {
@@ -319,7 +330,13 @@ async function main() {
         });
         if (t?.id) labTechs.push(t);
     }
-    console.log(`   ${labTechs.length} laborant`);
+    if (labTechs.length === 0) {
+        const existing: any[] = (await api('GET', '/lab-technicians')) || [];
+        labTechs.push(...existing.filter((x: any) => x.status === 'Active'));
+        console.log(`   ${labTechs.length} laborant (mavjudlari olindi)`);
+    } else {
+        console.log(`   ${labTechs.length} laborant`);
+    }
 
     const stacDep = byCode('STAC');
     const nurses: any[] = [];
@@ -333,7 +350,13 @@ async function main() {
         });
         if (n?.id) nurses.push(n);
     }
-    console.log(`   ${nurses.length} hamshira`);
+    if (nurses.length === 0) {
+        const existing: any[] = (await api('GET', '/nurses')) || [];
+        nurses.push(...existing.filter((x: any) => x.status === 'Active'));
+        console.log(`   ${nurses.length} hamshira (mavjudlari olindi)`);
+    } else {
+        console.log(`   ${nurses.length} hamshira`);
+    }
 
     // ── 2. BEMORLAR ─────────────────────────────────────────────────────────
     console.log('\n2. Bemorlar');
@@ -1044,6 +1067,41 @@ async function main() {
        Shifokorga ATAYLAB oylik to'lanmaydi: uning asosiy maoshi va ulushi
        yuqoridagi VEDOMOST orqali chiqadi. Kartadan faqat bonus to'lanadi —
        modulning asosiy qoidasi shu va u demoda ham ko'rinib tursin. */
+    /* Mavjud xodimlarga oylik va ish grafigi BERILADI.
+
+       Ular 0036 migratsiyasidan OLDIN yaratilgan bo'lishi mumkin — unda
+       `fixedSalary` nol bo'lib qoladi va oylik to'lash «to'lanadigan
+       summa yo'q» deb rad etiladi. Namoyishda esa modul bo'sh
+       ko'rinardi. */
+    for (const r of receptionists) {
+        if (!(Number(r.fixedSalary) > 0)) {
+            await api('PUT', `/receptionists/${r.id}`, {
+                fixedSalary: 4500000, workDays: '1,2,3,4,5,6', startHour: 8, endHour: 18,
+            });
+        }
+    }
+    for (const t of labTechs) {
+        if (!(Number(t.fixedSalary) > 0)) {
+            await api('PUT', `/lab-technicians/${t.id}`, {
+                fixedSalary: 3800000, workDays: '1,2,3,4,5', startHour: 8, endHour: 16,
+            });
+        }
+    }
+    for (const n of nurses) {
+        if (!(Number(n.fixedSalary) > 0)) {
+            await api('PUT', `/nurses/${n.id}`, {
+                fixedSalary: 3200000, workDays: '1,2,3,4,5,6,7', startHour: 8, endHour: 20,
+            });
+        }
+    }
+    for (const d of doctors) {
+        if (!d.workDays) {
+            await api('PUT', `/doctors/${d.id}`, {
+                workDays: '1,2,3,4,5', startHour: 9, endHour: 17,
+            });
+        }
+    }
+
     const hrPeriod = dayStr(0).slice(0, 7);
     const prevPeriod = (() => {
         const [y, m] = hrPeriod.split('-').map(Number);
@@ -1091,7 +1149,10 @@ async function main() {
         ...nurses.slice(0, 2).map((n: any) => ['NURSE', n.id]),
     ] as [string, string][]) {
         for (let back = 1; back <= 20; back++) {
-            const date = dayStr(-back);
+            /* `dayStr` AYIRADI: dayStr(3) — uch kun OLDIN. Minus bilan
+               kelajak chiqadi va server uni to'g'ri rad etadi
+               («kelajakdagi kunni belgilab bo'lmaydi»). */
+            const date = dayStr(back);
             const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
             if (dow === 0) continue;                       // yakshanba
             const status = chance(0.08) ? 'Absent' : chance(0.06) ? 'Excused'
