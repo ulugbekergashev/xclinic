@@ -7,6 +7,8 @@ import { AttendanceTab } from '../components/AttendanceReport';
 import { UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
     LabOrder, Receptionist, CashRegisterDay, CashMovement, VisitCharge, Department, Service } from '../types';
 import type { CashCloseArgs } from './CashBook';
+import { useLanguage } from '../context/LanguageContext';
+import type { TranslationKey } from '../i18n/translations';
 
 // Moliya bo'limi — bitta menyu punkti, ikkita tab:
 //   Kassa   — kassaga qancha pul kirdi va qancha qoldi (faktik pul harakati)
@@ -25,18 +27,25 @@ import type { CashCloseArgs } from './CashBook';
    odamni qaytadan qidirish. Endi ikkalasi ham /staff da. */
 type TabKey = 'kassa' | 'hisobot' | 'davomat';
 
-const TABS: { key: TabKey; label: string; icon: React.ElementType; subtitle: string }[] = [
+/* SARLAVHALAR TARJIMA KALITI BILAN, MATN BILAN EMAS.
+
+   Bu yerda ular qo'lda o'zbekcha yozilgan edi. Ilova rus tiliga
+   o'tkazilganda ekranning yarmi o'zbekcha qolardi: tugmalar
+   («Пополнить аванс», «Расход») tarjima qilinardi, sarlavha va
+   vkladkalar esa yo'q. `checkI18n.mjs` buni ushlay olmaydi — u faqat
+   ikki tilning kalitlarini solishtiradi, kalitsiz matnni ko'rmaydi. */
+const TABS: { key: TabKey; labelKey: TranslationKey; icon: React.ElementType; subtitleKey: TranslationKey }[] = [
     {
         key: 'kassa',
-        label: 'Kassa',
+        labelKey: 'finance.hub.kassa',
         icon: Wallet,
-        subtitle: 'Kassaga qancha pul kirdi va qancha qoldi',
+        subtitleKey: 'finance.hub.kassaHint',
     },
     {
         key: 'hisobot',
-        label: 'Hisobot',
+        labelKey: 'finance.hub.report',
         icon: BarChart3,
-        subtitle: "Qancha ishlab topdik — foyda, qarz, bo'limlar va chiqimlar",
+        subtitleKey: 'finance.hub.reportHint',
     },
     {
         /* DAVOMAT KALENDARDAN KO'CHDI.
@@ -48,9 +57,9 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType; subtitle: str
            qatorda turgani mantiqiyroq: hammasi «klinika qanday
            ishlayapti» degan savolning javobi. */
         key: 'davomat',
-        label: 'Davomat',
+        labelKey: 'finance.hub.attendance',
         icon: CalendarCheck,
-        subtitle: 'Kimlar keldi, kimlar kelmadi — va qaysi kunlar gavjum',
+        subtitleKey: 'finance.hub.attendanceHint',
     },
 ];
 
@@ -93,6 +102,7 @@ interface FinanceHubProps {
 }
 
 export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
+    const { t } = useLanguage();
     const { userRole, transactions, expenses, doctors, currentClinic, onPatientClick } = props;
 
     // Hisobot — tahlil va foyda; buni faqat klinika rahbariyati ko'radi.
@@ -121,8 +131,8 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
         <div className="space-y-5 animate-fade-in">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-ink">Moliya</h1>
-                    <p className="text-sm text-muted">{current.subtitle}</p>
+                    <h1 className="text-2xl font-bold text-ink">{t('finance.hub.title')}</h1>
+                    <p className="text-sm text-muted">{t(current.subtitleKey)}</p>
                 </div>
 
                 {visibleTabs.length > 1 && (
@@ -140,7 +150,7 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                                         }`}
                                 >
                                     <Icon className="w-4 h-4" />
-                                    {tab.label}
+                                    {t(tab.labelKey)}
                                 </button>
                             );
                         })}

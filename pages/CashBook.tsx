@@ -1067,7 +1067,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         className="flex items-center gap-1.5 px-3 py-2 bg-elevated hover:bg-surface text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
                                     >
                                         <Undo2 className="w-3.5 h-3.5" />
-                                        Qaytarish
+                                        {t('finance.cash.refund')}
                                     </button>
                                 </>
                             )}
@@ -1085,7 +1085,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     : 'text-muted hover:text-muted'
                                     }`}
                             >
-                                {v === 'day' ? 'Kun' : 'Oy'}
+                                {v === 'day' ? t('common.day') : t('common.month')}
                             </button>
                         ))}
                     </div>
@@ -1731,7 +1731,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                         <table className="w-full text-sm">
                             <thead className="bg-elevated">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-[11px] font-bold text-muted uppercase sticky left-0 bg-elevated z-10">Kun</th>
+                                    <th className="px-4 py-3 text-left text-[11px] font-bold text-muted uppercase sticky left-0 bg-elevated z-10">{t('common.day')}</th>
                                     <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('finance.cash.cash')}</th>
                                     <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('finance.cash.cashless')}</th>
                                     <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">Jami</th>
