@@ -79,7 +79,19 @@ export function lazyWithReload<T extends React.ComponentType<any>>(
                         const names = await caches.keys();
                         await Promise.all(names.map(n => caches.delete(n)));
                     }
-                } catch { /* kesh tozalanmasa ham qayta yuklash yordam beradi */ }
+                    /* Service worker'ning O'ZI ham olib tashlanadi.
+
+                       Keshni bo'shatish yetarli emas: eski service worker
+                       nazoratda qolaveradi va o'zining eski yo'nalish
+                       jadvali bilan javob berishda davom etadi. Qayta
+                       yuklashdan keyin u yangi versiyani darhol
+                       o'rnatadi — ya'ni yo'qotadigan narsa yo'q, faqat
+                       bir marta tarmoqdan yuklab olinadi. */
+                    if ('serviceWorker' in navigator) {
+                        const regs = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(regs.map(r => r.unregister()));
+                    }
+                } catch { /* tozalanmasa ham qayta yuklash yordam beradi */ }
 
                 window.location.reload();
                 /* Qayta yuklash boshlanguncha React xato ko'rsatmasligi
