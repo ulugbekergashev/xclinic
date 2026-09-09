@@ -1011,6 +1011,39 @@ const sinceDate = (n: number) =>
      Typecheck ham, 170 ta backend sinovi ham buni ko'rmadi — xato faqat
      brauzerda ko'rinadi. Shuning uchun hook chaqiruvlari erta `return`
      lardan YUQORIDA turishi kerak. */
+  /* FAOL MODULNI KO'RINISHGA SURISH.
+
+     Gorizontal panelning 95 qatorlik surish mexanizmi olib tashlanganda
+     «vertikal ustunga hamma punkt sig'adi» deb yozilgan edi. Bu taxmin
+     UZOQQA BORMADI: menyuga o'n birinchi punkt qo'shilishi bilan 720px
+     balandlikdagi noutbukda oxirgisi («Sozlamalar») kesilib qoldi —
+     ya'ni audit B-03 dagi muammo boshqa o'qda qaytdi.
+
+     `scrollIntoView` ISHLATILMAYDI. U eng yaqin surilaladigan ota-onani
+     topib suradi va bu OYNANING O'ZIGA yetib boradi: sahifa pastga
+     sakraydi. Bu shu yerda sinaldi — «sahifa almashganda skroll tepaga
+     qaytadi» sinovi (B-37) darhol yiqildi.
+
+     Shuning uchun faqat ustunning o'z `scrollTop` i o'zgartiriladi va
+     faqat punkt ko'rinmay qolgandagina. */
+  const railRef = React.useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const raf = requestAnimationFrame(() => {
+      const box = rail.querySelector('nav') as HTMLElement | null;
+      const active = box?.querySelector('[aria-current="page"]') as HTMLElement | null;
+      if (!box || !active) return;
+      const top = active.offsetTop;
+      const bottom = top + active.offsetHeight;
+      if (top < box.scrollTop) box.scrollTop = top;
+      else if (bottom > box.scrollTop + box.clientHeight) {
+        box.scrollTop = bottom - box.clientHeight;
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [location.pathname, visibleNavigation.length]);
+
   /* NAV PANELINING GORIZONTAL SURILISHI — OLIB TASHLANDI.
 
      Bu yerda ~95 qator turardi: `navOverflow` holati, chekkadagi
@@ -1331,7 +1364,7 @@ const sinceDate = (n: number) =>
           Kengligi — `--spacing-rail` (index.css). `w-rail`, `left-rail` va
           `pl-rail` bitta qiymatdan oziqlanadi, ya'ni ustun kengligini
           o'zgartirish uchun bitta joyni tahrirlash yetarli. */}
-      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-40 w-rail flex-col bg-rail border-r border-line">
+      <aside ref={railRef} className="hidden lg:flex fixed inset-y-0 left-0 z-40 w-rail flex-col bg-rail border-r border-line">
         {/* Logotip — yuqori qator bilan bir xil balandlikda, shunda
             ikkalasining ostki chizig'i bitta gorizontal chiziq bo'lib ketadi. */}
         <div className="h-topbar flex items-center justify-center border-b border-line shrink-0">
@@ -1894,6 +1927,11 @@ const sinceDate = (n: number) =>
                       currentClinic={currentClinic}
                       doctors={doctors}
                       addToast={addToast}
+                      onClinicUpdated={async () => {
+                        if (!clinicId) return;
+                        try { setCurrentClinic(await api.clinics.getById(clinicId)); }
+                        catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
+                      }}
                     />
                   } />
 

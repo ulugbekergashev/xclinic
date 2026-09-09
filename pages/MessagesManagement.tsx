@@ -5,10 +5,12 @@ import { todayISO } from '../utils/dateUtils';
 import { Card, Button } from '../components/Common';
 import { Patient, Doctor, Transaction, Clinic, MessageTemplate, AutomationRule, MessageLog, MessageChannel, AutomationTrigger, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, RuleSchedule } from '../types';
 import { SegmentBuilder } from '../components/SegmentBuilder';
+import { MessageChannelSettings } from '../components/MessageChannelSettings';
 import { api } from '../services/api';
 import { analyzeSms, hasTypographicApostrophe, fixApostrophes } from '../utils/sms';
 import { processTemplate } from '../utils/messageTemplate';
 import {
+    Settings as SettingsIcon,
     MessageSquare, Clock, Send, CalendarDays, Plus, X, Pencil, Trash2,
     AlertTriangle, Eye, Users, RefreshCw, CheckCircle2, XCircle, Smartphone
 } from 'lucide-react';
@@ -16,6 +18,8 @@ import {
 interface MessagesManagementProps {
     clinicId: string;
     currentClinic?: Clinic;
+    /** Klinika yozuvi o'zgardi (bron to'lovi sozlamasi) */
+    onClinicUpdated?: () => void;
     // Bemorlar va tranzaksiyalar bu yerga uzatilmaydi: auditoriyani va qarzni
     // server hisoblaydi (backend/segments.ts), aks holda ta'riflar ikkiga bo'linadi.
     doctors: Doctor[];
@@ -157,9 +161,9 @@ const FunnelRow: React.FC<{ label: string; value: number; diff?: number; isDeduc
 );
 
 export const MessagesManagement: React.FC<MessagesManagementProps> = ({
-    clinicId, currentClinic, doctors, addToast
+    clinicId, currentClinic, doctors, addToast, onClinicUpdated
 }) => {
-    const [activeTab, setActiveTab] = useState<'templates' | 'auto' | 'manual' | 'history'>('templates');
+    const [activeTab, setActiveTab] = useState<'templates' | 'auto' | 'manual' | 'history' | 'settings'>('templates');
 
     // ── Ma'lumotlar ──
     const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -658,6 +662,10 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
         { id: 'auto' as const, label: 'Avtomatik', icon: Clock },
         { id: 'manual' as const, label: "Qo'lda", icon: Send },
         { id: 'history' as const, label: 'Tarix', icon: CalendarDays },
+        /* KANAL SOZLAMASI SHU YERDA. Ilgari u Sozlamalar → Integratsiyalar
+           da turardi: shablon yozayotgan odam xabar qaysi yo'l bilan
+           ketishini bilish uchun boshqa bo'limga borishi kerak edi. */
+        { id: 'settings' as const, label: 'Sozlamalar', icon: SettingsIcon },
     ];
 
     return (
@@ -1515,6 +1523,15 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         </button>
                     </Card>
                 </div>
+            )}
+
+            {/* ═══ SOZLAMALAR ═══ */}
+            {activeTab === 'settings' && (
+                <MessageChannelSettings
+                    clinicId={clinicId}
+                    currentClinic={currentClinic}
+                    onClinicUpdated={onClinicUpdated}
+                />
             )}
 
             {/* ═══ TARIX ═══ */}

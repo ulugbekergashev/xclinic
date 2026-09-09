@@ -1134,77 +1134,11 @@ export const Settings: React.FC<SettingsProps> = ({
                      </Card>
 
                      {/* Prepayment Settings Card */}
-                     <Card className="p-6">
-                        <div className="flex items-center gap-4 mb-6">
-                           <div className="p-3 bg-emerald-100 dark:bg-emerald-900/40 rounded-xl text-emerald-600 dark:text-emerald-400">
-                              <DollarSign className="w-8 h-8" />
-                           </div>
-                           <div>
-                              <h2 className="text-xl font-bold text-ink">Oldindan To'lov (Bron uchun)</h2>
-                              <p className="text-sm text-muted">Bemor bot orqali qabulga yozilganda oldindan to'lov talab qilish.</p>
-                              {/* Ilgari tasdiq faqat qabul holatini o'zgartirardi va pul
-                                  hech qayerda qolmasdi. Endi u bemor hisobiga avans
-                                  bo'lib tushadi — buni sozlamada aytib qo'yamiz, aks
-                                  holda kassir uni ikkinchi marta undirardi. */}
-                              <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
-                                 Admin chekni tasdiqlaganda summa bemor hisobiga AVANS bo'lib yoziladi
-                                 va xizmat to'lovida shundan yechiladi.
-                              </p>
-                           </div>
-                        </div>
+                     {/* BRON TO'LOVI XABARLAR MODULIGA KO'CHDI.
 
-                        <form onSubmit={handlePrepaymentSave} className="space-y-5">
-                           <div className="bg-elevated p-5 rounded-2xl border border-line-soft">
-                              <label className="flex items-center justify-between cursor-pointer">
-                                 <div>
-                                    <p className="text-sm font-semibold text-ink">Oldindan to'lovni yoqish</p>
-                                    <p className="text-xs text-muted mt-0.5">Yoqilsa, bemor qabulga yozilgandan keyin to'lov cheki yuborishi shart bo'ladi</p>
-                                 </div>
-                                 <div className="relative w-12 h-6 flex-shrink-0">
-                                    <input
-                                       type="checkbox"
-                                       className="sr-only"
-                                       checked={prepaymentForm.prepaymentEnabled}
-                                       onChange={(e) => setPrepaymentForm({ ...prepaymentForm, prepaymentEnabled: e.target.checked })}
-                                    />
-                                    <div className={`w-12 h-6 rounded-full transition-colors ${prepaymentForm.prepaymentEnabled ? 'bg-emerald-500' : 'bg-elevated'}`}>
-                                       <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-surface rounded-full shadow transition-transform ${prepaymentForm.prepaymentEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                                    </div>
-                                 </div>
-                              </label>
-                           </div>
-
-                           {prepaymentForm.prepaymentEnabled && (
-                              <div className="space-y-4">
-                                 <Input
-                                    label="Karta raqami"
-                                    value={prepaymentForm.prepaymentCardNumber}
-                                    onChange={(e) => setPrepaymentForm({ ...prepaymentForm, prepaymentCardNumber: e.target.value })}
-                                    placeholder="8600 1234 5678 9012"
-                                 />
-                                 <Input
-                                    label="Bron summasi (so'm)"
-                                    type="number"
-                                    value={prepaymentForm.prepaymentAmount === 0 ? '' : String(prepaymentForm.prepaymentAmount)}
-                                    onChange={(e) => setPrepaymentForm({ ...prepaymentForm, prepaymentAmount: Number(e.target.value) })}
-                                    placeholder="50000"
-                                 />
-                                 <p className="text-xs text-muted">
-                                    Bemor to'lov chekini (rasm yoki fayl) telegram bot orqali yuborganda, bu chek admin telegram chatiga avtomatik yuboriladi.
-                                 </p>
-                              </div>
-                           )}
-
-                           <div className="flex items-center gap-4">
-                              <Button type="submit" variant="primary">Saqlash</Button>
-                              {prepaymentSaved && (
-                                 <span className="text-green-600 text-sm flex items-center gap-1">
-                                    <CheckCircle className="w-4 h-4" /> Saqlandi
-                                 </span>
-                              )}
-                           </div>
-                        </form>
-                     </Card>
+                         U bot bemordan nima talab qilishi haqida, ya'ni bot
+                         xatti-harakati — Sozlamalarning umumiy bo'limida o'rinsiz
+                         edi. Endi «Xabarlar → Sozlamalar» da. */}
                   </div>
                )}
 
@@ -2230,155 +2164,12 @@ export const Settings: React.FC<SettingsProps> = ({
                      </div>
                   </Card>
 
-                     <Card className="p-6">
-                        <div className="flex items-center gap-4 mb-6">
-                           <div className="p-3 bg-purple-100 dark:bg-purple-900/40 rounded-xl text-purple-600 dark:text-purple-400">
-                              <MessageSquare className="w-8 h-8" />
-                           </div>
-                           <div>
-                              <h2 className="text-xl font-bold text-ink">SMS va Xabar Yuborish Rejimi</h2>
-                              <p className="text-sm text-muted">Mijozlarga xabarnomalar qanday yuborilishini sozlang va Eskiz.uz profilingizni ulang.</p>
-                           </div>
-                        </div>
-                        <form onSubmit={handleSmsSave} className="space-y-8">
-                           <div>
-                              <h3 className="text-lg font-medium text-ink mb-4">1. Standart kanalni tanlang</h3>
-                              <p className="text-xs text-muted -mt-2 mb-4">Bu rejim Xabarlar bo'limidagi "avtomatik" (auto) yuborishlar uchun standart kanal sifatida ishlatiladi.</p>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                 <label className={`relative flex cursor-pointer rounded-lg border bg-surface p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'telegram_only' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-line'}`}>
-                                    <input 
-                                       type="radio" 
-                                       name="notificationMode"
-                                       value="telegram_only"
-                                       checked={smsForm.notificationMode === 'telegram_only'}
-                                       onChange={(e) => setSmsForm({...smsForm, notificationMode: e.target.value})}
-                                       className="sr-only"
-                                    />
-                                    <span className="flex flex-1">
-                                       <span className="flex flex-col">
-                                          <span className="block text-sm font-medium text-ink mb-1">🤖 Faqat Telegram Bot</span>
-                                          <span className="mt-1 flex items-center text-xs text-muted">Xabarlar mijozning Telegram profiliga (bepul) yuboriladi</span>
-                                       </span>
-                                    </span>
-                                    <CheckCircle className={`h-5 w-5 ${smsForm.notificationMode === 'telegram_only' ? 'text-purple-600' : 'invisible'}`} />
-                                 </label>
-                                 <label className={`relative flex cursor-pointer rounded-lg border bg-surface p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'sms_only' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-line'}`}>
-                                    <input 
-                                       type="radio" 
-                                       name="notificationMode"
-                                       value="sms_only"
-                                       checked={smsForm.notificationMode === 'sms_only'}
-                                       onChange={(e) => setSmsForm({...smsForm, notificationMode: e.target.value})}
-                                       className="sr-only"
-                                    />
-                                    <span className="flex flex-1">
-                                       <span className="flex flex-col">
-                                          <span className="block text-sm font-medium text-ink mb-1">📱 Faqat SMS (Eskiz)</span>
-                                          <span className="mt-1 flex items-center text-xs text-muted">Xabarlar bevosita telefon raqamiga (pullik) yuboriladi</span>
-                                       </span>
-                                    </span>
-                                    <CheckCircle className={`h-5 w-5 ${smsForm.notificationMode === 'sms_only' ? 'text-purple-600' : 'invisible'}`} />
-                                 </label>
-                                 <label className={`relative flex cursor-pointer rounded-lg border bg-surface p-4 shadow-sm focus:outline-none ${smsForm.notificationMode === 'both' ? 'border-purple-500 ring-1 ring-purple-500' : 'border-line'}`}>
-                                    <input 
-                                       type="radio" 
-                                       name="notificationMode"
-                                       value="both"
-                                       checked={smsForm.notificationMode === 'both'}
-                                       onChange={(e) => setSmsForm({...smsForm, notificationMode: e.target.value})}
-                                       className="sr-only"
-                                    />
-                                    <span className="flex flex-1">
-                                       <span className="flex flex-col">
-                                          <span className="block text-sm font-medium text-ink mb-1">🤖📱 Ikkalasi ham</span>
-                                          <span className="mt-1 flex items-center text-xs text-muted">Xabarlar avval Telegram, so'ng qo'shimcha sifatida SMS orqali boradi</span>
-                                       </span>
-                                    </span>
-                                    <CheckCircle className={`h-5 w-5 ${smsForm.notificationMode === 'both' ? 'text-purple-600' : 'invisible'}`} />
-                                 </label>
-                              </div>
-                           </div>
+                     {/* SMS/KANAL SOZLAMASI XABARLAR MODULIGA KO'CHDI.
 
-                           {/* ESKIZ MAYDONLARI HAR DOIM KO'RINADI.
-
-                               Ilgari ular faqat «SMS» yoki «Ikkalasi ham»
-                               tanlanganda chiqardi. Ya'ni SMS ni oldindan
-                               ULASH mumkin emas edi: avval rejimni
-                               almashtirib saqlash, keyin qaytib kelib login
-                               kiritish kerak bo'lardi — va bu oraliqda
-                               klinika «SMS rejimida, lekin ulanmagan»
-                               holatda turardi. Foydalanuvchi esa oddiygina
-                               «kiritadigan joy yo'q» deb o'ylaydi. */}
-                           {true && (
-                              <div className="bg-elevated p-6 rounded-2xl border border-line-soft">
-                                 <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-lg font-medium text-ink">2. Eskiz.uz Integratsiyasi</h3>
-                                    {smsConnected ? (
-                                       <span className="flex items-center text-green-600 text-sm font-medium bg-green-50 dark:bg-green-900/30 px-3 py-1.5 rounded-full">
-                                          <CheckCircle className="w-4 h-4 mr-1.5" /> Ulangan
-                                       </span>
-                                    ) : (
-                                       <span className="flex items-center text-amber-600 text-sm font-medium bg-amber-50 dark:bg-amber-900/30 px-3 py-1.5 rounded-full">
-                                          <Activity className="w-4 h-4 mr-1.5" /> Ulanmagan
-                                       </span>
-                                    )}
-                                 </div>
-                                 {smsForm.notificationMode === 'telegram_only' && (
-                                    <p className="mb-4 text-xs text-muted">
-                                       Hozir SMS o'chiq — xabarlar faqat Telegram orqali ketadi.
-                                       Loginni shu yerda oldindan kiritib qo'ysangiz bo'ladi:
-                                       keyin rejimni almashtirish kifoya.
-                                    </p>
-                                 )}
-                                 <div className="space-y-4">
-                                    <Input 
-                                       label="Eskiz.uz Kabinet Email" 
-                                       placeholder="kabinet@eskiz.uz"
-                                       value={smsForm.eskizEmail} 
-                                       onChange={(e) => setSmsForm({...smsForm, eskizEmail: e.target.value})}
-                                       required
-                                    />
-                                    <div className="space-y-1">
-                                        <p className="sms-settings-label text-sm font-medium text-muted">Eskiz.uz Kabinet Paroli</p>
-                                        <input
-                                            type="password"
-                                            className="w-full px-3 py-2 border border-line rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
-                                            placeholder={smsHasPassword ? "(Parol kiritilgan. O'zgartirish uchun yangisini kiriting)" : "Yashirin kalitni kiriting"}
-                                            value={smsForm.eskizPassword}
-                                            onChange={(e) => setSmsForm({...smsForm, eskizPassword: e.target.value})}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <p className="sms-settings-label text-sm font-medium text-muted">Nickname (Yuboruvchi nomi)</p>
-                                        <input
-                                            type="text"
-                                            className="w-full px-3 py-2 border border-line rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
-                                            placeholder="Masalan: 4546 yoki XClinic"
-                                            value={smsForm.eskizNick}
-                                            onChange={(e) => setSmsForm({...smsForm, eskizNick: e.target.value})}
-                                        />
-                                        <p className="text-xs text-muted mt-1">
-                                            Eskizda tasdiqlangan maxsus nomingiz bo'lsa kiriting. Aks holda 4546 qoladi.
-                                        </p>
-                                    </div>
-                                </div>
-                     
-                                    <div className="pt-2">
-                                       <Button type="submit" className="w-full sm:w-auto">Saqlash va Ulanishni Tekshirish</Button>
-                                    </div>
-                                 </div>
-                           )}
-
-                           {false && (
-                              <div className="pt-4">
-                                 <Button type="submit" variant="primary">Saqlash</Button>
-                              </div>
-                           )}
-                           
-                           {smsSaved && <span className="text-green-600 text-sm flex items-center mt-2"><CheckCircle className="w-4 h-4 mr-1" /> Saqlandi</span>}
-                        </form>
-                     </Card>
+                         Shablon yozayotgan odam xabar qaysi yo'l bilan ketishini
+                         o'sha yerda bilishi kerak, boshqa bo'limga borib emas.
+                         Endi u «Xabarlar → Sozlamalar» da. Eskiz login/paroli ham
+                         o'sha yerda va endi HAR DOIM ko'rinadi. */}
 
                      {smsConnected && (smsForm.notificationMode === 'sms_only' || smsForm.notificationMode === 'both') && (
                         <Card className="p-6 border-l-4 border-l-purple-500">
