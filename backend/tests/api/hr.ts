@@ -164,25 +164,43 @@ async function main() {
     const docId = doc.data?.id;
     if (docId) {
         const dm = await call('GET', `/hr/staff/DOCTOR/${docId}/month?period=${PERIOD}`, undefined, token);
-        ok('shifokorda kartadagi asosiy = 0 (vedomostda hisoblanadi)',
-            dm.data?.base === 0, String(dm.data?.base));
         ok('shifokorda ulush bloki bor', dm.data?.share != null);
 
-        /* Bonussiz to'lash — to'lanadigan narsa yo'q. */
-        const emptyPay = await call('POST', `/hr/staff/DOCTOR/${docId}/pay`, { period: PERIOD }, token);
-        ok('BONUSSIZ SHIFOKORGA TO\'LOV RAD ETILDI', emptyPay.status === 400,
-            `status: ${emptyPay.status}, ${String(emptyPay.data?.error).slice(0, 80)}`);
+        /* SHU OY UCHUN HISOB KARTADA. Ilgari bu yerda nol turardi va pul
+           faqat vedomost orqali chiqardi. Shifokorda `salaryType: fixed`,
+           `fixedSalary: 5 000 000` — davr to'liq o'tgan oy, ya'ni fix
+           maosh butunlay hisoblanadi. */
+        ok('shifokorda asosiy = shu oyning ulushi (fix maosh bilan)',
+            dm.data?.base === 5000000, `base: ${dm.data?.base}, share: ${JSON.stringify(dm.data?.share)}`);
+        ok('hisoblangan summa ko\'rsatilgan', dm.data?.share?.accrued === 5000000,
+            String(dm.data?.share?.accrued));
+        ok('vedomost orqali to\'langani nol', dm.data?.share?.paidViaRuns === 0,
+            String(dm.data?.share?.paidViaRuns));
 
-        /* Bonus qo'shilsa — faqat u to'lanadi. */
+        /* Bonus qo'shiladi va hammasi BIRGA to'lanadi. */
         await call('POST', `/hr/staff/DOCTOR/${docId}/adjustments`,
             { period: PERIOD, type: 'Bonus', reason: 'Ustama', amount: 400000 }, token);
         const docPay = await call('POST', `/hr/staff/DOCTOR/${docId}/pay`, { period: PERIOD }, token);
-        ok("shifokorga BONUS to'landi", docPay.status === 201, `status: ${docPay.status}`);
-        ok('to\'langan summa = faqat bonus (fix maosh EMAS)',
-            docPay.data?.payment?.amount === 400000, String(docPay.data?.payment?.amount));
-        ok('xarajat sarlavhasida «bonus» yozilgan',
-            String(docPay.data?.expense?.title || '').includes('bonus'),
-            String(docPay.data?.expense?.title));
+        ok("shifokorga ulush to'landi", docPay.status === 201, `status: ${docPay.status}`);
+        ok('to\'langan summa = ulush + bonus (5 000 000 + 400 000)',
+            docPay.data?.payment?.amount === 5400000, String(docPay.data?.payment?.amount));
+        ok('xarajat kategoriyasi DoctorShare (hisobotda ajratiladi)',
+            docPay.data?.expense?.category === 'DoctorShare',
+            String(docPay.data?.expense?.category));
+        ok('xarajatga shifokor bog\'landi', docPay.data?.expense?.doctorId === docId,
+            String(docPay.data?.expense?.doctorId));
+
+        const docTwice = await call('POST', `/hr/staff/DOCTOR/${docId}/pay`, { period: PERIOD }, token);
+        ok('shifokorga ikkinchi to\'lov RAD ETILDI (409)', docTwice.status === 409,
+            `status: ${docTwice.status}`);
+
+        /* Oylik jadval — «Ulush» vkladkasi shundan o'qiydi. */
+        const sh = await call('GET', `/hr/shares?period=${PERIOD}`, undefined, token);
+        ok('ulush jadvali keldi', sh.status === 200, `status: ${sh.status}`);
+        const myRow = (sh.data?.rows || []).find((r: any) => r.id === docId);
+        ok('shifokor jadvalda bor', !!myRow, String((sh.data?.rows || []).length));
+        ok('to\'langan oy YOPIQ ko\'rinadi', myRow?.closed === true, JSON.stringify(myRow));
+        ok('yopilgan oyda to\'lanadigan summa nol', myRow?.payable === 0, String(myRow?.payable));
     }
 
     /* ═══ 6. DAVOMAT ══════════════════════════════════════════════════ */

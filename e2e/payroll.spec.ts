@@ -1,72 +1,100 @@
-/* SHIFOKOR ULUSHI — «Xodimlar → Ulush va vedomost» ekrani.
+/* SHIFOKOR ULUSHI — «Xodimlar → Ulush» ekrani.
  *
- * EKRAN KO'CHDI: ilgari u Moliyada, kassa va foyda bilan bir qatorda
- * turardi. Aslida bu xodim haqidagi savol — kimga qancha hisoblandi —
- * shuning uchun endi Xodimlar modulida.
+ * EKRAN IKKI MARTA KO'CHDI VA SODDALASHDI.
  *
- * NIMA UCHUN KERAK. Ekran bo'sh chiqqanda ilgari bitta umumiy gap
- * ko'rsatilardi: «ulush faqat to'langan xizmatlardan hisoblanadi va
- * qatorda shifokor ko'rsatilgan bo'lishi kerak». U qoidani tushuntiradi,
- * lekin SABABNI aytmaydi — holbuki sabablar har xil:
+ * Avval u Moliyada, kassa va foyda bilan bir qatorda turardi. Keyin
+ * Xodimlar moduliga o'tdi. Endi esa VEDOMOST ish oqimidan chiqdi:
  *
- *   · davrda umuman to'lov bo'lmagan (sanani o'zgartirish kerak);
- *   · to'lov bor, lekin shifokorsiz — bu xato, pul hech kimga tegishli emas;
- *   · qatorlar bekor qilingan.
+ *   ilgari — davr tanlanadi, hujjat yaratiladi, tasdiqlanadi, keyin
+ *            qatorma-qator to'lanadi (to'rt qadam);
+ *   hozir  — oy tanlanadi, jadval chiqadi, to'lash bir bosish.
  *
- * Haqiqiy klinika bazasida aynan birinchi holat kuzatildi: oxirgi to'lov
- * 29.08 da, davr esa 31.08 dan boshlanardi — ekran esa buni aytmasdi.
- * Ustiga davr boshi `toISOString()` tufayli bir kun orqaga siljigan edi
- * (Toshkent UTC+5).
+ * NIMA TEKSHIRILADI:
  *
- * Bu sinov ikkalasini ham qo'riqlaydi.
+ *   1. Ekran ochiladi va JS xatosi bermaydi;
+ *   2. Davr — OY (ilgari «oy boshidan bugungacha» edi va raqam yarim
+ *      oylik chiqardi);
+ *   3. Bo'sh oyda ekran SABABNI aytadi, «ulush yo'q» deb qo'ya qolmaydi;
+ *   4. Eski vedomostlar arxivi ochiladi va yiqilmaydi.
  */
 import { test, expect } from '@playwright/test';
 import { login, go } from './helpers';
 
 test.describe('Shifokor ulushi', () => {
 
-    test('Ulush vkladkasi ochiladi va yiqilmaydi', async ({ page }) => {
+    test('Ulush ekrani ochiladi va yiqilmaydi', async ({ page }) => {
         const errors: string[] = [];
         page.on('pageerror', e => errors.push(e.message.split('\n')[0].slice(0, 200)));
 
         await login(page);
         await go(page, '/staff');
-        await page.getByRole('button', { name: 'Ulush va vedomost' }).click();
+        await page.waitForTimeout(2000);
+        await page.getByRole('button', { name: /^Ulush$/ }).click();
         await page.waitForTimeout(2500);
 
-        expect(errors, 'Ulush vkladkasi JS xatosisiz ochilishi kerak').toEqual([]);
-        await expect(page.locator('main')).toContainText('Shifokor ulushi');
+        expect(errors, 'Ulush ekrani JS xatosisiz ochilishi kerak').toEqual([]);
+        const main = page.locator('main');
+        await expect(main).toContainText('Shifokor ulushi');
+        await expect(main).toContainText('Hisoblangan');
+        await expect(main).toContainText("To'lanadi");
     });
 
-    test("Davr boshi oyning BIRINCHI kuni (Toshkent vaqti bo'yicha)", async ({ page }) => {
+    test('Davr — OY, va oylar orasida yurish mumkin', async ({ page }) => {
         await login(page);
-        await go(page, '/staff');
-        await page.getByRole('button', { name: 'Ulush va vedomost' }).click();
-        await page.waitForTimeout(2000);
-
-        /* `toISOString()` UTC beradi va Toshkentda (UTC+5) oy boshini
-           OLDINGI oyning oxirgi kuniga siljitardi: 1-sentabr o'rniga
-           31-avgust. Vedomost o'tgan oyning kunini ham qamrab olardi. */
-        const from = await page.locator('input[type="date"]').first().inputValue();
-        expect(from, `davr boshi oyning 1-kuni bo'lishi kerak, hozir: ${from}`).toMatch(/^\d{4}-\d{2}-01$/);
-    });
-
-    test('Bo\'sh davrda ekran SABABNI aytadi', async ({ page }) => {
-        await login(page);
-        await go(page, '/staff');
-        await page.getByRole('button', { name: 'Ulush va vedomost' }).click();
-        await page.waitForTimeout(2000);
-
-        /* Ataylab to'lov bo'lmagan davrni tanlaymiz — kelasi yil. */
-        const dates = page.locator('input[type="date"]');
-        await dates.nth(0).fill('2030-01-01');
-        await dates.nth(1).fill('2030-01-31');
+        await go(page, '/staff?tab=payroll');
         await page.waitForTimeout(2500);
 
         const main = page.locator('main');
-        await expect(main).toContainText("Bu davrda hisoblanadigan ulush yo'q");
-        /* Sabab AYTILISHI shart — «bironta to'lov bo'lmagan» yoki
-           «N ta to'lovda shifokor ko'rsatilmagan». */
-        await expect(main).toContainText(/bironta to.lov bo.lmagan|shifokor ko.rsatilmagan/);
+        /* Oy nomi ko'rinadi: «Sen 2026» kabi. Ilgari bu yerda ikkita
+           sana maydoni turardi va davr «oy boshidan bugungacha» edi —
+           9-sentabrda ochilgan ekran 01.09–09.09 ni ko'rsatardi va
+           raqam yarim oylik chiqardi. */
+        const label = main.locator('span.tabular-nums').first();
+        const before = (await label.innerText()).trim();
+        expect(before, `oy nomi kutilgan, kelgani: ${before}`).toMatch(/^[A-Za-z]{3} \d{4}$/);
+
+        /* Orqaga bitta oy — yozuv o'zgarishi kerak. */
+        await main.getByRole('button', { name: 'Oldingi oy' }).click();
+        await page.waitForTimeout(2000);
+        const after = (await label.innerText()).trim();
+        expect(after, `oy o'zgarishi kerak edi: ${before} → ${after}`).not.toBe(before);
+    });
+
+    test("Bo'sh oyda ekran SABABNI aytadi", async ({ page }) => {
+        await login(page);
+        await go(page, '/staff?tab=payroll');
+        await page.waitForTimeout(2500);
+
+        /* Ataylab to'lov bo'lmagan oyga o'tamiz — 24 oy oldinga. */
+        const main = page.locator('main');
+        const next = main.getByRole('button', { name: 'Keyingi oy' });
+        for (let i = 0; i < 24; i++) {
+            await next.click();
+            await page.waitForTimeout(120);
+        }
+        await page.waitForTimeout(2500);
+
+        /* Sabab AYTILISHI shart: «to'lov tushmagan» yoki «shifokor
+           ko'rsatilmagan». Ikkinchisi — tuzatilishi kerak bo'lgan xato. */
+        await expect(main).toContainText(/hisoblanadigan ulush yo.q/i);
+        await expect(main).toContainText(/to.lov tushmagan|shifokor ko.rsatilmagan|ulushga kirmaydi/i);
+    });
+
+    test('Eski vedomostlar arxivi ochiladi', async ({ page }) => {
+        const errors: string[] = [];
+        page.on('pageerror', e => errors.push(e.message.split('\n')[0].slice(0, 200)));
+
+        await login(page);
+        await go(page, '/staff?tab=payroll');
+        await page.waitForTimeout(2500);
+
+        const main = page.locator('main');
+        await main.getByRole('button', { name: /Eski vedomostlar/ }).click();
+        await page.waitForTimeout(2500);
+
+        /* Arxiv — eski ekranning o'zi. U yiqilmasligi kerak: unda
+           to'langan pul bor va u yuqoridagi jadvalda ayriladi. */
+        await expect(main).toContainText('Vedomost');
+        expect(errors, 'Arxiv JS xatosisiz ochilishi kerak').toEqual([]);
     });
 });

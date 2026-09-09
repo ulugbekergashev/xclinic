@@ -411,12 +411,16 @@ shifokorlar, o'rtacha yuklama va oylik fondi. Hammasi serverda sanaladi.
 | Ish grafigi | haftaning ish kunlari va oylik davomat kalendari |
 | Stavkalar | shifokorning xizmat bo'yicha ulush foizlari |
 
-**Pul qayerdan chiqadi — qoida.** Vedomost shifokorga ulushni ham, fix
-maoshni ham hisoblaydi. Shuning uchun xodim kartasi shifokorga asosiy
-oylikni **to'lamaydi** (bitta pul ikki marta berilmasligi uchun) — undan
-faqat bonus chiqadi. Registrator, laborant va hamshirada esa vedomost
-umuman ishlamaydi: ularning oyligi aynan kartadan to'lanadi va kassaga
-xarajat bo'lib tushadi.
+Shifokorda «Maosh» bo'limidagi asosiy qator — **shu oyning ulushi**:
+kassaga tushgan pulning foizi va fix maosh. Ustiga bonus qo'shilib jarima
+ayriladi, «To'lash» bosiladi — pul kassadan xarajat bo'lib chiqadi.
+
+**Vedomost ish oqimidan chiqdi.** Ilgari shifokorga to'lash uchun davr
+tanlash, hujjat yaratish, tasdiqlash va qatorma-qator to'lash kerak edi.
+Endi to'lov xodim kartasida yoki **Ulush** vkladkasidagi oylik jadvalda —
+bir bosish. Eski vedomostlar arxiv bo'lib qoldi va ular orqali to'langan
+pul hisobdan **ayriladi** (bitta pul ikki marta berilmasin) — bu ekranda
+alohida qator bo'lib ko'rinadi.
 
 **Davomat oylikdan avtomatik ushlamaydi.** Kelmagan kun ko'rinadi, qancha
 ushlash esa direktorning qarori — u jarima bo'lib qo'lda yoziladi.

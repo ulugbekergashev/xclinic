@@ -246,3 +246,71 @@ tasmasi (11). Yo'l-yo'lakay sinov haqiqiy xatoni topdi — `LabOrder` va
 `DiagnosticStudy` da maydon `createdAt` emas, `orderedAt`; noto'g'ri nom
 Prisma da tushunarsiz 500 berardi (BUILD-SPEC dagi 27 va 33-xatolar aynan
 shu tur).
+
+---
+
+## 8. Vedomost ish oqimidan chiqdi
+
+Uchinchi bosqich (2026-09-09). Sabab — foydalanuvchining savoli: «vedomost
+nima o'zi? xodimning profilida qilsa bo'lmaydimi?»
+
+**Savol o'rinli edi.** Vedomost — buxgalteriya hujjati, va u ish oqimining
+o'rtasida turardi:
+
+```
+davr tanlanadi → hujjat yaratiladi → tasdiqlanadi → qatorma-qator to'lanadi
+```
+
+To'rt qadam, ularning uchtasi marosim. «Shu odamga shu oy uchun to'lash»
+degan oddiy amal boshqa ekranga, boshqa tushunchaga bog'langan edi.
+
+### Endi qanday
+
+| Qayerda | Nima |
+|---|---|
+| Xodim kartasi → Maosh | oy tanlanadi, hisob ko'rinadi, «To'lash» |
+| Xodimlar → **Ulush** | oylik jadval: kimga qancha, «Hammasiga to'lash» |
+| Ulush → Eski vedomostlar | arxiv, yopiq holda |
+
+Shifokorda «Asosiy» qatori endi **shu oyning ulushi**: kassaga tushgan
+pulning foizi, ustiga fix maosh (agar `salaryType` shuni talab qilsa).
+Ustiga bonus qo'shiladi, jarima ayriladi — hammasi bitta ekranda.
+
+### Vedomost O'CHIRILMADI — va nima uchun
+
+U ishlab turgan klinikalarda **qoldi** va u orqali pul to'langan bo'lishi
+mumkin. Agar karta shu oyni yana to'lasa, bitta pul ikki marta berilardi.
+
+Shuning uchun hisobda **ayriladi**:
+
+```
+to'lanadi = hisoblangan − vedomost orqali allaqachon to'langan
+```
+
+Va bu **ko'rinib turadi**: kartada «Eski vedomost orqali to'langan −X»
+degan qator, jadvalda esa alohida ustun. Jimgina ayirish — «nega raqam
+kichik?» degan javobsiz savol degani.
+
+### Yana bir tuzatish: davr endi OY
+
+Ilgari davr «oy boshidan bugungacha» edi. 9-sentabrda ochilgan ekran
+01.09–09.09 ni ko'rsatardi va raqam yarim oylik chiqardi — foydalanuvchi
+buni «kam hisoblabdi» deb tushunardi. Endi oy tanlanadi.
+
+### Hisob nusxalanmadi
+
+`computePayroll` `registerPayrollRoutes` ichida yashirin funksiya edi.
+Endi u modul darajasida va **ikkalasi ham** — vedomost ham, xodim kartasi
+ham — o'shandan foydalanadi. Sabab kod izohida yozilgan: foiz tanlash
+tartibi (`pickRate`) bir marta nusxalangan edi va ikki ekran bitta
+shifokor uchun boshqa-boshqa foiz ko'rsatishi mumkin bo'lgan.
+
+### Sinovlar
+
+`hr` to'plami 71 dan **78** ga chiqdi. Yangi tekshiruvlar: shifokorning
+kartadagi «asosiy» shu oyning ulushiga teng · ulush + bonus birga
+to'lanadi · xarajat `DoctorShare` kategoriyasi bilan chiqadi (hisobot
+uzilmasin) · ikkinchi to'lov 409 · jadvalda to'langan oy yopiq ko'rinadi.
+
+`e2e/payroll.spec.ts` qayta yozildi (4 test): ekran ochiladi · davr oy ·
+bo'sh oyda sabab aytiladi · arxiv yiqilmaydi.

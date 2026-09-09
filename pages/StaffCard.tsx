@@ -23,10 +23,15 @@ import {
    edi: ma'lumot, stavkalar, hisob-kitob. Oylik, bonus, davomat va ish
    grafigi hech qayerda yo'q edi.
 
-   PUL QOIDASI, ekranda ham ko'rinib turadi: shifokorning asosiy oyligi va
-   ulushi VEDOMOST orqali to'lanadi (`payroll.ts` fix maoshni allaqachon
-   hisoblaydi), shuning uchun kartadan faqat bonus/jarima to'lanadi. Qolgan
-   uch rolda vedomost umuman ishlamaydi — ularning oyligi shu yerdan chiqadi.
+   PUL BITTA JOYDAN CHIQADI — shu kartadan. Oy tanlanadi, hisob ko'rinadi,
+   «To'lash» bosiladi.
+
+   Ilgari shifokorning ulushi VEDOMOST orqali to'lanardi: davr tanlanadi,
+   hujjat yaratiladi, tasdiqlanadi, keyin qatorma-qator to'lanadi — to'rt
+   qadam, ularning uchtasi buxgalteriya marosimi. Endi hisob shu yerda.
+
+   Vedomost bekor qilinmadi: u ARXIV bo'lib qoldi va u orqali allaqachon
+   to'langan summa hisobda AYRILADI — bitta pul ikki marta berilmasin.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
@@ -341,7 +346,8 @@ export const StaffCard: React.FC<Props> = ({
                         </p>
                         {isDoctor && (
                             <p className="text-[11px] text-faint mt-2 leading-relaxed">
-                                Shifokorda asosiy oylik ham, ulush ham vedomost orqali to'lanadi.
+                                Shifokorga bundan tashqari xizmat ulushi hisoblanadi — «Maosh»
+                                bo'limida oy bo'yicha ko'rinadi.
                             </p>
                         )}
                     </div>
@@ -423,16 +429,17 @@ export const StaffCard: React.FC<Props> = ({
                                         <div className="rounded-xl border border-line p-4">
                                             <div className="flex items-center justify-between gap-3 mb-3">
                                                 <p className="text-sm font-bold text-ink">
-                                                    Ulush va asosiy oylik — vedomost bo'yicha
+                                                    {periodLabel(period)} — xizmat ulushi
                                                 </p>
-                                                <Link to="/staff?tab=payroll"
+                                                <button type="button" onClick={() => setTab('salary')}
                                                     className="text-xs text-primary-600 hover:underline">
-                                                    Vedomost →
-                                                </Link>
+                                                    Maosh bo'limi →
+                                                </button>
                                             </div>
-                                            {month.share.runs.length === 0 ? (
+                                            {month.share.accrued === 0 ? (
                                                 <p className="text-sm text-faint">
-                                                    Bu oyga vedomost hali tuzilmagan.
+                                                    Bu oyda hisoblangan ulush yo'q: kassaga tushgan
+                                                    to'lovda shifokor ko'rsatilgan bo'lishi kerak.
                                                 </p>
                                             ) : (
                                                 <div className="grid grid-cols-2 gap-4">
@@ -443,9 +450,11 @@ export const StaffCard: React.FC<Props> = ({
                                                         </p>
                                                     </div>
                                                     <div>
-                                                        <p className="text-[11px] text-faint uppercase tracking-wide">To'langan</p>
+                                                        <p className="text-[11px] text-faint uppercase tracking-wide">
+                                                            {paid ? "To'langan" : "To'lanadi"}
+                                                        </p>
                                                         <p className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                                                            {formatMoney(month.share.paid)}
+                                                            {formatMoney(paid ? month.payment.amount : month.due)}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -577,7 +586,7 @@ export const StaffCard: React.FC<Props> = ({
                                                         <div className="-mt-1 space-y-1">
                                                             <p className="text-[11px] text-faint">
                                                                 Hisoblangan {formatMoney(month.share.accrued)}
-                                                                {month.share.itemsCount ? ` · ${month.share.itemsCount} xizmat` : ''}
+                                                                {month.share.items?.length ? ` · ${month.share.items.length} xizmat` : ''}
                                                             </p>
                                                             {month.share.paidViaRuns > 0 && (
                                                                 <p className="text-[11px] text-amber-600 dark:text-amber-400">
@@ -614,7 +623,7 @@ export const StaffCard: React.FC<Props> = ({
                                                         <Button className="w-full" onClick={paySalary}
                                                             disabled={busy || !(month.due > 0)}>
                                                             <Wallet className="w-4 h-4 mr-2" />
-                                                            {isDoctor ? "Bonusni to'lash" : "Maosh to'lash"}
+                                                            {isDoctor ? "Ulushni to'lash" : "Maosh to'lash"}
                                                         </Button>
                                                     )}
                                                 </div>

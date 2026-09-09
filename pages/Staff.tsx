@@ -7,7 +7,7 @@ import { formatFullName, formatMoney } from '../utils/format';
 import { formatUzPhone } from '../shared/validation';
 import { Department, Service, Doctor, Clinic, UserRole } from '../types';
 import { StaffForm, StaffRow, ROLES, roleMeta, StaffRole } from '../components/StaffForm';
-import { Payroll } from './Payroll';
+import { DoctorShares } from '../components/DoctorShares';
 import { StaffAttendanceReport } from '../components/StaffAttendanceReport';
 import { AccessControlTab } from '../components/AccessControlTab';
 import {
@@ -206,7 +206,7 @@ export const Staff: React.FC<Props> = ({
             <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl w-fit">
                 {([
                     ['people', 'Xodimlar'],
-                    ['payroll', 'Ulush va vedomost'],
+                    ['payroll', 'Ulush'],
                     ['attendance', 'Davomat'],
                     /* RUXSATLAR — Sozlamalardan shu yerga ham chiqarildi.
                        «Bu xodim nimani ko'radi?» degan savol xodimlar
@@ -225,7 +225,7 @@ export const Staff: React.FC<Props> = ({
             </div>
 
             {tab === 'payroll' ? (
-                <Payroll doctors={doctors} clinicId={clinicId} addToast={addToast} />
+                <DoctorShares doctors={doctors} clinicId={clinicId} addToast={addToast} />
             ) : tab === 'attendance' ? (
                 <StaffAttendanceReport />
             ) : tab === 'access' ? (
