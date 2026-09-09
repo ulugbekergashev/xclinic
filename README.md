@@ -80,6 +80,27 @@ mumkin. Shuning uchun u kodda emas, `.env` da turadi, va boshqa mahsulot
 bilan **bir xil token ishlatilmasin** — biri uchun tokenni almashtirish
 ikkinchisining masofaviy kirishini o'chiradi.
 
+**Yig'ish `EPERM` bilan yiqilsa** (`query_engine-windows.dll.node.tmpNNNN`
+ni ko'chirib bo'lmadi) — Prisma dvigatelini kimdir ushlab turibdi.
+Ketma-ket tekshiring:
+
+1. ishlab turgan server yoki `npm run dev` qoldig'ini yoping —
+   `netstat -ano | grep :3001` va `taskkill /PID <id> /F`;
+2. muvaffaqiyatsiz urinishlardan qolgan vaqtinchalik fayllarni o'chiring:
+   `rm backend/node_modules/.prisma/client/*.tmp*` — ular keyingi
+   urinishga ham to'sqinlik qiladi;
+3. baribir yiqilsa, mijoz allaqachon yaratilgan bo'lsa `prisma generate`
+   ni chetlab o'tib, `backend` da `npx ncc build server.ts -o dist-bundle
+   --external prisma --external @prisma/client` dan boshlang.
+
+Antivirus yangi yozilgan 19 MB lik dvigatelni skanerlab, faylni bir
+zumga qulflaydi — shuning uchun xato beqaror: bir marta o'tadi, bir
+marta yiqiladi.
+
+**Ikkita yig'ish bir vaqtda ketmasin.** `electron-builder` `dist/`
+papkasidan o'qiydi; o'sha paytda `npm run build` ishga tushsa, papka
+almashadi va yig'ish «ENOENT: assets/…js» bilan yiqiladi.
+
 **Dastur ishga tushmasa** — jurnal shu yerda:
 `%APPDATA%\XClinic\logs\main.log`. Windows'da GUI dasturi konsolga
 yozmaydi, shuning uchun sababni faqat shu fayldan bilish mumkin.
