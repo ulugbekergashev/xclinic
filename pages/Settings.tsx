@@ -1804,23 +1804,39 @@ export const Settings: React.FC<SettingsProps> = ({
                                                 className="w-16 px-2 py-1.5 text-sm text-center border border-line rounded bg-surface text-ink" />
                                           </div>
                                        </div>
-                                       <div>
-                                          <label className="block text-xs font-medium text-muted mb-1">Kunlik saqlash</label>
-                                          <input type="number" min={2} max={365} value={cfgDraft.keepDaily}
-                                             onChange={(e) => setCfgDraft((c: any) => ({ ...c, keepDaily: Number(e.target.value) }))}
-                                             className="w-20 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink" />
-                                       </div>
-                                       <div>
-                                          <label className="block text-xs font-medium text-muted mb-1">Oylik saqlash</label>
-                                          <input type="number" min={0} max={120} value={cfgDraft.keepMonthly}
-                                             onChange={(e) => setCfgDraft((c: any) => ({ ...c, keepMonthly: Number(e.target.value) }))}
-                                             className="w-20 px-2 py-1.5 text-sm border border-line rounded bg-surface text-ink" />
-                                       </div>
+                                       <label className="flex items-center gap-2 text-sm text-ink">
+                                          <input type="checkbox" checked={!!cfgDraft.twiceDaily}
+                                             onChange={(e) => setCfgDraft((c: any) => ({ ...c, twiceDaily: e.target.checked }))}
+                                             className="h-4 w-4 rounded border-line text-primary-600" />
+                                          Kuniga ikki marta
+                                       </label>
+                                       {cfgDraft.twiceDaily && (
+                                          <div>
+                                             <label className="block text-xs font-medium text-muted mb-1">Ikkinchi vaqt</label>
+                                             <div className="flex items-center gap-1">
+                                                <input type="number" min={0} max={23} value={cfgDraft.hour2 ?? 13}
+                                                   onChange={(e) => setCfgDraft((c: any) => ({ ...c, hour2: Number(e.target.value) }))}
+                                                   className="w-16 px-2 py-1.5 text-sm text-center border border-line rounded bg-surface text-ink" />
+                                                <span className="text-faint">:</span>
+                                                <input type="number" min={0} max={59} step={5} value={cfgDraft.minute2 ?? 0}
+                                                   onChange={(e) => setCfgDraft((c: any) => ({ ...c, minute2: Number(e.target.value) }))}
+                                                   className="w-16 px-2 py-1.5 text-sm text-center border border-line rounded bg-surface text-ink" />
+                                             </div>
+                                          </div>
+                                       )}
                                     </div>
+                                    {/* SAQLASH MUDDATI OLIB TASHLANDI.
+
+                                        Ilgari bu yerda «kunlik saqlash» va «oylik saqlash»
+                                        turardi va eskirgan nusxalar o'chirilardi. Endi
+                                        HECH BIRI o'chirilmaydi — klinika egasining qarori.
+                                        Maydonlarni qoldirish yolg'on bo'lardi: raqam
+                                        turadi-yu, hech narsaga ta'sir qilmaydi. */}
                                     <p className="text-xs text-muted">
-                                       Oxirgi {cfgDraft.keepDaily} kunning hamma nusxasi va undan
-                                       oldingi {cfgDraft.keepMonthly} oyning har biridan bittasi saqlanadi.
-                                       Izohli nusxalar hech qachon o'chirilmaydi.
+                                       Nusxalar <b>hech qachon o'chirilmaydi</b> — izohsizi ham.
+                                       Joy tugab qolmasligi uchun jami hajmni yuqorida kuzatib
+                                       turing va kerak bo'lsa eskilarini tashqi diskka qo'lda
+                                       ko'chiring.
                                     </p>
 
                                     {/* ── NUSXA BULUT PAPKASIGA ────────────────────────
@@ -2240,7 +2256,17 @@ export const Settings: React.FC<SettingsProps> = ({
                               </div>
                            </div>
 
-                           {(smsForm.notificationMode === 'sms_only' || smsForm.notificationMode === 'both') && (
+                           {/* ESKIZ MAYDONLARI HAR DOIM KO'RINADI.
+
+                               Ilgari ular faqat «SMS» yoki «Ikkalasi ham»
+                               tanlanganda chiqardi. Ya'ni SMS ni oldindan
+                               ULASH mumkin emas edi: avval rejimni
+                               almashtirib saqlash, keyin qaytib kelib login
+                               kiritish kerak bo'lardi — va bu oraliqda
+                               klinika «SMS rejimida, lekin ulanmagan»
+                               holatda turardi. Foydalanuvchi esa oddiygina
+                               «kiritadigan joy yo'q» deb o'ylaydi. */}
+                           {true && (
                               <div className="bg-elevated p-6 rounded-2xl border border-line-soft">
                                  <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-lg font-medium text-ink">2. Eskiz.uz Integratsiyasi</h3>
@@ -2254,6 +2280,13 @@ export const Settings: React.FC<SettingsProps> = ({
                                        </span>
                                     )}
                                  </div>
+                                 {smsForm.notificationMode === 'telegram_only' && (
+                                    <p className="mb-4 text-xs text-muted">
+                                       Hozir SMS o'chiq — xabarlar faqat Telegram orqali ketadi.
+                                       Loginni shu yerda oldindan kiritib qo'ysangiz bo'ladi:
+                                       keyin rejimni almashtirish kifoya.
+                                    </p>
+                                 )}
                                  <div className="space-y-4">
                                     <Input 
                                        label="Eskiz.uz Kabinet Email" 
@@ -2294,7 +2327,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  </div>
                            )}
 
-                           {smsForm.notificationMode === 'telegram_only' && (
+                           {false && (
                               <div className="pt-4">
                                  <Button type="submit" variant="primary">Saqlash</Button>
                               </div>

@@ -1,6 +1,7 @@
 import {
     Stethoscope, Users, Calendar as CalendarIcon, Wallet, Package,
     FlaskConical, Scan, BedDouble, Settings as SettingsIcon, UserCog,
+    MessageSquare,
 } from 'lucide-react';
 import { UserRole, AccessControl } from '../types';
 import type { TranslationKey } from '../i18n/translations';
@@ -49,6 +50,19 @@ export const NAVIGATION: NavItemDef[] = [
     { id: 'lab', path: '/lab', labelKey: 'nav.lab', icon: FlaskConical, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST, UserRole.LAB_TECHNICIAN] },
     { id: 'diagnostics', path: '/diagnostics', labelKey: 'nav.diagnostics', icon: Scan, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
     { id: 'inpatient', path: '/inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: ALL },
+    /* XABARLAR — MENYUGA QAYTDI.
+
+       U Sozlamalar ichiga ko'chirilgan edi: «shablon va avtomatik qoida
+       oyiga bir-ikki marta kerak» degan hisob bilan. Amalda esa bo'lim
+       kundalik ish quroli bo'lib chiqdi — SMS balansi, yuborilgan
+       xabarlar tarixi va kanal sozlamasi bir joyda kerak. Sozlamalar
+       ichida uni topish uchun esa avval «u yerda ekanini» bilish kerak
+       edi.
+
+       Faqat klinika egasida: xabar yuborish pul turadi (SMS) va
+       shablonlar butun klinika nomidan gapiradi. Server ham shu
+       marshrutlarga boshqa rolni qo'ymaydi. */
+    { id: 'messages', path: '/messages', labelKey: 'nav.messages', icon: MessageSquare, roles: [UserRole.CLINIC_ADMIN] },
     /* XODIMLAR — alohida modul.
 
        U Sozlamalar ichidagi vkladka edi, ulush va vedomost esa Moliyada.

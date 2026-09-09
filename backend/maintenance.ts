@@ -299,16 +299,25 @@ export type BackupConfig = {
     /** Toshkent bo'yicha soat (0-23) va daqiqa (0-59) */
     hour: number;
     minute: number;
-    /** Oxirgi N kunning nusxalari — hammasi saqlanadi */
+    /** Kuniga IKKI marta olinsinmi (ikkinchi vaqt quyida) */
+    twiceDaily: boolean;
+    /** Ikkinchi vaqt — `twiceDaily` yoqilganda ishlatiladi */
+    hour2: number;
+    minute2: number;
+    /* `keepDaily` va `keepMonthly` — ESKI sozlamalar. Ular endi hech
+       narsa qilmaydi: nusxalar o'chirilmaydi (`applyRetention` ga
+       qarang). Turi saqlanadi, chunki eski `backup.json` fayllarida
+       ular yozilgan va o'qishda yiqilmasligi kerak. */
     keepDaily: number;
-    /** Undan oldingi N oy — har oydan eng yangisi saqlanadi */
     keepMonthly: number;
     /** Ikkinchi manzil: flesh yoki tarmoq diski. Bo'lmasa `null`. */
     extraDir: string | null;
 };
 
 const DEFAULT_BACKUP_CONFIG: BackupConfig = {
-    enabled: true, hour: 23, minute: 30, keepDaily: 14, keepMonthly: 12, extraDir: null,
+    enabled: true, hour: 23, minute: 30,
+    twiceDaily: true, hour2: 13, minute2: 0,
+    keepDaily: 14, keepMonthly: 12, extraDir: null,
 };
 
 const clampInt = (v: any, min: number, max: number, fallback: number): number => {
@@ -325,6 +334,11 @@ export function readBackupConfig(userDataPath: string): BackupConfig {
             hour: clampInt(j.hour, 0, 23, DEFAULT_BACKUP_CONFIG.hour),
             minute: clampInt(j.minute, 0, 59, DEFAULT_BACKUP_CONFIG.minute),
             // Kamida 2 kun: bitta nusxa qolishi xavfli, buzuq nusxa qaytish yo'lini yopadi
+            /* Eski faylda bu maydonlar yo'q — sukut bo'yicha YOQILGAN:
+               klinika egasi kuniga ikki marta so'radi. */
+            twiceDaily: j.twiceDaily !== false,
+            hour2: clampInt(j.hour2, 0, 23, DEFAULT_BACKUP_CONFIG.hour2),
+            minute2: clampInt(j.minute2, 0, 59, DEFAULT_BACKUP_CONFIG.minute2),
             keepDaily: clampInt(j.keepDaily, 2, 365, DEFAULT_BACKUP_CONFIG.keepDaily),
             keepMonthly: clampInt(j.keepMonthly, 0, 120, DEFAULT_BACKUP_CONFIG.keepMonthly),
             extraDir: typeof j.extraDir === 'string' && j.extraDir.trim() ? j.extraDir.trim() : null,
@@ -436,110 +450,87 @@ export async function performBackup(input: {
 }
 
 /**
- * Eskirgan nusxalarni o'chiradi.
+ * ZAXIRA NUSXALAR O'CHIRILMAYDI.
  *
- * Qoidalar:
- *   - oxirgi `keepDaily` kunning nusxalari — hammasi qoladi;
- *   - undan oldingi `keepMonthly` oyning HAR BIRIDAN eng yangisi qoladi;
- *   - IZOHLI nusxa hech qachon o'chirilmaydi — izoh qo'lda, ataylab yozilgan
- *     ("migratsiyadan oldin"), ya'ni u aynan saqlash uchun olingan;
- *   - eng yangi nusxa har qanday holatda qoladi.
+ * Ilgari bu funksiya eskirganlarini o'chirardi: oxirgi N kunning hammasi,
+ * undan oldingi har oydan bittasi, izohlilari esa tegilmasdi.
  *
- * `pre-restore-*.db` fayllari alohida: ular tiklashdan oldingi holat va
- * `listBackups()` ga tushmaydi, lekin har biri to'liq baza nusxasi bo'lgani
- * uchun cheksiz yig'ilib qolmasligi kerak. Eng yangi 3 tasi qoladi.
+ * KLINIKA EGASINING QARORI (2026-09-09): hech biri o'chirilmaydi — izohsizi
+ * ham. Sabab oddiy: zaxira nusxaning butun ma'nosi «kerak bo'lganda bor
+ * bo'lishi», va qaysi nusxa kerak bo'lishini oldindan bilib bo'lmaydi.
+ * Xato bir oy o'tib sezilishi mumkin, o'sha paytda esa aynan o'sha kunning
+ * nusxasi kerak bo'ladi.
+ *
+ * Funksiya O'CHIRILMADI, chunki uni chaqiradigan joylar bor va ular
+ * «nechta o'chirildi» degan javobni kutadi. U endi hech narsa qilmaydi va
+ * har doim bo'sh ro'yxat qaytaradi.
+ *
+ * DISK HAQIDA. Nusxa kuniga ikki marta olinadi, bazaniki ~1 MB — yiliga
+ * taxminan 1 GB. Bemor fotolari arxivi esa kattaroq bo'lishi mumkin.
+ * Sozlamalar ekrani jami hajmni ko'rsatib turadi; joy tugashiga yaqin
+ * qolganda eskilarini tashqi diskka QO'LDA ko'chirish kerak — dastur
+ * o'zi hech narsani yo'q qilmaydi.
  */
 export function applyRetention(
-    backupDir: string, keepDaily: number, keepMonthly: number,
+    _backupDir: string, _keepDaily: number, _keepMonthly: number,
 ): { deleted: string[] } {
-    const deleted: string[] = [];
-    if (!fs.existsSync(backupDir)) return { deleted };
-
-    const all = fs.readdirSync(backupDir)
-        .filter((f) => /^xclinic-\d{8}-\d{6}\.db$/.test(f))
-        .sort()          // nom bo'yicha tartib = vaqt bo'yicha tartib
-        .reverse();      // yangilari birinchi
-
-    if (all.length <= 1) return { deleted };
-
-    const hasNote = (f: string) => fs.existsSync(path.join(backupDir, f.replace(/\.db$/, '.txt')));
-
-    /* `keepDaily = 14` AYNAN 14 kunni bildiradi: bugun va undan oldingi 13 kun.
-       `-keepDaily` yozilsa 15 kun qolardi — bir kunlik farq bilinmaydi, lekin
-       sozlamada yozilgan raqam haqiqatga mos kelmasligi keyin chalkashtiradi. */
-    const cutoffDaily = tashkentDateStr(-(keepDaily - 1));
-    const keptMonths = new Set<string>();
-
-    const toDelete: string[] = [];
-    for (let i = 0; i < all.length; i++) {
-        const f = all[i];
-        if (i === 0) continue;                               // eng yangisi — doim qoladi
-        if (hasNote(f)) continue;                            // izohli — qo'lda olingan, tegilmaydi
-
-        const dateStr = backupDateStr(f);
-        if (!dateStr) continue;                              // nomi tushunarsiz — tegilmaydi
-        if (dateStr >= cutoffDaily) continue;                // kunlik oyna ichida
-
-        /* Oylik vakil. Ro'yxat yangidan eskiga qarab yurgani uchun har oyda
-           birinchi uchragan fayl — o'sha oyning eng yangisi.
-
-           Vakil oy davomida SURILADI: bugun kunlik oynadan endigina chiqqan
-           fayl vakil bo'ladi, ertaga uning o'rniga keyingisi keladi. Oy to'liq
-           oynadan chiqqach esa vakil bo'lib o'sha oyning oxirgi kuni qoladi —
-           ya'ni yakuniy holat aynan kerakli holat. */
-        const month = dateStr.slice(0, 7);                   // 'YYYY-MM'
-        if (!keptMonths.has(month) && keptMonths.size < keepMonthly) {
-            keptMonths.add(month);
-            continue;
-        }
-        toDelete.push(f);
-    }
-
-    for (const f of toDelete) {
-        for (const p of [f, f.replace(/\.db$/, '-uploads.zip'), f.replace(/\.db$/, '.txt')]) {
-            try {
-                const full = path.join(backupDir, p);
-                if (fs.existsSync(full)) fs.unlinkSync(full);
-            } catch (e: any) {
-                console.error(`Zaxira: ${p} o'chirilmadi:`, e?.message || e);
-            }
-        }
-        deleted.push(f);
-    }
-
-    // Tiklashdan oldingi nusxalar — eng yangi 3 tasi qoladi
-    try {
-        const pre = fs.readdirSync(backupDir)
-            .filter((f) => /^pre-restore-.+\.db$/.test(f))
-            .sort().reverse();
-        for (const f of pre.slice(3)) {
-            try { fs.unlinkSync(path.join(backupDir, f)); deleted.push(f); } catch { /* ignore */ }
-        }
-    } catch { /* ixtiyoriy */ }
-
-    if (deleted.length) console.log(`🧹 Eskirgan nusxalar o'chirildi: ${deleted.length} ta`);
-    return { deleted };
+    return { deleted: [] };
 }
+
+/** Jadvaldagi vaqtlar — tartiblangan, takrorsiz. */
+export function scheduleSlots(cfg: BackupConfig): { hour: number; minute: number }[] {
+    const list = [{ hour: cfg.hour, minute: cfg.minute }];
+    if (cfg.twiceDaily) list.push({ hour: cfg.hour2, minute: cfg.minute2 });
+    const seen = new Set<number>();
+    return list
+        .filter(s => { const k = s.hour * 60 + s.minute; if (seen.has(k)) return false; seen.add(k); return true; })
+        .sort((a, b) => (a.hour * 60 + a.minute) - (b.hour * 60 + b.minute));
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /**
  * Avtomatik nusxa hozir olinishi kerakmi.
  *
- * @param newestDateStr eng yangi nusxaning sanasi `YYYY-MM-DD` yoki `null`
+ * KUNIGA BIR EMAS, JADVALDAGI HAR VAQT UCHUN. Ilgari qoida oddiy edi:
+ * «bugun nusxa bormi — bo'lsa boshqa olinmaydi». Klinika egasi kuniga ikki
+ * marta so'ragach bu yetmay qoldi: ikkinchi vaqt kelganda birinchi nusxa
+ * borligi uchun ish o'tkazib yuborilardi.
+ *
+ * Endi hisob VAQT bo'yicha: bugun o'tib bo'lgan oxirgi jadval vaqti
+ * topiladi va oxirgi nusxa o'shandan OLDIN olingan bo'lsa — yangisi
+ * olinadi.
+ *
+ * @param newest oxirgi nusxaning belgisi: `YYYYMMDD-HHMMSS` yoki `YYYY-MM-DD`
+ *               (eski chaqiruvlar uchun — u holda kun boshi deb olinadi)
  */
-export function autoBackupDue(cfg: BackupConfig, newestDateStr: string | null, nowMs = tashkentNowMs()): boolean {
+export function autoBackupDue(cfg: BackupConfig, newest: string | null, nowMs = tashkentNowMs()): boolean {
     if (!cfg.enabled) return false;
+    if (!newest) return true;                       // umuman nusxa yo'q — darhol
 
-    const today = tashkentDateStr();
-    if (newestDateStr === today) return false;      // bugun allaqachon olingan
+    /* Ikkala shakl ham qabul qilinadi: `YYYY-MM-DD` kelsa, o'sha kunning
+       BOSHI deb olinadi — ya'ni o'sha kunning har qanday jadval vaqti
+       hali o'tmagan hisoblanadi. */
+    const stamp = newest.includes('-') && newest.length === 10
+        ? `${newest.replace(/-/g, '')}-000000`
+        : newest;
 
-    if (newestDateStr === null) return true;        // umuman nusxa yo'q — darhol
-    if (newestDateStr < tashkentDateStr(-1)) return true; // kun(lar) o'tkazib yuborilgan — darhol
+    const today = tashkentDateStr().replace(/-/g, '');
+    const yesterday = tashkentDateStr(-1).replace(/-/g, '');
+    const d = new Date(nowMs);                      // nowMs Toshkentga siljitilgan
+    const nowMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
 
-    // Oxirgi nusxa KECHA olingan: belgilangan soatni kutamiz
-    const d = new Date(nowMs);
-    const nowMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();  // nowMs Toshkentga siljitilgan
-    return nowMinutes >= cfg.hour * 60 + cfg.minute;
+    const passed = scheduleSlots(cfg).filter(sl => sl.hour * 60 + sl.minute <= nowMinutes);
+
+    /* Bugun hali birinchi vaqt kelmagan. Kun(lar) o'tkazib yuborilgan
+       bo'lsa — kutmasdan olamiz (kompyuter o'chiq bo'lgan holat). */
+    if (passed.length === 0) return stamp.slice(0, 8) < yesterday;
+
+    const last = passed[passed.length - 1];
+    const target = `${today}-${pad2(last.hour)}${pad2(last.minute)}00`;
+    return stamp < target;
 }
+
 
 /**
  * Avtomatik nusxa jadvalini ishga tushiradi.
@@ -556,14 +547,19 @@ export function startBackupScheduler(deps: {
 
     const backupDir = path.join(deps.userDataPath, BACKUP_DIR_NAME);
 
-    const newestBackupDate = (): string | null => {
+    /* SANA emas, TO'LIQ BELGI qaytadi (`YYYYMMDD-HHMMSS`).
+
+       Kuniga bir marta olinganda sana yetardi. Ikki marta olinganda esa
+       yetmaydi: ikkinchi vaqt kelganda «bugun nusxa bor» degan javob
+       ishni o'tkazib yuborardi. */
+    const newestBackupStamp = (): string | null => {
         try {
             if (!fs.existsSync(backupDir)) return null;
             const files = fs.readdirSync(backupDir)
                 .filter((f) => /^xclinic-\d{8}-\d{6}\.db$/.test(f))
                 .sort();
             const newest = files[files.length - 1];
-            return newest ? backupDateStr(newest) : null;
+            return newest ? newest.replace(/^xclinic-/, '').replace(/\.db$/, '') : null;
         } catch {
             return null;
         }
@@ -572,7 +568,7 @@ export function startBackupScheduler(deps: {
     const tick = async (reason: string) => {
         if (backupInProgress) return;                 // qo'lda olinayotgan bo'lsa aralashmaymiz
         const cfg = readBackupConfig(deps.userDataPath);
-        if (!autoBackupDue(cfg, newestBackupDate())) return;
+        if (!autoBackupDue(cfg, newestBackupStamp())) return;
 
         backupInProgress = true;
         try {
@@ -791,6 +787,9 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
                 enabled: b.enabled === undefined ? cur.enabled : !!b.enabled,
                 hour: b.hour === undefined ? cur.hour : clampInt(b.hour, 0, 23, cur.hour),
                 minute: b.minute === undefined ? cur.minute : clampInt(b.minute, 0, 59, cur.minute),
+                twiceDaily: b.twiceDaily === undefined ? cur.twiceDaily : !!b.twiceDaily,
+                hour2: b.hour2 === undefined ? cur.hour2 : clampInt(b.hour2, 0, 23, cur.hour2),
+                minute2: b.minute2 === undefined ? cur.minute2 : clampInt(b.minute2, 0, 59, cur.minute2),
                 keepDaily: b.keepDaily === undefined ? cur.keepDaily : clampInt(b.keepDaily, 2, 365, cur.keepDaily),
                 keepMonthly: b.keepMonthly === undefined ? cur.keepMonthly : clampInt(b.keepMonthly, 0, 120, cur.keepMonthly),
                 extraDir: b.extraDir === undefined
