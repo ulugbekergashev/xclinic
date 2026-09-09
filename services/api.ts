@@ -209,6 +209,40 @@ const demoSnapshot = (from?: string, to?: string): Snapshot => {
         },
     };
 };
+/* QARZDORLAR — DEMO TO'PLAMIDAN, BEMOR KESIMIDA.
+
+   Bitta joyda, chunki uni IKKI joy o'qiydi: `reports.dashboard` (Qarz
+   kartasi ostidagi «N ta bemor») va `reports.attention` («to'lov
+   kutmoqda» qatori). Ilgari birinchisida qo'lda `0` yozilgan edi va
+   ekranda «3 200 000 so'm · 0 ta bemor» degan o'zaro zid juft chiqardi.
+
+   Qoida serverникi bilan bir xil: qoldiq bo'yicha, bemor kesimida
+   (bitta odamning uchta to'lanmagan qatori — bitta qarzdor). */
+const demoDebtors = () => {
+    const today = todayISO();
+    const daysBetween = (from: string, to: string) =>
+        Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000));
+
+    const byPatient = new Map<string, { due: number; oldest: string }>();
+    for (const t of DEMO_TRANSACTIONS) {
+        if (t.status === 'Paid') continue;
+        const key = (t as any).patientId || `name:${t.patientName}`;
+        const d = String(t.date).slice(0, 10);
+        const g = byPatient.get(key) || { due: 0, oldest: d };
+        g.due += t.amount || 0;
+        if (d < g.oldest) g.oldest = d;
+        byPatient.set(key, g);
+    }
+    const all = Array.from(byPatient.values()).filter(g => g.due > 0);
+    return {
+        today,
+        daysBetween,
+        all,
+        overdue: all.filter(g => daysBetween(g.oldest, today) >= 30),
+        waiting: all.filter(g => daysBetween(g.oldest, today) < 30),
+    };
+};
+
 /* `demoWrite()` va `demoMissing()` OLIB TASHLANDI.
  *
  * Ular har qanday yozishni «Demo rejimda saqlab bo'lmaydi» xatosi bilan rad
@@ -3308,11 +3342,24 @@ export const api = {
                         appointments: day.period.appointments,
                         visits: day.period.visits,
                         revenue: day.period.charged,
-                        payments: day.period.collected,
+                        /* `payments` — TO'LOVLAR SONI, summa emas. Bu yerda
+                           `period.collected` (pul) turardi va ekranda
+                           «50000 ta to'lov» degan bema'nilik chiqardi:
+                           server `_count` qaytaradi, qopqoq esa summani. */
+                        payments: DEMO_TRANSACTIONS.filter(
+                            t => t.status === 'Paid' && String(t.date).slice(0, 10) === today,
+                        ).length,
                     },
                     month: { revenue: month.period.collected },
                     debt: all.debt,
-                    debtors: { patients: 0, overdue30: 0, overdue30Sum: 0 },
+                    debtors: (() => {
+                        const d = demoDebtors();
+                        return {
+                            patients: d.all.length,
+                            overdue30: d.overdue.length,
+                            overdue30Sum: d.overdue.reduce((s, g) => s + g.due, 0),
+                        };
+                    })(),
                     period: month.period,
                 });
             }
@@ -3327,10 +3374,53 @@ export const api = {
             }>('/reports/dashboard');
         },
 
-        /* «Bugun hal qilinsin» — faqat egaga. Bo'sh ro'yxat ham javob:
-           demo rejimda ham shunday, o'ylab topilgan band qo'shilmaydi. */
+        /* «Bugun hal qilinsin» — faqat egaga.
+
+           DEMODA HAM TO'LOVLAR KO'RINADI. Ilgari bu yerda bo'sh ro'yxat
+           qaytarilardi va izohda «o'ylab topilgan band qo'shilmaydi»
+           deyilgan edi. Sabab to'g'ri, xulosa esa noto'g'ri: to'lanmagan
+           hisoblar demo to'plamida HAQIQATAN bor (`demoSnapshot` qarzni
+           aynan shulardan sanaydi). Ularni ko'rsatish — o'ylab topish
+           emas, mavjud ma'lumotni o'qish. Natijada namoyish nusxasida
+           ekranning eng muhim bloki har doim bo'sh turardi.
+
+           Qoidalar `backend/attention.ts` dagi bilan bir xil: 30 kundan
+           oshgani — `high`, qolgani — `medium`. */
         attention: () => {
-            if (isDemoMode()) return demoRead<any>({ date: '', total: 0, high: 0, items: [] });
+            if (isDemoMode()) {
+                const { today, daysBetween, overdue, waiting } = demoDebtors();
+                const money = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ');
+                const items: any[] = [];
+
+                if (overdue.length) {
+                    const oldest = overdue.reduce((a, b) => (a.oldest < b.oldest ? a : b));
+                    items.push({
+                        key: 'debt_overdue', level: 'high',
+                        title: `${overdue.length} ta bemor 30+ kun to'lamagan`,
+                        hint: `Jami ${money(overdue.reduce((s, g) => s + g.due, 0))} so'm`
+                            + ` · eng eskisi ${daysBetween(oldest.oldest, today)} kun oldin`,
+                        count: overdue.length, link: '/finance',
+                    });
+                }
+
+                if (waiting.length) {
+                    const oldest = waiting.reduce((a, b) => (a.oldest < b.oldest ? a : b));
+                    const days = daysBetween(oldest.oldest, today);
+                    items.push({
+                        key: 'debt_fresh', level: 'medium',
+                        title: `${waiting.length} ta bemor to'lov kutmoqda`,
+                        hint: `Jami ${money(waiting.reduce((s, g) => s + g.due, 0))} so'm`
+                            + (days > 0 ? ` · eng eskisi ${days} kun oldin` : ' · bugungi xizmatlar'),
+                        count: waiting.length, link: '/finance',
+                    });
+                }
+
+                return demoRead<any>({
+                    date: today, total: items.length,
+                    high: items.filter(i => i.level === 'high').length,
+                    items,
+                });
+            }
             return fetchJson<{
                 date: string; total: number; high: number;
                 items: {

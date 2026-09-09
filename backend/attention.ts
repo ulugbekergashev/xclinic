@@ -178,6 +178,33 @@ export function registerAttentionRoutes(app: express.Express, deps: Deps) {
                 });
             }
 
+            /* ── 1b. TO'LOV KUTAYOTGANLAR (30 kungacha) ─────────────────
+               Yuqoridagi qoida faqat 30 KUNDAN OSHGANINI ko'rsatardi.
+               Natijada bugun xizmat ko'rsatilib, puli olinmagan bemor
+               hech qayerda ogohlantirmasdi: u haqda bilish uchun ataylab
+               Moliyaga kirish kerak edi, ya'ni eng oson qaytariladigan
+               pul aynan e'tibordan chetda qolardi.
+
+               Daraja `medium`: bu qarz emas, hali OLINMAGAN pul. 30 kunlik
+               `high` bo'lib tepada turaveradi — ikkalasi bir xil og'irlikda
+               ko'rinsa, ro'yxatning ma'nosi yo'qoladi. */
+            const waiting = Array.from(byPatient.values())
+                .filter(g => g.due > 0 && daysBetween(g.oldest, today) < 30);
+            if (waiting.length) {
+                const sum = som(waiting.reduce((s, g) => s + g.due, 0));
+                const oldest = waiting.reduce((a, b) => (a.oldest < b.oldest ? a : b));
+                const days = daysBetween(oldest.oldest, today);
+                items.push({
+                    key: 'debt_fresh',
+                    level: 'medium',
+                    title: `${waiting.length} ta bemor to'lov kutmoqda`,
+                    hint: `Jami ${sum.toLocaleString('ru-RU').replace(/,/g, ' ')} so'm`
+                        + (days > 0 ? ` · eng eskisi ${days} kun oldin` : ' · bugungi xizmatlar'),
+                    count: waiting.length,
+                    link: '/finance',
+                });
+            }
+
             /* ── 2. Yopilmagan smena ────────────────────────────────────
                Kassa harakati BO'LGAN, lekin yopilish yozuvi YO'Q kun. */
             const closed = new Set(closedDays.map((d: any) => d.date));
