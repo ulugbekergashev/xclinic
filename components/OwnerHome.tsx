@@ -65,7 +65,17 @@ export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
     const navigate = useNavigate();
     const [data, setData] = useState<any>(null);
     const [attention, setAttention] = useState<any>(null);
-    const [open, setOpen] = useState(true);
+    /* BOSHIDA YOPIQ.
+
+       Tasma ochiq holda «Bugun» ekranining yarmini egallardi va
+       registratorning navbat ro'yxatini pastga surib yuborardi. Eganing
+       savoli kunda bir-ikki marta tug'iladi, navbat esa har daqiqada
+       kerak — shuning uchun standart holat yopiq.
+
+       Yopiq holatda ham asosiy signal ko'rinadi: sarlavha ostida «N ta
+       ish e'tiboringizni kutmoqda» turadi, ya'ni ochish kerakmi-yo'qmi
+       degan savolga javob ochmasdan oldin ham bor. */
+    const [open, setOpen] = useState(false);
 
     const load = useCallback(async () => {
         const [d, a] = await Promise.all([
@@ -102,7 +112,17 @@ export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
                 <button type="button" onClick={() => setOpen(v => !v)}
                     className="flex items-center gap-1 text-xs font-medium text-muted hover:text-primary-600 px-2 py-1 rounded-lg">
                     {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    {open ? 'Yig\'ish' : 'Ochish'}
+                    {/* «YOYISH», «Ochish» EMAS.
+
+                        Navbat qatorlarining har birida «Ochish» tugmasi bor
+                        (bemor kartasini ochadi). Tasma yopiq turganda shu
+                        yerda ham «Ochish» chiqib, bitta ekranda ikki xil ish
+                        qiladigan bir xil nomli tugmalar paydo bo'lardi — va
+                        yuqoridagisi birinchi turgani uchun aynan u
+                        bosilardi. E2E sinovi buni darhol ko'rsatdi.
+
+                        «Yig'ish» ning juftligi ham shu: yig'ish ↔ yoyish. */}
+                    {open ? 'Yig\'ish' : 'Yoyish'}
                 </button>
             </div>
 

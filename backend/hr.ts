@@ -33,6 +33,7 @@
 import type express from 'express';
 import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
+import { computePayroll } from './payroll';
 
 type Deps = {
     prisma: any;
@@ -115,6 +116,56 @@ export function currentWeekBounds(today = tashkentDateStr()): { from: string; to
     const mon = new Date(d.getTime() - (dow - 1) * 864e5);
     const sun = new Date(mon.getTime() + 6 * 864e5);
     return { from: mon.toISOString().slice(0, 10), to: sun.toISOString().slice(0, 10) };
+}
+
+/* ─── SHIFOKORNING BIR OYLIK ULUSHI ───────────────────────────────────────────
+
+   `computePayroll` bir DAVR uchun hamma shifokorni hisoblaydi; bu yerda
+   undan bittasi olinadi. Hisob nusxalanmaydi — foiz tanlash tartibi
+   (`pickRate`) bir marta nusxalangan edi va ikki ekran bitta shifokor
+   uchun boshqa-boshqa foiz ko'rsatishi mumkin bo'lgan.
+
+   ESKI VEDOMOST AYRILADI. Vedomost ish oqimidan chiqdi, lekin u ishlab
+   turgan klinikalarda QOLDI va u orqali pul allaqachon to'langan
+   bo'lishi mumkin. Shu oy bilan kesishgan vedomostlarda to'langan summa
+   ayriladi va ekranda ALOHIDA qator bo'lib ko'rinadi — jimgina emas:
+   «nega raqam kichik?» degan savol javobsiz qolmasin. */
+export async function doctorMonthShare(
+    prisma: any, clinicId: string, role: StaffRole, staff: any, from: string, to: string,
+): Promise<null | {
+    accrued: number; paidViaRuns: number; payable: number;
+    items: any[]; runs: any[];
+}> {
+    if (role !== 'DOCTOR') return null;
+
+    const { lines } = await computePayroll(prisma, clinicId, from, to);
+    const mine = lines.find((l: any) => l.doctorId === staff.id);
+    const accrued = som(mine?.accrued || 0);
+
+    const runLines = await prisma.payrollLine.findMany({
+        where: {
+            doctorId: staff.id,
+            run: { clinicId, periodFrom: { lte: to }, periodTo: { gte: from } },
+        },
+        include: { run: { select: { id: true, periodFrom: true, periodTo: true, status: true } } },
+    });
+    const paidViaRuns = som(runLines.reduce((s: number, l: any) => s + (l.paid || 0), 0));
+
+    return {
+        accrued,
+        paidViaRuns,
+        /* Manfiyga tushmaydi: vedomost orqali hisoblangandan ko'proq
+           to'langan bo'lsa, shifokordan pul talab qilish tizimning ishi
+           emas. Raqam ko'rinib turadi. */
+        payable: Math.max(0, som(accrued - paidViaRuns)),
+        items: mine?.items || [],
+        runs: runLines
+            .filter((l: any) => l.paid > 0)
+            .map((l: any) => ({
+                runId: l.run.id, periodFrom: l.run.periodFrom, periodTo: l.run.periodTo,
+                status: l.run.status, paid: som(l.paid),
+            })),
+    };
 }
 
 export function registerHrRoutes(app: express.Express, deps: Deps) {
@@ -376,34 +427,24 @@ export function registerHrRoutes(app: express.Express, deps: Deps) {
         const penalty = som(adjustments.filter((a: any) => a.type === 'Penalty')
             .reduce((s: number, a: any) => s + a.amount, 0));
 
-        /* SHIFOKORDA ASOSIY OYLIK NOL — u vedomostdan to'lanadi.
-           Fayl boshidagi izohga qarang: `computePayroll` fix maoshni
-           allaqachon hisoblaydi va bu yerda ikkinchi marta to'lash
-           bitta pulni ikki marta berish bo'lardi. */
-        const base = role === 'DOCTOR' ? 0 : som(Number(staff.fixedSalary) || 0);
+        const monthShare = await doctorMonthShare(prisma, clinicId, role, staff, from, to);
 
-        /* Shifokorning shu oydagi ulushi — MA'LUMOT uchun. Vedomost
-           davri ixtiyoriy bo'lishi mumkin, shuning uchun oy bilan
-           KESISHGAN vedomostlar olinadi va bu ekranda shundayligicha
-           ko'rsatiladi: bu yerda hech narsa qayta hisoblanmaydi. */
-        let share: { accrued: number; paid: number; runs: any[] } | null = null;
-        if (role === 'DOCTOR') {
-            const lines = await prisma.payrollLine.findMany({
-                where: {
-                    doctorId: staff.id,
-                    run: { clinicId, periodFrom: { lte: to }, periodTo: { gte: from } },
-                },
-                include: { run: { select: { id: true, periodFrom: true, periodTo: true, status: true } } },
-            });
-            share = {
-                accrued: som(lines.reduce((s: number, l: any) => s + (l.accrued || 0), 0)),
-                paid: som(lines.reduce((s: number, l: any) => s + (l.paid || 0), 0)),
-                runs: lines.map((l: any) => ({
-                    runId: l.run.id, periodFrom: l.run.periodFrom, periodTo: l.run.periodTo,
-                    status: l.run.status, accrued: som(l.accrued), paid: som(l.paid),
-                })),
-            };
-        }
+        /* SHIFOKORDA «ASOSIY» — SHU OYNING ULUSHI.
+
+           Ilgari bu yerda nol turardi va pul faqat VEDOMOST orqali
+           chiqardi. Vedomost esa davr uchun hujjat: uni qo'lda yaratish,
+           tasdiqlash va qatorma-qator to'lash kerak edi — ya'ni oddiy
+           «shu odamga shu oy uchun to'lash» amali uch qadamga bo'lingan
+           va boshqa ekranda turardi.
+
+           Endi hisob shu yerda: oy tanlanadi, ulush hisoblanadi, ustiga
+           bonus qo'shilib jarima ayriladi. Vedomost bekor qilinmadi —
+           u ARXIV bo'lib qoldi, va eski vedomost orqali allaqachon
+           to'langan summa quyida AYRILADI: bitta pul ikki marta
+           berilmasin. */
+        const base = role === 'DOCTOR'
+            ? monthShare!.payable
+            : som(Number(staff.fixedSalary) || 0);
 
         const due = som(base + bonus - penalty);
         const counts = { present: 0, absent: 0, excused: 0, late: 0 };
@@ -433,8 +474,80 @@ export function registerHrRoutes(app: express.Express, deps: Deps) {
                 method: payment.method, paidByName: payment.paidByName,
                 base: som(payment.base), bonus: som(payment.bonus), penalty: som(payment.penalty),
             } : null,
-            share,
+            share: monthShare,
             attendance: counts,
+        });
+    });
+
+    /* ═══ 3b. OYLIK ULUSH JADVALI — HAMMA SHIFOKOR ═══════════════════════════
+
+       «Bu oy kimga qancha tegadi?» — bitta ekranda, bitta oy uchun.
+
+       Ilgari bunga javob VEDOMOST edi: davr tanlanadi, hujjat yaratiladi,
+       tasdiqlanadi, keyin qatorma-qator to'lanadi. To'rt qadam, va
+       ularning uchtasi buxgalteriya marosimi. Endi jadval o'zi javob
+       beradi, to'lash esa bir bosish. Vedomost arxiv bo'lib qoladi. */
+    route('get', '/api/hr/shares', async (req, res, clinicId) => {
+        const period = normalizePeriod(req.query.period);
+        const { from, to } = monthBounds(period);
+
+        const [doctors, payments] = await Promise.all([
+            prisma.doctor.findMany({
+                where: { clinicId, status: 'Active' },
+                select: { id: true, firstName: true, lastName: true, specialty: true },
+                orderBy: { lastName: 'asc' },
+            }),
+            prisma.staffSalaryPayment.findMany({
+                where: { clinicId, staffRole: 'DOCTOR', period },
+            }),
+        ]);
+
+        /* Hisob BIR MARTA — har shifokor uchun alohida so'rov yuborilsa,
+           o'nta shifokorda o'nta to'liq o'tish bo'lardi. */
+        const { lines, stats } = await computePayroll(prisma, clinicId, from, to);
+        const runLines = await prisma.payrollLine.findMany({
+            where: { run: { clinicId, periodFrom: { lte: to }, periodTo: { gte: from } } },
+            select: { doctorId: true, paid: true },
+        });
+
+        const paidByRun = new Map<string, number>();
+        for (const l of runLines) {
+            if (!l.doctorId) continue;
+            paidByRun.set(l.doctorId, som((paidByRun.get(l.doctorId) || 0) + (l.paid || 0)));
+        }
+
+        const rows = doctors.map((d: any) => {
+            const line = lines.find((l: any) => l.doctorId === d.id);
+            const accrued = som(line?.accrued || 0);
+            const viaRuns = som(paidByRun.get(d.id) || 0);
+            const payment = payments.find((p: any) => p.staffId === d.id);
+            return {
+                id: d.id,
+                name: `${d.lastName} ${d.firstName}`.trim(),
+                specialty: d.specialty || null,
+                accrued,
+                /* Eski vedomost orqali to'langani — ko'rinib turadi,
+                   jimgina ayrilmaydi. */
+                paidViaRuns: viaRuns,
+                paid: payment ? som(payment.amount) : 0,
+                paidAt: payment?.paidAt || null,
+                payable: payment ? 0 : Math.max(0, som(accrued - viaRuns)),
+                closed: !!payment,
+                itemCount: (line?.items || []).length,
+            };
+        });
+
+        res.json({
+            period, from, to,
+            rows,
+            totals: {
+                accrued: som(rows.reduce((s: number, r: any) => s + r.accrued, 0)),
+                paid: som(rows.reduce((s: number, r: any) => s + r.paid + r.paidViaRuns, 0)),
+                payable: som(rows.reduce((s: number, r: any) => s + r.payable, 0)),
+            },
+            /* Nega bo'sh — sabab bilan. Ilgari ekran «ulush yo'q» deb
+               turardi va foydalanuvchi sababini o'zi topishi kerak edi. */
+            stats,
         });
     });
 
@@ -513,13 +626,19 @@ export function registerHrRoutes(app: express.Express, deps: Deps) {
             .reduce((s: number, a: any) => s + a.amount, 0));
         const penalty = som(adjustments.filter((a: any) => a.type === 'Penalty')
             .reduce((s: number, a: any) => s + a.amount, 0));
-        const base = role === 'DOCTOR' ? 0 : som(Number(staff.fixedSalary) || 0);
+        /* Summa SHU YERDA qayta hisoblanadi — brauzerdan kelgan raqam
+           umuman o'qilmaydi. */
+        const { from, to } = monthBounds(period);
+        const share = await doctorMonthShare(prisma, clinicId, role, staff, from, to);
+        const base = role === 'DOCTOR'
+            ? (share?.payable || 0)
+            : som(Number(staff.fixedSalary) || 0);
         const amount = som(base + bonus - penalty);
 
         if (!(amount > 0)) {
             return res.status(400).json({
                 error: role === 'DOCTOR'
-                    ? "Shifokorning asosiy oyligi va ulushi VEDOMOST orqali to'lanadi. Bu yerdan faqat bonus to'lanadi."
+                    ? `${period} oyida to'lanadigan ulush yo'q: hisoblangan ${share?.accrued || 0}, allaqachon to'langan ${share?.paidViaRuns || 0}`
                     : "To'lanadigan summa yo'q",
             });
         }
@@ -528,7 +647,7 @@ export function registerHrRoutes(app: express.Express, deps: Deps) {
         const user = (req as any).user;
         const name = fullName(staff);
         const title = role === 'DOCTOR'
-            ? `${name} — bonus (${period})`
+            ? `${name} — ulush (${period})`
             : `${name} — oylik (${period})`;
 
         const result = await prisma.$transaction(async (tx: any) => {
@@ -537,7 +656,12 @@ export function registerHrRoutes(app: express.Express, deps: Deps) {
                     clinicId,
                     date: tashkentDateStr(),
                     amount,
-                    category: 'Salary',
+                    /* Shifokor ulushi ALOHIDA kategoriya: hisobotda u
+                       oddiy oylikdan ajratib ko'rsatiladi
+                       (`reports.ts` dagi `doctorShare`). Vedomost ham
+                       aynan shu kategoriyani yozardi — hisobot uzilib
+                       qolmasin. */
+                    category: role === 'DOCTOR' ? 'DoctorShare' : 'Salary',
                     title,
                     method,
                     doctorId: role === 'DOCTOR' ? staff.id : null,

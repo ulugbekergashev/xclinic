@@ -69,6 +69,205 @@ export function pickRate(
     return { percent: fallback, basis: 'shifokor foizi' };
 }
 
+/* ─── ULUSH HISOBI — YAGONA NUSXA ────────────────────────────────────────
+
+   Ilgari bu funksiya `registerPayrollRoutes` ICHIDA yashirin turardi va
+   faqat vedomost undan foydalanardi. Endi xodim kartasi ham shu hisobni
+   so'raydi: shifokor o'z oyligini kartadan to'laydi, vedomost esa ish
+   oqimidan chiqdi.
+
+   NUSXA KO'CHIRILMAYDI. Foiz tanlash tartibi (`pickRate`) bir marta
+   nusxalangan edi va ikki ekran bitta shifokor uchun boshqa-boshqa foiz
+   ko'rsatishi mumkin bo'lgan — o'sha xato takrorlanmasin.
+   ───────────────────────────────────────────────────────────────────────── */
+export async function computePayroll(prisma: any, clinicId: string, from: string, to: string) {
+    const { start, end } = tashkentRangeBounds(from, to);
+
+    const [payments, doctors, rates] = await Promise.all([
+        prisma.chargePayment.findMany({
+            where: { clinicId, createdAt: { gte: start, lte: end } },
+            include: {
+                charge: {
+                    select: {
+                        doctorId: true, doctorName: true, serviceId: true,
+                        name: true, source: true, status: true,
+                        visit: { select: { departmentId: true } },
+                    },
+                },
+            },
+        }),
+        prisma.doctor.findMany({
+            where: { clinicId },
+            select: {
+                id: true, firstName: true, lastName: true, percentage: true,
+                departmentId: true, status: true,
+                // Fix maosh (0033 dan keyin vedomost buni O'QIYDI)
+                salaryType: true, fixedSalary: true,
+            },
+        }),
+        prisma.doctorServiceRate.findMany({ where: { clinicId } }),
+    ]);
+
+    const byDoctor = new Map<string, any>();
+
+    /* NEGA BO'SH — shu yerda sanaladi.
+       Ilgari tashlab ketilgan qatorlar jimgina yo'qolardi va ekranda
+       faqat «bu davrda ulush yo'q» degan umumiy gap qolardi. Klinika
+       egasi uchun bu ikki xil holatni ajratmaydi: davrda umuman
+       to'lov bo'lmaganmi, yoki to'lov bor-u shifokori ko'rsatilmaganmi.
+       Ikkinchisi — pul biror kishiga tegishli emasligi, ya'ni
+       tuzatilishi kerak bo'lgan xato. */
+    let skippedNoDoctor = 0;
+    let skippedNoDoctorSum = 0;
+    let skippedCancelled = 0;
+
+    for (const p of payments) {
+        const c = p.charge;
+        if (c?.status === 'Cancelled') { skippedCancelled++; continue; }
+        // Shifokori ko'rsatilmagan qator (masalan avans) ulushga kirmaydi
+        if (!c?.doctorId) {
+            skippedNoDoctor++;
+            skippedNoDoctorSum = round(skippedNoDoctorSum + (p.amount || 0));
+            continue;
+        }
+
+        const doc = doctors.find((d: any) => d.id === c.doctorId);
+        if (!byDoctor.has(c.doctorId)) {
+            byDoctor.set(c.doctorId, {
+                doctorId: c.doctorId,
+                staffName: doc ? `${doc.lastName} ${doc.firstName}` : (c.doctorName || 'Belgilanmagan'),
+                paidBase: 0, accrued: 0, refunded: 0,
+                items: [] as any[],
+            });
+        }
+        const g = byDoctor.get(c.doctorId);
+        const amount = round(p.amount || 0);   // qaytarish manfiy
+        const { percent, basis } = pickRate(
+            rates, c.doctorId, c.serviceId ?? null,
+            c.visit?.departmentId || doc?.departmentId || null,
+            doc?.percentage ?? 0,
+        );
+        const share = round(amount * (percent / 100));
+
+        g.paidBase = round(g.paidBase + amount);
+        g.accrued = round(g.accrued + share);
+        if (amount < 0) g.refunded = round(g.refunded + Math.abs(amount));
+        g.items.push({
+            name: c.name, paid: amount, percent, basis, share,
+            source: c.source, kind: p.kind,
+        });
+    }
+
+    /* ─── FIX MAOSH ───────────────────────────────────────
+
+       `salaryType` va `fixedSalary` shifokor formasida ANCHADAN BERI
+       tahrirlanardi, lekin hech qayerda O'QILMASDI: fix maoshli
+       shifokor vedomostda faqat foizini ko'rardi va oylikni kassir
+       qo'lda «Boshqa xarajat» bilan yozardi.
+
+       Qoidalar:
+         fixed      — faqat qat'iy summa, foiz yo'q;
+         fixed_kpi  — qat'iy summa + foiz;
+         kpi, none  — faqat foiz (bugungi xatti-harakat).
+
+       `none` ATAYLAB foiz bo'lib qoladi: u standart qiymat va uni
+       «hech narsa» deb talqin qilish ishlab turgan klinikalarning
+       vedomostini birdan nolga tushirardi.
+
+       Davr bir oydan qisqa yoki uzun bo'lishi mumkin, shuning uchun
+       qat'iy summa KUNLAR bo'yicha taqsimlanadi: davr har bir
+       kalendar oyi bilan kesishgan kunlar / o'sha oydagi kunlar
+       soni. To'liq oy uchun bu aynan 1 beradi. */
+    const monthlyFraction = (fromDay: string, toDay: string): number => {
+        const a = new Date(`${fromDay}T00:00:00Z`);
+        const b = new Date(`${toDay}T00:00:00Z`);
+        if (isNaN(a.getTime()) || isNaN(b.getTime()) || b < a) return 0;
+        let total = 0;
+        let y = a.getUTCFullYear(), m = a.getUTCMonth();
+        while (y < b.getUTCFullYear() || (y === b.getUTCFullYear() && m <= b.getUTCMonth())) {
+            const monthStart = Date.UTC(y, m, 1);
+            const monthEnd = Date.UTC(y, m + 1, 0);
+            const days = new Date(monthEnd).getUTCDate();
+            const s = Math.max(monthStart, a.getTime());
+            const e = Math.min(monthEnd, b.getTime());
+            if (e >= s) total += ((e - s) / 864e5 + 1) / days;
+            m++; if (m > 11) { m = 0; y++; }
+        }
+        return total;
+    };
+    /* Davr oxiri BUGUNGI kundan narida bo'lolmaydi.
+
+       Aks holda kelasi oyga vedomost ochilsa, fix maoshli shifokorga
+       hali ishlanmagan oy uchun pul hisoblanardi — brauzer sinovi
+       aynan shuni topdi (kelasi yil tanlanganda ekran «bu davrda
+       ulush yo'q» deyish o'rniga ikkita fix qator ko'rsatib turardi).
+
+       To'lov ulushi bunday muammoga duch kelmaydi: to'lov o'tmishda
+       bo'ladi, kelajakdagi davrda esa yo'q. */
+    const todayStr = tashkentDateStr();
+    const fraction = to < todayStr ? monthlyFraction(from, to)
+        : from > todayStr ? 0
+            : monthlyFraction(from, todayStr);
+
+    for (const doc of doctors) {
+        const type = String(doc.salaryType || 'none');
+        const fixedMonthly = Number(doc.fixedSalary) || 0;
+        if (!(type === 'fixed' || type === 'fixed_kpi') || fixedMonthly <= 0) continue;
+        // Ishdan ketgan xodimga oylik hisoblanmaydi
+        if (doc.status && doc.status !== 'Active') continue;
+
+        const part = round(fixedMonthly * fraction);
+
+        /* Davr hali boshlanmagan bo'lsa (`fraction` nol) va bu
+           shifokorda to'lov ham bo'lmasa — QATOR OCHILMAYDI. Aks
+           holda kelasi oyning vedomosti nol summali qatorlar bilan
+           to'lib ketardi va ekran «bu davrda ulush yo'q» deyish
+           o'rniga bo'sh ro'yxat ko'rsatardi. */
+        if (part <= 0 && !byDoctor.has(doc.id)) continue;
+
+        if (!byDoctor.has(doc.id)) {
+            byDoctor.set(doc.id, {
+                doctorId: doc.id,
+                staffName: `${doc.lastName} ${doc.firstName}`,
+                paidBase: 0, accrued: 0, refunded: 0, fixed: 0,
+                items: [] as any[],
+            });
+        }
+        const g = byDoctor.get(doc.id);
+
+        /* `fixed` da foiz TO'LANMAYDI — shu paytgacha yig'ilgan
+           ulushni bekor qilamiz, lekin qatorlar ko'rinib turadi:
+           «nega hisobda yo'q» degan savolga javob kerak. */
+        if (type === 'fixed') g.accrued = 0;
+
+        if (part > 0) {
+            g.fixed = round((g.fixed || 0) + part);
+            g.accrued = round(g.accrued + part);
+            g.items.push({
+                name: `Fix maosh (${Math.round(fraction * 100)}% davr)`,
+                paid: 0, percent: 0, basis: 'fix maosh', share: part,
+                source: 'Salary', kind: 'Fixed',
+            });
+        }
+    }
+
+    /* Manfiyga tushib ketgan ulush nolga tenglashtiriladi: qaytarish
+       o'tgan oyning to'lovidan ko'p bo'lsa, shifokordan pul talab
+       qilish — bu tizimning ishi emas. Raqam ko'rinib turadi. */
+    const lines = Array.from(byDoctor.values())
+        .map((g: any) => ({ ...g, fixed: g.fixed || 0, accrued: Math.max(0, g.accrued) }))
+        .sort((a, b) => b.accrued - a.accrued);
+
+    return {
+        lines,
+        stats: {
+            /** Davr oynasiga tushgan to'lov yozuvlari — hammasi. */
+            payments: payments.length,
+            skippedNoDoctor, skippedNoDoctorSum, skippedCancelled,
+        },
+    };
+}
+
 export function registerPayrollRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId } = deps;
 
@@ -197,199 +396,13 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
      * (`COALESCE(paidAt, createdAt)`), shuning uchun o'tgan davrlar ham
      * to'g'ri chiqadi.
      */
-    async function computePayroll(clinicId: string, from: string, to: string) {
-        const { start, end } = tashkentRangeBounds(from, to);
-
-        const [payments, doctors, rates] = await Promise.all([
-            prisma.chargePayment.findMany({
-                where: { clinicId, createdAt: { gte: start, lte: end } },
-                include: {
-                    charge: {
-                        select: {
-                            doctorId: true, doctorName: true, serviceId: true,
-                            name: true, source: true, status: true,
-                            visit: { select: { departmentId: true } },
-                        },
-                    },
-                },
-            }),
-            prisma.doctor.findMany({
-                where: { clinicId },
-                select: {
-                    id: true, firstName: true, lastName: true, percentage: true,
-                    departmentId: true, status: true,
-                    // Fix maosh (0033 dan keyin vedomost buni O'QIYDI)
-                    salaryType: true, fixedSalary: true,
-                },
-            }),
-            prisma.doctorServiceRate.findMany({ where: { clinicId } }),
-        ]);
-
-        const byDoctor = new Map<string, any>();
-
-        /* NEGA BO'SH — shu yerda sanaladi.
-           Ilgari tashlab ketilgan qatorlar jimgina yo'qolardi va ekranda
-           faqat «bu davrda ulush yo'q» degan umumiy gap qolardi. Klinika
-           egasi uchun bu ikki xil holatni ajratmaydi: davrda umuman
-           to'lov bo'lmaganmi, yoki to'lov bor-u shifokori ko'rsatilmaganmi.
-           Ikkinchisi — pul biror kishiga tegishli emasligi, ya'ni
-           tuzatilishi kerak bo'lgan xato. */
-        let skippedNoDoctor = 0;
-        let skippedNoDoctorSum = 0;
-        let skippedCancelled = 0;
-
-        for (const p of payments) {
-            const c = p.charge;
-            if (c?.status === 'Cancelled') { skippedCancelled++; continue; }
-            // Shifokori ko'rsatilmagan qator (masalan avans) ulushga kirmaydi
-            if (!c?.doctorId) {
-                skippedNoDoctor++;
-                skippedNoDoctorSum = round(skippedNoDoctorSum + (p.amount || 0));
-                continue;
-            }
-
-            const doc = doctors.find((d: any) => d.id === c.doctorId);
-            if (!byDoctor.has(c.doctorId)) {
-                byDoctor.set(c.doctorId, {
-                    doctorId: c.doctorId,
-                    staffName: doc ? `${doc.lastName} ${doc.firstName}` : (c.doctorName || 'Belgilanmagan'),
-                    paidBase: 0, accrued: 0, refunded: 0,
-                    items: [] as any[],
-                });
-            }
-            const g = byDoctor.get(c.doctorId);
-            const amount = round(p.amount || 0);   // qaytarish manfiy
-            const { percent, basis } = pickRate(
-                rates, c.doctorId, c.serviceId ?? null,
-                c.visit?.departmentId || doc?.departmentId || null,
-                doc?.percentage ?? 0,
-            );
-            const share = round(amount * (percent / 100));
-
-            g.paidBase = round(g.paidBase + amount);
-            g.accrued = round(g.accrued + share);
-            if (amount < 0) g.refunded = round(g.refunded + Math.abs(amount));
-            g.items.push({
-                name: c.name, paid: amount, percent, basis, share,
-                source: c.source, kind: p.kind,
-            });
-        }
-
-        /* ─── FIX MAOSH ───────────────────────────────────────
-
-           `salaryType` va `fixedSalary` shifokor formasida ANCHADAN BERI
-           tahrirlanardi, lekin hech qayerda O'QILMASDI: fix maoshli
-           shifokor vedomostda faqat foizini ko'rardi va oylikni kassir
-           qo'lda «Boshqa xarajat» bilan yozardi.
-
-           Qoidalar:
-             fixed      — faqat qat'iy summa, foiz yo'q;
-             fixed_kpi  — qat'iy summa + foiz;
-             kpi, none  — faqat foiz (bugungi xatti-harakat).
-
-           `none` ATAYLAB foiz bo'lib qoladi: u standart qiymat va uni
-           «hech narsa» deb talqin qilish ishlab turgan klinikalarning
-           vedomostini birdan nolga tushirardi.
-
-           Davr bir oydan qisqa yoki uzun bo'lishi mumkin, shuning uchun
-           qat'iy summa KUNLAR bo'yicha taqsimlanadi: davr har bir
-           kalendar oyi bilan kesishgan kunlar / o'sha oydagi kunlar
-           soni. To'liq oy uchun bu aynan 1 beradi. */
-        const monthlyFraction = (fromDay: string, toDay: string): number => {
-            const a = new Date(`${fromDay}T00:00:00Z`);
-            const b = new Date(`${toDay}T00:00:00Z`);
-            if (isNaN(a.getTime()) || isNaN(b.getTime()) || b < a) return 0;
-            let total = 0;
-            let y = a.getUTCFullYear(), m = a.getUTCMonth();
-            while (y < b.getUTCFullYear() || (y === b.getUTCFullYear() && m <= b.getUTCMonth())) {
-                const monthStart = Date.UTC(y, m, 1);
-                const monthEnd = Date.UTC(y, m + 1, 0);
-                const days = new Date(monthEnd).getUTCDate();
-                const s = Math.max(monthStart, a.getTime());
-                const e = Math.min(monthEnd, b.getTime());
-                if (e >= s) total += ((e - s) / 864e5 + 1) / days;
-                m++; if (m > 11) { m = 0; y++; }
-            }
-            return total;
-        };
-        /* Davr oxiri BUGUNGI kundan narida bo'lolmaydi.
-
-           Aks holda kelasi oyga vedomost ochilsa, fix maoshli shifokorga
-           hali ishlanmagan oy uchun pul hisoblanardi — brauzer sinovi
-           aynan shuni topdi (kelasi yil tanlanganda ekran «bu davrda
-           ulush yo'q» deyish o'rniga ikkita fix qator ko'rsatib turardi).
-
-           To'lov ulushi bunday muammoga duch kelmaydi: to'lov o'tmishda
-           bo'ladi, kelajakdagi davrda esa yo'q. */
-        const todayStr = tashkentDateStr();
-        const fraction = to < todayStr ? monthlyFraction(from, to)
-            : from > todayStr ? 0
-                : monthlyFraction(from, todayStr);
-
-        for (const doc of doctors) {
-            const type = String(doc.salaryType || 'none');
-            const fixedMonthly = Number(doc.fixedSalary) || 0;
-            if (!(type === 'fixed' || type === 'fixed_kpi') || fixedMonthly <= 0) continue;
-            // Ishdan ketgan xodimga oylik hisoblanmaydi
-            if (doc.status && doc.status !== 'Active') continue;
-
-            const part = round(fixedMonthly * fraction);
-
-            /* Davr hali boshlanmagan bo'lsa (`fraction` nol) va bu
-               shifokorda to'lov ham bo'lmasa — QATOR OCHILMAYDI. Aks
-               holda kelasi oyning vedomosti nol summali qatorlar bilan
-               to'lib ketardi va ekran «bu davrda ulush yo'q» deyish
-               o'rniga bo'sh ro'yxat ko'rsatardi. */
-            if (part <= 0 && !byDoctor.has(doc.id)) continue;
-
-            if (!byDoctor.has(doc.id)) {
-                byDoctor.set(doc.id, {
-                    doctorId: doc.id,
-                    staffName: `${doc.lastName} ${doc.firstName}`,
-                    paidBase: 0, accrued: 0, refunded: 0, fixed: 0,
-                    items: [] as any[],
-                });
-            }
-            const g = byDoctor.get(doc.id);
-
-            /* `fixed` da foiz TO'LANMAYDI — shu paytgacha yig'ilgan
-               ulushni bekor qilamiz, lekin qatorlar ko'rinib turadi:
-               «nega hisobda yo'q» degan savolga javob kerak. */
-            if (type === 'fixed') g.accrued = 0;
-
-            if (part > 0) {
-                g.fixed = round((g.fixed || 0) + part);
-                g.accrued = round(g.accrued + part);
-                g.items.push({
-                    name: `Fix maosh (${Math.round(fraction * 100)}% davr)`,
-                    paid: 0, percent: 0, basis: 'fix maosh', share: part,
-                    source: 'Salary', kind: 'Fixed',
-                });
-            }
-        }
-
-        /* Manfiyga tushib ketgan ulush nolga tenglashtiriladi: qaytarish
-           o'tgan oyning to'lovidan ko'p bo'lsa, shifokordan pul talab
-           qilish — bu tizimning ishi emas. Raqam ko'rinib turadi. */
-        const lines = Array.from(byDoctor.values())
-            .map((g: any) => ({ ...g, fixed: g.fixed || 0, accrued: Math.max(0, g.accrued) }))
-            .sort((a, b) => b.accrued - a.accrued);
-
-        return {
-            lines,
-            stats: {
-                /** Davr oynasiga tushgan to'lov yozuvlari — hammasi. */
-                payments: payments.length,
-                skippedNoDoctor, skippedNoDoctorSum, skippedCancelled,
-            },
-        };
-    }
+    /* Hisob MODUL darajasiga chiqarildi — pastdagi izohga qarang. */
 
     /** Oldindan ko'rish: vedomost yaratmasdan raqamni ko'rish */
     route('get', '/api/payroll/preview', async (req, res, clinicId) => {
         const from = String(req.query.from || tashkentMonthStart());
         const to = String(req.query.to || tashkentDateStr());
-        const { lines, stats } = await computePayroll(clinicId, from, to);
+        const { lines, stats } = await computePayroll(prisma, clinicId, from, to);
 
         /* Davr bo'sh bo'lsa — OXIRGI to'lov qachon bo'lganini aytamiz.
            Busiz ekran «ulush yo'q» deb turadi va foydalanuvchi sababini
@@ -489,7 +502,7 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
             });
         }
 
-        const { lines } = await computePayroll(clinicId, from, to);
+        const { lines } = await computePayroll(prisma, clinicId, from, to);
         const user = (req as any).user;
 
         const run = await prisma.payrollRun.create({

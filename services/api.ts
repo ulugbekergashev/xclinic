@@ -3698,6 +3698,17 @@ export const api = {
             if (isDemoMode()) return demoRead<any>(demoHrWorkload());
             return fetchJson<any>('/hr/workload');
         },
+        /* Oylik ulush jadvali — «Ulush» vkladkasi. Vedomost o'rniga:
+           oy tanlanadi, jadval chiqadi, to'lash bir bosish. */
+        shares: (period: string) => {
+            if (isDemoMode()) {
+                return demoRead<any>({
+                    period, rows: [], totals: { accrued: 0, paid: 0, payable: 0 },
+                    stats: { payments: 0, skippedNoDoctor: 0, skippedNoDoctorSum: 0, skippedCancelled: 0 },
+                });
+            }
+            return fetchJson<any>(`/hr/shares?period=${period}`);
+        },
         month: (role: string, id: string, period: string) => {
             if (isDemoMode()) return demoRead<any>(demoHrMonth(role, id, period));
             return fetchJson<any>(`/hr/staff/${role}/${id}/month?period=${period}`);

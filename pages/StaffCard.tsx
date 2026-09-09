@@ -561,15 +561,30 @@ export const StaffCard: React.FC<Props> = ({
                                                         {periodLabel(period)} — Hisob
                                                     </p>
                                                     <div className="flex items-center justify-between text-sm">
-                                                        <span className="text-muted">Asosiy</span>
+                                                        <span className="text-muted">
+                                                            {isDoctor ? 'Ulush va oylik' : 'Asosiy'}
+                                                        </span>
                                                         <span className="tabular-nums text-ink">
                                                             {formatMoney(month.base)}
                                                         </span>
                                                     </div>
-                                                    {isDoctor && (
-                                                        <p className="text-[11px] text-faint -mt-1">
-                                                            Asosiy oylik va ulush vedomostda hisoblanadi.
-                                                        </p>
+                                                    {/* Shifokorda «asosiy» — SHU OYNING ulushi: kassaga
+                                                        tushgan pulning foizi, ustiga fix maosh (agar
+                                                        bo'lsa). Hisoblangan va allaqachon to'langan
+                                                        summa ALOHIDA ko'rsatiladi — «nega raqam
+                                                        kichik?» degan savol javobsiz qolmasin. */}
+                                                    {isDoctor && month.share && (
+                                                        <div className="-mt-1 space-y-1">
+                                                            <p className="text-[11px] text-faint">
+                                                                Hisoblangan {formatMoney(month.share.accrued)}
+                                                                {month.share.itemsCount ? ` · ${month.share.itemsCount} xizmat` : ''}
+                                                            </p>
+                                                            {month.share.paidViaRuns > 0 && (
+                                                                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                                                                    Eski vedomost orqali to'langan −{formatMoney(month.share.paidViaRuns)}
+                                                                </p>
+                                                            )}
+                                                        </div>
                                                     )}
                                                     <div className="flex items-center justify-between text-sm">
                                                         <span className="text-emerald-600 dark:text-emerald-400">
