@@ -666,7 +666,22 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             && c.visit.date === today
             && !['Completed', 'Cancelled'].includes(String(c.visit.status));
 
-        const rows = onlyNow ? charges.filter(isHere) : charges;
+        /* "To'lov kutmoqda" — QABUL YOPILGAN, LEKIN PUL OLINMAGAN.
+
+           Ilgari bunday bemor `now=1` ro'yxatidan DARHOL tushib qolardi:
+           shifokor «Yakunlash» ni bosishi bilan u kassaning ekranidan
+           yo'qolib, butun klinikaning qarzdorlari orasiga tushardi — o'tgan
+           yilgilar bilan bir qatorga. Kassir esa hech qanday signal
+           olmasdi va odam shunchaki chiqib ketardi.
+
+           Aslida bu eng oson qaytariladigan pul: bemor hali binoda,
+           kassaning oldidan o'tadi. Shuning uchun u kun oxirigacha
+           ro'yxatda qoladi, faqat alohida guruhda. */
+        const isWaiting = (c: any) => !!c.visit
+            && c.visit.date === today
+            && String(c.visit.status) === 'Completed';
+
+        const rows = onlyNow ? charges.filter((c: any) => isHere(c) || isWaiting(c)) : charges;
 
         // Bemor bo'yicha yig'amiz — kassir "kim qancha qarz" ni bir qarashda ko'rsin
         const byPatient = new Map<string, any>();
@@ -677,25 +692,39 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
                     patientId: c.patientId, patientName: c.patientName,
                     due: 0, items: [] as any[],
                     // Kassir uchun: navbat raqami va bo'lim — bemorni tanish uchun
-                    here: false, queueNumber: null as number | null,
+                    here: false, waiting: false, queueNumber: null as number | null,
                     department: null as string | null, visitId: null as string | null,
                 });
             }
             const g = byPatient.get(key);
             g.due = round(g.due + (c.total - (c.paidAmount || 0)));
             g.items.push(c);
-            if (isHere(c)) {
-                g.here = true;
+            if (isHere(c) || isWaiting(c)) {
+                if (isHere(c)) g.here = true; else g.waiting = true;
                 g.queueNumber = g.queueNumber ?? c.visit.queueNumber;
                 g.visitId = g.visitId || c.visit.id;
                 g.department = g.department || c.visit.departmentId;
             }
         }
 
-        /* Tartib: HOZIR turganlar tepada, keyin summa bo'yicha. Kassir
-           ro'yxatning boshiga qaraydi va o'sha yerda oynadagi odamni ko'radi. */
-        res.json(Array.from(byPatient.values()).sort((a, b) => {
-            if (a.here !== b.here) return a.here ? -1 : 1;
+        /* `state` — EKRAN UCHUN BITTA SO'Z.
+
+           Interfeys `here` va `waiting` bayroqlarini o'zi birlashtirishi
+           mumkin edi, lekin u holda qoida ikki joyda yozilardi (kassa va
+           «Bugun»), va uchinchi ekran qo'shilganda uchinchi nusxa paydo
+           bo'lardi. Bemor ikkala holatda ham bo'lishi mumkin (ikkita
+           qabul), shunda ustunlik ochiq qabulda: u hali shu yerda. */
+        const withState = Array.from(byPatient.values()).map(g => ({
+            ...g,
+            state: g.here ? 'here' : g.waiting ? 'waiting' : 'old',
+        }));
+
+        /* Tartib: HOZIR turganlar tepada, keyin to'lov kutayotganlar, keyin
+           qolgani — har guruh ichida summa bo'yicha. Kassir ro'yxatning
+           boshiga qaraydi va o'sha yerda oynadagi odamni ko'radi. */
+        const rank = (g: any) => (g.state === 'here' ? 0 : g.state === 'waiting' ? 1 : 2);
+        res.json(withState.sort((a, b) => {
+            if (rank(a) !== rank(b)) return rank(a) - rank(b);
             return b.due - a.due;
         }));
     });

@@ -1159,6 +1159,19 @@ export interface PendingPatient {
   patientName: string;
   due: number;
   items: VisitCharge[];
+  /** Bemor pul bo'yicha qaysi bosqichda — serverdan keladi (`billing.ts`).
+   *
+   *  `here`    — qabuli ochiq, hozir klinikada;
+   *  `waiting` — qabul BUGUN yopildi, lekin pul olinmagan (hali binoda);
+   *  `old`     — o'tgan kunlarning qarzi.
+   *
+   *  Ekran bu qoidani O'ZI hisoblamaydi: aks holda kassada bir xil, «Bugun»
+   *  ekranida boshqacha bo'lib ketardi. */
+  state?: 'here' | 'waiting' | 'old';
+  /** `state === 'here'` bilan bir xil — eski chaqiruvchilar uchun qoldirilgan */
+  here?: boolean;
+  queueNumber?: number | null;
+  visitId?: string | null;
 }
 
 

@@ -56,9 +56,16 @@ test('bemor keldi → tashxis → UZI → qarz kassada → yakunlandi', async ({
     await expect(page.getByText(/to'lanmagan — bemorni kassaga/)).toBeVisible();
 
     // ── 5. O'SHA qarz kassada ham ko'rinadi ────────────────────────────
+    /* KUTISH UZAYTIRILDI, chunki kassa sahifasi ma'lumot hajmiga bog'liq:
+       oy oxirida u mingdan ortiq to'lov qatorini chizadi va «Hozir
+       klinikada» ro'yxati o'shandan keyin paydo bo'ladi.
+
+       Ilgari bu yerda 3500ms + standart 10s turardi va sinov bazada
+       ma'lumot ko'payganda yiqilardi — koddagi xatodan emas. Aynan shu
+       sababdan u bir necha kun «goh o'tadi, goh yiqiladi» bo'lib turdi
+       va yashil natijaga ishonib bo'lmasdi. */
     await go(page, '/finance');
-    await page.waitForTimeout(3500);
-    await expect(page.getByText(surname).first()).toBeVisible();
+    await expect(page.getByText(surname).first()).toBeVisible({ timeout: 30_000 });
 
     // ── 6. Qabulni yakunlash — qarz sababli ogohlantirish ──────────────
     await go(page, '/patients');
@@ -67,11 +74,12 @@ test('bemor keldi → tashxis → UZI → qarz kassada → yakunlandi', async ({
     await page.waitForTimeout(3000);
 
     await page.getByRole('button', { name: /Qabulni yakunlash/ }).click();
-    await page.waitForTimeout(1500);
 
     /* Server qarzni ko'rib 409 qaytaradi va sabab ro'yxati chiqadi —
-       TAQIQ EMAS, TANLOV. */
-    await expect(page.getByText(/to'liq emas|To'lanmagan/i).first()).toBeVisible();
+       TAQIQ EMAS, TANLOV. Oyna SERVER JAVOBIDAN keyin chiqadi, shuning
+       uchun qat'iy kutish emas — elementning o'zini kutamiz. */
+    await expect(page.getByText(/to'liq emas|To'lanmagan/i).first())
+        .toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: /Baribir yakunlash/ }).click();
     await page.waitForTimeout(3000);
 

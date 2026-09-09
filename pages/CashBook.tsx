@@ -1619,41 +1619,68 @@ export const CashBook: React.FC<CashBookProps> = ({
                     {/* ── Hozir klinikada: kim oynada turishi mumkin ────────
                         Kassir ro'yxatning boshiga qaraydi va oynadagi odamni
                         navbat raqami bo'yicha topadi. */}
-                    {hereNow.length > 0 && (
-                        <Card className="overflow-hidden">
-                            <div className="px-5 py-3 border-b border-line-soft flex items-center gap-2">
-                                <Users className="w-4 h-4 text-primary-500 shrink-0" />
-                                <h2 className="text-sm font-bold text-ink">{t('finance.cash.nowInClinic')}</h2>
-                                <span className="text-xs text-faint">({hereNow.length} ta to'lovsiz)</span>
-                                <span className="ml-auto text-sm font-black text-primary-600 dark:text-primary-400 tabular-nums">
-                                    {num(hereNow.reduce((s: number, g: any) => s + (g.due || 0), 0))} UZS
-                                </span>
-                            </div>
-                            <ul className="divide-y divide-line">
-                                {hereNow.map((g: any) => (
-                                    <li key={g.patientId || g.patientName} className="px-5 py-3 flex flex-wrap items-center gap-3">
-                                        {g.queueNumber != null && (
-                                            <span className="w-9 h-9 rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 grid place-items-center font-bold text-sm shrink-0">
-                                                {g.queueNumber}
+                    {/* IKKI GURUH, BITTA RO'YXAT EMAS.
+
+                        «Hozir klinikada» — qabuli ochiq, odam kutmoqda.
+                        «To'lov kutmoqda» — qabul YOPILDI, lekin pul
+                        olinmagan. Ilgari ikkinchi guruh umuman yo'q edi:
+                        shifokor «Yakunlash» ni bosishi bilan bemor bu
+                        ro'yxatdan yo'qolib, butun klinikaning qarzdorlari
+                        orasiga tushardi. Kassir signal olmasdi va eng oson
+                        qaytariladigan pul — hali binodagi odamning puli —
+                        e'tibordan chetda qolardi.
+
+                        Guruhlar ajratilgan, chunki kassirning harakati
+                        boshqacha: birinchisida u odamni kutadi, ikkinchisida
+                        chiqib ketishidan oldin ushlab qolishi kerak. */}
+                    {(['here', 'waiting'] as const).map(group => {
+                        const rows = hereNow.filter((g: any) => (g.state || (g.here ? 'here' : 'old')) === group);
+                        if (rows.length === 0) return null;
+                        const isWaiting = group === 'waiting';
+                        return (
+                            <Card key={group} className="overflow-hidden">
+                                <div className={`px-5 py-3 border-b border-line-soft flex items-center gap-2 ${isWaiting ? 'bg-amber-500/8' : ''}`}>
+                                    <Users className={`w-4 h-4 shrink-0 ${isWaiting ? 'text-amber-500' : 'text-primary-500'}`} />
+                                    <h2 className="text-sm font-bold text-ink">
+                                        {isWaiting ? t('finance.cash.awaitingPayment') : t('finance.cash.nowInClinic')}
+                                    </h2>
+                                    <span className="text-xs text-faint">
+                                        ({rows.length} {isWaiting ? "ta ketishdan oldin" : "ta to'lovsiz"})
+                                    </span>
+                                    <span className={`ml-auto text-sm font-black tabular-nums ${isWaiting
+                                        ? 'text-amber-600 dark:text-amber-400'
+                                        : 'text-primary-600 dark:text-primary-400'}`}>
+                                        {num(rows.reduce((s: number, g: any) => s + (g.due || 0), 0))} UZS
+                                    </span>
+                                </div>
+                                <ul className="divide-y divide-line">
+                                    {rows.map((g: any) => (
+                                        <li key={g.patientId || g.patientName} className="px-5 py-3 flex flex-wrap items-center gap-3">
+                                            {g.queueNumber != null && (
+                                                <span className={`w-9 h-9 rounded-lg grid place-items-center font-bold text-sm shrink-0 ${isWaiting
+                                                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                                    : 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'}`}>
+                                                    {g.queueNumber}
+                                                </span>
+                                            )}
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-medium text-ink truncate">{g.patientName}</p>
+                                                <p className="text-[11px] text-faint">
+                                                    {(g.items || []).length} ta xizmat
+                                                    {(g.items || []).length > 0 ? ` · ${g.items.map((i: any) => i.name).join(', ').slice(0, 60)}` : ''}
+                                                </p>
+                                            </div>
+                                            <span className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 shrink-0">
+                                                {num(g.due)}
                                             </span>
-                                        )}
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-ink truncate">{g.patientName}</p>
-                                            <p className="text-[11px] text-faint">
-                                                {(g.items || []).length} ta xizmat
-                                                {(g.items || []).length > 0 ? ` · ${g.items.map((i: any) => i.name).join(', ').slice(0, 60)}` : ''}
-                                            </p>
-                                        </div>
-                                        <span className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 shrink-0">
-                                            {num(g.due)}
-                                        </span>
-                                        <button onClick={() => openChargePayment(g.patientName, g.patientId)}
-                                            className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700">{t('finance.cash.pay')}</button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </Card>
-                    )}
+                                            <button onClick={() => openChargePayment(g.patientName, g.patientId)}
+                                                className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700">{t('finance.cash.pay')}</button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </Card>
+                        );
+                    })}
 
                     {/* ── Smena holati ──────────────────────────────────────
                         Kim kassada turgani. Majburiy emas: ochmasdan ham

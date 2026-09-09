@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     UserPlus, Search, ArrowRight, Printer, Clock, Stethoscope,
     CheckCircle, AlertCircle, X, Phone, RefreshCw, Calendar as CalendarIcon,
-    Volume2, FlaskConical, BellRing, CalendarClock, Tv,
+    Volume2, FlaskConical, BellRing, CalendarClock, Tv, Wallet,
 } from 'lucide-react';
 import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole } from '../types';
 import { api } from '../services/api';
@@ -121,6 +121,44 @@ export const Today: React.FC<Props> = ({
         catch { /* navbat yuklanmasa ham qabul ochish ishlayveradi */ }
     }, []);
     useEffect(() => { loadToday(); }, [loadToday]);
+
+    /* ─── PUL «BUGUN» EKRANIDA ────────────────────────────────────────────
+
+       Bu ekranda pul haqida BIRON NARSA yo'q edi. Registrator kun bo'yi shu
+       yerda o'tiradi va navbatni ko'radi, lekin kim to'lashi kerakligini
+       ko'rmasdi — buning uchun Moliyaga o'tish kerak edi, ya'ni ataylab
+       qidirish kerak edi. Natijada bemor to'lamasdan chiqib ketardi va
+       ertaga qarzdorlar ro'yxatida paydo bo'lardi.
+
+       MANBA KASSANIKI BILAN BITTA: `charges.pending(true)`. Brauzerda hech
+       narsa hisoblanmaydi — aks holda kassada bir raqam, bu yerda boshqasi
+       bo'lardi (PLAN-HOMES da qarzning 13 xil hisobi shundan chiqqan edi).
+
+       FAQAT PUL OLADIGANLARGA. Shifokor summani qabul kartasida ko'radi;
+       unga navbat yonida ham ko'rsatish moliyaviy ma'lumotni kerak
+       bo'lmagan joyga olib chiqish bo'lardi. */
+    const [dueByPatient, setDueByPatient] = useState<Map<string, { due: number; state: string }>>(new Map());
+    const loadDue = useCallback(async () => {
+        if (!canRegister) return;
+        try {
+            const rows = await api.charges.pending(true);
+            const m = new Map<string, { due: number; state: string }>();
+            for (const g of rows) {
+                if (!g.patientId || !(g.due > 0)) continue;
+                m.set(g.patientId, { due: g.due, state: g.state || (g.here ? 'here' : 'old') });
+            }
+            setDueByPatient(m);
+        } catch { /* pul kelmasa ham navbat ishlayveradi */ }
+    }, [canRegister]);
+    useEffect(() => { loadDue(); }, [loadDue, todayVisits]);
+
+    /* Kunning yig'indisi — sarlavhada bitta qator. «Nechta odam va qancha»
+       degan savolga javob ro'yxatni sanamasdan turib beriladi. */
+    const dueTotal = useMemo(() => {
+        let sum = 0;
+        dueByPatient.forEach(v => { sum += v.due; });
+        return { people: dueByPatient.size, sum };
+    }, [dueByPatient]);
 
     /* Shifokor FAQAT o'z bemorlarini ko'radi. Ega va registrator —
        butun klinikani. */
@@ -620,6 +658,17 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                     <span className="text-sm text-muted truncate flex-1">
                                         {v.patient?.lastName} {v.patient?.firstName}
                                     </span>
+                                    {/* YAKUNLANGAN, LEKIN TO'LANMAGAN — eng muhim
+                                        holat. Odam hali binoda; ertaga u
+                                        qarzdorlar ro'yxatiga tushadi va
+                                        qo'ng'iroq qilish kerak bo'ladi. */}
+                                    {canRegister && v.patientId && dueByPatient.has(v.patientId) && (
+                                        <span title={t('today.toPay')}
+                                            className="shrink-0 px-2 py-0.5 rounded-lg text-[11px] font-bold tabular-nums
+                                                       bg-amber-500/12 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                                            {formatNumber(dueByPatient.get(v.patientId)!.due)}
+                                        </span>
+                                    )}
                                     <span className="text-xs text-faint truncate">{v.department?.name || ''}</span>
                                 </button>
                             ))}
@@ -879,6 +928,23 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     </button>
                 </div>
 
+                {/* KUNNING TO'LOVI — bitta qator, navbatning tepasida.
+                    Bosilganda kassaga olib boradi: u yerda o'sha odamlar
+                    «To'lov kutmoqda» guruhida turadi. */}
+                {canRegister && dueTotal.people > 0 && (
+                    <button onClick={() => navigate('/finance')}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left hover:bg-amber-500/15 transition-colors">
+                        <Wallet className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                            {t('today.toPay')}: {dueTotal.people} ta bemor
+                        </span>
+                        <span className="ml-auto text-sm font-black tabular-nums text-amber-700 dark:text-amber-300">
+                            {formatNumber(dueTotal.sum)}
+                        </span>
+                        <ArrowRight className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    </button>
+                )}
+
                 {groups.active.length === 0 ? (
                     <div className="text-center py-10 bg-surface rounded-xl border border-line">
                         <p className="text-sm text-muted">{t('reception.noVisits')}</p>
@@ -902,6 +968,16 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                             {waited != null && v.status === 'Waiting' ? ` · ${waited} ${t('common.min')}` : ''}
                                         </p>
                                     </button>
+                                    {/* Qarz — navbat qatorining o'zida. Registrator
+                                        bemorni chaqirayotganda ham, chiqarayotganda
+                                        ham summani ko'rib turadi. */}
+                                    {canRegister && v.patientId && dueByPatient.has(v.patientId) && (
+                                        <span title={t('today.toPay')}
+                                            className="shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold tabular-nums
+                                                       bg-amber-500/12 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                                            {formatNumber(dueByPatient.get(v.patientId)!.due)}
+                                        </span>
+                                    )}
                                     {/* Chaqirish — tablo va ovoz shu holatdan ishlaydi */}
                                     {v.status === 'Waiting' && (
                                         <button onClick={() => callVisit(v)} disabled={busyVisit === v.id}
