@@ -18,6 +18,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { sendBackupToOwner } from './backupTelegram';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -584,6 +585,26 @@ export function startBackupScheduler(deps: {
             schedulerState.lastError = r.extraError ? `ikkinchi manzil: ${r.extraError}` : null;
             schedulerState.lastDeleted = deleted.length;
             console.log(`💾 Avtomatik zaxira (${reason}): ${r.file}`);
+
+            /* KLINIKA EGASIGA TELEGRAMGA — kuniga bir marta.
+
+               Nusxa kompyuterning o'zida yotadi; kompyuter ishdan chiqsa
+               u ham ketadi. Telegram esa allaqachon ulangan va nusxa
+               klinikadan tashqarida paydo bo'ladi.
+
+               Xatosi zaxirani YIQITMAYDI: fayl allaqachon diskda. */
+            try {
+                const sent = await sendBackupToOwner({
+                    prisma: deps.prisma,
+                    userDataPath: deps.userDataPath,
+                    dbFile: path.join(backupDir, r.file),
+                });
+                if (!sent.sent && sent.reason !== 'bugun allaqachon yuborilgan') {
+                    console.warn(`📤 Telegramga yuborilmadi: ${sent.reason}`);
+                }
+            } catch (e: any) {
+                console.warn('📤 Telegramga yuborilmadi:', e?.message || e);
+            }
         } catch (e: any) {
             schedulerState.lastError = describeDbError(e);
             console.error('❌ Avtomatik zaxira olinmadi:', schedulerState.lastError);

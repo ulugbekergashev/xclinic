@@ -112,6 +112,14 @@ export const Settings: React.FC<SettingsProps> = ({
    };
 
    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+   /* BO'LIM FILTRI.
+
+      Bir xil nomli xizmat turli bo'limlarda BOSHQA narxda bo'ladi:
+      kardiologiyada konsultatsiya 300 000, nevrologiyada 500 000.
+      Bazada ular alohida qatorlar (`Service.departmentId`), lekin ekran
+      ularni bitta uzun ro'yxatda ko'rsatardi va qaysi biri qaysi bo'limga
+      tegishli ekani bilinmasdi. */
+   const [selectedDept, setSelectedDept] = useState<string | null>(null);
    const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
    const [categoryForm, setCategoryForm] = useState({ name: '' });
 
@@ -325,7 +333,9 @@ export const Settings: React.FC<SettingsProps> = ({
          setEditingServiceId(null);
          setServiceForm({
             name: '', price: '', categoryId: selectedCategory || '',
-            departmentId: '', duration: '60',
+            /* Tanlangan bo'lim oldindan qo'yiladi: odam bo'limni ochib
+               turib xizmat qo'shsa, uni qayta tanlashi shart emas. */
+            departmentId: selectedDept || '', duration: '60',
          });
       }
       setIsServiceModalOpen(true);
@@ -2026,6 +2036,31 @@ export const Settings: React.FC<SettingsProps> = ({
                            <h2 className="font-medium text-ink">{t('settings.services.categories')}</h2>
                            <Button size="sm" variant="secondary" onClick={() => setIsCategoryModalOpen(true)}>+</Button>
                         </div>
+                        {/* ── BO'LIMLAR ─────────────────────────────────────
+                            Xizmat bo'lim ichida yashaydi: narx bo'limga
+                            qarab boshqacha bo'ladi. */}
+                        {deptList.length > 0 && (
+                           <div className="mb-4 pb-4 border-b border-line">
+                              <p className="text-xs font-bold text-faint uppercase tracking-wider mb-2">Bo'limlar</p>
+                              <div className="space-y-1">
+                                 <button
+                                    onClick={() => setSelectedDept(null)}
+                                    className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${!selectedDept ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-muted hover:bg-elevated'}`}>
+                                    Barcha bo'limlar
+                                 </button>
+                                 {deptList.filter((d: any) => d.isActive !== false).map((d: any) => (
+                                    <button key={d.id} onClick={() => setSelectedDept(d.id)}
+                                       className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-between gap-2 ${selectedDept === d.id ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-muted hover:bg-elevated'}`}>
+                                       <span className="truncate">{d.name}</span>
+                                       <span className="text-xs opacity-60 tabular-nums">
+                                          {services.filter((x: any) => x.departmentId === d.id).length}
+                                       </span>
+                                    </button>
+                                 ))}
+                              </div>
+                           </div>
+                        )}
+
                         <div className="space-y-1">
                            <button
                               onClick={() => setSelectedCategory(null)}
@@ -2065,6 +2100,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  <thead className="bg-elevated">
                                     <tr>
                                        <th className="px-4 py-3 font-medium text-muted">{t('settings.services.thName')}</th>
+                                       <th className="px-4 py-3 font-medium text-muted">Bo'lim</th>
                                        <th className="px-4 py-3 font-medium text-muted">{t('settings.services.thPrice')}</th>
                                        <th className="px-4 py-3 font-medium text-muted text-right">{t('settings.services.thAction')}</th>
                                     </tr>
@@ -2072,9 +2108,14 @@ export const Settings: React.FC<SettingsProps> = ({
                                  <tbody className="divide-y divide-line">
                                     {services
                                        .filter(s => !selectedCategory || s.categoryId === selectedCategory)
+                                       .filter(s => !selectedDept || (s as any).departmentId === selectedDept)
                                        .map((s) => (
                                           <tr key={s.id ?? s.name} className="bg-surface hover:bg-elevated">
                                              <td className="px-4 py-3 text-ink font-medium">{s.name}</td>
+                                             <td className="px-4 py-3 text-muted">
+                                                {deptList.find((d: any) => d.id === (s as any).departmentId)?.name
+                                                   || <span className="text-faint">— bo'limsiz</span>}
+                                             </td>
                                              <td className="px-4 py-3 text-muted">{formatMoney(s.price)} UZS</td>
                                              <td className="px-4 py-3 text-right">
                                                 <div className="flex items-center justify-end gap-1">
@@ -2099,9 +2140,11 @@ export const Settings: React.FC<SettingsProps> = ({
                                              </td>
                                           </tr>
                                        ))}
-                                    {services.filter(s => !selectedCategory || s.categoryId === selectedCategory).length === 0 && (
+                                    {services
+                                       .filter(s => !selectedCategory || s.categoryId === selectedCategory)
+                                       .filter(s => !selectedDept || (s as any).departmentId === selectedDept).length === 0 && (
                                        <tr>
-                                          <td colSpan={3} className="px-4 py-8 text-center text-muted">
+                                          <td colSpan={4} className="px-4 py-8 text-center text-muted">
                                              {t('settings.services.notFound')}
                                           </td>
                                        </tr>
