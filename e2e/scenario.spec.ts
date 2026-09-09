@@ -56,16 +56,10 @@ test('bemor keldi → tashxis → UZI → qarz kassada → yakunlandi', async ({
     await expect(page.getByText(/to'lanmagan — bemorni kassaga/)).toBeVisible();
 
     // ── 5. O'SHA qarz kassada ham ko'rinadi ────────────────────────────
-    /* KUTISH UZAYTIRILDI, chunki kassa sahifasi ma'lumot hajmiga bog'liq:
-       oy oxirida u mingdan ortiq to'lov qatorini chizadi va «Hozir
-       klinikada» ro'yxati o'shandan keyin paydo bo'ladi.
-
-       Ilgari bu yerda 3500ms + standart 10s turardi va sinov bazada
-       ma'lumot ko'payganda yiqilardi — koddagi xatodan emas. Aynan shu
-       sababdan u bir necha kun «goh o'tadi, goh yiqiladi» bo'lib turdi
-       va yashil natijaga ishonib bo'lmasdi. */
+    /* Kassa endi qatorlar sonini cheklaydi (50 ta), shuning uchun sahifa
+       ma'lumot hajmidan qat'i nazar tez ochiladi — uzun kutish kerak emas. */
     await go(page, '/finance');
-    await expect(page.getByText(surname).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(surname).first()).toBeVisible({ timeout: 15_000 });
 
     // ── 6. Qabulni yakunlash — qarz sababli ogohlantirish ──────────────
     await go(page, '/patients');

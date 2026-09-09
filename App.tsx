@@ -1028,19 +1028,64 @@ const sinceDate = (n: number) =>
      faqat punkt ko'rinmay qolgandagina. */
   const railRef = React.useRef<HTMLElement | null>(null);
   useEffect(() => {
-    const rail = railRef.current;
-    if (!rail) return;
-    const raf = requestAnimationFrame(() => {
+    /* ⚠️ `railRef.current` ni EFFEKT BOSHIDA tekshirib chiqib ketmaymiz.
+
+       Aynan shu xato bo'lgan edi: ilova hali `authChecked` ni kutayotganda
+       komponent `null` qaytaradi, ya'ni ustun DOM da yo'q va ref bo'sh.
+       Effekt o'sha zahoti chiqib ketardi, keyin esa QAYTA ISHLAMASDI —
+       bog'liqliklari (`pathname`, punktlar soni) o'zgarmaydi. Natijada
+       surish hech qachon bajarilmasdi va `#/settings` ni to'g'ridan-to'g'ri
+       ochganda oxirgi punkt kesilgan holicha qolardi.
+
+       Shuning uchun ref har kadrda qayta o'qiladi. */
+    const fit = (rail: HTMLElement) => {
       const box = rail.querySelector('nav') as HTMLElement | null;
       const active = box?.querySelector('[aria-current="page"]') as HTMLElement | null;
       if (!box || !active) return;
-      const top = active.offsetTop;
-      const bottom = top + active.offsetHeight;
-      if (top < box.scrollTop) box.scrollTop = top;
-      else if (bottom > box.scrollTop + box.clientHeight) {
-        box.scrollTop = bottom - box.clientHeight;
+      /* O'lchov `getBoundingClientRect` bilan, `offsetTop` bilan EMAS:
+         punkt `relative` sinfiga ega, ya'ni `offsetTop` uning eng yaqin
+         POZITSIYALANGAN ota-onasiga nisbatan chiqadi — bu `nav` emas,
+         balki butun ustun. Hisob o'sha sababdan logotip balandligiga
+         siljib, surish umuman ishlamasdi. */
+      const boxRect = box.getBoundingClientRect();
+      const itemRect = active.getBoundingClientRect();
+      if (itemRect.top < boxRect.top) {
+        box.scrollTop -= boxRect.top - itemRect.top;
+      } else if (itemRect.bottom > boxRect.bottom) {
+        box.scrollTop += itemRect.bottom - boxRect.bottom;
       }
-    });
+    };
+
+    /* BIR MARTA EMAS — NATIJA CHIQQUNCHA.
+
+       To'liq sahifa yuklanganda (`#/settings` ni to'g'ridan-to'g'ri ochish)
+       ustun hali joylashib ulgurmagan bo'ladi: bitta
+       `requestAnimationFrame` erta ishlaydi va surish bajarilmaydi.
+
+       `ResizeObserver` bu yerda YORDAM BERMAYDI va bu sinab ko'rildi:
+       `nav` ning o'z o'lchami o'zgarmaydi (u `flex-1`, balandligi
+       qat'iy), o'zgaradigani — ichidagi kontent. Ya'ni kuzatuvchi hech
+       qachon ishga tushmasdi.
+
+       Shuning uchun bir necha kadr davomida qayta urinamiz va natija
+       chiqishi bilan to'xtaymiz. Yarim soniya — shrift yuklanishi va
+       lazy chunk uchun yetarli, va bu 95 qatorlik eski mexanizmdan
+       ancha kichik. */
+    let raf = 0;
+    /* 3 soniya — ilova avtorizatsiyani tekshirib, ustunni chizguncha.
+       Natija chiqishi bilan halqa to'xtaydi, ya'ni odatda bir-ikki kadr. */
+    const deadline = Date.now() + 3000;
+    const tick = () => {
+      const rail = railRef.current;
+      const box = rail?.querySelector('nav') as HTMLElement | null;
+      const active = box?.querySelector('[aria-current="page"]') as HTMLElement | null;
+      const ready = !!rail && !!box && !!active && box.clientHeight > 0;
+      if (ready) fit(rail!);
+      /* Tayyor bo'lgach ham bir oz davom etamiz: shrift kech kelsa
+         o'lcham biroz o'zgaradi. */
+      if (!ready || Date.now() < deadline) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [location.pathname, visibleNavigation.length]);
 

@@ -20,7 +20,10 @@ test.describe('Menyu va ruxsatlar', () => {
         const nav = page.locator('nav').first();
         /* Boshqaruv paneli, Lidlar, Shifokorlar analitikasi, Tablo va
            Xabarlar menyudan chiqdi. */
-        for (const gone of ['Boshqaruv Paneli', 'Lidlar', 'Shifokorlar', 'Navbat tablosi', 'Xabarlar']) {
+        /* «Xabarlar» bu ro'yxatdan CHIQARILDI: u menyuga qaytarildi
+           (`utils/navigation.ts`, faqat egaga). Sinov eskirgan qarorni
+           yozib turgan edi va shu sababdan yiqilardi. */
+        for (const gone of ['Boshqaruv Paneli', 'Lidlar', 'Shifokorlar', 'Navbat tablosi']) {
             await expect(page.getByRole('link', { name: gone })).toHaveCount(0);
         }
         void nav;

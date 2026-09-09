@@ -3,7 +3,7 @@ import { formatMoney, formatNumber, formatDateLong, formatDate, formatDoctorName
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, CreditCard, FileText, User, Activity, Phone, MapPin, Clock, Edit, Printer, Send, Package, UserPlus, UserCheck, Plus, FlaskConical, Stethoscope, Pill, ClipboardList, Image, ChevronRight, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calendar, CreditCard, FileText, User, Activity, Phone, MapPin, Clock, Edit, Printer, Send, Package, UserPlus, UserCheck, Plus, FlaskConical, Stethoscope, Pill, ClipboardList, Image, ChevronRight, Trash2, X, Search } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, Select } from '../components/Common';
 import { EncounterSummary } from '../components/EncounterForm';
 import { PatientPhotos } from '../components/PatientPhotos';
@@ -13,7 +13,7 @@ import { LabDynamics } from '../components/LabDynamics';
 import { InstallmentsTab } from '../components/InstallmentsTab';
 import { VisitPanel, VISIT_STATUS_KEY } from '../components/VisitPanel';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
-import { AdvanceModal } from '../components/AdvanceModal';
+import { ServicePaymentModal } from '../components/ServicePaymentModal';
 import { PatientFormModal } from '../components/PatientFormModal';
 import { AppointmentFormModal } from '../components/AppointmentFormModal';
 import { SendMessageModal } from '../components/SendMessageModal';
@@ -22,6 +22,7 @@ import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientD
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
+import type { TranslationKey } from '../i18n/translations';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { maskPhone } from '../utils/accessControl';
 import { printPatientCard } from '../utils/printPatientCard';
@@ -61,6 +62,31 @@ interface PatientDetailsProps {
    onUpdateAppointment: (id: string, data: Partial<Appointment>) => Promise<void>;
 }
 
+/* TARIX BO'LIMLARI — BITTA RO'YXAT.
+
+   Ilgari ular JSX ichida yozilgan edi va ochilgan bo'limning NOMI hech
+   qayerda yo'q edi: foydalanuvchi «Tashxislar» ni bosardi, pastda esa
+   sarlavhasiz karta chiqardi. Endi ro'yxat ham, sarlavha ham shu yerdan
+   o'qiydi — ikkinchi nusxa paydo bo'lmaydi. */
+type HistorySection =
+   | 'visits' | 'diagnoses' | 'labs' | 'photos' | 'prescriptions'
+   | 'appointments' | 'payments' | 'materials' | 'installments'
+   | 'documents' | 'anamnesis';
+
+const SECTIONS: [HistorySection, React.ElementType, TranslationKey][] = [
+   ['visits', Stethoscope, 'card.secVisits'],
+   ['diagnoses', ClipboardList, 'card.secDiagnoses'],
+   ['labs', FlaskConical, 'card.secLabs'],
+   ['prescriptions', Pill, 'card.secPrescriptions'],
+   ['photos', Image, 'card.secPhotos'],
+   ['appointments', Calendar, 'card.secAppointments'],
+   ['payments', CreditCard, 'card.secPayments'],
+   ['installments', Clock, 'card.secInstallments'],
+   ['materials', Package, 'card.secMaterials'],
+   ['documents', FileText, 'card.secDocuments'],
+   ['anamnesis', Activity, 'card.secAnamnesis'],
+];
+
 export const PatientDetails: React.FC<PatientDetailsProps> = ({
    patientId: patientIdProp, 
    patients = [], 
@@ -87,11 +113,37 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       egallardi: shifokor tarixni ochsa joriy qabulni ko'rmasdi, qabulni
       ochsa tarixni. Endi qabul o'ng ustunda DOIM turadi, tarix bo'limi esa
       pastda, to'liq kenglikda ochiladi. `null` — hech biri ochilmagan. */
-   type HistorySection =
-      | 'visits' | 'diagnoses' | 'labs' | 'photos' | 'prescriptions'
-      | 'appointments' | 'payments' | 'materials' | 'installments'
-      | 'documents' | 'anamnesis';
    const [openSec, setOpenSec] = useState<HistorySection | null>(null);
+
+   /* Ochilgan bo'lim ekranning pastida chiziladi (o'ng ustundagi qabul
+      paneli baland). Bosilganda uni ko'rinishga suramiz — aks holda
+      ekranda hech narsa o'zgarmagandek tuyuladi. */
+   const sectionRef = React.useRef<HTMLDivElement | null>(null);
+   React.useEffect(() => {
+      if (!openSec) return;
+      const el = sectionRef.current;
+      if (!el) return;
+      const id = requestAnimationFrame(
+         () => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      return () => cancelAnimationFrame(id);
+   }, [openSec]);
+
+   /* Tashxis qidiruvi — kartadan qo'shish uchun. Qabul panelidagi bilan
+      bir xil manba (`api.diagnoses.searchCodes`). */
+   const [dxQuery, setDxQuery] = useState('');
+   const [dxResults, setDxResults] = useState<ICD10Code[]>([]);
+   const [dxChronic, setDxChronic] = useState(false);
+   React.useEffect(() => {
+      const q = dxQuery.trim();
+      if (q.length < 2) { setDxResults([]); return; }
+      let alive = true;
+      const timer = setTimeout(() => {
+         api.diagnoses.searchCodes(q)
+            .then(r => { if (alive) setDxResults(r); })
+            .catch(() => { if (alive) setDxResults([]); });
+      }, 250);
+      return () => { alive = false; clearTimeout(timer); };
+   }, [dxQuery]);
    /* Panelga tushadigan qabul. Standart — bugungi ochiq qabul; tarixdagi
       eski qabulni bosib ko'rish ham mumkin. */
    const [panelVisitId, setPanelVisitId] = useState<string | null>(null);
@@ -405,6 +457,31 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       }
    };
 
+   /* KARTADAN TASHXIS QO'SHISH.
+
+      Ochiq qabul bo'lsa unga bog'lanadi (`panelVisitId`) — shunda
+      «bu tashrifda qanday tashxis qo'yildi» degan savolga javob saqlanadi
+      va qabulni yakunlashdagi «tashxis qo'yilganmi?» tekshiruvi ishlaydi.
+      Qabul bo'lmasa tashxis bemorning o'ziga yoziladi: surunkali
+      kasallikni bemor kelmagan kunda ham kiritish kerak bo'ladi. */
+   const addDiagnosisFromCard = async (code: ICD10Code) => {
+      if (!patient) return;
+      try {
+         await api.diagnoses.add({
+            patientId: patient.id, code: code.code,
+            date: todayISO(), notes: '', status: 'Active',
+            clinicId: patient.clinicId,
+            ...(panelVisitId ? { visitId: panelVisitId } : {}),
+            isChronic: dxChronic,
+         } as any);
+         setDxQuery(''); setDxResults([]); setDxChronic(false);
+         await reloadClinical();
+         toast.success(t('visit.diagnosisAdded'));
+      } catch (e: any) {
+         toast.error(e?.message || t('patients.details.alerts.error'));
+      }
+   };
+
    const handleDeleteDiagnosis = async (id: string) => {
       if (!await confirmAction({ title: t('patients.details.alerts.deleteDiagnosisConfirm') })) return;
       try {
@@ -548,11 +625,12 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
                                Haqiqiy qarz — to'lanmagan hisob qatorlari
                                yig'indisi, u shu yerda alohida ko'rsatiladi. */}
-                           {(patient.balance || 0) > 0 && (
-                              <div className="px-3 py-1 rounded-full text-xs font-bold border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800">
-                                 {t('advance.title')}: {formatMoney(patient.balance || 0)} UZS
-                              </div>
-                           )}
+                           {/* BALANS NISHONI OLIB TASHLANDI — «avans» tushunchasi
+                               bilan birga. Kartada «Avans: 200 000» degan yozuv
+                               turardi, lekin bu pul qaysi xizmat uchun ekani
+                               noma'lum edi. Endi pul har doim xizmat qatoriga
+                               bog'lanadi va qarz/to'lov shu qatorlardan
+                               ko'rinadi. */}
                            {unpaidTotal > 0 && (
                               <button type="button" onClick={() => setOpenSec('payments')}
                                  className="px-3 py-1 rounded-full text-xs font-bold border bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/50">
@@ -644,19 +722,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   <Card className="p-2">
                      <p className="px-2 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-faint">{t('card.historyTitle')}</p>
                      <nav className="flex flex-col">
-                        {([
-                           ['visits', Stethoscope, t('card.secVisits'), visits.length],
-                           ['diagnoses', ClipboardList, t('card.secDiagnoses'), diagnoses.length],
-                           ['labs', FlaskConical, t('card.secLabs'), null],
-                           ['prescriptions', Pill, t('card.secPrescriptions'), prescriptions.length],
-                           ['photos', Image, t('card.secPhotos'), null],
-                           ['appointments', Calendar, t('card.secAppointments'), patientAppointments.length],
-                           ['payments', CreditCard, t('card.secPayments'), patientTransactions.length],
-                           ['installments', Clock, t('card.secInstallments'), null],
-                           ['materials', Package, t('card.secMaterials'), materialLogs.length],
-                           ['documents', FileText, t('card.secDocuments'), null],
-                           ['anamnesis', Activity, t('card.secAnamnesis'), null],
-                        ] as [HistorySection, React.ElementType, string, number | null][]).map(([id, Icon, label, count]) => (
+                        {(SECTIONS.map(([id, Icon, key]) => [
+                           id, Icon, t(key),
+                           id === 'visits' ? visits.length
+                              : id === 'diagnoses' ? diagnoses.length
+                                 : id === 'prescriptions' ? prescriptions.length
+                                    : id === 'appointments' ? patientAppointments.length
+                                       : id === 'payments' ? patientTransactions.length
+                                          : id === 'materials' ? materialLogs.length
+                                             : null,
+                        ]) as [HistorySection, React.ElementType, string, number | null][]).map(([id, Icon, label, count]) => (
                            <button key={id} onClick={() => setOpenSec(openSec === id ? null : id)}
                               className={`flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm text-left transition-colors ${openSec === id
                                  ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 font-medium'
@@ -690,9 +765,34 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                />
             </div>
 
-            {/* ── Ochilgan tarix bo'limi — to'liq kenglikda ────────────────── */}
+            {/* ── Ochilgan tarix bo'limi — to'liq kenglikda ──────────────────
+
+                SARLAVHA VA SURISH. Ilgari bu blokda sarlavha yo'q edi va u
+                ikki ustunning OSTIDA chizilardi. O'ng ustundagi qabul paneli
+                baland bo'lgani uchun bosilgan bo'lim ekrandan ancha pastda
+                paydo bo'lardi: foydalanuvchi «Tashxislar» ni bosardi, ekranda
+                esa hech narsa o'zgarmagandek ko'rinardi — pastda nima
+                ochilgani ham yozilmagan edi.
+
+                Endi bo'lim nomi yoziladi, yopish tugmasi bor va ochilganda
+                blok ko'rinishga suriladi. */}
             {openSec && (
-               <div className="space-y-6">
+               <div ref={sectionRef} className="space-y-4 scroll-mt-24">
+                  {(() => {
+                     const found = SECTIONS.find(x => x[0] === openSec);
+                     if (!found) return null;
+                     const [, Icon, key] = found;
+                     return (
+                        <div className="flex items-center gap-2.5">
+                           <Icon className="w-5 h-5 text-primary-500 shrink-0" />
+                           <h2 className="text-lg font-bold text-ink">{t(key)}</h2>
+                           <button onClick={() => setOpenSec(null)} aria-label={t('common.close')}
+                              className="ml-auto w-9 h-9 grid place-items-center rounded-full text-faint hover:text-ink hover:bg-elevated transition-colors">
+                              <X className="w-4 h-4" />
+                           </button>
+                        </div>
+                     );
+                  })()}
 
                {openSec === 'documents' && (
                   <div className="space-y-6">
@@ -827,6 +927,49 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                {/* ── Tashxislar ─────────────────────────────────────────────── */}
                {openSec === 'diagnoses' && (
                   <Card className="p-0 overflow-hidden">
+                     {/* TASHXIS QO'SHISH — KARTADAN HAM.
+
+                         Ilgari bu bo'limda faqat O'CHIRISH tugmasi bor edi:
+                         tashxisni qo'shish uchun ochiq qabul kerak edi.
+                         Ya'ni bemor kelmagan kunda kartaga surunkali
+                         kasallikni yozib qo'yish imkoni yo'q edi, va bo'sh
+                         ro'yxatda «Tashxis qo'yilmagan» degan yozuvdan
+                         boshqa hech narsa yo'q edi — nima qilish kerakligi
+                         ko'rinmasdi.
+
+                         Server `visitId` ni IXTIYORIY qabul qiladi
+                         (`server.ts`, `POST /api/diagnoses`), shuning uchun
+                         qabulsiz ham yoziladi. Ochiq qabul bo'lsa — unga
+                         bog'lanadi, aks holda bemorning o'ziga. */}
+                     {userRole !== UserRole.LAB_TECHNICIAN && (
+                        <div className="p-4 border-b border-line-soft">
+                           <div className="relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-faint" />
+                              <input
+                                 value={dxQuery}
+                                 onChange={e => setDxQuery(e.target.value)}
+                                 placeholder={t('card.dxSearch')}
+                                 className="w-full h-11 pl-10 pr-3 rounded-xl border border-line bg-elevated text-sm text-ink placeholder:text-faint outline-none focus:border-primary-500/50"
+                              />
+                           </div>
+                           {dxResults.length > 0 && (
+                              <div className="mt-2 border border-line rounded-xl divide-y divide-line max-h-56 overflow-y-auto">
+                                 {dxResults.slice(0, 12).map(c => (
+                                    <button key={c.code} onClick={() => addDiagnosisFromCard(c)}
+                                       className="w-full text-left p-2.5 text-sm hover:bg-elevated">
+                                       <b className="text-ink">{c.code}</b>
+                                       <span className="text-muted"> — {c.name}</span>
+                                    </button>
+                                 ))}
+                              </div>
+                           )}
+                           <label className="mt-2 flex items-center gap-2 text-xs text-muted cursor-pointer">
+                              <input type="checkbox" checked={dxChronic} onChange={e => setDxChronic(e.target.checked)}
+                                 className="w-4 h-4 rounded" />
+                              {t('visit.chronic')}
+                           </label>
+                        </div>
+                     )}
                      {diagnoses.length === 0 ? (
                         <p className="p-8 text-center text-muted">{t('card.noDiagnoses')}</p>
                      ) : (
@@ -1110,7 +1253,15 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                  <Button size="sm" variant="secondary"
                                     className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200"
                                     onClick={() => setIsAdvanceOpen(true)}>
-                                    <Plus className="w-4 h-4 mr-2" /> {t('advance.title')}
+                                    {/* NOMI KASSADAGIDAN FARQLI BO'LISHI SHART.
+                                        Kartada ikkita tugma bor: yuqorida
+                                        «To'lov qabul qilish» (mavjud qarzni
+                                        to'laydi), bu yerda esa yangi xizmat
+                                        qo'shib to'lash. Ikkalasi bir xil
+                                        nomlanganda foydalanuvchi ham,
+                                        avtomatik sinov ham qaysi biri
+                                        qaysiligini ajrata olmaydi. */}
+                                    <Plus className="w-4 h-4 mr-2" /> {t('card.payForService')}
                                  </Button>
                               )}
                            </div>
@@ -1253,10 +1404,11 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                 chegirma va qaytarish. Ilgari kartada o'zining alohida
                 oynasi bor edi va u `Transaction` ga to'g'ridan-to'g'ri
                 yozardi — ya'ni hisob qatori to'lanmagan bo'lib qolaverardi. */}
-            <AdvanceModal
+            <ServicePaymentModal
                isOpen={isAdvanceOpen}
                onClose={() => setIsAdvanceOpen(false)}
                patient={patient}
+               services={services}
                receivedByName={myDoctor ? formatDoctorName(myDoctor) : undefined}
                addToast={(type, msg) => type === 'error' ? toast.error(msg) : toast.success(msg)}
                onDone={() => reloadClinical()}

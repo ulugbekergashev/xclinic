@@ -350,7 +350,17 @@ export function buildCashBookDay(
     const rows = dayTransactions
         .filter(t => t.status === 'Paid')
         .map(t => toRow(t, doctors))
-        .sort((a, b) => a.sortKey - b.sortKey || a.patientName.localeCompare(b.patientName, 'uz'));
+        /* ENG YANGISI TEPADA.
+
+           Ilgari tartib vaqt bo'yicha O'SISHIGA edi: ro'yxat kunning
+           birinchi to'lovidan boshlanardi. Kassir uchun bu teskari — unga
+           hozirgina qabul qilgan puli kerak, ertalabki emas, va u har
+           safar ro'yxatning oxirigacha tushishi kerak edi.
+
+           Ro'yxat 50 qator bilan cheklangach bu shunchaki noqulaylik emas,
+           XATOGA aylandi: yangi to'lov 50 tadan tashqarida qolib, umuman
+           ko'rinmasdi. Sinov aynan shuni ushladi. */
+        .sort((a, b) => b.sortKey - a.sortKey || a.patientName.localeCompare(b.patientName, 'uz'));
 
     rows.forEach(row => accumulate(totals, row));
 

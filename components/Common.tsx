@@ -326,7 +326,13 @@ export const Modal: React.FC<{
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
-      <div className={`relative w-full ${className} panel shadow-2xl overflow-hidden max-h-[90vh] flex flex-col`}>
+      {/* `role="dialog"` + `aria-modal` — ekran o'quvchi oynani sahifadan
+          ajratib e'lon qilsin. Yon foyda: avtomatik sinov lokatorni shu
+          oynaga cheklay oladi. Kassa sahifasi mingdan ortiq qator chizganda
+          (yordamchi daraxt ~35 000 tugun) butun sahifa bo'ylab qidiruv
+          ishonchsiz bo'lib qoladi — sinov aynan shunda yiqilgan edi. */}
+      <div role="dialog" aria-modal="true" aria-label={title}
+        className={`relative w-full ${className} panel shadow-2xl overflow-hidden max-h-[90vh] flex flex-col`}>
         <div className="flex items-center justify-between border-b border-line px-5 py-4 sm:px-6">
           <h3 className="text-lg font-bold tracking-tight text-ink">{title}</h3>
           <button aria-label="Yopish" onClick={onClose} className="w-9 h-9 -mr-1.5 flex items-center justify-center rounded-full text-faint hover:text-ink hover:bg-elevated transition-colors">

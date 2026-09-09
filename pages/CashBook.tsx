@@ -7,12 +7,12 @@ import {
     Plus, Loader2, Printer, Trash2, ArrowDownToLine, Undo2, ListOrdered, Pencil, History, ChevronDown,
 } from 'lucide-react';
 import { Card, Button, Modal, Input, Select } from '../components/Common';
-import { AdvanceModal } from '../components/AdvanceModal';
+import { ServicePaymentModal } from '../components/ServicePaymentModal';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import {
     Transaction, Expense, ExpenseCategory, Doctor, Clinic, Patient, Appointment,
     CashRegisterDay, CashMovement, CashMovementType, CashAuditLog, PaymentMethod,
-    EXPENSE_CATEGORY_LABELS, CASH_MOVEMENT_LABELS, VisitCharge, Department,
+    EXPENSE_CATEGORY_LABELS, CASH_MOVEMENT_LABELS, VisitCharge, Department, Service,
 } from '../types';
 import { ReceiptModal } from '../components/ReceiptModal';
 import {
@@ -65,7 +65,12 @@ interface CashBookProps {
     // Kassaga pul kiritish / chiqarish
     patients?: Patient[];
     appointments?: Appointment[];
-    services?: { name: string; price: number; duration?: number }[];
+    /* `Service` — YAGONA HAQIQAT MANBAI (`types.ts`). Bu yerda uning
+       qisqartirilgan nusxasi yozilgan edi va undan `id` tushib qolgandi:
+       natijada to'lov oynasi xizmatni katalogga bog'lay olmasdi, ya'ni
+       shifokor ulushi va xizmat bo'yicha hisobot ishlamasdi. Turning
+       nusxasi har doim asl bilan ajralib ketadi — shuning uchun asl turi. */
+    services?: Service[];
     clinicId?: string;
     onAddTransaction?: (tx: Omit<Transaction, 'id' | 'clinicId'>) => Promise<any>;
     /** Buyurtma berilganda avtomatik yaratilgan to'lanmagan hisob qatorlari */
@@ -1018,6 +1023,25 @@ export const CashBook: React.FC<CashBookProps> = ({
     };
 
     const doctorCols = view === 'day' ? day.doctorColumns : monthData.doctorColumns;
+
+    /* QATORLAR SONI CHEKLANADI.
+
+       Kun to'lovlari ro'yxati HAMMA qatorni chizardi. Oy oxiriga borib
+       ularning soni mingdan oshadi va sahifa yordamchi daraxti ~35 000
+       tugunga yetadi: kassa 20-30 soniyada ochiladi, brauzer esa qidiruv
+       va bosishga sekin javob beradi. Bu o'lchangan holat, taxmin emas —
+       avtomatik sinovlar aynan shu sababdan yiqila boshladi.
+
+       50 ta — bir ekranga sig'adigandan ko'p. Kassirga kunning oxirgi
+       to'lovlari kerak (ro'yxat teskari tartibda), qolganini u ataylab
+       ochadi yoki Excelga chiqaradi. */
+    const ROWS_STEP = 50;
+    const [rowLimit, setRowLimit] = useState(ROWS_STEP);
+    /* Kun yoki ko'rinish almashsa cheklov boshidan — aks holda yangi
+       kunda ham oldingi kunning «ochilgan» holati qolib ketardi. */
+    useEffect(() => { setRowLimit(ROWS_STEP); }, [date, view]);
+    const shownRows = useMemo(() => day.rows.slice(0, rowLimit), [day.rows, rowLimit]);
+    const hiddenRows = day.rows.length - shownRows.length;
     const totals = view === 'day' ? day.totals : monthData.totals;
 
     return (
@@ -1035,16 +1059,25 @@ export const CashBook: React.FC<CashBookProps> = ({
                     {/* Kassaga pul kirishi va chiqishi — kundalik amallar */}
                     {view === 'day' && (onAddTransaction || (onAddExpense && canEditExpenses)) && (
                         <div className="flex items-center gap-2">
-                            {/* "To'lov" -> "Avans". Eski tugma ixtiyoriy chek
-                                yozardi: hisob qatorisiz, ya'ni shifokor
-                                ulushisiz. Xizmat uchun to'lov endi faqat
-                                pastdagi ro'yxatlardan, qatorlar bilan. */}
+                            {/* TO'LOV — XIZMAT TANLAB, PROTSEDURADAN OLDIN HAM.
+
+                                Bu tugma ilgari «Avans» edi va pul bemorning
+                                BALANSIGA tushardi — qanday xizmat uchun ekani
+                                noma'lum. Klinikada bunday pul yo'q: odam
+                                konsultatsiya yoki protsedura uchun to'laydi.
+                                Mavhum balans esa shifokor ulushini ham,
+                                «qaysi xizmat qancha keltirdi» degan hisobotni
+                                ham buzardi.
+
+                                Endi kassir xizmatni tanlaydi, qator shu yerda
+                                yaratilib darhol to'lanadi. Shifokor
+                                protsedurani keyin bajaradi. */}
                             <button
                                 onClick={() => setIsAdvanceOpen(true)}
                                 className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
                             >
                                 <Plus className="w-3.5 h-3.5" />
-                                {t('advance.title')}
+                                {t('payment.title')}
                             </button>
                             {onAddExpense && canEditExpenses && (
                                 <button
@@ -1214,6 +1247,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 <p className="text-sm text-muted">{t('finance.cash.noPaymentsLogged')}</p>
                             </div>
                         ) : (
+                            <>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead className="bg-elevated">
@@ -1231,7 +1265,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-line">
-                                        {day.rows.map(row => (
+                                        {shownRows.map(row => (
                                             <tr
                                                 key={row.id}
                                                 className={`hover:bg-elevated transition-colors ${!row.isMoneyIn ? 'opacity-60' : ''}`}
@@ -1295,6 +1329,15 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     </tfoot>
                                 </table>
                             </div>
+                            {hiddenRows > 0 && (
+                                <div className="px-5 py-3 border-t border-line-soft text-center">
+                                    <button type="button" onClick={() => setRowLimit(n => n + ROWS_STEP)}
+                                        className="text-sm font-bold text-primary hover:underline">
+                                        {t('finance.cash.showMore')} ({hiddenRows})
+                                    </button>
+                                </div>
+                            )}
+                            </>
                         )}
                     </Card>
 
@@ -1311,8 +1354,9 @@ export const CashBook: React.FC<CashBookProps> = ({
                         {day.rows.length === 0 ? (
                             <p className="px-5 py-8 text-center text-sm text-muted">{t('finance.cash.noPayments')}</p>
                         ) : (
+                            <>
                             <ul className="divide-y divide-line">
-                                {day.rows.map(row => (
+                                {shownRows.map(row => (
                                     <li key={row.id} className="px-5 py-3 flex items-center justify-between gap-3">
                                         <div className="min-w-0 flex-1">
                                             <p className="text-sm font-medium text-ink truncate">
@@ -1392,6 +1436,15 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     </li>
                                 ))}
                             </ul>
+                            {hiddenRows > 0 && (
+                                <div className="px-5 py-3 border-t border-line-soft text-center">
+                                    <button type="button" onClick={() => setRowLimit(n => n + ROWS_STEP)}
+                                        className="text-sm font-bold text-primary hover:underline">
+                                        {t('finance.cash.showMore')} ({hiddenRows})
+                                    </button>
+                                </div>
+                            )}
+                            </>
                         )}
                     </Card>
 
@@ -1827,12 +1880,13 @@ export const CashBook: React.FC<CashBookProps> = ({
             )}
 
             {/* ── Avans to'ldirish ──────────────────────────────────────
-                Xizmat uchun to'lov EMAS: pul bemor hisobida turadi. Xizmat
-                to'lovi «To'lanmaganlar» ro'yxatidan, qatorlar bilan. */}
-            <AdvanceModal
+                Xizmat tanlanadi, qator yaratiladi va darhol to'lanadi —
+                shifokor yaratgan qatorlar bilan bir xil yo'l. */}
+            <ServicePaymentModal
                 isOpen={isAdvanceOpen}
                 onClose={() => { setIsAdvanceOpen(false); setAdvancePatient(null); }}
                 patient={advancePatient}
+                services={services}
                 receivedByName={currentUserName}
                 addToast={addToast}
                 onDone={() => onChargesChanged?.()}
