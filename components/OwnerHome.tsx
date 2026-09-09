@@ -118,7 +118,14 @@ export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
                         <Tile
                             title="Qarz" icon={AlertTriangle}
                             danger={debtors.overdue30 > 0}
-                            value={formatMoney(data.debt?.total ?? 0)}
+                            /* `amount`, `total` EMAS. Server (`snapshot.ts`)
+                               `debt: { amount, charges, patients }` qaytaradi —
+                               `debt.total` umuman yo'q, ya'ni `?? 0` HAR DOIM
+                               ishlardi va karta 108 mln qarzni «0» deb
+                               ko'rsatardi. Xatoni optional chaining jimgina
+                               yutgan: `undefined` xato bermaydi, shunchaki
+                               noto'g'ri raqam chiqaradi. */
+                            value={formatMoney(data.debt?.amount ?? 0)}
                             hint={debtors.overdue30 > 0
                                 ? `${debtors.patients} bemor · ${debtors.overdue30} tasi 30 kundan oshgan`
                                 : `${debtors.patients} ta bemor`}

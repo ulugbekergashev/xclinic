@@ -970,6 +970,15 @@ const sinceDate = (n: number) =>
      Ular hamma joyda ishlatiladi: kalendar shifokorni filtrlaydi, kassa
      ismini ko'rsatadi. Ilgari bu funksiya Sozlamalar marshrutining
      ichida yozilgan edi; endi uni Xodimlar moduli ham chaqiradi. */
+  /* Klinika yozuvini qayta o'qish. Ruxsatlar saqlangandan keyin chaqiriladi
+     va endi IKKI joydan kerak: Sozlamalar → Ruxsatlar va Xodimlar → Ruxsatlar.
+     Ilgari bu Sozlamalar route'ida inline yozilgan edi. */
+  const refreshClinic = React.useCallback(async () => {
+    if (!clinicId) return;
+    try { setCurrentClinic(await api.clinics.getById(clinicId)); }
+    catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
+  }, [clinicId]);
+
   const refreshStaffLists = React.useCallback(async () => {
     if (!clinicId) return;
     try {
@@ -1014,28 +1023,14 @@ const sinceDate = (n: number) =>
      ham, markazlashtirish ham kerak emas — muammoning o'zi yo'q.
      Yamoqni saqlab qolish esa ishlamaydigan kodni saqlash bo'lardi. */
 
-  /* QARZDORLAR — yuqori qatordagi ko'rsatkich.
+  /* QARZDORLAR KO'RSATKICHI OLIB TASHLANDI.
 
-     `charges` da faqat to'lanmagan qatorlar turadi (`status: 'Unpaid'`),
-     lekin qisman to'lov ham bo'ladi — shuning uchun qoldiq
-     `total - paidAmount` bo'yicha hisoblanadi, qatorlar soni bo'yicha
-     emas. Bitta bemorning beshta to'lanmagan qatori — bitta qarzdor,
-     shuning uchun `Set`.
-
-     `patientId` bo'sh bo'lishi mumkin (kartaga bog'lanmagan qator) —
-     bunday holda ism kalit bo'ladi, aks holda hammasi bitta `null`
-     kaliti ostida qo'shilib, bitta qarzdor bo'lib ko'rinardi. */
-  const { debtorCount, debtTotal } = useMemo(() => {
-    const ids = new Set<string>();
-    let sum = 0;
-    for (const c of charges) {
-      const left = (c.total || 0) - (c.paidAmount || 0);
-      if (left <= 0) continue;
-      sum += left;
-      ids.add(c.patientId || `name:${c.patientName}`);
-    }
-    return { debtorCount: ids.size, debtTotal: sum };
-  }, [charges]);
+     Yuqori qatorda «N qarzdor» tugmasi turardi. U ikkita savolni
+     chalkashtirardi: raqam AYNI DAMDAGI to'lanmagan qatorlardan
+     sanalardi, lekin nimani anglatishi — bugungi to'lovmi, umumiy
+     qarzmi — tugmaning o'zidan ko'rinmasdi. Qarz haqidagi to'liq
+     javob ikki joyda bor va o'sha yerlarda o'z konteksti bilan
+     turadi: bosh sahifadagi «Qarz» kartasi va Moliya bo'limi. */
 
 
   /* SAHIFA SARLAVHASI (S5.7, audit B-36).
@@ -1525,23 +1520,6 @@ const sinceDate = (n: number) =>
 
         {/* ─── O'ng chekka ─────────────────────────────────── */}
         <div className="flex items-center gap-2.5 shrink-0">
-          {/* QARZDORLAR. Ilgari to'lanmagan hisoblar faqat Moliya bo'limiga
-              kirgandagina ko'rinardi, ya'ni ularni ataylab qidirish kerak
-              edi. Endi raqam har sahifada turadi va bosilganda kassaga
-              olib boradi. Nol bo'lsa — tugma umuman chiqmaydi. */}
-          {debtorCount > 0 && showFinanceForRole && (
-            <button
-              onClick={() => navigate('/finance')}
-              title={`To'lanmagan: ${debtTotal.toLocaleString('ru-RU')} so'm`}
-              className="flex items-center gap-2 h-10 px-4 rounded-full text-sm font-bold
-                         bg-danger-500/10 text-danger border border-danger-500/25
-                         hover:bg-danger-500/20 transition-colors"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-danger" />
-              {debtorCount} {t('common.debtors')}
-            </button>
-          )}
-
           {/* AI yordamchi — sahifa USTIDA ochiladi, turgan joyni tashlab
               ketmasdan. Hamshira moliyaviy panelni ko'rmaydi, unga tugma
               ham chiqmaydi. */}
@@ -1766,6 +1744,9 @@ const sinceDate = (n: number) =>
                     clinicId={clinicId}
                     addToast={addToast}
                     onStaffChanged={refreshStaffLists}
+                    userRole={userRole}
+                    currentClinic={currentClinic}
+                    onClinicUpdated={refreshClinic}
                   />)
               } />
               <Route path="/staff/:role/:id" element={
@@ -1948,11 +1929,7 @@ const sinceDate = (n: number) =>
                          qaytadan yuklanardi, xotiradagi hamma ro'yxat
                          yo'qolardi va Electron oynasida bu sezilarli
                          to'xtash edi. */
-                      onClinicUpdated={async () => {
-                        if (!clinicId) return;
-                        try { setCurrentClinic(await api.clinics.getById(clinicId)); }
-                        catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
-                      }}
+                      onClinicUpdated={refreshClinic}
                       onStaffChanged={refreshStaffLists}
                           reviews={reviews}
                     />

@@ -585,8 +585,19 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     ['visits', 'Qabullar', false],
                                     ['avgCheck', "O'rtacha chek", true],
                                 ] as const).map(([key, label, money]) => {
-                                    const d = cmp.delta[key];
-                                    const cur = cmp.current[key];
+                                    /* KO'RSATKICH YO'Q BO'LSA — SHU PLITKA
+                                       TUSHIB QOLADI, SAHIFA EMAS.
+
+                                       Ilgari bu yerda to'g'ridan-to'g'ri
+                                       `d.abs` o'qilardi. Server (yoki demo
+                                       qopqog'i) bitta kalitni bermasa
+                                       `d` `undefined` bo'lib, butun MOLIYA
+                                       bo'limi yiqilardi — bitta yordamchi
+                                       raqam uchun. Hisobot kartasi yo'qolishi
+                                       mumkin, kassa esa ochilishi kerak. */
+                                    const d = cmp.delta?.[key];
+                                    const cur = cmp.current?.[key];
+                                    if (!d || cur == null) return null;
                                     const up = d.abs > 0;
                                     /* Xarajat o'sishi YAXSHI emas — rangni ma'noga
                                        qarab tanlaymiz, o'sish belgisiga emas. */

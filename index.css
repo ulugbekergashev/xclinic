@@ -130,21 +130,32 @@
   --x-info: #0284c7;
 }
 
+/* QORONG'I TEMA — TO'YINGAN EMAS, KO'KIMTIR.
+
+   Birinchi variant deyarli QORA (`#080b12`) va aksentlari juda to'yingan
+   edi (`#818cf8`, `#f87171`). Ekranda natija charchatadi: qora fon bilan
+   yorqin rang o'rtasidagi farq keskin, va har bir nishon ko'zga uriladi —
+   ya'ni HECH BIRI ajralib turmaydi.
+
+   Endi fon ko'kimtir-grafit (qora emas) va bir necha pog'ona yorug'roq,
+   aksentlar esa xromasi pasaytirilgan. Signal ranglari (ogohlantirish,
+   xato) ataylab OZGINA to'yingan qoldirildi: ularni butunlay so'ndirish
+   xavfli — qarz va muddat haqidagi xabar ko'rinishi SHART. */
 .dark {
-  --x-canvas: #080b12;
-  --x-surface: #111725;
-  --x-elevated: #19202f;
-  --x-rail: #0b0f18;
-  --x-line: #212a3b;
-  --x-line-soft: #1a2230;
-  --x-ink: #e8ecf5;
-  --x-muted: #8d97ac;
-  --x-faint: #677084;
-  --x-primary: #818cf8;
-  --x-success: #34d399;
-  --x-warning: #fbbf24;
-  --x-danger: #f87171;
-  --x-info: #38bdf8;
+  --x-canvas: #101a2c;
+  --x-surface: #17233a;
+  --x-elevated: #202f4a;
+  --x-rail: #131e33;
+  --x-line: #2a3a55;
+  --x-line-soft: #202c43;
+  --x-ink: #dde4f0;
+  --x-muted: #8b97ae;
+  --x-faint: #66738b;
+  --x-primary: #8e99dd;
+  --x-success: #58c096;
+  --x-warning: #e0a94a;
+  --x-danger: #e8807f;
+  --x-info: #62a9dd;
 }
 
 

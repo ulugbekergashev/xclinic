@@ -5,10 +5,11 @@ import { api } from '../services/api';
 import { toast } from '../services/toast';
 import { formatFullName, formatMoney } from '../utils/format';
 import { formatUzPhone } from '../shared/validation';
-import { Department, Service, Doctor } from '../types';
+import { Department, Service, Doctor, Clinic, UserRole } from '../types';
 import { StaffForm, StaffRow, ROLES, roleMeta, StaffRole } from '../components/StaffForm';
 import { Payroll } from './Payroll';
 import { StaffAttendanceReport } from '../components/StaffAttendanceReport';
+import { AccessControlTab } from '../components/AccessControlTab';
 import {
     Plus, Search, Users, Wallet, Activity, UserCheck, Percent,
 } from 'lucide-react';
@@ -36,9 +37,14 @@ interface Props {
     addToast?: (type: 'success' | 'error' | 'info', msg: string) => void;
     /** Ro'yxat o'zgargach App dagi keshni yangilash */
     onStaffChanged?: () => void;
+    /* «Ruxsatlar» vkladkasi uchun — u klinika yozuvidagi `accessControl`
+       ni tahrirlaydi. Faqat egaga ko'rinadi. */
+    userRole?: UserRole;
+    currentClinic?: Clinic;
+    onClinicUpdated?: () => void;
 }
 
-type Tab = 'people' | 'payroll' | 'attendance';
+type Tab = 'people' | 'payroll' | 'attendance' | 'access';
 
 /** Yuklama chizig'i — foiz bo'lmasa chiziq ham chizilmaydi. */
 const LoadBar: React.FC<{ percent: number | null }> = ({ percent }) => {
@@ -76,6 +82,7 @@ const StatCard: React.FC<{
 
 export const Staff: React.FC<Props> = ({
     departments = [], services = [], doctors = [], clinicId, addToast, onStaffChanged,
+    userRole, currentClinic, onClinicUpdated,
 }) => {
     const navigate = useNavigate();
 
@@ -83,8 +90,14 @@ export const Staff: React.FC<Props> = ({
        to'g'ridan-to'g'ri o'sha bo'limni ochsin, va sahifa yangilanganda
        odam boshiga qaytmasin. */
     const [searchParams, setSearchParams] = useSearchParams();
+    const canManageAccess = userRole === UserRole.CLINIC_ADMIN;
     const q = searchParams.get('tab');
-    const tab: Tab = q === 'payroll' ? 'payroll' : q === 'attendance' ? 'attendance' : 'people';
+    /* `?tab=access` ni faqat ega ocholadi. Manzilni qo'lda yozib kirishga
+       ham yo'l yo'q: rol mos kelmasa vkladka "people" ga tushadi. */
+    const tab: Tab = q === 'payroll' ? 'payroll'
+        : q === 'attendance' ? 'attendance'
+            : (q === 'access' && canManageAccess) ? 'access'
+                : 'people';
     const setTab = (next: Tab) => {
         const p = new URLSearchParams(searchParams);
         if (next === 'people') p.delete('tab'); else p.set('tab', next);
@@ -195,6 +208,12 @@ export const Staff: React.FC<Props> = ({
                     ['people', 'Xodimlar'],
                     ['payroll', 'Ulush va vedomost'],
                     ['attendance', 'Davomat'],
+                    /* RUXSATLAR — Sozlamalardan shu yerga ham chiqarildi.
+                       «Bu xodim nimani ko'radi?» degan savol xodimlar
+                       ro'yxatining yonida turishi kerak; Sozlamalarga o'tib
+                       izlash kerak emas. Panel — BITTA komponent
+                       (`AccessControlTab`), nusxa emas. */
+                    ...(canManageAccess ? [['access', 'Ruxsatlar'] as const] : []),
                 ] as const).map(([k, label]) => (
                     <button key={k} type="button" onClick={() => setTab(k)}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${tab === k
@@ -209,6 +228,8 @@ export const Staff: React.FC<Props> = ({
                 <Payroll doctors={doctors} clinicId={clinicId} addToast={addToast} />
             ) : tab === 'attendance' ? (
                 <StaffAttendanceReport />
+            ) : tab === 'access' ? (
+                <AccessControlTab currentClinic={currentClinic} onClinicUpdated={onClinicUpdated} />
             ) : (
                 <>
                     {/* ── To'rtta raqam ─────────────────────────────────── */}

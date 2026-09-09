@@ -25,6 +25,63 @@ interface State {
     info: string;
 }
 
+/* ─── ESKIRGAN BUILD — O'ZINI TIKLASH ────────────────────────────────────────
+
+   MUAMMO. Ilova sahifalarga bo'lingan (`React.lazy`) va service worker 48 ta
+   chunkni keshlaydi. Yangi versiya chiqarilganda OCHIQ TURGAN tab eski
+   `index-*.js` bilan ishlashda davom etadi; «Bemorlar» ga o'tilganda esa
+   `Patients-*.js` boshqa builddan kelib qolishi mumkin. Ikkita turli
+   buildning chunklari uchrashadi, modul ro'yxati mos kelmaydi va brauzer
+   «Cannot access 'X' before initialization» beradi.
+
+   `vite.config.ts` dagi izoh «fayllar mazmun xeshi bilan nomlangan, ya'ni
+   eskirmaydi» deydi — bu BITTA build ichida to'g'ri, lekin IKKITA buildni
+   aralashtirishdan himoya qilmaydi. Aynan shu yerda ushlanadi.
+
+   Foydalanuvchi uchun bu tushunarsiz: u hech narsa qilmagan, ekranda esa
+   xato. Yechim ham unga tegishli emas — keshni tozalash. Shuning uchun buni
+   dastur o'zi qiladi.
+
+   BIR MARTA — shart. Sabab boshqa bo'lsa (haqiqiy xato) cheksiz qayta
+   yuklanish halqasi hosil bo'lardi va dastur umuman ochilmasdi. Bayroq
+   `sessionStorage` da: u tab yopilguncha yashaydi, ikkinchi marta esa
+   oddiy xato oynasi chiqadi. */
+const STALE_BUILD = [
+    /before initialization/i,
+    /Failed to fetch dynamically imported module/i,
+    /Importing a module script failed/i,
+    /error loading dynamically imported module/i,
+    /ChunkLoadError/i,
+];
+
+const RELOAD_FLAG = 'xclinic_stale_build_reload';
+
+function looksLikeStaleBuild(error: Error): boolean {
+    const msg = error?.message || String(error);
+    return STALE_BUILD.some(re => re.test(msg));
+}
+
+async function purgeAndReload() {
+    try {
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(r => r.unregister()));
+        }
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+    } catch (e) {
+        console.warn('[XClinic] Keshni tozalab bo\'lmadi:', e);
+    } finally {
+        /* Manzilga vaqt belgisi — brauzerning O'Z keshi ham chetlab
+           o'tilsin. `reload()` ning o'zi buni kafolatlamaydi. */
+        const u = new URL(window.location.href);
+        u.searchParams.set('_v', String(Date.now()));
+        window.location.replace(u.toString());
+    }
+}
+
 /* Xato to'sig'ini hook bilan yozib bo'lmaydi, shuning uchun klass shart.
 
    Ilgari bu yerda `React.Component` qo'lda tiplab olinardi, chunki
@@ -44,6 +101,20 @@ export class ErrorBoundary extends React.Component<Props, State> {
         // Konsolga to'liq stek — dasturchi uchun
         console.error('[XClinic] Sahifa xatosi:', error, info.componentStack);
         this.setState({ info: (info.componentStack || '').split('\n').slice(0, 4).join('\n') });
+
+        /* Eskirgan build belgisi bo'lsa — keshni tozalab BIR MARTA qayta
+           yuklaymiz (yuqoridagi izohga qarang). */
+        if (looksLikeStaleBuild(error)) {
+            let already = true;
+            try {
+                already = sessionStorage.getItem(RELOAD_FLAG) === '1';
+                if (!already) sessionStorage.setItem(RELOAD_FLAG, '1');
+            } catch { /* private rejim — qayta yuklamaymiz, oddiy oyna chiqadi */ }
+            if (!already) {
+                console.warn('[XClinic] Eskirgan build aniqlandi — kesh tozalanib qayta yuklanadi');
+                void purgeAndReload();
+            }
+        }
     }
 
     private reset = () => this.setState({ error: null, info: '' });

@@ -406,7 +406,6 @@ export const translations = {
     'common.retry': 'Qayta yuklash',
     'common.logout': 'Chiqish',
     'common.menu': 'Menyu',
-    'common.debtors': 'qarzdor',
 
     // Roles
     'roles.superAdmin': 'SaaS Egasi',
@@ -1663,7 +1662,6 @@ export const translations = {
     'common.retry': 'Повторить',
     'common.logout': 'Выйти',
     'common.menu': 'Меню',
-    'common.debtors': 'должников',
 
     // Roles
     'roles.superAdmin': 'Владелец SaaS',

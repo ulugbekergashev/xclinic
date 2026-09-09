@@ -3360,22 +3360,64 @@ export const api = {
         /** Oldingi SHU UZUNLIKDAGI davr bilan solishtirish */
         compare: (from: string, to: string) => {
             if (isDemoMode()) {
-                /* Oldingi davr — xuddi shu uzunlikda, shu qadar orqada.
-                   Demoda ham haqiqiy mantiq: ikkala oraliq ham demo
-                   tranzaksiyalaridan sanaladi. */
+                /* ⚠️ SHAKL SERVERNIKI BILAN BIR XIL BO'LISHI SHART.
+
+                   Bu yerda ilgari BOSHQA shakl qaytarilardi: `current` —
+                   `Snapshot` (ya'ni raqamlar `period` ning ICHIDA), `delta`
+                   kalitlari esa `charged / collected / visits / appointments`.
+                   Ekran (`FinanceReport.tsx`) esa serverning tekis shaklini
+                   va `revenue / collected / expense / profit / visits /
+                   avgCheck` kalitlarini o'qiydi.
+
+                   Natija: to'rtta kalit topilmay `d` `undefined` bo'lardi va
+                   `d.abs` butun MOLIYA bo'limini yiqitardi — namoyish
+                   nusxasida, ya'ni aynan begona odam ko'radigan joyda.
+                   TypeScript ushlamadi: qaytish turi `any`.
+
+                   Endi shakl `backend/reports.ts` dagi `measure()` ning
+                   nusxasi. O'sha yerga maydon qo'shsangiz, BU YERGA HAM
+                   qo'shing. */
                 const len = Math.max(1, Math.round(
                     (new Date(to).getTime() - new Date(from).getTime()) / 86400000
                 ) + 1);
                 const prevTo = new Date(new Date(from).getTime() - 86400000).toISOString().slice(0, 10);
                 const prevFrom = new Date(new Date(from).getTime() - len * 86400000).toISOString().slice(0, 10);
-                const cur = demoSnapshot(from, to);
-                const prev = demoSnapshot(prevFrom, prevTo);
+
+                const measure = (a: string, b: string) => {
+                    const snap = demoSnapshot(a, b);
+                    const days = Math.max(1, Math.round(
+                        (new Date(b).getTime() - new Date(a).getTime()) / 86400000
+                    ) + 1);
+                    const expense = DEMO_EXPENSES
+                        .filter(e => inRange(e.date as any, a, b))
+                        .reduce((s, e) => s + (e.amount || 0), 0);
+                    const patients = new Set(
+                        DEMO_TRANSACTIONS
+                            .filter(t => inRange(t.date as any, a, b))
+                            .map(t => (t as any).patientId || t.patientName)
+                    ).size;
+                    return {
+                        from: a, to: b, days,
+                        revenue: snap.period.charged,
+                        collected: snap.period.collected,
+                        due: snap.period.due,
+                        expense,
+                        profit: snap.period.collected - expense,
+                        visits: snap.period.visits,
+                        patients,
+                        avgCheck: snap.period.avgCheck,
+                    };
+                };
+
+                const current = measure(from, to);
+                const previous = measure(prevFrom, prevTo);
                 const delta: Record<string, { abs: number; pct: number | null }> = {};
-                (['charged', 'collected', 'visits', 'appointments'] as const).forEach(k => {
-                    const a = cur.period[k], b = prev.period[k];
-                    delta[k] = { abs: a - b, pct: b ? Math.round(((a - b) / b) * 100) : null };
-                });
-                return demoRead({ current: cur, previous: prev, delta });
+                (['revenue', 'collected', 'due', 'expense', 'profit', 'visits', 'patients', 'avgCheck'] as const)
+                    .forEach(k => {
+                        const a = current[k], b = previous[k];
+                        delta[k] = { abs: a - b, pct: b > 0 ? Math.round(((a - b) / b) * 100) : null };
+                    });
+                return demoRead({ current, previous, delta });
             }
             return fetchJson<{ current: any; previous: any; delta: Record<string, { abs: number; pct: number | null }> }>(
                 `/reports/compare?from=${from}&to=${to}`);
