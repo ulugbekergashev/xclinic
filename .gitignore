@@ -45,3 +45,9 @@ playwright-report/
 # repozitoriyda bo'lishi shart, aks holda boshqa kompyuterda yig'ilgan
 # o'rnatuvchi boshqa birovning logosi bilan chiqadi.
 !build/icon.ico
+
+# Cloudflare tunnel dasturi — 66 MB, Cloudflare ning ochiq vositasi.
+# Repoga TUSHMAYDI: git tarixini shishiradi va uni har kim rasmiy
+# saytdan olishi mumkin. O'rnatuvchiga esa qo'shiladi (`package.json`
+# dagi `extraResources`) — README ga qarang.
+resources/cloudflared.exe

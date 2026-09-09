@@ -185,6 +185,19 @@ export const NetworkAccessTab: React.FC<Props> = ({ canManageRemote }) => {
                                     <div className="min-w-0">
                                         <p className="text-xs font-medium text-muted mb-1.5">{t('net.internetAddress')}</p>
                                         <CopyRow value={info.tunnelUrl} label={t('net.copy')} />
+                                        {/* VAQTINCHALIK MANZIL haqida ogohlantirish.
+
+                                            `trycloudflare.com` — o'z domeni bo'lmaganda
+                                            ishlatiladigan bepul manzil, va u dastur har
+                                            qayta ishga tushganda YANGISIGA almashadi.
+                                            Buni aytmasak, klinika havolani saqlab qo'yadi
+                                            yoki bemorga yuboradi, ertasiga esa u ishlamaydi
+                                            va sabab tushunarsiz bo'lib qoladi. */}
+                                        {info.tunnelUrl.includes('trycloudflare.com') && (
+                                            <p className="mt-2 text-xs text-amber-600 dark:text-amber-400 max-w-md">
+                                                {t('net.tempAddress')}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="p-3 bg-surface rounded-xl border border-line shrink-0">
                                         <QRCodeSVG value={info.tunnelUrl} size={110} level="M" />

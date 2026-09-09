@@ -203,6 +203,45 @@ const PUBLIC_API_BASE_URL = (process.env.PUBLIC_API_BASE_URL || `http://localhos
    o'rinsiz, va eng muhimi: klinika ichidagi http://192.168.x.x manzillar
    ro'yxatda yo'qligi uchun shifokorning telefoni/ikkinchi kompyuteri
    bloklanardi. Endi butun mahalliy tarmoq ochiq, tashqi domenlar esa yopiq. */
+/* ─── TUNNEL MANZILI ────────────────────────────────────────────────────────
+
+   Ikki xil tunnel bor va ular manzilni HAR XIL joyda saqlaydi:
+
+     · doimiy (named)  — `.env` dagi `CLOUDFLARE_TUNNEL_URL`;
+     · Quick Tunnel    — `cf-quick-tunnel.json`, chunki manzil har ishga
+                         tushishda yangisiga almashadi va uni oldindan
+                         `.env` ga yozib bo'lmaydi.
+
+   ILGARI CORS faqat BIRINCHISINI bilardi. Ya'ni o'z domeni bo'lmagan
+   klinikada tunnel ko'tarilardi, sahifa ochilardi — lekin KIRISH
+   ishlamasdi: brauzer POST so'rovlarda `Origin` yuboradi (bir manbadan
+   bo'lsa ham), server esa uni ro'yxatda topmay bloklardi. Ekranda
+   «Tizimga kirishda xatolik», sababi esa faqat serverning jurnalida.
+
+   Fayl har so'rovda o'qilmaydi — 10 soniyalik kesh yetarli: manzil
+   faqat dastur qayta ishga tushganda o'zgaradi. */
+let tunnelOriginsCache: { at: number; list: string[] } = { at: 0, list: [] };
+function activeTunnelOrigins(): string[] {
+    const now = Date.now();
+    if (now - tunnelOriginsCache.at < 10_000) return tunnelOriginsCache.list;
+
+    const list: string[] = [];
+    const fromEnv = process.env.CLOUDFLARE_TUNNEL_URL;
+    if (fromEnv) list.push(fromEnv.replace(/\/+$/, ''));
+    for (const f of ['cf-quick-tunnel.json', 'cf-tunnel.json']) {
+        try {
+            const p = path.join(USER_DATA_PATH, f);
+            if (!fs.existsSync(p)) continue;
+            const url = JSON.parse(fs.readFileSync(p, 'utf8'))?.url;
+            if (typeof url === 'string' && url.startsWith('https://')) {
+                list.push(url.replace(/\/+$/, ''));
+            }
+        } catch { /* tunnel ixtiyoriy — fayl buzuq bo'lsa e'tiborsiz qoldiramiz */ }
+    }
+    tunnelOriginsCache = { at: now, list };
+    return list;
+}
+
 const corsOptions = {
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
         // Origin yo'q — Electron oynasi, mobil ilova yoki curl
@@ -211,9 +250,10 @@ const corsOptions = {
         const isLoopback = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
         // Xususiy tarmoqlar: 192.168.x.x, 10.x.x.x, 172.16-31.x.x
         const isLocalNetwork = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(origin);
-        // Masofadan kirish uchun ochilgan tunnel (Sozlamalarda yoqiladi)
-        const tunnelUrl = process.env.CLOUDFLARE_TUNNEL_URL;
-        const isConfiguredTunnel = !!tunnelUrl && origin.startsWith(tunnelUrl);
+        /* Masofadan kirish uchun ochilgan tunnel (Sozlamalarda yoqiladi).
+           Taqqoslash TO'LIQ manzil bo'yicha: `startsWith` ishlatilsa
+           `https://xyz.trycloudflare.com.evil.com` ham o'tib ketardi. */
+        const isConfiguredTunnel = activeTunnelOrigins().includes(origin.replace(/\/+$/, ''));
 
         if (isLoopback || isLocalNetwork || isConfiguredTunnel) {
             callback(null, true);

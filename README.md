@@ -55,11 +55,30 @@ OGOHLANTIRISH yozib, standart Electron belgisini qo'yadi:
 node scripts/makeIcon.mjs     # public/logo-icon.png dan yasaydi
 ```
 
-**Tashqi tarmoqqa ulanish (ixtiyoriy).** `resources/cloudflared.exe`
-repozitoriyda yo'q. Usiz dastur ishlaydi — faqat mahalliy tarmoq bilan
-cheklanadi va jurnalga «cloudflared.exe topilmadi» yoziladi. Internet
-orqali kirish kerak bo'lsa, faylni Cloudflare saytidan olib shu yerga
-qo'ying.
+**Internet orqali kirish.** `resources/cloudflared.exe` kerak — u
+Cloudflare ning ochiq vositasi. Fayl **git ga tushmaydi** (66 MB, tarixni
+shishiradi), lekin o'rnatuvchiga qo'shiladi. Yangi kompyuterda yig'ish
+oldidan uni rasmiy saytdan olib shu papkaga qo'ying. Usiz dastur
+ishlayveradi — faqat mahalliy tarmoq bilan cheklanadi va jurnalga
+«cloudflared.exe topilmadi» yoziladi.
+
+Ikkita rejim bor:
+
+| Rejim | Manzil | Nima kerak |
+|---|---|---|
+| **Quick Tunnel** (hozirgi) | `https://xxx.trycloudflare.com` — dastur qayta ishga tushganda **o'zgaradi** | faqat shu fayl |
+| **Doimiy** | `k-<id>.domen.uz` — o'zgarmaydi | domen + `.env` da `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID` |
+
+Kod ikkalasini ham biladi: kalitlar bo'lsa server tunnelni Cloudflare API
+orqali o'zi ro'yxatdan o'tkazadi, bo'lmasa Quick Tunnel ko'tariladi.
+Vaqtinchalik manzil haqida ekranda ogohlantirish chiqadi — klinika
+havolani saqlab qo'yib, ertasiga «ishlamayapti» demasin.
+
+**Kalitlar haqida ehtiyot.** `CLOUDFLARE_API_TOKEN` akkaunt darajasida
+ishlaydi: uni bilgan odam barcha klinikalarning tunnelini o'chirishi
+mumkin. Shuning uchun u kodda emas, `.env` da turadi, va boshqa mahsulot
+bilan **bir xil token ishlatilmasin** — biri uchun tokenni almashtirish
+ikkinchisining masofaviy kirishini o'chiradi.
 
 **Dastur ishga tushmasa** — jurnal shu yerda:
 `%APPDATA%\XClinic\logs\main.log`. Windows'da GUI dasturi konsolga
