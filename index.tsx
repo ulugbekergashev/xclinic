@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
+import { reloadOnServiceWorkerUpdate } from './utils/lazyWithReload';
 
 /* HashRouter — chuqur havolalar va sahifa yangilanishi uchun. Electron
    ilgari `file://` dan ochilardi va u yerda BrowserRouter «file not found»
@@ -30,6 +31,10 @@ if (!isElectron && 'serviceWorker' in navigator) {
             // Ro'yxatga olinmasa ilova baribir ishlaydi — faqat o'rnatib bo'lmaydi
             console.warn("Service worker ro'yxatga olinmadi:", e?.message || e);
         });
+        /* Yangi versiya nazoratni olganda sahifa bir marta yangilanadi.
+           Busiz ochiq turgan eski sahifa yangi bo'lak nomlarini bilmaydi
+           va «Failed to fetch dynamically imported module» beradi. */
+        reloadOnServiceWorkerUpdate();
     });
 }
 

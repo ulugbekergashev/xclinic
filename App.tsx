@@ -17,20 +17,20 @@ import { IS_DEMO_BUILD } from './services/demoBuild';
        yuklash indikatori xunuk;
      • `NotFound` — kichkina, ajratishning foydasi yo'q. */
 
-const Patients = React.lazy(() => import('./pages/Patients').then(m => ({ default: m.Patients })));
-const PatientDetails = React.lazy(() => import('./pages/PatientDetails').then(m => ({ default: m.PatientDetails })));
-const Calendar = React.lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
-const FinanceHub = React.lazy(() => import('./pages/FinanceHub').then(m => ({ default: m.FinanceHub })));
-const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const Inventory = React.lazy(() => import('./pages/Inventory').then(m => ({ default: m.Inventory })));
-const LabOrders = React.lazy(() => import('./pages/LabOrders').then(m => ({ default: m.LabOrders })));
-const Diagnostics = React.lazy(() => import('./pages/Diagnostics').then(m => ({ default: m.Diagnostics })));
-const Today = React.lazy(() => import('./pages/Today').then(m => ({ default: m.Today })));
-const VisitWorkspace = React.lazy(() => import('./pages/VisitWorkspace').then(m => ({ default: m.VisitWorkspace })));
-const Inpatient = React.lazy(() => import('./pages/Inpatient').then(m => ({ default: m.Inpatient })));
-const MessagesManagement = React.lazy(() => import('./pages/MessagesManagement').then(m => ({ default: m.MessagesManagement })));
-const Staff = React.lazy(() => import('./pages/Staff').then(m => ({ default: m.Staff })));
-const StaffCard = React.lazy(() => import('./pages/StaffCard').then(m => ({ default: m.StaffCard })));
+const Patients = lazyWithReload(() => import('./pages/Patients').then(m => ({ default: m.Patients })));
+const PatientDetails = lazyWithReload(() => import('./pages/PatientDetails').then(m => ({ default: m.PatientDetails })));
+const Calendar = lazyWithReload(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
+const FinanceHub = lazyWithReload(() => import('./pages/FinanceHub').then(m => ({ default: m.FinanceHub })));
+const Settings = lazyWithReload(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const Inventory = lazyWithReload(() => import('./pages/Inventory').then(m => ({ default: m.Inventory })));
+const LabOrders = lazyWithReload(() => import('./pages/LabOrders').then(m => ({ default: m.LabOrders })));
+const Diagnostics = lazyWithReload(() => import('./pages/Diagnostics').then(m => ({ default: m.Diagnostics })));
+const Today = lazyWithReload(() => import('./pages/Today').then(m => ({ default: m.Today })));
+const VisitWorkspace = lazyWithReload(() => import('./pages/VisitWorkspace').then(m => ({ default: m.VisitWorkspace })));
+const Inpatient = lazyWithReload(() => import('./pages/Inpatient').then(m => ({ default: m.Inpatient })));
+const MessagesManagement = lazyWithReload(() => import('./pages/MessagesManagement').then(m => ({ default: m.MessagesManagement })));
+const Staff = lazyWithReload(() => import('./pages/Staff').then(m => ({ default: m.Staff })));
+const StaffCard = lazyWithReload(() => import('./pages/StaffCard').then(m => ({ default: m.StaffCard })));
 import { todayISO } from './utils/dateUtils';
 import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -40,6 +40,7 @@ import {
 import { SignIn } from './pages/SignIn';
 import { FirstRunSetup } from './pages/FirstRunSetup';
 import { QueueBoard } from './pages/QueueBoard';
+import { lazyWithReload } from './utils/lazyWithReload';
 import { UserRole, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, Service, InventoryItem, ServiceCategory, Lead, LabTechnician, LabOrder, CashRegisterDay, CashMovement, Department, VisitCharge } from './types';
 import { AiOverlay } from './components/AiOverlay';
 import { ToastContainer, ToastMessage } from './components/Common';
