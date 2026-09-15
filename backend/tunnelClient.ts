@@ -22,9 +22,10 @@ import fs from 'fs';
 import path from 'path';
 import { getMachineId } from './hwid';
 
-/* Registrator manzili. Muhitdan almashtirish mumkin — masalan domen
-   Vercel loyihasiga ulangach `https://getxclinic.com/api/tunnel-register`. */
-export const DEFAULT_REGISTRAR_URL = 'https://xclinic-alpha.vercel.app/api/tunnel-register';
+/* Registrator manzili — alohida Vercel loyihasi (`scripts/deploy-registrar.mjs`).
+   Demo sayt (`xclinic-alpha`) EMAS: u yerda `api/` `.vercelignore` bilan
+   chiqarilgan. Muhitdan almashtirish mumkin: `XCLINIC_TUNNEL_REGISTRAR`. */
+export const DEFAULT_REGISTRAR_URL = 'https://xclinic-registrar.vercel.app/api/tunnel-register';
 
 export type TunnelRequestResult =
     | { ok: true; url: string }
