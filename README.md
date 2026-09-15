@@ -67,10 +67,18 @@ Ikkita rejim bor:
 | Rejim | Manzil | Nima kerak |
 |---|---|---|
 | **Quick Tunnel** (hozirgi) | `https://xxx.trycloudflare.com` — dastur qayta ishga tushganda **o'zgaradi** | faqat shu fayl |
-| **Doimiy** | `k-<id>.domen.uz` — o'zgarmaydi | domen + `.env` da `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID` |
+| **Doimiy** | `k-<id>.getxclinic.com` — o'zgarmaydi | domen + Vercel'dagi registrator sozlangan bo'lishi |
 
-Kod ikkalasini ham biladi: kalitlar bo'lsa server tunnelni Cloudflare API
-orqali o'zi ro'yxatdan o'tkazadi, bo'lmasa Quick Tunnel ko'tariladi.
+**Cloudflare tokeni klinika kompyuterida TURMAYDI.** U faqat Vercel'dagi
+registratorda (`api/tunnel-register.ts`). Klinika dasturi o'z `machineId`
+va litsenziya kalitini yuboradi va javobda FAQAT o'z tunnelini ishga
+tushiradigan tokenni oladi. Aks holda istalgan klinika kompyuteridan
+tokenni olib, boshqa hamma klinikalarning tunnelini o'chirish mumkin
+bo'lardi.
+
+Registrator sozlanmagan bo'lsa (domen hali ulanmagan) — klinika Quick
+Tunnel bilan ishlayveradi, hech narsa buzilmaydi. Ulash qadamlari:
+`docs/DOMEN-ULASH.md`.
 Vaqtinchalik manzil haqida ekranda ogohlantirish chiqadi — klinika
 havolani saqlab qo'yib, ertasiga «ishlamayapti» demasin.
 

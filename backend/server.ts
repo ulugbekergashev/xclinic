@@ -115,6 +115,7 @@ import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
 import { registerPayrollRoutes } from './payroll';
 import { registerHrRoutes, serializeWorkDays } from './hr';
 import { registerAttentionRoutes } from './attention';
+import { requestStableTunnel } from './tunnelClient';
 import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
 import { check as checkPermission } from './permissions';
 import { validatePatient, validatePhone } from '../shared/validation';
@@ -366,7 +367,10 @@ app.get('/api/network-info', (_req, res) => {
     }
     let tunnelUrl: string | null = process.env.CLOUDFLARE_TUNNEL_URL || null;
     if (!tunnelUrl) {
-        for (const f of ['cf-quick-tunnel.json', 'cf-tunnel.json']) {
+        /* DOIMIY manzil birinchi: ikkala fayl bir vaqtda bo'lishi mumkin
+           (Quick Tunnel doimiysi ko'tarilguncha ishlab turadi), va ekranda
+           o'zgarmaydigan manzil ko'rinishi kerak. */
+        for (const f of ['cf-tunnel.json', 'cf-quick-tunnel.json']) {
             try {
                 const p = path.join(USER_DATA_PATH, f);
                 if (fs.existsSync(p)) { tunnelUrl = JSON.parse(fs.readFileSync(p, 'utf8')).url; break; }
@@ -2217,6 +2221,15 @@ app.put('/api/admin/remote-access', authenticateToken, requireRole('CLINIC_ADMIN
                     if (fs.existsSync(p)) fs.unlinkSync(p);
                 } catch { /* ixtiyoriy */ }
             }
+        }
+
+        /* Yoqilganda DOIMIY MANZIL so'raladi — kutmasdan, javobni
+           ushlab turmaydi. Registrator sozlanmagan bo'lsa (domen hali
+           olinmagan) bu jim o'tadi va Quick Tunnel ishlayveradi. */
+        if (enabled) {
+            void requestStableTunnel({ prisma, userDataPath: USER_DATA_PATH, port: Number(PORT) })
+                .then(r => { if (!r.ok && !r.quiet) console.warn('🔗 Doimiy manzil olinmadi:', r.reason); })
+                .catch(() => { /* jurnalga yozilgan */ });
         }
 
         console.log(`🌐 Masofaviy kirish: ${enabled ? 'YOQILDI' : "O'CHIRILDI"}`);
@@ -7502,6 +7515,22 @@ applySqlitePragmas()
         startBackupScheduler({ prisma, userDataPath: USER_DATA_PATH, uploadsDir });
         app.listen(PORT, () => {
             console.log(`✅ XClinic server ${PORT}-portda ishga tushdi`);
+
+            /* DOIMIY MANZIL — masofaviy kirish yoqilgan bo'lsa.
+
+               Ishga tushishda: port har safar boshqa bo'lishi mumkin
+               (Electron bo'sh portni tanlaydi), registrator esa marshrutni
+               YANGI portga yozadi. Har 6 soatda: domen dastur ishlab
+               turgan paytda ulangan bo'lsa, qayta ishga tushirishsiz
+               doimiy manzil paydo bo'lsin. */
+            const stableTunnel = () => {
+                if (!readRemoteAccess()) return;
+                void requestStableTunnel({ prisma, userDataPath: USER_DATA_PATH, port: Number(PORT) })
+                    .then(r => { if (!r.ok && !r.quiet) console.warn('🔗 Doimiy manzil olinmadi:', r.reason); })
+                    .catch(() => { /* jurnalga yozilgan */ });
+            };
+            setTimeout(stableTunnel, 15_000).unref?.();
+            setInterval(stableTunnel, 6 * 60 * 60 * 1000).unref?.();
         });
     })
     .catch((err: any) => {

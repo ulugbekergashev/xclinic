@@ -9,6 +9,19 @@ let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 let cloudflaredProcess: ChildProcess | null = null;
 let cloudflaredQuickProcess: ChildProcess | null = null;
+/** Doimiy tunnel ko'tarilgach `false` — Quick qayta ko'tarilmaydi. */
+let quickTunnelWanted = true;
+
+/* Masofaviy kirish HOZIR yoqilganmi. Bir necha joyda kerak: ishga
+   tushishda, kuzatuvchida va tunnel o'chib qolganda qayta ko'tarishdan
+   oldin. Har safar fayldan o'qiladi — egasi tugmani dastur ishlab turgan
+   paytda bosadi. */
+function isRemoteEnabled(userData: string): boolean {
+    try {
+        const p = path.join(userData, 'remote-access.json');
+        return fs.existsSync(p) && JSON.parse(fs.readFileSync(p, 'utf8'))?.enabled === true;
+    } catch { return false; }
+}
 let currentTunnelToken = '';
 let isQuitting = false;
 let backendErrorOutput = '';
@@ -179,7 +192,11 @@ function startQuickTunnel(userData: string, logStream: fs.WriteStream) {
     cloudflaredQuickProcess.stderr?.on('data', d => { logStream.write(d); parseQuickTunnelUrl(d); });
     cloudflaredQuickProcess.on('exit', code => {
         logStream.write(`\n=== [CF-Quick] EXITED code ${code} at ${new Date().toISOString()} ===\n`);
-        if (!isQuitting) setTimeout(() => startQuickTunnel(userData, logStream), 5000);
+        /* Doimiy tunnel ko'tarilgach Quick TO'XTATILADI va qayta
+           ko'tarilmaydi — aks holda ikkita ochiq manzil bo'lardi. */
+        if (!isQuitting && quickTunnelWanted && isRemoteEnabled(userData)) {
+            setTimeout(() => startQuickTunnel(userData, logStream), 5000);
+        }
     });
 }
 
@@ -207,7 +224,12 @@ function startNamedTunnel(userData: string, logStream: fs.WriteStream, token: st
         if (!isQuitting) {
             setTimeout(() => {
                 const { token: freshToken, url: freshUrl } = readTunnelEnv(userData);
-                if (freshToken) startNamedTunnel(userData, logStream, freshToken, freshUrl);
+                /* Egasi o'chirgan bo'lsa QAYTA KO'TARILMAYDI. Ilgari token
+                   bo'lsa bas edi — tugma bosilgan bo'lsa ham klinika
+                   internetdan ochiq qolaverardi. */
+                if (freshToken && isRemoteEnabled(userData)) {
+                    startNamedTunnel(userData, logStream, freshToken, freshUrl);
+                }
             }, 5000);
         }
     });
@@ -239,9 +261,12 @@ function startCloudflared(userData: string) {
         if (fs.existsSync(p)) remoteEnabled = JSON.parse(fs.readFileSync(p, 'utf8'))?.enabled === true;
     } catch { /* fayl buzuq bo'lsa — o'chiq deb hisoblaymiz */ }
 
-    if (remoteEnabled) {
+    const initialTunnel = readTunnelEnv(userData);
+    if (remoteEnabled && !initialTunnel.token) {
+        /* Doimiy manzil hali yo'q (domen ulanmagan yoki registrator
+           javob bermagan) — vaqtinchalik manzil bilan ishlaymiz. */
         startQuickTunnel(userData, logStream);
-    } else {
+    } else if (!remoteEnabled) {
         logStream.write('[CF-Quick] Masofaviy kirish o\'chirilgan — tunnel ko\'tarilmadi\n');
         // Eski manzil fayli qolib ketmasin: aks holda Sozlamalar "internetdan
         // ochiq" deb YOLG'ON ogohlantirish ko'rsatib turardi.
@@ -253,16 +278,32 @@ function startCloudflared(userData: string) {
         }
     }
 
-    const { token, url } = readTunnelEnv(userData);
-    if (token) startNamedTunnel(userData, logStream, token, url);
+    /* DOIMIY TUNNEL — FAQAT MASOFAVIY KIRISH YOQILGANDA.
+
+       Ilgari u shartsiz ko'tarilardi: `.env` da token bo'lsa, egasi
+       masofaviy kirishni O'CHIRGAN bo'lsa ham klinika internetdan ochiq
+       qolardi. Endi tugma haqiqatan ham o'chiradi. */
+    if (remoteEnabled && initialTunnel.token) {
+        startNamedTunnel(userData, logStream, initialTunnel.token, initialTunnel.url);
+    }
 
     // The backend may (re)register the tunnel after startup and write a NEW token
     // to .env — without this watcher the connector would keep serving a deleted
     // tunnel and the public link would die with Cloudflare error 1033.
     setInterval(() => {
         if (isQuitting) return;
+        if (!isRemoteEnabled(userData)) return;
         const fresh = readTunnelEnv(userData);
         if (fresh.token && fresh.token !== currentTunnelToken) {
+            /* Registrator doimiy manzil berdi — vaqtinchalik Quick endi
+               kerak emas. Uning manzil fayli ham o'chiriladi, aks holda
+               Sozlamalar eskisini ko'rsatib turardi. */
+            if (cloudflaredQuickProcess) {
+                quickTunnelWanted = false;
+                cloudflaredQuickProcess.kill();
+                cloudflaredQuickProcess = null;
+                try { fs.unlinkSync(path.join(userData, 'cf-quick-tunnel.json')); } catch { /* yo'q */ }
+            }
             logStream.write(`[CF] Tunnel token changed — restarting Named Tunnel...\n`);
             if (cloudflaredProcess) {
                 cloudflaredProcess.kill(); // exit handler re-reads .env and respawns
