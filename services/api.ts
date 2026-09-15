@@ -44,7 +44,7 @@ const getBaseUrl = () => {
     // 1) Electron: bundle file:// orqali ochiladi. 3001-port band bo'lsa main.ts
     //    bo'sh portni tanlab, uni ?port= query orqali uzatadi.
     if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
-        const port = new URLSearchParams(window.location.search).get('port') || '3001';
+        const port = new URLSearchParams(window.location.search).get('port') || '3101';
         return `http://localhost:${port}/api`;
     }
     /* 2) HTTP orqali ochilgan — HAR DOIM shu manba.
@@ -68,7 +68,7 @@ const getBaseUrl = () => {
     }
 
     // 3) Boshqa holatlar (SSR, sinov muhiti) — sozlamadan yoki standart port
-    const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:3101';
     return envUrl.endsWith('/api') ? envUrl : `${envUrl}/api`;
 };
 export const API_URL = getBaseUrl();
@@ -3146,7 +3146,7 @@ export const api = {
         info: () => {
             if (isDemoMode()) {
                 return demoRead<{ ip: string; port: number; url: string; tunnelUrl: string | null }>({
-                    ip: '192.168.1.42', port: 3001, url: 'http://192.168.1.42:3001', tunnelUrl: null,
+                    ip: '192.168.1.42', port: 3101, url: 'http://192.168.1.42:3101', tunnelUrl: null,
                 });
             }
             return fetchJson<{ ip: string; port: number; url: string; tunnelUrl: string | null }>('/network-info');
@@ -4844,7 +4844,7 @@ export const api = {
                 return Promise.resolve({
                     apiKey: 'dk_live_demo0000000000000000000000000000',
                     createdAt: new Date().toISOString(),
-                    endpoint: 'http://localhost:3001/api/public/leads'
+                    endpoint: 'http://localhost:3101/api/public/leads'
                 } as LeadApiKeyInfo);
             }
             return fetchJson<LeadApiKeyInfo>(`/leads/api-key?clinicId=${clinicId}`);
@@ -4854,7 +4854,7 @@ export const api = {
                 return Promise.resolve({
                     apiKey: `dk_live_demo${Date.now()}`,
                     createdAt: new Date().toISOString(),
-                    endpoint: 'http://localhost:3001/api/public/leads'
+                    endpoint: 'http://localhost:3101/api/public/leads'
                 } as LeadApiKeyInfo);
             }
             return fetchJson<LeadApiKeyInfo>('/leads/api-key', {

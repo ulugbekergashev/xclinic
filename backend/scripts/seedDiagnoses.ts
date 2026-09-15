@@ -22,7 +22,7 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
-const BASE = process.env.SEED_BASE || 'http://localhost:3001';
+const BASE = process.env.SEED_BASE || 'http://localhost:3101';
 const prisma = new PrismaClient();
 
 const USER_DATA_PATH = (process.env.ELECTRON_USER_DATA_PATH || __dirname).replace(/['"]/g, '').trim();

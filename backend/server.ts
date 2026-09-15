@@ -48,9 +48,12 @@ for (const [k, v] of Object.entries(envBeforeFiles)) {
 import express from 'express';
 const app = express();
 /* DIQQAT: .env `override: true` bilan yuklanadi va process.env.PORT ni ham bosib
-   ketadi. 3001 band bo'lganda Electron bo'sh portni tanlab beradi, shuning uchun u
-   alohida ELECTRON_BACKEND_PORT orqali keladi — u .env dan ustun turadi. */
-const PORT = process.env.ELECTRON_BACKEND_PORT || process.env.PORT || 3001;
+   ketadi. Port band bo'lganda Electron bo'sh portni tanlab beradi, shuning uchun u
+   alohida ELECTRON_BACKEND_PORT orqali keladi — u .env dan ustun turadi.
+
+   Zaxira qiymati 3101, 3001 EMAS: 3001 ga denta ning doimiy tunneli qarab
+   turadi va XClinic u yerda internetga chiqib qolardi (`electron/main.ts`). */
+const PORT = process.env.ELECTRON_BACKEND_PORT || process.env.PORT || 3101;
 
 // Electron main.ts shu manzilni so'rab, backend tayyorligini kutadi
 app.get('/health', (req, res) => res.status(200).send('OK'));
@@ -6708,7 +6711,7 @@ app.delete('/api/inventory/:id', authenticateToken, async (req, res) => {
    FAQAT brauzer ichida mavjud, serverda bunday fayl yo'q.
 
    Ilgari fallback faqat `/` uchun bor edi. Ya'ni klinikadagi ikkinchi
-   kompyuterdan `http://<ip>:3001/patients` ga kirilsa yoki xodim ichki
+   kompyuterdan `http://<ip>:3101/patients` ga kirilsa yoki xodim ichki
    sahifada F5 bossa — 404 va oq ekran. Ishlaydigan dasturda bu "dastur
    buzildi" bo'lib ko'rinadi.
 

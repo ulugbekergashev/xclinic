@@ -33,7 +33,7 @@ import jwt from 'jsonwebtoken';
 require('dotenv').config();
 const { prisma, USER_DATA_PATH } = require('./db');
 
-const BASE = process.env.DEMO_BASE || `http://localhost:${process.env.PORT || 3001}`;
+const BASE = process.env.DEMO_BASE || `http://localhost:${process.env.PORT || 3101}`;
 
 /* ─── Takrorlanadigan tasodif ─────────────────────────────────────────────
    `Math.random` emas: skript ikki marta yurgizilsa natija bir xil bo'lsin,

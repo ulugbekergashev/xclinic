@@ -100,13 +100,32 @@ process.on('unhandledRejection', (e) => writeLog('FATAL', ['unhandledRejection',
 
 openLog(defaultUserData());
 console.log('main.js yuklandi');
-const DEFAULT_BACKEND_PORT = 3001;
+/* PORT 3101 DAN BOSHLANADI — 3001 EMAS.
+
+   Ilgari 3001 edi, xuddi DentaCRM (dentalocal) va denta7 niki kabi. Bo'sh
+   port tanlash faqat «port BAND» holatidan himoya qiladi, «port BO'SH, lekin
+   unga BEGONA TUNNEL qarab turibdi» holatidan esa himoya qilmaydi.
+
+   Aynan shunday holat topildi (2026-09-16): kompyuterda denta ning
+   `Cloudflared` Windows xizmati 24/7 ishlaydi va
+   `denta-….denta-crm.com → http://localhost:3001` ga yo'naltirilgan.
+   DentaCRM yopiq bo'lsa 3001 bo'sh qoladi, XClinic uni egallaydi — va
+   XClinic ning login sahifasi hamda API si DENTA DOMENIDA internetga
+   chiqadi. «Masofaviy kirish sukut bo'yicha o'chiq» himoyasi butunlay
+   chetlab o'tiladi.
+
+   Bir xil sotuvchining ikki mahsuloti bitta kompyuterda standart portni
+   bo'lishmasligi kerak.
+
+   Brandmauer: o'rnatuvchida port qoidasi YO'Q — `build/installer.nsh`
+   hujjatlarda tilga olingan, lekin repoda mavjud emas. Tarmoqdan kirish
+   Windows'ning birinchi ishga tushishdagi ruxsat oynasiga tayanadi. */
+const DEFAULT_BACKEND_PORT = 3101;
 const FRONTEND_PORT = 3000;
 
-// 3001 ni boshqa dastur egallab olgan bo'lishi mumkin (masalan boshqa proyektning
-// dev-serveri). Bunda ilgari backend ko'tarilmay, foydalanuvchi 30 soniyadan keyin
-// tushunarsiz "javob bermadi" xatosini ko'rardi. Endi bo'sh port tanlanadi va
-// frontendga uzatiladi.
+// Port band bo'lishi mumkin (boshqa dastur yoki dev-server). Bunda ilgari backend
+// ko'tarilmay, foydalanuvchi 30 soniyadan keyin tushunarsiz "javob bermadi"
+// xatosini ko'rardi. Endi bo'sh port tanlanadi va frontendga uzatiladi.
 let BACKEND_PORT = DEFAULT_BACKEND_PORT;
 
 function isPortFree(port: number): Promise<boolean> {

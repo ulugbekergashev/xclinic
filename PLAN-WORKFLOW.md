@@ -236,6 +236,7 @@
 - Карточка «Через интернет»: тумблер удалённого доступа (`PUT /api/admin/remote-access` уже есть), адрес туннеля, QR, предупреждение, что пароль `admin` должен быть сменён.
 - Карточка «На телефон»: подсказка установки как приложения (`InstallPWAButton`, `IOSInstallModal` уже есть).
 - Установщик: правило брандмауэра для портов 3001–3020 (`build/installer.nsh`, `netsh advfirewall`), удаление при деинсталляции.
+  > **Tuzatish (2026-09-16):** `build/installer.nsh` repoda YO'Q — `build/` da faqat `icon.ico`, `package.json` unga murojaat qilmaydi (`build/*` ham `.gitignore` da). Brandmauer qoidasi amalda yo'q; tarmoqdan kirish Windows'ning birinchi ishga tushishdagi ruxsat oynasiga tayanadi. Port diapazoni ham endi 3101–3120.
 - Трей: закрытие окна сворачивает в трей, сервер продолжает работать для остальных компьютеров; «Выход» — в меню трея; защита от второго запуска (**решение 5**).
 
 **Настройки → «Резервные копии».**

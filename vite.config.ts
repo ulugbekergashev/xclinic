@@ -30,7 +30,7 @@ export default defineConfig(() => {
      baza ustida ikkinchi stend ko'tariladi (masalan 3021), unga qaragan
      frontend esa boshqa portda turadi. `VITE_API_URL` bilan to'g'ridan-to'g'ri
      ulanish CORS ga tiralardi; proksi orqali so'rov bir manzilda qoladi. */
-  const backendPort = Number(process.env.VITE_BACKEND_PORT) || 3001;
+  const backendPort = Number(process.env.VITE_BACKEND_PORT) || 3101;
 
   return {
     base: './',

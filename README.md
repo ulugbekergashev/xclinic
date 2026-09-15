@@ -24,7 +24,7 @@ cp backend/.env.example backend/.env
 cd backend && npx prisma db push && cd ..
 
 # 4) Dev rejimda
-cd backend && npm run dev     # 3001-port
+cd backend && npm run dev     # 3101-port
 npm run dev                   # 3000-port
 
 # yoki Electron oynasi bilan birga
@@ -93,7 +93,7 @@ ni ko'chirib bo'lmadi) — Prisma dvigatelini kimdir ushlab turibdi.
 Ketma-ket tekshiring:
 
 1. ishlab turgan server yoki `npm run dev` qoldig'ini yoping —
-   `netstat -ano | grep :3001` va `taskkill /PID <id> /F`;
+   `netstat -ano | grep :3101` va `taskkill /PID <id> /F`;
 2. muvaffaqiyatsiz urinishlardan qolgan vaqtinchalik fayllarni o'chiring:
    `rm backend/node_modules/.prisma/client/*.tmp*` — ular keyingi
    urinishga ham to'sqinlik qiladi;
@@ -177,8 +177,16 @@ qaytaradi; sozlash, kirish va statik fayllar ochiq qoladi.
 | Desktop | Electron 41 + electron-builder (NSIS) |
 
 Electron ishga tushganda `electron/main.ts` backendni alohida jarayon sifatida
-ko'taradi, `/health` javob berguncha kutadi, so'ng oynani ochadi. 3001-port band
-bo'lsa bo'sh port tanlanadi va frontendga `?port=` orqali uzatiladi.
+ko'taradi, `/health` javob berguncha kutadi, so'ng oynani ochadi. Port 3101 dan
+boshlanadi; band bo'lsa 3120 gacha bo'sh port tanlanadi va frontendga `?port=`
+orqali uzatiladi.
+
+> **Nega 3001 emas.** 3001 ni DentaCRM va denta7 ham ishlatadi. Bu kompyuterda
+> denta ning `Cloudflared` Windows xizmati 24/7 `denta-….denta-crm.com →
+> localhost:3001` ga yo'naltirilgan. XClinic 3001 da ishlasa, uning login
+> sahifasi va API si denta domenida internetga chiqib qolardi — egasi
+> masofaviy kirishni yoqmagan bo'lsa ham. Bo'sh port tanlash bundan himoya
+> qilmaydi: port bo'sh, lekin unga begona tunnel qarab turadi.
 
 ### Ko'rinish: rang tokenlari
 
@@ -236,7 +244,7 @@ jwt.key           — avtomatik yaratilgan token kaliti
 ### Tarmoqdan kirish
 
 Backend qurilgan frontendni ham o'zi tarqatadi, shuning uchun klinikadagi boshqa
-kompyuter yoki telefon hech narsa o'rnatmasdan `http://<server-ip>:3001` ga kirib
+kompyuter yoki telefon hech narsa o'rnatmasdan `http://<server-ip>:3101` ga kirib
 ishlay oladi. CORS xususiy tarmoqlarga (192.168.x.x, 10.x.x.x, 172.16–31.x.x)
 ochiq, tashqi domenlarga yopiq.
 
