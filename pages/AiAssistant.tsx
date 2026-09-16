@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { API_URL } from '../services/api';
 import { UserRole } from '../types';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 
 // ─── AI yordamchi ─────────────────────────────────────────────────────────────────
 // Bu modal EMAS. Sahifa ichida, ilova navigatsiyasi joyida turgan holda
@@ -73,7 +73,7 @@ async function api<T>(path: string, body?: object): Promise<T> {
      uchun). Namoyish nusxasida server yo'q, shuning uchun so'rov yubormay
      nima uchunligini aytamiz — "tizim xatosi" degan tushunarsiz xabar
      o'rniga. */
-  if (isDemoMode()) throw new Error('AI yordamchisi namoyish nusxasida ishlamaydi — u klinikadagi serverda hisoblanadi.');
+  if (isDemoMode()) throw new Error(tr('aiassistant.ai_yordamchisi_namoyish_nusxasida'));
   const token = authToken();
   const res = await fetch(`${API_URL}${path}`, {
     method: body ? 'POST' : 'GET',
@@ -84,7 +84,7 @@ async function api<T>(path: string, body?: object): Promise<T> {
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.success) throw new Error(data.message || `Xatolik (${res.status})`);
+  if (!res.ok || !data.success) throw new Error(data.message || fill(tr('aiassistant.xatolik_x'), res.status));
   return data as T;
 }
 
@@ -115,13 +115,13 @@ const fmtValue = (v: number | string): string =>
 // "get_revenue" hech kimga hech narsa demaydi — "moliya" javob qayerdan
 // kelganini tushuntiradi.
 const SOURCE_LABEL: Record<string, { uz: string; ru: string }> = {
-  get_appointments: { uz: 'qabullar', ru: 'приёмы' },
-  get_revenue: { uz: 'moliya', ru: 'финансы' },
-  get_debtors: { uz: 'qarzdorlar', ru: 'должники' },
-  get_doctor_stats: { uz: 'shifokorlar', ru: 'врачи' },
-  find_patient: { uz: 'bemorlar', ru: 'пациенты' },
-  get_low_stock: { uz: 'ombor', ru: 'склад' },
-  get_leads: { uz: 'lidlar', ru: 'лиды' },
+  get_appointments: { uz: tr('aiassistant.qabullar'), ru: 'приёмы' },
+  get_revenue: { uz: tr('aiassistant.moliya'), ru: 'финансы' },
+  get_debtors: { uz: tr('aiassistant.qarzdorlar'), ru: 'должники' },
+  get_doctor_stats: { uz: tr('aiassistant.shifokorlar'), ru: 'врачи' },
+  find_patient: { uz: tr('aiassistant.bemorlar'), ru: 'пациенты' },
+  get_low_stock: { uz: tr('aiassistant.ombor'), ru: 'склад' },
+  get_leads: { uz: tr('aiassistant.lidlar'), ru: 'лиды' },
 };
 
 const MetricCard: React.FC<{ m: Metric; i: number }> = ({ m, i }) => (
@@ -269,7 +269,7 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
     const q = query.trim();
     if (!q || busy) return;
     setBusy(true);
-    setBusyLabel('Ma\'lumot izlanmoqda');
+    setBusyLabel(t('ai.searching'));
     setActiveReport(null);
     setResult(null);
     setQuery('');
@@ -385,7 +385,7 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
             );
           })}
           {(result || thread.length > 0) && (
-            <button aria-label="Qaytarish"
+            <button aria-label={t('finance.cash.refund')}
               onClick={reset}
               className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px]
                          text-faint hover:text-muted

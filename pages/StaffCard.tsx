@@ -8,6 +8,7 @@ import { formatFullName, formatMoney, formatDate } from '../utils/format';
 import { formatUzPhone } from '../shared/validation';
 import { Department, Service } from '../types';
 import { DoctorRatesEditor } from '../components/DoctorRatesEditor';
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 import {
     StaffForm, StaffRow, StaffRole, roleMeta, saveStaff, removeStaff,
 } from '../components/StaffForm';
@@ -76,15 +77,16 @@ const thisPeriod = () => {
    yana «belgilanmagan» bo'ladi. */
 const ATT_CYCLE = ['Present', 'Absent', 'Excused', 'Late', ''] as const;
 const ATT_UI: Record<string, { label: string; cls: string }> = {
-    Present: { label: 'Keldi', cls: 'bg-emerald-500 text-white border-emerald-500' },
-    Absent: { label: 'Kelmadi', cls: 'bg-red-500 text-white border-red-500' },
-    Excused: { label: 'Sababli', cls: 'bg-amber-500 text-white border-amber-500' },
+    Present: { label: tr('ui.keldi'), cls: 'bg-emerald-500 text-white border-emerald-500' },
+    Absent: { label: tr('ui.kelmadi'), cls: 'bg-red-500 text-white border-red-500' },
+    Excused: { label: tr('ui.sababli'), cls: 'bg-amber-500 text-white border-amber-500' },
     Late: { label: 'Kechikdi', cls: 'bg-sky-500 text-white border-sky-500' },
 };
 
 export const StaffCard: React.FC<Props> = ({
     departments = [], services = [], clinicId, addToast, onStaffChanged,
 }) => {
+    const { t } = useLanguage();
     const { role, id } = useParams<{ role: string; id: string }>();
     const navigate = useNavigate();
 
@@ -117,7 +119,7 @@ export const StaffCard: React.FC<Props> = ({
             setRow(found);
             setWorkDays(String(found?.workDays || '').split(',').filter(Boolean).map(Number));
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || 'Xodim ma\'lumoti olinmadi');
+            toast.error(e?.data?.error || e?.message || t('staffcard.xodim_malumoti_olinmadi'));
         } finally {
             setLoading(false);
         }
@@ -136,7 +138,7 @@ export const StaffCard: React.FC<Props> = ({
             setMonth(m);
             setAttendance(att);
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || 'Oylik hisobi olinmadi');
+            toast.error(e?.data?.error || e?.message || t('staffcard.oylik_hisobi_olinmadi'));
             setMonth(null);
         } finally {
             setMonthLoading(false);
@@ -155,7 +157,7 @@ export const StaffCard: React.FC<Props> = ({
             onStaffChanged?.();
         } catch (e: any) {
             setWorkDays(workDays);   // orqaga qaytaramiz
-            toast.error(e?.data?.error || e?.message || "Ish grafigi saqlanmadi");
+            toast.error(e?.data?.error || e?.message || t('staffcard.ish_grafigi_saqlanmadi'));
         } finally {
             setSavingDays(false);
         }
@@ -186,7 +188,7 @@ export const StaffCard: React.FC<Props> = ({
             await api.hr.markAttendance(staffRole, id!, { date, status: next });
             await loadMonth();
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || 'Belgilab bo\'lmadi');
+            toast.error(e?.data?.error || e?.message || t('staffcard.belgilab_bolmadi'));
         }
     };
 
@@ -203,7 +205,7 @@ export const StaffCard: React.FC<Props> = ({
             setAdjReason(''); setAdjAmount('');
             await loadMonth();
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || "Qo'shib bo'lmadi");
+            toast.error(e?.data?.error || e?.message || t('staffcard.qoshib_bolmadi'));
         } finally {
             setBusy(false);
         }
@@ -214,25 +216,25 @@ export const StaffCard: React.FC<Props> = ({
             await api.hr.deleteAdjustment(adjId);
             await loadMonth();
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || "O'chirib bo'lmadi");
+            toast.error(e?.data?.error || e?.message || t('ui.ochirib_bolmadi'));
         }
     };
 
     const paySalary = async () => {
         if (!month) return;
         const ok = await confirmAction({
-            title: `${periodLabel(period)} uchun ${formatMoney(month.due)} to'lansinmi?`,
-            body: 'Pul kassadan xarajat bo\'lib chiqadi. To\'langan oy keyin o\'zgartirilmaydi.',
-            confirmLabel: "To'lash",
+            title: fill(t('staffcard.x_uchun_x_tolansinmi'), periodLabel(period), formatMoney(month.due)),
+            body: t('ui.pul_kassadan_xarajat_bolib'),
+            confirmLabel: t('ui.tolash_2'),
         });
         if (!ok) return;
         setBusy(true);
         try {
             await api.hr.pay(staffRole, id!, { period, method: 'Cash' });
-            addToast?.('success', "Oylik to'landi");
+            addToast?.('success', t('staffcard.oylik_tolandi'));
             await loadMonth();
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || "To'lab bo'lmadi");
+            toast.error(e?.data?.error || e?.message || t('ui.tolab_bolmadi'));
         } finally {
             setBusy(false);
         }
@@ -241,29 +243,29 @@ export const StaffCard: React.FC<Props> = ({
     const archive = async () => {
         if (!row) return;
         if (!await confirmAction({
-            title: `${formatFullName(row)} ro'yxatdan chiqarilsinmi?`,
-            body: "Yozuvlar va tarix saqlanadi — xodim faqat ishlamaydigan bo'lib qoladi va tizimga kira olmaydi.",
-            danger: true, confirmLabel: "Ro'yxatdan chiqarish",
+            title: fill(t('staffcard.x_royxatdan_chiqarilsinmi'), formatFullName(row)),
+            body: t('staffcard.yozuvlar_va_tarix_saqlanadi'),
+            danger: true, confirmLabel: t('staffcard.royxatdan_chiqarish'),
         })) return;
         try {
             await removeStaff(staffRole, row.id);
             onStaffChanged?.();
             navigate('/staff');
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || "O'chirib bo'lmadi");
+            toast.error(e?.data?.error || e?.message || t('ui.ochirib_bolmadi'));
         }
     };
 
     if (loading) {
-        return <div className="p-6 text-center text-faint">Yuklanmoqda…</div>;
+        return <div className="p-6 text-center text-faint">{t('ui.yuklanmoqda')}</div>;
     }
     if (!row) {
         return (
             <div className="p-6 space-y-4">
                 <Link to="/staff" className="inline-flex items-center gap-2 text-sm text-muted hover:text-primary-600">
-                    <ArrowLeft className="w-4 h-4" /> Xodimlar ro'yxati
+                    <ArrowLeft className="w-4 h-4" /> {t('staffcard.xodimlar_royxati')}
                 </Link>
-                <Card className="p-10 text-center text-muted">Xodim topilmadi</Card>
+                <Card className="p-10 text-center text-muted">{t('staffcard.xodim_topilmadi')}</Card>
             </div>
         );
     }
@@ -273,16 +275,16 @@ export const StaffCard: React.FC<Props> = ({
     const paid = !!month?.payment;
 
     const TABS: [Tab, string, React.ElementType][] = [
-        ['general', 'Umumiy', Layers],
-        ['salary', "Maosh ma'lumoti", Wallet],
-        ['schedule', 'Ish grafigi', CalendarDays],
+        ['general', t('ui.umumiy_tab'), Layers],
+        ['salary', t('staffcard.maosh_malumoti'), Wallet],
+        ['schedule', t('staffcard.ish_grafigi'), CalendarDays],
         ...(isDoctor ? [['rates', 'Stavkalar', Percent] as [Tab, string, React.ElementType]] : []),
     ];
 
     return (
         <div className="p-4 md:p-6 space-y-5">
             <Link to="/staff" className="inline-flex items-center gap-2 text-sm text-muted hover:text-primary-600">
-                <ArrowLeft className="w-4 h-4" /> Xodimlar ro'yxati
+                <ArrowLeft className="w-4 h-4" /> {t('staffcard.xodimlar_royxati')}
             </Link>
 
             {/* ── Sarlavha ─────────────────────────────────────────────── */}
@@ -297,7 +299,7 @@ export const StaffCard: React.FC<Props> = ({
                             <h1 className="text-2xl md:text-3xl font-bold text-ink truncate">
                                 {formatFullName(row)}
                             </h1>
-                            <button onClick={() => setEditing(true)} title="Tahrirlash"
+                            <button onClick={() => setEditing(true)} title={t('ui.tahrirlash')}
                                 className="p-1.5 text-faint hover:text-primary-600 rounded-md">
                                 <Edit className="w-4 h-4" />
                             </button>
@@ -309,7 +311,7 @@ export const StaffCard: React.FC<Props> = ({
                             {row.specialty && <span className="text-sm text-muted">{row.specialty}</span>}
                             {row.status !== 'Active' && (
                                 <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-elevated text-muted">
-                                    {row.status === 'Vacation' ? "Ta'tilda" : 'Ishlamayapti'}
+                                    {row.status === 'Vacation' ? t('ui.tatilda') : 'Ishlamayapti'}
                                 </span>
                             )}
                         </div>
@@ -317,18 +319,18 @@ export const StaffCard: React.FC<Props> = ({
                 </div>
                 <div className="flex items-center gap-2">
                     {row.phone && (
-                        <a href={`tel:${row.phone}`} title="Qo'ng'iroq"
+                        <a href={`tel:${row.phone}`} title={t('staffcard.qongiroq')}
                             className="p-2.5 rounded-xl border border-line text-muted hover:text-primary-600">
                             <Phone className="w-4 h-4" />
                         </a>
                     )}
                     {row.email && (
-                        <a href={`mailto:${row.email}`} title="Pochta"
+                        <a href={`mailto:${row.email}`} title={t('staffcard.pochta')}
                             className="p-2.5 rounded-xl border border-line text-muted hover:text-primary-600">
                             <Mail className="w-4 h-4" />
                         </a>
                     )}
-                    <button onClick={archive} title="Ro'yxatdan chiqarish"
+                    <button onClick={archive} title={t('staffcard.royxatdan_chiqarish')}
                         className="p-2.5 rounded-xl border border-line text-faint hover:text-red-600">
                         <Trash2 className="w-4 h-4" />
                     </button>
@@ -339,30 +341,29 @@ export const StaffCard: React.FC<Props> = ({
                 {/* ── Chap ustun ───────────────────────────────────────── */}
                 <Card className="p-5 space-y-5">
                     <div className="rounded-xl border border-line p-4">
-                        <p className="text-xs text-muted">Asosiy oylik</p>
+                        <p className="text-xs text-muted">{t('staffcard.asosiy_oylik')}</p>
                         <p className="text-2xl font-bold text-ink tabular-nums mt-0.5">
                             {row.fixedSalary ? formatMoney(row.fixedSalary) : '—'}
-                            {!!row.fixedSalary && <span className="text-sm font-normal text-faint"> so'm</span>}
+                            {!!row.fixedSalary && <span className="text-sm font-normal text-faint"> {t('ui.som')}</span>}
                         </p>
                         {isDoctor && (
                             <p className="text-[11px] text-faint mt-2 leading-relaxed">
-                                Shifokorga bundan tashqari xizmat ulushi hisoblanadi — «Maosh»
-                                bo'limida oy bo'yicha ko'rinadi.
+                                {t('staffcard.shifokorga_bundan_tashqari_xizmat')}
                             </p>
                         )}
                     </div>
 
                     <div className="space-y-3">
-                        <p className="text-xs font-bold text-faint uppercase tracking-wider">Aloqa ma'lumotlari</p>
+                        <p className="text-xs font-bold text-faint uppercase tracking-wider">{t('doctors.details.contactInfo')}</p>
                         {([
-                            ['Telefon', row.phone ? formatUzPhone(row.phone) : null],
-                            ['Qo\'shimcha', row.secondaryPhone ? formatUzPhone(row.secondaryPhone) : null],
+                            [t('ui.telefon'), row.phone ? formatUzPhone(row.phone) : null],
+                            [t('ui.qoshimcha'), row.secondaryPhone ? formatUzPhone(row.secondaryPhone) : null],
                             ['Email', row.email || null],
-                            ['Bo\'lim', depName || null],
+                            [t('ui.bolim_2'), depName || null],
                             ['Kabinet', row.room || null],
-                            ['Ish soati', row.startHour != null && row.endHour != null
+                            [t('staffcard.ish_soati'), row.startHour != null && row.endHour != null
                                 ? `${row.startHour}:00–${row.endHour}:00` : null],
-                            ['Ish kunlari', workDays.length
+                            [t('staffcard.ish_kunlari'), workDays.length
                                 ? workDays.map(n => WEEK.find(w => w.n === n)?.short).join(', ') : null],
                             ['Login', row.username || null],
                         ] as const).map(([label, value]) => (
@@ -403,23 +404,23 @@ export const StaffCard: React.FC<Props> = ({
                                                 {month ? formatMoney(month.due) : '—'}
                                             </p>
                                             <p className="text-[11px] text-faint mt-1">
-                                                {paid ? "to'langan" : "to'lanmagan"}
+                                                {paid ? t('visit.paidShort') : t('visit.unpaidShort')}
                                             </p>
                                         </div>
                                         <div className="rounded-xl border border-line p-4">
-                                            <p className="text-xs text-muted">Davomat</p>
+                                            <p className="text-xs text-muted">{t('staffcard.davomat')}</p>
                                             <p className="text-2xl font-bold tabular-nums text-ink mt-1">
-                                                {month?.attendance?.present ?? 0}<span className="text-sm font-normal text-faint"> kun</span>
+                                                {month?.attendance?.present ?? 0}<span className="text-sm font-normal text-faint"> {t('staffcard.kun')}</span>
                                             </p>
-                                            <p className="text-[11px] text-faint mt-1">kelgan kunlar</p>
+                                            <p className="text-[11px] text-faint mt-1">{t('staffcard.kelgan_kunlar')}</p>
                                         </div>
                                         <div className="rounded-xl border border-line p-4">
                                             <p className="text-xs text-muted">Kelmagan</p>
                                             <p className="text-2xl font-bold tabular-nums text-ink mt-1">
-                                                {(month?.attendance?.absent ?? 0)}<span className="text-sm font-normal text-faint"> kun</span>
+                                                {(month?.attendance?.absent ?? 0)}<span className="text-sm font-normal text-faint"> {t('staffcard.kun')}</span>
                                             </p>
                                             <p className="text-[11px] text-faint mt-1">
-                                                sababli {month?.attendance?.excused ?? 0} · kechikish {month?.attendance?.late ?? 0}
+                                                {t('staffcard.sababli')} {month?.attendance?.excused ?? 0} · kechikish {month?.attendance?.late ?? 0}
                                             </p>
                                         </div>
                                     </div>
@@ -429,29 +430,28 @@ export const StaffCard: React.FC<Props> = ({
                                         <div className="rounded-xl border border-line p-4">
                                             <div className="flex items-center justify-between gap-3 mb-3">
                                                 <p className="text-sm font-bold text-ink">
-                                                    {periodLabel(period)} — xizmat ulushi
+                                                    {periodLabel(period)} — {t('staffcard.xizmat_ulushi')}
                                                 </p>
                                                 <button type="button" onClick={() => setTab('salary')}
                                                     className="text-xs text-primary-600 hover:underline">
-                                                    Maosh bo'limi →
+                                                    {t('staffcard.maosh_bolimi')}
                                                 </button>
                                             </div>
                                             {month.share.accrued === 0 ? (
                                                 <p className="text-sm text-faint">
-                                                    Bu oyda hisoblangan ulush yo'q: kassaga tushgan
-                                                    to'lovda shifokor ko'rsatilgan bo'lishi kerak.
+                                                    {t('staffcard.bu_oyda_hisoblangan_ulush')}
                                                 </p>
                                             ) : (
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
-                                                        <p className="text-[11px] text-faint uppercase tracking-wide">Hisoblangan</p>
+                                                        <p className="text-[11px] text-faint uppercase tracking-wide">{t('ui.hisoblangan')}</p>
                                                         <p className="text-xl font-bold tabular-nums text-ink">
                                                             {formatMoney(month.share.accrued)}
                                                         </p>
                                                     </div>
                                                     <div>
                                                         <p className="text-[11px] text-faint uppercase tracking-wide">
-                                                            {paid ? "To'langan" : "To'lanadi"}
+                                                            {paid ? t('ui.tolangan_2') : t('doctorshares.tolanadi')}
                                                         </p>
                                                         <p className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                                                             {formatMoney(paid ? month.payment.amount : month.due)}
@@ -468,7 +468,7 @@ export const StaffCard: React.FC<Props> = ({
                             {tab === 'salary' && (
                                 <div className="space-y-5">
                                     <div className="flex items-center justify-between gap-3">
-                                        <p className="text-sm font-bold text-ink">Maosh hisobi</p>
+                                        <p className="text-sm font-bold text-ink">{t('staffcard.maosh_hisobi')}</p>
                                         <div className="flex items-center gap-1">
                                             <button onClick={() => setPeriod(p => shiftPeriod(p, -1))}
                                                 className="p-2 rounded-lg border border-line text-muted hover:text-primary-600">
@@ -485,9 +485,9 @@ export const StaffCard: React.FC<Props> = ({
                                     </div>
 
                                     {monthLoading ? (
-                                        <p className="text-sm text-faint py-8 text-center">Yuklanmoqda…</p>
+                                        <p className="text-sm text-faint py-8 text-center">{t('ui.yuklanmoqda')}</p>
                                     ) : !month ? (
-                                        <p className="text-sm text-faint py-8 text-center">Hisob olinmadi</p>
+                                        <p className="text-sm text-faint py-8 text-center">{t('staffcard.hisob_olinmadi')}</p>
                                     ) : (
                                         <>
                                             <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${paid
@@ -495,15 +495,15 @@ export const StaffCard: React.FC<Props> = ({
                                                 : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'}`}>
                                                 {paid ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                                                 {periodLabel(period)} — {paid
-                                                    ? `to'langan (${formatMoney(month.payment.amount)}${month.payment.paidAt ? `, ${formatDate(month.payment.paidAt)}` : ''})`
-                                                    : "to'lanmagan"}
+                                                    ? fill(t('staffcard.tolangan_xx'), formatMoney(month.payment.amount), month.payment.paidAt ? `, ${formatDate(month.payment.paidAt)}` : '')
+                                                    : t('visit.unpaidShort')}
                                             </div>
 
                                             <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-start">
                                                 {/* Bonus va jarima */}
                                                 <div className="space-y-3">
                                                     <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl w-fit">
-                                                        {([['Bonus', "Qo'shimcha bonus"], ['Penalty', 'Jarima']] as const).map(([k, label]) => (
+                                                        {([['Bonus', t('staffcard.qoshimcha_bonus')], ['Penalty', t('staffcard.jarima')]] as const).map(([k, label]) => (
                                                             <button key={k} type="button" onClick={() => setAdjType(k)}
                                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${adjType === k
                                                                     ? 'bg-surface text-primary-600 shadow-sm'
@@ -515,14 +515,14 @@ export const StaffCard: React.FC<Props> = ({
 
                                                     {paid ? (
                                                         <p className="text-xs text-faint">
-                                                            To'langan oyga yangi yozuv qo'shilmaydi — hujjat o'zgarmasligi kerak.
+                                                            {t('staffcard.tolangan_oyga_yangi_yozuv')}
                                                         </p>
                                                     ) : (
                                                         <div className="flex flex-wrap items-end gap-2">
                                                             <Input containerClassName="flex-1 min-w-[180px]"
-                                                                placeholder="Sababni kiriting…"
+                                                                placeholder={t('staffcard.sababni_kiriting')}
                                                                 value={adjReason} onChange={e => setAdjReason(e.target.value)} />
-                                                            <Input containerClassName="w-40" type="number" placeholder="Summa"
+                                                            <Input containerClassName="w-40" type="number" placeholder={t('ui.summa')}
                                                                 value={adjAmount} onChange={e => setAdjAmount(e.target.value)} />
                                                             <Button onClick={addAdjustment} disabled={busy}
                                                                 variant={adjType === 'Penalty' ? 'danger' : 'primary'}>
@@ -534,7 +534,7 @@ export const StaffCard: React.FC<Props> = ({
                                                     <div className="space-y-2">
                                                         {month.adjustments.length === 0 ? (
                                                             <p className="text-sm text-faint py-4">
-                                                                Bu oyda bonus ham, jarima ham yo'q.
+                                                                {t('staffcard.bu_oyda_bonus_ham')}
                                                             </p>
                                                         ) : month.adjustments.map((a: any) => (
                                                             <div key={a.id}
@@ -542,7 +542,7 @@ export const StaffCard: React.FC<Props> = ({
                                                                 <div className="min-w-0">
                                                                     <p className="text-sm text-ink truncate">{a.reason}</p>
                                                                     <p className="text-[11px] text-faint">
-                                                                        {a.type === 'Bonus' ? 'Bonus' : 'Jarima'}
+                                                                        {a.type === 'Bonus' ? 'Bonus' : t('staffcard.jarima')}
                                                                         {a.createdByName ? ` · ${a.createdByName}` : ''}
                                                                     </p>
                                                                 </div>
@@ -567,11 +567,11 @@ export const StaffCard: React.FC<Props> = ({
                                                 {/* Hisob */}
                                                 <div className="rounded-xl border border-line p-4 space-y-3">
                                                     <p className="text-sm font-bold text-primary-600 dark:text-primary-400">
-                                                        {periodLabel(period)} — Hisob
+                                                        {periodLabel(period)} — {t('staffcard.hisob')}
                                                     </p>
                                                     <div className="flex items-center justify-between text-sm">
                                                         <span className="text-muted">
-                                                            {isDoctor ? 'Ulush va oylik' : 'Asosiy'}
+                                                            {isDoctor ? t('staffcard.ulush_va_oylik') : t('staffcard.asosiy')}
                                                         </span>
                                                         <span className="tabular-nums text-ink">
                                                             {formatMoney(month.base)}
@@ -585,19 +585,19 @@ export const StaffCard: React.FC<Props> = ({
                                                     {isDoctor && month.share && (
                                                         <div className="-mt-1 space-y-1">
                                                             <p className="text-[11px] text-faint">
-                                                                Hisoblangan {formatMoney(month.share.accrued)}
-                                                                {month.share.items?.length ? ` · ${month.share.items.length} xizmat` : ''}
+                                                                {t('ui.hisoblangan')} {formatMoney(month.share.accrued)}
+                                                                {month.share.items?.length ? fill(t('staffcard.x_xizmat'), month.share.items.length) : ''}
                                                             </p>
                                                             {month.share.paidViaRuns > 0 && (
                                                                 <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                                                                    Eski vedomost orqali to'langan −{formatMoney(month.share.paidViaRuns)}
+                                                                    {t('staffcard.eski_vedomost_orqali_tolangan')}{formatMoney(month.share.paidViaRuns)}
                                                                 </p>
                                                             )}
                                                         </div>
                                                     )}
                                                     <div className="flex items-center justify-between text-sm">
                                                         <span className="text-emerald-600 dark:text-emerald-400">
-                                                            Bonus ({month.adjustments.filter((a: any) => a.type === 'Bonus').length})
+                                                            {t('staffcard.bonus')}{month.adjustments.filter((a: any) => a.type === 'Bonus').length})
                                                         </span>
                                                         <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
                                                             +{formatMoney(month.bonus)}
@@ -605,7 +605,7 @@ export const StaffCard: React.FC<Props> = ({
                                                     </div>
                                                     <div className="flex items-center justify-between text-sm">
                                                         <span className="text-red-600 dark:text-red-400">
-                                                            Jarima ({month.adjustments.filter((a: any) => a.type === 'Penalty').length})
+                                                            {t('staffcard.jarima_2')}{month.adjustments.filter((a: any) => a.type === 'Penalty').length})
                                                         </span>
                                                         <span className="tabular-nums text-red-600 dark:text-red-400">
                                                             −{formatMoney(month.penalty)}
@@ -613,7 +613,7 @@ export const StaffCard: React.FC<Props> = ({
                                                     </div>
                                                     <div className="border-t border-dashed border-line pt-3 flex items-end justify-between">
                                                         <span className="text-sm font-bold text-ink">
-                                                            To'lanishi kerak
+                                                            {t('staffcard.tolanishi_kerak')}
                                                         </span>
                                                         <span className="text-2xl font-black tabular-nums text-ink">
                                                             {formatMoney(month.due)}
@@ -623,7 +623,7 @@ export const StaffCard: React.FC<Props> = ({
                                                         <Button className="w-full" onClick={paySalary}
                                                             disabled={busy || !(month.due > 0)}>
                                                             <Wallet className="w-4 h-4 mr-2" />
-                                                            {isDoctor ? "Ulushni to'lash" : "Maosh to'lash"}
+                                                            {isDoctor ? t('staffcard.ulushni_tolash') : t('staffcard.maosh_tolash')}
                                                         </Button>
                                                     )}
                                                 </div>
@@ -638,7 +638,7 @@ export const StaffCard: React.FC<Props> = ({
                                 <div className="space-y-6">
                                     <div>
                                         <div className="flex items-center justify-between gap-3 mb-3">
-                                            <p className="text-sm font-bold text-ink">Haftalik ish kunlari</p>
+                                            <p className="text-sm font-bold text-ink">{t('staffcard.haftalik_ish_kunlari')}</p>
                                             {savingDays && <Loader2 className="w-4 h-4 animate-spin text-faint" />}
                                         </div>
                                         <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
@@ -660,14 +660,14 @@ export const StaffCard: React.FC<Props> = ({
                                         </div>
                                         {workDays.length === 0 && (
                                             <p className="text-xs text-amber-600 dark:text-amber-400 mt-3">
-                                                Ish grafigi belgilanmagan — haftalik yuklama hisoblanmaydi.
+                                                {t('staffcard.ish_grafigi_belgilanmagan_haftalik')}
                                             </p>
                                         )}
                                     </div>
 
                                     <div>
                                         <div className="flex items-center justify-between gap-3 mb-3">
-                                            <p className="text-sm font-bold text-ink">Davomat</p>
+                                            <p className="text-sm font-bold text-ink">{t('staffcard.davomat')}</p>
                                             <div className="flex items-center gap-1">
                                                 <button onClick={() => setPeriod(p => shiftPeriod(p, -1))}
                                                     className="p-2 rounded-lg border border-line text-muted hover:text-primary-600">
@@ -699,7 +699,7 @@ export const StaffCard: React.FC<Props> = ({
                                                 const scheduled = workDays.includes(d.dow);
                                                 return (
                                                     <button key={d.date} type="button" onClick={() => markDay(d.date)}
-                                                        title={ui ? ui.label : 'Belgilanmagan'}
+                                                        title={ui ? ui.label : t('reception.unassigned')}
                                                         className={`aspect-square rounded-lg border text-xs font-medium transition-colors ${ui
                                                             ? ui.cls
                                                             : scheduled
@@ -718,7 +718,7 @@ export const StaffCard: React.FC<Props> = ({
                                                 </span>
                                             ))}
                                             <span className="text-[11px] text-faint ml-auto">
-                                                Kunni bosing — holat aylanadi. Davomat oylikdan avtomatik ushlanmaydi.
+                                                {t('staffcard.kunni_bosing_holat_aylanadi')}
                                             </span>
                                         </div>
                                     </div>

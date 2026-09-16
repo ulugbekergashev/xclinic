@@ -9,6 +9,7 @@ import { api } from '../services/api';
 import { InstallmentPlan, Doctor, InstallmentItem, VisitCharge } from '../types';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 
+import { useLanguage, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    BO'LIB TO'LASH — MAVJUD QARZNI BO'LADI.
 
@@ -44,6 +45,7 @@ const MONTH_OPTIONS = ['2', '3', '4', '6', '9', '12'];
 export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
    patientId, clinicId, doctors, currentUserName,
 }) => {
+    const { t } = useLanguage();
    const [plans, setPlans] = useState<PlanRow[]>([]);
    const [loading, setLoading] = useState(true);
 
@@ -111,7 +113,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
          setIsCreateOpen(false);
          await load();
       } catch (e: any) {
-         toast.error(e?.data?.error || e?.message || 'Rejani yaratib bo\'lmadi');
+         toast.error(e?.data?.error || e?.message || t('installmentstab.rejani_yaratib_bolmadi'));
       } finally {
          setCreating(false);
       }
@@ -125,7 +127,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
          setPayItem(null);
          await load();
       } catch (e: any) {
-         toast.error(e?.data?.error || e?.message || 'To\'lov o\'tmadi');
+         toast.error(e?.data?.error || e?.message || t('payment.failed'));
          // Qarz kassada to'langan bo'lsa server rejani yopadi — ro'yxatni yangilaymiz
          if (e?.data?.code === 'ALREADY_PAID') await load();
       } finally {
@@ -140,31 +142,31 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
          return;
       }
       if (!await confirmAction({
-         title: 'Reja o\'chirilsinmi?',
-         body: 'Qarz qatorlari QOLADI — ular faqat jadvaldan uziladi.',
-         danger: true, confirmLabel: 'O\'chirish',
+         title: t('installmentstab.reja_ochirilsinmi'),
+         body: t('installmentstab.qarz_qatorlari_qoladi_ular'),
+         danger: true, confirmLabel: t('ui.ochirish_2'),
       })) return;
       try {
          await api.installments.delete(plan.id);
          await load();
       } catch (e: any) {
-         toast.error(e?.data?.error || 'O\'chirib bo\'lmadi');
+         toast.error(e?.data?.error || t('ui.ochirib_bolmadi'));
       }
    };
 
-   if (loading) return <div className="p-8 text-center text-muted">Yuklanmoqda...</div>;
+   if (loading) return <div className="p-8 text-center text-muted">{t('ui.yuklanmoqda_2')}</div>;
 
    return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
          <div className="flex justify-between items-center gap-3">
             <div>
-               <h3 className="text-lg font-medium text-ink">Bo'lib to'lash</h3>
+               <h3 className="text-lg font-medium text-ink">{t('installmentstab.bolib_tolash')}</h3>
                <p className="text-xs text-muted">
-                  Mavjud qarzni oylarga bo'ladi. Yangi qarz yaratmaydi.
+                  {t('installmentstab.mavjud_qarzni_oylarga_boladi')}
                </p>
             </div>
             <Button onClick={openCreate}>
-               <Plus className="w-4 h-4 mr-2" /> Yangi reja
+               <Plus className="w-4 h-4 mr-2" /> {t('installmentstab.yangi_reja')}
             </Button>
          </div>
 
@@ -173,11 +175,11 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/20 text-primary-500 rounded-full flex items-center justify-center mb-4">
                   <CreditCard className="w-8 h-8" />
                </div>
-               <h4 className="text-lg font-medium text-ink mb-2">Reja yo'q</h4>
+               <h4 className="text-lg font-medium text-ink mb-2">{t('installmentstab.reja_yoq')}</h4>
                <p className="text-muted mb-6">
-                  Bemorning to'lanmagan xizmatlarini oylarga bo'lish uchun reja tuzing.
+                  {t('installmentstab.bemorning_tolanmagan_xizmatlarini_oylarg')}
                </p>
-               <Button onClick={openCreate}>Reja tuzish</Button>
+               <Button onClick={openCreate}>{t('installmentstab.reja_tuzish')}</Button>
             </Card>
          ) : (
             <div className="space-y-4">
@@ -196,24 +198,24 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                               <Badge status={plan.status === 'Active' ? 'pending' : 'completed'} />
                            </div>
                            <p className="text-sm text-muted">
-                              Shifokor: {plan.doctor ? formatFullName(plan.doctor) : 'Klinika'}
+                              {t('ui.shifokor_2')}: {plan.doctor ? formatFullName(plan.doctor) : t('ui.klinika')}
                            </p>
                         </div>
                         <div className="mt-4 md:mt-0 flex gap-6 text-sm shrink-0">
                            <div>
-                              <p className="text-muted mb-1">Umumiy</p>
+                              <p className="text-muted mb-1">{t('installmentstab.umumiy')}</p>
                               <p className="font-medium text-ink">{formatMoney(plan.totalAmount)}</p>
                            </div>
                            <div>
-                              <p className="text-muted mb-1">To'landi</p>
+                              <p className="text-muted mb-1">{t('installmentstab.tolandi')}</p>
                               <p className="font-medium text-green-600 dark:text-green-400">{formatMoney(collected)}</p>
                            </div>
                            <div>
-                              <p className="text-muted mb-1">Qoldiq</p>
+                              <p className="text-muted mb-1">{t('installmentstab.qoldiq')}</p>
                               <p className="font-medium text-red-600 dark:text-red-400">{formatMoney(due)}</p>
                            </div>
                            {!plan.items?.some(i => i.status === 'Paid') && (
-                              <button onClick={() => handleDelete(plan)} title="Rejani o'chirish"
+                              <button onClick={() => handleDelete(plan)} title={t('installmentstab.rejani_ochirish')}
                                  className="text-red-500 p-2 hover:bg-red-50 rounded-full dark:hover:bg-red-900/20 transition-colors self-start">
                                  <X className="w-4 h-4" />
                               </button>
@@ -224,12 +226,12 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                      {/* Reja qaysi qatorlar ustiga qurilgani ko'rinib tursin */}
                      {!!plan.charges?.length && (
                         <p className="text-[11px] text-faint mb-4 truncate">
-                           Qatorlar: {plan.charges.map(c => c.name).join(' · ')}
+                           {t('installmentstab.qatorlar')}: {plan.charges.map(c => c.name).join(' · ')}
                         </p>
                      )}
 
                      <div className="space-y-3">
-                        <h5 className="font-medium text-sm text-muted mb-3">To'lov grafigi</h5>
+                        <h5 className="font-medium text-sm text-muted mb-3">{t('installmentstab.tolov_grafigi')}</h5>
                         {plan.items?.map((item, idx) => {
                            const expected = new Date(item.expectedDate);
                            const overdue = item.status === 'Pending' && expected < new Date();
@@ -248,11 +250,11 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                                        {item.status === 'Paid' ? <Check className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                                     </div>
                                     <div>
-                                       <p className="font-medium text-ink">{idx + 1}-oylik to'lov</p>
+                                       <p className="font-medium text-ink">{idx + 1}-{t('installmentstab.oylik_tolov_2')}</p>
                                        <p className="text-sm text-muted flex items-center gap-1">
                                           <Calendar className="w-3 h-3" />
                                           {formatDate(expected)}
-                                          {item.status === 'Paid' && item.paidDate && ` (To'landi: ${formatDate(new Date(item.paidDate))})`}
+                                          {item.status === 'Paid' && item.paidDate && fill(t('installmentstab.tolandi_x'), formatDate(new Date(item.paidDate)))}
                                        </p>
                                     </div>
                                  </div>
@@ -261,7 +263,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                                     <p className="font-bold text-ink">{formatMoney(item.amount)}</p>
                                     {item.status === 'Pending' && due > 0 && (
                                        <Button size="sm" onClick={() => { setPayItem(item); setPayMethod('Cash'); }}>
-                                          To'lash
+                                          {t('ui.tolash')}
                                        </Button>
                                     )}
                                  </div>
@@ -276,21 +278,20 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
          )}
 
          {/* ── Reja tuzish ─────────────────────────────────────────────── */}
-         <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Bo'lib to'lash rejasi">
+         <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title={t('installmentstab.bolib_tolash_rejasi')}>
             <div className="space-y-4">
                {freeCharges.length === 0 ? (
                   <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                      <p className="text-sm text-amber-900 dark:text-amber-200">
-                        Bemorda bo'lib to'lashga yaroqli to'lanmagan xizmat yo'q. Avval
-                        shifokor xizmat buyurishi kerak — reja o'sha qatorlar ustiga quriladi.
+                        {t('installmentstab.bemorda_bolib_tolashga_yaroqli')}
                      </p>
                   </div>
                ) : (
                   <>
                      <div>
                         <label className="block text-sm font-medium text-muted mb-2">
-                           Qaysi xizmatlar bo'lib to'lanadi
+                           {t('installmentstab.qaysi_xizmatlar_bolib_tolanadi')}
                         </label>
                         <div className="border border-line rounded-xl divide-y divide-line max-h-56 overflow-y-auto">
                            {freeCharges.map(c => {
@@ -313,7 +314,7 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                      </div>
 
                      <div className="grid grid-cols-2 gap-4">
-                        <Input label="Boshlanish sanasi" type="date" value={startDate}
+                        <Input label={t('doctors.analytics.startDate')} type="date" value={startDate}
                            onChange={(e: any) => setStartDate(e.target.value)} />
                         <div>
                            <label className="block text-sm font-medium text-muted mb-1">Necha oy?</label>
@@ -324,13 +325,13 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
 
                      <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-xl flex justify-between items-center">
                         <div>
-                           <p className="text-sm text-primary-800 dark:text-primary-300">Oylik to'lov</p>
+                           <p className="text-sm text-primary-800 dark:text-primary-300">{t('installmentstab.oylik_tolov')}</p>
                            <p className="text-lg font-bold text-primary-900 dark:text-primary-100">
                               {pickedTotal > 0 ? formatMoney(Math.round(pickedTotal / Number(months))) : '0'}
                            </p>
                         </div>
                         <div className="text-right">
-                           <p className="text-sm text-primary-800 dark:text-primary-300">Jami qarz</p>
+                           <p className="text-sm text-primary-800 dark:text-primary-300">{t('installmentstab.jami_qarz')}</p>
                            <p className="text-lg font-bold text-primary-900 dark:text-primary-100">{formatMoney(pickedTotal)}</p>
                         </div>
                      </div>
@@ -338,26 +339,26 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                )}
 
                <div className="pt-2 flex justify-end gap-3">
-                  <Button variant="secondary" onClick={() => setIsCreateOpen(false)}>Bekor qilish</Button>
+                  <Button variant="secondary" onClick={() => setIsCreateOpen(false)}>{t('common.cancel')}</Button>
                   <Button onClick={handleCreate} disabled={creating || picked.size === 0}>
-                     {creating ? 'Saqlanmoqda...' : 'Saqlash'}
+                     {creating ? t('ui.saqlanmoqda_2') : t('ui.saqlash')}
                   </Button>
                </div>
             </div>
          </Modal>
 
          {/* ── Oylik to'lov ────────────────────────────────────────────── */}
-         <Modal isOpen={!!payItem} onClose={() => setPayItem(null)} title="Oylik to'lovni qabul qilish">
+         <Modal isOpen={!!payItem} onClose={() => setPayItem(null)} title={t('installmentstab.oylik_tolovni_qabul_qilish')}>
             <div className="space-y-4">
                {payItem && (
                   <div className="bg-elevated p-4 rounded-xl text-center">
-                     <p className="text-sm text-muted mb-1">To'lanayotgan summa</p>
+                     <p className="text-sm text-muted mb-1">{t('installmentstab.tolanayotgan_summa')}</p>
                      <p className="text-2xl font-bold text-ink">{formatMoney(payItem.amount)} UZS</p>
                   </div>
                )}
 
                <div>
-                  <label className="block text-sm font-medium text-muted mb-2">To'lov usuli</label>
+                  <label className="block text-sm font-medium text-muted mb-2">{t('ui.tolov_usuli')}</label>
                   <div className="flex flex-wrap gap-2">
                      {INCOMING_PAYMENT_METHODS.map(m => (
                         <button key={m} type="button" onClick={() => setPayMethod(m)}
@@ -369,14 +370,14 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
                      ))}
                   </div>
                   <p className="text-[11px] text-faint mt-2">
-                     Pul rejaning hisob qatorlariga tushadi — kassadagi oddiy to'lov bilan bir xil.
+                     {t('installmentstab.pul_rejaning_hisob_qatorlariga')}
                   </p>
                </div>
 
                <div className="pt-2 flex justify-end gap-3">
-                  <Button variant="secondary" onClick={() => setPayItem(null)}>Bekor qilish</Button>
+                  <Button variant="secondary" onClick={() => setPayItem(null)}>{t('common.cancel')}</Button>
                   <Button onClick={handlePay} disabled={paying}>
-                     {paying ? 'O\'tkazilmoqda...' : 'To\'lovni tasdiqlash'}
+                     {paying ? 'O\'tkazilmoqda...' : t('installmentstab.tolovni_tasdiqlash')}
                   </Button>
                </div>
             </div>

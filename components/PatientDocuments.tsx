@@ -6,6 +6,7 @@ import {
 import { api } from '../services/api';
 import { printPatientDocument } from '../utils/printForms';
 
+import { useLanguage, tr } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    Bemor imzolaydigan hujjatlar.
 
@@ -30,22 +31,23 @@ interface Props {
 }
 
 const KINDS: { key: 'Consent' | 'Contract' | 'DataConsent'; label: string; hint: string }[] = [
-    { key: 'Consent', label: 'Xabardor rozilik', hint: 'Aralashuvdan oldin — 25-modda' },
-    { key: 'Contract', label: 'Shartnoma', hint: 'Pullik xizmat — 26-modda' },
-    { key: 'DataConsent', label: "Ma'lumotlarga rozilik", hint: 'ЗРУ-547' },
+    { key: 'Consent', label: tr('patientdocuments.xabardor_rozilik'), hint: tr('patientdocuments.aralashuvdan_oldin_25_modda') },
+    { key: 'Contract', label: tr('patientdocuments.shartnoma'), hint: tr('patientdocuments.pullik_xizmat_26_modda') },
+    { key: 'DataConsent', label: tr('patientdocuments.malumotlarga_rozilik'), hint: 'ЗРУ-547' },
 ];
 
 const KIND_LABEL: Record<string, string> = {
-    Consent: 'Xabardor rozilik',
-    Contract: 'Shartnoma',
-    DataConsent: "Ma'lumotlarga rozilik",
+    Consent: tr('patientdocuments.xabardor_rozilik'),
+    Contract: tr('patientdocuments.shartnoma'),
+    DataConsent: tr('patientdocuments.malumotlarga_rozilik'),
     Discharge: "Ma'lumotnoma",
-    Other: 'Hujjat',
+    Other: tr('ui.hujjat'),
 };
 
 const fmtDate = (v?: string | null) => v ? formatDate(v) : '—';
 
 export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreate, addToast }) => {
+    const { t } = useLanguage();
     const [docs, setDocs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -57,7 +59,7 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
             setDocs(await api.compliance.documents({ patientId }));
             setError('');
         } catch (e: any) {
-            setError(e?.message || 'Hujjatlar yuklanmadi');
+            setError(e?.message || t('patientdocuments.hujjatlar_yuklanmadi'));
         } finally { setLoading(false); }
     }, [patientId]);
 
@@ -72,7 +74,7 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
             const opened = printPatientDocument(full, full.clinic);
             await load();
             addToast?.(opened ? 'success' : 'info',
-                opened ? `${KIND_LABEL[kind]} № ${created.number}` : `Hujjat yaratildi, lekin bosma oyna bloklandi`);
+                opened ? `${KIND_LABEL[kind]} № ${created.number}` : t('patientdocuments.hujjat_yaratildi_lekin_bosma'));
         } catch (e: any) {
             setError(e?.message || 'Yaratilmadi');
         } finally { setBusy(''); }
@@ -93,7 +95,7 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
         try {
             await api.compliance.sign(id, { patientSigned: true });
             await load();
-            addToast?.('success', 'Imzolangan deb belgilandi');
+            addToast?.('success', t('patientdocuments.imzolangan_deb_belgilandi'));
         } catch (e: any) {
             setError(e?.message || 'Belgilanmadi');
         } finally { setBusy(''); }
@@ -103,7 +105,7 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
         <div className="bg-surface rounded-xl border border-line overflow-hidden">
             <div className="px-4 py-3 border-b border-line-soft flex items-center gap-2">
                 <FileSignature className="w-4 h-4 text-faint" />
-                <h3 className="text-sm font-bold text-ink">Hujjatlar</h3>
+                <h3 className="text-sm font-bold text-ink">{t('card.secDocuments')}</h3>
                 <span className="text-xs text-faint">({docs.length})</span>
             </div>
 
@@ -120,8 +122,7 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
                         ))}
                     </div>
                     <p className="text-[11px] text-faint mt-2">
-                        Hujjat yaratilib darhol bosishga beriladi. Bemor o'qib imzolagach,
-                        ro'yxatda "Imzolandi" deb belgilang.
+                        {t('patientdocuments.hujjat_yaratilib_darhol_bosishga')}
                     </p>
                 </div>
             )}
@@ -131,7 +132,7 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
                     <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                     <p className="text-sm text-red-700 dark:text-red-300 flex-1">{error}</p>
                     <button onClick={load} className="text-sm font-medium text-red-700 dark:text-red-300 hover:underline">
-                        Qayta
+                        {t('ui.qayta')}
                     </button>
                 </div>
             )}
@@ -142,9 +143,9 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
                 </div>
             ) : docs.length === 0 ? (
                 <div className="px-4 py-8 text-center">
-                    <p className="text-sm text-muted">Hujjat yo'q</p>
+                    <p className="text-sm text-muted">{t('patientdocuments.hujjat_yoq')}</p>
                     <p className="text-[11px] text-faint mt-1">
-                        Rozilik va shartnoma — qonun talabi, ular bemor kartasida bo'lishi kerak.
+                        {t('patientdocuments.rozilik_va_shartnoma_qonun')}
                     </p>
                 </div>
             ) : (
@@ -173,7 +174,7 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
                             )}
 
                             <button onClick={() => reprint(d.id)} disabled={busy === d.id}
-                                title="Qayta bosish"
+                                title={t('patientdocuments.qayta_bosish')}
                                 className="p-1.5 rounded-lg text-faint hover:text-primary-600 hover:bg-elevated">
                                 <Printer className="w-4 h-4" />
                             </button>

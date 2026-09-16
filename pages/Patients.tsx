@@ -210,16 +210,16 @@ export const Patients: React.FC<PatientsProps> = ({
 
   // CSV Export
   const handleExport = () => {
-    const headers = ['ID', 'Familiya', 'Ism', 'Telefon', 'Tug\'ilgan sana', 'Jins', 'Status', 'Shifokor', 'Oxirgi tashrif'];
+    const headers = ['ID', t('patients.familiya'), t('patients.ism'), t('ui.telefon'), t('patients.tugilgan_sana'), t('patients.modal.gender'), 'Status', t('ui.shifokor_2'), t('patients.oxirgi_tashrif')];
     const rows = filteredPatients.map((p) => [
       p.id,
       p.lastName,
       p.firstName,
       showPatientPhone ? p.phone : maskPhone(p.phone),
       p.dob,
-      p.gender === 'Male' ? 'Erkak' : 'Ayol',
-      p.status === 'Active' ? 'Faol' : 'Arxiv',
-      getPatientDoctorName(p) || 'Biriktirilmagan',
+      p.gender === 'Male' ? t('ui.erkak') : t('ui.ayol'),
+      p.status === 'Active' ? t('ui.faol') : t('patients.filter.archived'),
+      getPatientDoctorName(p) || t('patients.filter.unassigned'),
       p.lastVisit,
     ]);
     const csvContent = [headers, ...rows].map((r) => r.join(',')).join('\n');
@@ -379,7 +379,7 @@ export const Patients: React.FC<PatientsProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Jins</label>
+              <label className="block text-xs font-medium text-muted mb-1">{t('patients.modal.gender')}</label>
               <select
                 value={filterGender}
                 onChange={(e) => setFilterGender(e.target.value)}
@@ -391,7 +391,7 @@ export const Patients: React.FC<PatientsProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Shifokor</label>
+              <label className="block text-xs font-medium text-muted mb-1">{t('common.doctor')}</label>
               <select
                 value={filterDoctor}
                 onChange={(e) => setFilterDoctor(e.target.value)}
@@ -405,7 +405,7 @@ export const Patients: React.FC<PatientsProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Tug'ilganidan boshlab</label>
+              <label className="block text-xs font-medium text-muted mb-1">{t('patients.tugilganidan_boshlab')}</label>
               <input
                 type="date"
                 value={filterDateFrom}
@@ -414,7 +414,7 @@ export const Patients: React.FC<PatientsProps> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Tugash sanasi</label>
+              <label className="block text-xs font-medium text-muted mb-1">{t('patients.tugash_sanasi')}</label>
               <input
                 type="date"
                 value={filterDateTo}
@@ -432,7 +432,7 @@ export const Patients: React.FC<PatientsProps> = ({
                   }}
                   className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 underline"
                 >
-                  Barcha filtrlarni tozalash
+                  {t('patients.barcha_filtrlarni_tozalash')}
                 </button>
               </div>
             )}
@@ -482,7 +482,7 @@ export const Patients: React.FC<PatientsProps> = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{showPatientPhone ? patient.phone : maskPhone(patient.phone)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                    {calcAge(patient.dob) ?? 'N/A'} / {patient.gender === 'Male' ? 'Erkak' : 'Ayol'}
+                    {calcAge(patient.dob) ?? 'N/A'} / {patient.gender === 'Male' ? t('ui.erkak') : t('ui.ayol')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {(() => {
@@ -496,12 +496,12 @@ export const Patients: React.FC<PatientsProps> = ({
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full">
-                          <AlertCircle className="w-3 h-3" /> Biriktirilmagan
+                          <AlertCircle className="w-3 h-3" /> {t('patients.filter.unassigned')}
                         </span>
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{patient.lastVisit && patient.lastVisit !== 'Never' ? formatDay(patient.lastVisit) : 'Hali kelmagan'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{patient.lastVisit && patient.lastVisit !== 'Never' ? formatDay(patient.lastVisit) : t('patients.hali_kelmagan')}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {patient.pinfl ? (
                       <span className="text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 w-fit">
@@ -537,7 +537,7 @@ export const Patients: React.FC<PatientsProps> = ({
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditing(patient); }}
                         className="text-muted hover:text-primary-600 dark:hover:text-primary-400 p-1.5 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
-                        title="Tahrirlash"
+                        title={t('ui.tahrirlash')}
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -559,7 +559,7 @@ export const Patients: React.FC<PatientsProps> = ({
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-muted">
                     <Search className="w-10 h-10 mx-auto mb-2 text-faint" />
-                    So'rovingiz bo'yicha bemorlar topilmadi.
+                    {t('patients.sorovingiz_boyicha_bemorlar_topilmadi')}
                   </td>
                 </tr>
               )}
@@ -569,7 +569,7 @@ export const Patients: React.FC<PatientsProps> = ({
       </Card>
 
       {/* Doctor Assignment Modal */}
-      <Modal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} title="Doktorga Biriktirish">
+      <Modal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} title={t('patients.doktorga_biriktirish')}>
         {selectedPatient && (
           <div className="space-y-4">
             <div className="flex items-center gap-3 p-3 bg-elevated rounded-lg">
@@ -583,21 +583,21 @@ export const Patients: React.FC<PatientsProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-muted mb-2">Shifokorni tanlang</label>
+              <label className="block text-sm font-medium text-muted mb-2">{t('patients.shifokorni_tanlang')}</label>
               <DoctorPicker
                 doctors={doctors}
                 value={assignDoctorId}
-                emptyLabel="— Biriktirilmagan —"
+                emptyLabel={t('patients.biriktirilmagan')}
                 onChange={setAssignDoctorId}
               />
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="secondary" onClick={() => setIsAssignModalOpen(false)} disabled={isAssigning}>
-                Bekor qilish
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleAssignDoctor} disabled={isAssigning}>
-                {isAssigning ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saqlanmoqda...</> : <><UserCheck className="w-4 h-4 mr-2" />Biriktirish</>}
+                {isAssigning ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t('ui.saqlanmoqda')}</> : <><UserCheck className="w-4 h-4 mr-2" />{t('patients.details.modals.assign')}</>}
               </Button>
             </div>
           </div>

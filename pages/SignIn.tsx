@@ -97,7 +97,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
          ma'nosiz va foydalanuvchiga «tizim xatosi» deb ko'rinadi. Shuning
          uchun so'rov yubormasdan, nima qilish kerakligini aytamiz. */
       if (IS_DEMO_BUILD) {
-        setError('Bu — namoyish nusxasi. Pastdagi «Demoga kirish» tugmasini bosing.');
+        setError(t('signin.bu_namoyish_nusxasi_pastdagi'));
         setIsLoading(false);
         return;
       }
@@ -237,11 +237,10 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                   onClick={() => enterDemo()}
                   className="w-full py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-base font-medium shadow-lg shadow-primary-500/30 transition-all"
                 >
-                  Demoga kirish
+                  {t('signin.demoga_kirish')}
                 </button>
                 <p className="text-xs text-faint mt-2">
-                  Namoyish ma'lumotlari brauzeringizda saqlanadi. Bemor qo'shsangiz ham,
-                  o'chirsangiz ham — faqat sizda ko'rinadi.
+                  {t('signin.namoyish_malumotlari_brauzeringizda_saql')}
                 </p>
               </div>
             )}

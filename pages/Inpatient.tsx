@@ -9,7 +9,15 @@ import { confirmAction } from '../services/confirm';
 import { Ward, Bed, Admission, Patient, Department, InventoryItem } from '../types';
 import { api } from '../services/api';
 import { EmptyState } from '../components/Common';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, tr, fill, TranslationKey } from '../context/LanguageContext';
+/* PALATA TURI. Bazada o'zbekcha qiymat turadi («Umumiy», «Lyuks» …) —
+   eski yozuvlar buzilmasin. Ekranda esa tildagi yorliq. */
+const WARD_KIND_KEYS: Record<string, TranslationKey> = {
+    'Umumiy': 'ui.ward_kind_umumiy', 'Yarim lyuks': 'ui.ward_kind_yarim_lyuks',
+    'Lyuks': 'ui.ward_kind_lyuks', 'Reanimatsiya': 'ui.ward_kind_reanimatsiya',
+};
+const wardKindLabel = (k: string) => (WARD_KIND_KEYS[k] ? tr(WARD_KIND_KEYS[k]) : k);
+
 import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
 
 const LIVE_EVENTS: LiveEventType[] = ['admission.changed', 'charge.paid'];
@@ -34,7 +42,7 @@ const BED_UI: Record<string, string> = {
     Blocked: 'bg-elevated border-line',
 };
 const BED_LABEL: Record<string, string> = {
-    Free: "Bo'sh", Occupied: 'Band', Cleaning: 'Tozalanmoqda', Blocked: 'Yopiq',
+    Free: tr('leads.empty'), Occupied: tr('inpatient.band'), Cleaning: tr('inpatient.tozalanmoqda'), Blocked: tr('inpatient.yopiq'),
 };
 
 interface Props {
@@ -57,8 +65,8 @@ const fmt = (n: number) => formatNumber(n);
 
 /** Hisob qatorlarining manbasi — "nima uchun bunday summa" savoliga javob */
 const SOURCE_LABEL: Record<string, string> = {
-    Bed: 'Koyka', Medication: 'Dorilar', Service: 'Xizmatlar',
-    Lab: 'Tahlillar', Study: 'Tekshiruvlar', Other: 'Boshqa',
+    Bed: tr('inp.bed'), Medication: tr('inpatient.dorilar'), Service: tr('inpatient.xizmatlar'),
+    Lab: tr('inpatient.tahlillar'), Study: tr('patienthistorypanel.tekshiruvlar'), Other: tr('inpatient.boshqa'),
 };
 const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
@@ -94,7 +102,7 @@ export const Inpatient: React.FC<Props> = ({
         try {
             const [w, a] = await Promise.all([api.wards.getAll(), api.admissions.getAll()]);
             setWards(w); setAdmissions(a);
-        } catch (e: any) { setError(e.message || 'Yuklab bo\'lmadi'); }
+        } catch (e: any) { setError(e.message || t('ui.yuklab_bolmadi')); }
     }, []);
 
     useEffect(() => { reload(); }, [reload]);
@@ -134,7 +142,7 @@ export const Inpatient: React.FC<Props> = ({
 
     // ── Amallar ─────────────────────────────────────────────────────────────
     const admit = async () => {
-        if (!admitBed || !admitForm.patientId) { setError('Bemorni tanlang'); return; }
+        if (!admitBed || !admitForm.patientId) { setError(t('ui.bemorni_tanlang')); return; }
         const p = patients.find(x => x.id === admitForm.patientId);
         const doc = doctors.find((d: any) => d.id === admitForm.doctorId);
         setSaving(true); setError('');
@@ -153,7 +161,7 @@ export const Inpatient: React.FC<Props> = ({
             await reload();
             setAdmitBed(null);
             setAdmitForm({ patientId: '', doctorId: '', reason: '', diagnosis: '' });
-        } catch (e: any) { setError(e.message || 'Yotqizib bo\'lmadi'); }
+        } catch (e: any) { setError(e.message || t('inpatient.yotqizib_bolmadi')); }
         finally { setSaving(false); }
     };
 
@@ -333,7 +341,7 @@ export const Inpatient: React.FC<Props> = ({
             if (e?.status === 409 && e?.data?.needsConfirm) {
                 setDebtConfirm({ due: e.data.due || 0, count: e.data.count || 0 });
             } else {
-                setError(e?.message || "Chiqarib bo'lmadi");
+                setError(e?.message || t('inpatient.chiqarib_bolmadi'));
             }
         } finally { setSaving(false); }
     };
@@ -357,7 +365,7 @@ export const Inpatient: React.FC<Props> = ({
                 departmentId: schedDept || undefined,
             }));
         } catch (e: any) {
-            setError(e?.message || "Ro'yxat yuklanmadi");
+            setError(e?.message || t('inpatient.royxat_yuklanmadi'));
         } finally { setSchedLoading(false); }
     }, [schedDept]);
 
@@ -402,7 +410,7 @@ export const Inpatient: React.FC<Props> = ({
             setAdmissions(fresh);
             setDetail(fresh.find(x => x.id === detail.id) || null);
             setRoundForm({ notes: '', plan: '', temperature: '', bp: '', pulse: '' });
-        } catch (e: any) { setError(e.message || 'Saqlanmadi'); }
+        } catch (e: any) { setError(e.message || t('ui.saqlanmadi')); }
         finally { setSaving(false); }
     };
 
@@ -413,7 +421,7 @@ export const Inpatient: React.FC<Props> = ({
 
     const addMedication = async (admissionId?: string) => {
         const target = admissionId || detail?.id;
-        if (!target || !medForm.name.trim()) { setError('Dori nomini kiriting'); return; }
+        if (!target || !medForm.name.trim()) { setError(t('inpatient.dori_nomini_kiriting')); return; }
         setSaving(true); setError('');
         try {
             /* Nomni OMBORDAGI pozitsiya bilan bog'laymiz. Busiz `medicationId`
@@ -434,7 +442,7 @@ export const Inpatient: React.FC<Props> = ({
             if (detail) setDetail(fresh.find(x => x.id === detail.id) || null);
             setMedForm({ name: '', dosage: '', route: '', frequency: '' });
             if (admissionId) { setAssignOpen(false); setAssignAdmId(''); await loadSchedule(); }
-        } catch (e: any) { setError(e.message || 'Saqlanmadi'); }
+        } catch (e: any) { setError(e.message || t('ui.saqlanmadi')); }
         finally { setSaving(false); }
     };
 
@@ -506,7 +514,7 @@ export const Inpatient: React.FC<Props> = ({
     };
 
     const createWard = async () => {
-        if (!wardForm.name.trim()) { setError('Palata nomi majburiy'); return; }
+        if (!wardForm.name.trim()) { setError(t('inp.wardNameRequired')); return; }
         setSaving(true); setError('');
         try {
             await api.wards.create({
@@ -537,15 +545,15 @@ export const Inpatient: React.FC<Props> = ({
                     <span className="text-emerald-600 dark:text-emerald-400">{t('inp.free')}<b className="tabular-nums">{stats.free}</b></span>
                     <span className="text-primary-600 dark:text-primary-400">{t('inp.occupied')}<b className="tabular-nums">{stats.occupied}</b></span>
                     {stats.other > 0 && (
-                        <span className="text-amber-600 dark:text-amber-400" title="Tozalanmoqda yoki yopiq">
-                            Boshqa: <b className="tabular-nums">{stats.other}</b>
+                        <span className="text-amber-600 dark:text-amber-400" title={t('inpatient.tozalanmoqda_yoki_yopiq')}>
+                            {t('inpatient.boshqa')}: <b className="tabular-nums">{stats.other}</b>
                         </span>
                     )}
                 </div>
                 {canManageStay && (
                     <button onClick={() => setShowWard(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
-                        <Plus className="w-4 h-4" /> Palata
+                        <Plus className="w-4 h-4" /> {t('inpatient.palata')}
                     </button>
                 )}
             </div>
@@ -561,11 +569,11 @@ export const Inpatient: React.FC<Props> = ({
             {/* Bo'limlar */}
             <div className="flex gap-1 border-b border-line">
                 {([
-                    ['beds', 'Palatalar'],
+                    ['beds', t('inpatient.palatalar')],
                     ['active', `Yotganlar (${active.length})`],
                     // Hamshiraning asosiy ekrani: "bugun kimga nima berilishi kerak"
-                    ['meds', "Dori varag'i"],
-                    ['archive', 'Arxiv'],
+                    ['meds', t('inpatient.dori_varagi')],
+                    ['archive', t('patients.filter.archived')],
                 ] as const).map(([k, label]) => (
                     <button key={k} onClick={() => setTab(k as any)}
                         className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === k
@@ -590,9 +598,9 @@ export const Inpatient: React.FC<Props> = ({
                             <div key={w.id} className="bg-surface rounded-xl border border-line p-4">
                                 <div className="flex flex-wrap items-baseline gap-2 mb-3">
                                     <h3 className="font-semibold text-ink">{w.name}</h3>
-                                    <span className="text-xs px-2 py-0.5 rounded bg-elevated text-muted">{w.kind}</span>
-                                    {w.floor && <span className="text-xs text-faint">{w.floor}-qavat</span>}
-                                    <span className="ml-auto text-sm text-muted tabular-nums">{fmt(w.dailyRate)} so'm/kun</span>
+                                    <span className="text-xs px-2 py-0.5 rounded bg-elevated text-muted">{wardKindLabel(w.kind)}</span>
+                                    {w.floor && <span className="text-xs text-faint">{w.floor}-{t('inpatient.qavat')}</span>}
+                                    <span className="ml-auto text-sm text-muted tabular-nums">{fmt(w.dailyRate)} {t('inpatient.som_kun')}</span>
                                     {/* PALATANI TAHRIRLASH VA KOYKA QO'SHISH.
 
                                         Ilgari koykalar FAQAT palata yaratilganda,
@@ -631,7 +639,7 @@ export const Inpatient: React.FC<Props> = ({
                                                 {b.status === 'Cleaning' && (
                                                     <button onClick={() => markBedReady(b.id)} disabled={saving}
                                                         className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-white/70 dark:bg-surface/40 text-amber-800 dark:text-amber-200 hover:bg-surface disabled:opacity-50">
-                                                        <Sparkles className="w-3 h-3" /> Koyka tayyor
+                                                        <Sparkles className="w-3 h-3" /> {t('inpatient.koyka_tayyor')}
                                                     </button>
                                                 )}
                                                 {/* Ta'mirdagi yoki vaqtincha yopilgan koyka.
@@ -674,26 +682,26 @@ export const Inpatient: React.FC<Props> = ({
                                             <div className="min-w-0 flex-1">
                                                 <h3 className="font-semibold text-ink">{a.patientName}</h3>
                                                 <p className="text-sm text-muted mt-0.5">
-                                                    {a.bed ? `${a.bed.ward?.name} / ${a.bed.label}` : 'Koyka biriktirilmagan'}
+                                                    {a.bed ? `${a.bed.ward?.name} / ${a.bed.label}` : t('inpatient.koyka_biriktirilmagan')}
                                                     {a.doctorName ? ` · ${a.doctorName}` : ''}
                                                 </p>
                                                 {a.diagnosis && <p className="text-xs text-muted mt-1">{a.diagnosis}</p>}
                                                 <p className="text-xs text-faint mt-1">
-                                                    {fmtDate(a.admittedAt)} — {a.dischargedAt ? fmtDate(a.dischargedAt) : 'hozirgacha'} · {days} kun
+                                                    {fmtDate(a.admittedAt)} — {a.dischargedAt ? fmtDate(a.dischargedAt) : 'hozirgacha'} · {days} {t('ui.kun')}
                                                 </p>
                                             </div>
                                             <div className="text-right shrink-0">
-                                                <p className="font-semibold text-ink tabular-nums">{fmt(a.dailyRate * days)} so'm</p>
-                                                <p className="text-xs text-faint">{fmt(a.dailyRate)} × {days} kun</p>
+                                                <p className="font-semibold text-ink tabular-nums">{fmt(a.dailyRate * days)} {t('ui.som')}</p>
+                                                <p className="text-xs text-faint">{fmt(a.dailyRate)} × {days} {t('ui.kun')}</p>
                                                 <div className="flex gap-2 mt-2 justify-end">
                                                     <button onClick={() => openDetail(a)}
                                                         className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
-                                                        Ochish
+                                                        {t('ui.ochish')}
                                                     </button>
                                                     {a.status === 'Active' && canManageStay && (
                                                         <button onClick={() => openDischarge(a)}
                                                             className="px-3 py-1.5 text-xs font-medium border border-line rounded-lg hover:bg-elevated">
-                                                            Chiqarish
+                                                            {t('inpatient.chiqarish')}
                                                         </button>
                                                     )}
                                                 </div>
@@ -715,7 +723,7 @@ export const Inpatient: React.FC<Props> = ({
                             <div>
                                 <h3 className="font-semibold text-ink">{t('inp.admit')}</h3>
                                 <p className="text-xs text-muted">
-                                    {admitBed.ward.name} / {admitBed.bed.label} · {fmt(admitBed.ward.dailyRate)} so'm/kun
+                                    {admitBed.ward.name} / {admitBed.bed.label} · {fmt(admitBed.ward.dailyRate)} {t('inpatient.som_kun')}
                                 </p>
                             </div>
                             <button onClick={() => setAdmitBed(null)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
@@ -751,7 +759,7 @@ export const Inpatient: React.FC<Props> = ({
                         <div className="p-5 border-t border-line flex justify-end gap-3">
                             <button onClick={() => setAdmitBed(null)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={admit} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {saving ? '...' : 'Yotqizish'}
+                                {saving ? '...' : t('inp.admit')}
                             </button>
                         </div>
                     </div>
@@ -778,7 +786,7 @@ export const Inpatient: React.FC<Props> = ({
                         <button onClick={loadSchedule} disabled={schedLoading}
                             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-line rounded-lg hover:bg-elevated disabled:opacity-50">
                             {schedLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-                            Yangilash
+                            {t('ui.yangilash')}
                         </button>
                         {/* DORI SHU YERDAN TAYINLANADI.
 
@@ -806,7 +814,7 @@ export const Inpatient: React.FC<Props> = ({
                             <Pill className="w-12 h-12 mx-auto text-faint mb-3" />
                             <p className="text-muted">{t('inp.noMedsToday')}</p>
                             <p className="text-xs text-faint mt-1">
-                                {t('inp.assignMed')} — yuqoridagi tugma.
+                                {t('inp.assignMed')} — {t('inpatient.yuqoridagi_tugma')}
                             </p>
                         </div>
                     ) : (
@@ -816,7 +824,7 @@ export const Inpatient: React.FC<Props> = ({
                                     <div className="px-4 py-2.5 bg-canvas/40 border-b border-line flex flex-wrap items-center gap-2">
                                         <p className="font-semibold text-ink">{row.patientName}</p>
                                         <span className="text-xs text-muted">
-                                            {[row.ward, row.bed].filter(Boolean).join(' / ') || 'koyka yo\'q'}
+                                            {[row.ward, row.bed].filter(Boolean).join(' / ') || t('inpatient.koyka_yoq')}
                                         </span>
                                         <button
                                             onClick={() => {
@@ -824,7 +832,7 @@ export const Inpatient: React.FC<Props> = ({
                                                 if (adm) openDetail(adm);
                                             }}
                                             className="ml-auto text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
-                                            Kartani ochish
+                                            {t('inpatient.kartani_ochish')}
                                         </button>
                                     </div>
 
@@ -895,21 +903,21 @@ export const Inpatient: React.FC<Props> = ({
                             <div className="min-w-0">
                                 <h3 className="font-semibold text-ink truncate">{detail.patientName}</h3>
                                 <p className="text-xs text-muted">
-                                    {detail.bed ? `${detail.bed.ward?.name} / ${detail.bed.label}` : '—'} · {fmtDate(detail.admittedAt)} dan
-                                    {' · '}{daysIn(detail.admittedAt, detail.dischargedAt)} kun
+                                    {detail.bed ? `${detail.bed.ward?.name} / ${detail.bed.label}` : '—'} · {fmtDate(detail.admittedAt)} {t('lab.from')}
+                                    {' · '}{daysIn(detail.admittedAt, detail.dischargedAt)} {t('ui.kun')}
                                 </p>
                             </div>
                             <div className="ml-auto flex items-center gap-2">
                                 {detail.status === 'Active' && canTransfer && (
                                     <button onClick={() => openTransfer(detail)}
                                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-line rounded-lg hover:bg-elevated">
-                                        <ArrowRightLeft className="w-3.5 h-3.5" /> Ko'chirish
+                                        <ArrowRightLeft className="w-3.5 h-3.5" /> {t('ui.kochirish')}
                                     </button>
                                 )}
                                 {detail.status === 'Active' && canManageStay && (
                                     <button onClick={() => openDischarge(detail)}
                                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-line rounded-lg hover:bg-elevated">
-                                        <LogOut className="w-3.5 h-3.5" /> Chiqarish
+                                        <LogOut className="w-3.5 h-3.5" /> {t('inpatient.chiqarish')}
                                     </button>
                                 )}
                                 {/* Arxivdagi yotishni qayta bosib chiqarish — bemor
@@ -943,13 +951,13 @@ export const Inpatient: React.FC<Props> = ({
                                     <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                                         <span className="flex items-center gap-1.5 text-sm text-muted">
                                             <Wallet className="w-4 h-4 text-faint" />
-                                            Yozilgan: <b className="tabular-nums">{fmt(billing.accrued)}</b>
+                                            {t('inpatient.yozilgan')} <b className="tabular-nums">{fmt(billing.accrued)}</b>
                                         </span>
                                         <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                                            To'langan: <b className="tabular-nums">{fmt(billing.paid)}</b>
+                                            {t('inpatient.tolangan')} <b className="tabular-nums">{fmt(billing.paid)}</b>
                                         </span>
                                         <span className={`text-sm ${billing.due > 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-faint'}`}>
-                                            Qarz: <b className="tabular-nums">{fmt(billing.due)}</b>
+                                            {t('inpatient.qarz')} <b className="tabular-nums">{fmt(billing.due)}</b>
                                         </span>
                                         {billing.advance > 0 && (
                                             <span className="text-sm text-primary-600 dark:text-primary-400">
@@ -958,8 +966,8 @@ export const Inpatient: React.FC<Props> = ({
                                         )}
                                         {detail.status === 'Active' && detail.dailyRate > 0 && (
                                             <span className="text-xs text-faint ml-auto">
-                                                koyka {fmt(detail.dailyRate)}/kun
-                                                {bedDays && bedDays.charged > 0 ? ` · +${bedDays.charged} kun yozildi` : ''}
+                                                {t('inpatient.koyka')} {fmt(detail.dailyRate)}/kun
+                                                {bedDays && bedDays.charged > 0 ? fill(t('inpatient.x_kun_yozildi'), bedDays.charged) : ''}
                                             </span>
                                         )}
                                     </div>
@@ -970,8 +978,8 @@ export const Inpatient: React.FC<Props> = ({
                                             {Object.entries(billing.bySource).map(([src, v]: any) => (
                                                 <span key={src} className="text-[11px] text-muted">
                                                     {SOURCE_LABEL[src] || src}: <b className="tabular-nums">{fmt(v.total)}</b>
-                                                    {v.paid > 0 && v.paid < v.total ? ` (to'landi ${fmt(v.paid)})` : ''}
-                                                    {v.count > 1 ? ` · ${v.count} ta` : ''}
+                                                    {v.paid > 0 && v.paid < v.total ? fill(t('inpatient.tolandi_x'), fmt(v.paid)) : ''}
+                                                    {v.count > 1 ? fill(t('inpatient.x_ta'), v.count) : ''}
                                                 </span>
                                             ))}
                                         </div>
@@ -979,7 +987,7 @@ export const Inpatient: React.FC<Props> = ({
 
                                     {billing.due > 0 && billing.advance > 0 && (
                                         <p className="text-[11px] text-primary-700 dark:text-primary-300 mt-2">
-                                            Bemorning avansi bor — kassada "Hisobdan (Avans)" usuli bilan yopish mumkin.
+                                            {t('inpatient.bemorning_avansi_bor_kassada')}
                                         </p>
                                     )}
                                 </div>
@@ -997,14 +1005,14 @@ export const Inpatient: React.FC<Props> = ({
                                     <CalendarDays className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                                     <div>
                                         <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                                            Bugun obxod yozuvi yo'q
+                                            {t('inpatient.bugun_obxod_yozuvi_yoq')}
                                         </p>
                                         <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
                                             {(() => {
                                                 const last = (detail.rounds || [])[0];
-                                                if (!last) return 'Yotgandan beri birorta obxod yozilmagan.';
+                                                if (!last) return t('inpatient.yotgandan_beri_birorta_obxod');
                                                 const days = Math.max(0, Math.round((Date.now() - new Date(last.date).getTime()) / 864e5));
-                                                return `Oxirgi yozuv: ${last.date}${days > 0 ? ` (${days} kun oldin)` : ''}.`;
+                                                return fill(t('inpatient.oxirgi_yozuv_xx'), last.date, days > 0 ? fill(t('inpatient.x_kun_oldin'), days) : '');
                                             })()}
                                         </p>
                                     </div>
@@ -1014,7 +1022,7 @@ export const Inpatient: React.FC<Props> = ({
                             {/* ── Harorat varag'i ───────────────────────────── */}
                             <div>
                                 <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-2">
-                                    <Activity className="w-4 h-4" /> Harorat varag'i
+                                    <Activity className="w-4 h-4" /> {t('inpatient.harorat_varagi')}
                                 </h4>
                                 <VitalsChart vitals={vitals} />
                             </div>
@@ -1024,7 +1032,7 @@ export const Inpatient: React.FC<Props> = ({
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2 mb-2">
                                         <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
-                                            <ClipboardList className="w-4 h-4" /> Dori varag'i
+                                            <ClipboardList className="w-4 h-4" /> {t('inpatient.dori_varagi')}
                                         </h4>
                                         <input type="date" value={marDate}
                                             onChange={e => { setMarDate(e.target.value); reloadMar(e.target.value); }}
@@ -1041,9 +1049,9 @@ export const Inpatient: React.FC<Props> = ({
                                                             {o.dosage ? <span className="text-muted font-normal"> · {o.dosage}</span> : null}
                                                         </p>
                                                         <p className="text-xs text-faint">
-                                                            {[o.route, o.frequency].filter(Boolean).join(' · ') || 'Qabul tartibi ko\'rsatilmagan'}
+                                                            {[o.route, o.frequency].filter(Boolean).join(' · ') || t('inpatient.qabul_tartibi_korsatilmagan')}
                                                             {o.givenToday > 0 && (
-                                                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold"> · bugun {o.givenToday} marta berildi</span>
+                                                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold"> · {t('cashbook.bugun')} {o.givenToday} {t('inpatient.marta_berildi')}</span>
                                                             )}
                                                         </p>
                                                     </div>
@@ -1057,7 +1065,7 @@ export const Inpatient: React.FC<Props> = ({
                                                             </button>
                                                             <button onClick={() => { setSkipFor(o); setSkipReason(''); }}
                                                                 className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border border-line text-muted hover:bg-elevated">
-                                                                Berilmadi
+                                                                {t('inpatient.berilmadi')}
                                                             </button>
                                                         </div>
                                                     )}
@@ -1074,7 +1082,7 @@ export const Inpatient: React.FC<Props> = ({
                                                                     : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
                                                                 {new Date(m.givenAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
                                                                 {' · '}
-                                                                {m.status === 'Given' ? 'berildi' : m.status === 'Refused' ? 'rad etdi' : "o'tkazildi"}
+                                                                {m.status === 'Given' ? 'berildi' : m.status === 'Refused' ? t('inpatient.rad_etdi') : "o'tkazildi"}
                                                                 {m.givenByName ? ` · ${m.givenByName}` : ''}
                                                             </span>
                                                         ))}
@@ -1085,7 +1093,7 @@ export const Inpatient: React.FC<Props> = ({
                                     </div>
                                     {!canGiveMeds && (
                                         <p className="text-[11px] text-faint mt-1.5">
-                                            Belgi qo'yish hamshira, shifokor va adminda.
+                                            {t('inpatient.belgi_qoyish_hamshira_shifokor')}
                                         </p>
                                     )}
                                 </div>
@@ -1095,7 +1103,7 @@ export const Inpatient: React.FC<Props> = ({
                             {transferHistory.length > 0 && (
                                 <div>
                                     <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-2">
-                                        <ArrowRightLeft className="w-4 h-4" /> Ko'chirishlar
+                                        <ArrowRightLeft className="w-4 h-4" /> {t('inpatient.kochirishlar')}
                                     </h4>
                                     <div className="space-y-1">
                                         {transferHistory.map((t: any) => (
@@ -1114,7 +1122,7 @@ export const Inpatient: React.FC<Props> = ({
                             {detail.status === 'Active' && (
                                 <div className="border border-line rounded-lg p-4">
                                     <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
-                                        <Stethoscope className="w-4 h-4" /> Kunlik obxod
+                                        <Stethoscope className="w-4 h-4" /> {t('inpatient.kunlik_obxod')}
                                     </h4>
                                     <div className="grid grid-cols-3 gap-3 mb-3">
                                         <input value={roundForm.temperature} onChange={e => setRoundForm(f => ({ ...f, temperature: e.target.value }))} className={inputCls} placeholder={t('inp.tempPh')} />
@@ -1124,7 +1132,7 @@ export const Inpatient: React.FC<Props> = ({
                                     <textarea rows={2} value={roundForm.notes} onChange={e => setRoundForm(f => ({ ...f, notes: e.target.value }))} className={`${inputCls} mb-2`} placeholder={t('inp.notesPh')} />
                                     <textarea rows={2} value={roundForm.plan} onChange={e => setRoundForm(f => ({ ...f, plan: e.target.value }))} className={`${inputCls} mb-3`} placeholder={t('inp.planPh')} />
                                     <button onClick={addRound} disabled={saving} className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50">
-                                        Obxodni saqlash
+                                        {t('inpatient.obxodni_saqlash')}
                                     </button>
                                 </div>
                             )}
@@ -1146,11 +1154,11 @@ export const Inpatient: React.FC<Props> = ({
                                                         <p className="text-xs text-muted tabular-nums">
                                                             {vs.temperature && `t ${vs.temperature}°C `}
                                                             {vs.bp && `· AB ${vs.bp} `}
-                                                            {vs.pulse && `· puls ${vs.pulse}`}
+                                                            {vs.pulse && fill(t('inpatient.puls_x'), vs.pulse)}
                                                         </p>
                                                     )}
                                                     {r.notes && <p className="text-muted">{r.notes}</p>}
-                                                    {r.plan && <p className="text-muted text-xs mt-0.5">Reja: {r.plan}</p>}
+                                                    {r.plan && <p className="text-muted text-xs mt-0.5">{t('inpatient.reja')}: {r.plan}</p>}
                                                 </div>
                                             );
                                         })}
@@ -1162,19 +1170,19 @@ export const Inpatient: React.FC<Props> = ({
                             {detail.status === 'Active' && (
                                 <div className="border border-line rounded-lg p-4">
                                     <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
-                                        <Pill className="w-4 h-4" /> Dori tayinlash
+                                        <Pill className="w-4 h-4" /> {t('inpatient.dori_tayinlash')}
                                     </h4>
                                     <div className="grid grid-cols-2 gap-3 mb-3">
-                                        <input list="xc-meds" value={medForm.name} onChange={e => setMedForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="Dori nomi" />
+                                        <input list="xc-meds" value={medForm.name} onChange={e => setMedForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder={t('inpatient.dori_nomi')} />
                                         <datalist id="xc-meds">
                                             {inventoryItems.filter(i => (i as any).isMedication).map(i => <option key={i.id} value={i.name} />)}
                                         </datalist>
                                         <input value={medForm.dosage} onChange={e => setMedForm(f => ({ ...f, dosage: e.target.value }))} className={inputCls} placeholder={t('inp.dosePh')} />
                                         <input value={medForm.route} onChange={e => setMedForm(f => ({ ...f, route: e.target.value }))} className={inputCls} placeholder={t('inp.routePh')} />
-                                        <input value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))} className={inputCls} placeholder="Kuniga 2 mahal" />
+                                        <input value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))} className={inputCls} placeholder={t('visit.frequencyPh')} />
                                     </div>
                                     <button onClick={() => addMedication()} disabled={saving} className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50">
-                                        Tayinlash
+                                        {t('inpatient.tayinlash')}
                                     </button>
                                 </div>
                             )}
@@ -1214,11 +1222,11 @@ export const Inpatient: React.FC<Props> = ({
                             {(() => {
                                 const d: any = detail;
                                 const parts: [string, string | null][] = [
-                                    ['Kirishdagi tashxis', d.admissionDiagnosis],
-                                    ['Yakuniy tashxis', d.finalDiagnosis],
-                                    ["O'tkazilgan davolash", d.treatmentGiven],
+                                    [t('inpatient.kirishdagi_tashxis'), d.admissionDiagnosis],
+                                    [t('inpatient.yakuniy_tashxis'), d.finalDiagnosis],
+                                    [t('inpatient.otkazilgan_davolash'), d.treatmentGiven],
                                     ['Tavsiyalar', d.recommendations],
-                                    ["Qo'shimcha", d.dischargeSummary],
+                                    [t('ui.qoshimcha'), d.dischargeSummary],
                                 ];
                                 const filled = parts.filter(([, v]) => v && String(v).trim());
                                 if (filled.length === 0) return null;
@@ -1277,7 +1285,7 @@ export const Inpatient: React.FC<Props> = ({
                             <div className="grid grid-cols-3 gap-2">
                                 <input value={medForm.dosage} onChange={e => setMedForm(f => ({ ...f, dosage: e.target.value }))} className={inputCls} placeholder={t('inp.dosePh')} />
                                 <input value={medForm.route} onChange={e => setMedForm(f => ({ ...f, route: e.target.value }))} className={inputCls} placeholder={t('inp.routePh')} />
-                                <input value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))} className={inputCls} placeholder="Kuniga 2 mahal" />
+                                <input value={medForm.frequency} onChange={e => setMedForm(f => ({ ...f, frequency: e.target.value }))} className={inputCls} placeholder={t('visit.frequencyPh')} />
                             </div>
                         </div>
                         <div className="p-5 border-t border-line flex justify-end gap-3">
@@ -1309,7 +1317,7 @@ export const Inpatient: React.FC<Props> = ({
                             <div>
                                 <label className="block text-sm font-medium text-muted mb-1.5">{t('inp.kind')}</label>
                                 <select value={wardForm.kind} onChange={e => setWardForm(f => ({ ...f, kind: e.target.value }))} className={inputCls}>
-                                    {['Umumiy', 'Yarim lyuks', 'Lyuks', 'Reanimatsiya'].map(k => <option key={k}>{k}</option>)}
+                                    {['Umumiy', 'Yarim lyuks', 'Lyuks', 'Reanimatsiya'].map(k => <option key={k} value={k}>{wardKindLabel(k)}</option>)}
                                 </select>
                             </div>
                             <div>
@@ -1333,7 +1341,7 @@ export const Inpatient: React.FC<Props> = ({
                         <div className="p-5 border-t border-line flex justify-end gap-3">
                             <button onClick={() => { setShowWard(false); setEditWard(null); }} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={editWard ? saveWardEdit : createWard} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {saving ? '...' : (editWard ? t('inp.saveWard') : 'Yaratish')}
+                                {saving ? '...' : (editWard ? t('inp.saveWard') : t('ui.yaratish'))}
                             </button>
                         </div>
                     </div>
@@ -1350,23 +1358,22 @@ export const Inpatient: React.FC<Props> = ({
                             <div>
                                 <h3 className="font-semibold text-ink">{t('inp.hasDebt')}</h3>
                                 <p className="text-sm text-muted mt-1">
-                                    {debtConfirm.count} qator, jami <b className="tabular-nums">{fmt(debtConfirm.due)}</b> so'm.
+                                    {debtConfirm.count} {t('inpatient.qator_jami')} <b className="tabular-nums">{fmt(debtConfirm.due)}</b> {t('inpatient.som')}
                                 </p>
                             </div>
                         </div>
                         <p className="text-xs text-muted mb-4">
-                            Chiqarish taqiqlanmaydi. Lekin qarz bemorning kartasida qoladi va
-                            kassada ko'rinib turadi.
+                            {t('inpatient.chiqarish_taqiqlanmaydi_lekin_qarz')}
                         </p>
                         <div className="flex flex-col sm:flex-row gap-2">
                             <button onClick={() => { setDebtConfirm(null); }}
                                 className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
-                                Avval to'lash
+                                {t('inpatient.avval_tolash')}
                             </button>
                             <button onClick={() => { setDebtConfirm(null); doDischarge(true, true); }}
                                 disabled={saving}
                                 className="flex-1 px-4 py-2 border border-amber-400 text-amber-700 dark:text-amber-300 rounded-lg text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50">
-                                Qarz bilan chiqarish
+                                {t('inpatient.qarz_bilan_chiqarish')}
                             </button>
                         </div>
                     </div>
@@ -1386,16 +1393,16 @@ export const Inpatient: React.FC<Props> = ({
                             placeholder={t('inp.notGivenPh')}
                             className={inputCls} />
                         <p className="text-[11px] text-faint mt-1.5">
-                            Sabab yozuvda qoladi va o'chirilmaydi.
+                            {t('inpatient.sabab_yozuvda_qoladi_va')}
                         </p>
                         <div className="flex justify-end gap-2 mt-4">
                             <button onClick={() => setSkipFor(null)}
                                 className="px-3 py-1.5 text-sm text-muted hover:bg-elevated rounded-lg">
-                                Bekor
+                                {t('ui.bekor')}
                             </button>
                             <button onClick={skipMed} disabled={!skipReason.trim() || marBusy === skipFor.id}
                                 className="px-3 py-1.5 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50">
-                                Saqlash
+                                {t('common.save')}
                             </button>
                         </div>
                     </div>
@@ -1410,13 +1417,13 @@ export const Inpatient: React.FC<Props> = ({
                     <div className="bg-surface rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
                         <h3 className="font-semibold text-ink mb-1">{t('inp.transferBed')}</h3>
                         <p className="text-xs text-muted mb-4">
-                            {transferFor.patientName} · hozir: {transferFor.bed ? `${transferFor.bed.ward?.name} / ${transferFor.bed.label}` : 'koyka biriktirilmagan'}
+                            {transferFor.patientName} · {t('inpatient.hozir')}: {transferFor.bed ? `${transferFor.bed.ward?.name} / ${transferFor.bed.label}` : t('inpatient.koyka_biriktirilmagan_2')}
                         </p>
 
                         {freeBeds.length === 0 ? (
                             <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                                 <p className="text-sm text-amber-800 dark:text-amber-200">
-                                    Bo'sh koyka yo'q. Tozalangan koykani "Koyka tayyor" bilan bo'shatish kerak.
+                                    {t('inpatient.bosh_koyka_yoq_tozalangan')}
                                 </p>
                             </div>
                         ) : (
@@ -1431,8 +1438,7 @@ export const Inpatient: React.FC<Props> = ({
                                 <input value={transferReason} onChange={e => setTransferReason(e.target.value)}
                                     placeholder={t('inp.transferPh')} className={inputCls} />
                                 <p className="text-[11px] text-faint mt-1.5">
-                                    Ko'chirish tarixda qoladi: bemor qayerda qancha yotgani ko'rinadi.
-                                    Bo'shagan koyka tozalashga o'tadi.
+                                    {t('inpatient.kochirish_tarixda_qoladi_bemor')}
                                 </p>
                             </>
                         )}
@@ -1440,11 +1446,11 @@ export const Inpatient: React.FC<Props> = ({
                         <div className="flex justify-end gap-2 mt-4">
                             <button onClick={() => setTransferFor(null)}
                                 className="px-3 py-1.5 text-sm text-muted hover:bg-elevated rounded-lg">
-                                Bekor
+                                {t('ui.bekor')}
                             </button>
                             <button onClick={doTransfer} disabled={saving || !transferBed}
                                 className="px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
-                                Ko'chirish
+                                {t('ui.kochirish')}
                             </button>
                         </div>
                     </div>
@@ -1460,15 +1466,15 @@ export const Inpatient: React.FC<Props> = ({
                         <div className="p-5 border-b border-line">
                             <h3 className="font-semibold text-ink">{t('inp.dischargeEpicrisis')}</h3>
                             <p className="text-xs text-muted">
-                                {dischargeFor.patientName} · {daysIn(dischargeFor.admittedAt, null)} kun yotdi
+                                {dischargeFor.patientName} · {daysIn(dischargeFor.admittedAt, null)} {t('inpatient.kun_yotdi')}
                             </p>
                         </div>
 
                         <div className="p-5 overflow-y-auto space-y-3">
                             {([
-                                ['admissionDiagnosis', 'Kirishdagi tashxis', 2],
-                                ['finalDiagnosis', 'Yakuniy tashxis', 2],
-                                ['treatmentGiven', "O'tkazilgan davolash", 4],
+                                ['admissionDiagnosis', t('inpatient.kirishdagi_tashxis'), 2],
+                                ['finalDiagnosis', t('inpatient.yakuniy_tashxis'), 2],
+                                ['treatmentGiven', t('inpatient.otkazilgan_davolash'), 4],
                                 ['recommendations', 'Tavsiyalar', 3],
                             ] as const).map(([key, label, rows]) => (
                                 <div key={key}>
@@ -1479,23 +1485,22 @@ export const Inpatient: React.FC<Props> = ({
                                 </div>
                             ))}
                             <p className="text-[11px] text-faint">
-                                Bo'sh qoldirilgan qism qog'ozda "Kiritilmagan" deb chiqadi. Chiqarishdan
-                                oldin koyka haqi oxirgi kunga qadar hisoblanadi.
+                                {t('inpatient.bosh_qoldirilgan_qism_qogozda')}
                             </p>
                         </div>
 
                         <div className="p-5 border-t border-line flex flex-wrap justify-end gap-2">
                             <button onClick={() => setDischargeFor(null)}
                                 className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">
-                                Bekor qilish
+                                {t('common.cancel')}
                             </button>
                             <button onClick={() => doDischarge(false)} disabled={saving}
                                 className="px-4 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated disabled:opacity-50">
-                                Chiqarish
+                                {t('inpatient.chiqarish')}
                             </button>
                             <button onClick={() => doDischarge(true)} disabled={saving}
                                 className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                <Printer className="w-4 h-4" /> Chiqarish va bosish
+                                <Printer className="w-4 h-4" /> {t('inpatient.chiqarish_va_bosish')}
                             </button>
                         </div>
                     </div>

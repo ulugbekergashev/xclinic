@@ -18,6 +18,7 @@ import { Logo } from '../components/Logo';
 import { AlertCircle, Copy, Check, KeyRound, Building2, ArrowRight } from 'lucide-react';
 import { API_BASE_URL } from '../services/api';
 
+import { useLanguage } from '../context/LanguageContext';
 interface Props {
     machineId: string;
     /** Klinika bor, lekin kalit yo'q yoki eskirgan — faqat aktivatsiya kerak */
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false, onDone }) => {
+    const { t } = useLanguage();
     const [clinicName, setClinicName] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -59,12 +61,12 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
         setError('');
 
         if (!activateOnly) {
-            if (!clinicName.trim()) return setError('Klinika nomini kiriting');
-            if (!username.trim()) return setError('Admin loginini kiriting');
-            if (password.length < 8) return setError('Parol kamida 8 belgidan iborat bo\'lsin');
-            if (password !== password2) return setError('Parollar mos kelmadi');
+            if (!clinicName.trim()) return setError(t('firstrunsetup.klinika_nomini_kiriting'));
+            if (!username.trim()) return setError(t('firstrunsetup.admin_loginini_kiriting'));
+            if (password.length < 8) return setError(t('firstrunsetup.parol_kamida_8_belgidan'));
+            if (password !== password2) return setError(t('forcepasswordchange.parollar_mos_kelmadi'));
         }
-        if (!key.trim()) return setError('Aktivatsiya kalitini kiriting');
+        if (!key.trim()) return setError(t('firstrunsetup.aktivatsiya_kalitini_kiriting'));
 
         setBusy(true);
         try {
@@ -85,12 +87,12 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
             });
             const data = await r.json().catch(() => ({}));
             if (!r.ok) {
-                setError(data?.error || 'Sozlashda xatolik yuz berdi');
+                setError(data?.error || t('firstrunsetup.sozlashda_xatolik_yuz_berdi'));
                 return;
             }
             onDone();
         } catch {
-            setError('Serverga ulanib bo\'lmadi. Dastur ishlab turganini tekshiring.');
+            setError(t('firstrunsetup.serverga_ulanib_bolmadi_dastur'));
         } finally {
             setBusy(false);
         }
@@ -105,7 +107,7 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                         X<span className="text-primary dark:text-primary-400">Clinic</span>
                     </h1>
                     <p className="text-muted mt-2">
-                        {activateOnly ? 'Dasturni aktivlashtirish' : 'Birinchi sozlash'}
+                        {activateOnly ? t('firstrunsetup.dasturni_aktivlashtirish') : t('firstrunsetup.birinchi_sozlash')}
                     </p>
                 </div>
 
@@ -115,10 +117,10 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                         <KeyRound className="w-5 h-5 text-primary-600 dark:text-primary-400 shrink-0 mt-0.5" />
                         <div className="min-w-0 flex-1">
                             <p className="text-sm font-semibold text-ink">
-                                1-qadam: kodni sotuvchiga yuboring
+                                {t('firstrunsetup.1_qadam_kodni_sotuvchiga')}
                             </p>
                             <p className="text-xs text-muted mt-1 mb-3">
-                                Aktivatsiya kaliti shu kompyuter uchun alohida tayyorlanadi.
+                                {t('firstrunsetup.aktivatsiya_kaliti_shu_kompyuter')}
                             </p>
                             <div className="flex items-center gap-2">
                                 <code className="flex-1 px-3 py-2 rounded-lg bg-elevated font-mono text-sm text-ink break-all">
@@ -127,7 +129,7 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                                 <button
                                     type="button"
                                     onClick={copyId}
-                                    title="Nusxa olish"
+                                    title={t('net.copy')}
                                     className="shrink-0 p-2 rounded-lg border border-line hover:bg-elevated text-muted"
                                 >
                                     {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
@@ -150,37 +152,37 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                             <>
                                 <div className="flex items-center gap-2 text-sm font-semibold text-ink">
                                     <Building2 className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                                    2-qadam: klinika va administrator
+                                    {t('firstrunsetup.2_qadam_klinika_va')}
                                 </div>
                                 <Input
-                                    label="Klinika nomi"
+                                    label={t('firstrunsetup.klinika_nomi')}
                                     value={clinicName}
                                     onChange={e => setClinicName(e.target.value)}
                                     placeholder="Shifo Klinikasi"
                                 />
                                 <Input
-                                    label="Telefon (ixtiyoriy)"
+                                    label={t('firstrunsetup.telefon_ixtiyoriy')}
                                     value={phone}
                                     onChange={e => setPhone(e.target.value)}
                                     placeholder="+998 90 123 45 67"
                                 />
                                 <Input
-                                    label="Administrator logini"
+                                    label={t('firstrunsetup.administrator_logini')}
                                     value={username}
                                     onChange={e => setUsername(e.target.value)}
                                     placeholder="admin"
                                     autoComplete="username"
                                 />
                                 <Input
-                                    label="Parol"
+                                    label={t('ui.parol')}
                                     type="password"
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
-                                    placeholder="kamida 8 belgi"
+                                    placeholder={t('firstrunsetup.kamida_8_belgi')}
                                     autoComplete="new-password"
                                 />
                                 <Input
-                                    label="Parolni takrorlang"
+                                    label={t('firstrunsetup.parolni_takrorlang')}
                                     type="password"
                                     value={password2}
                                     onChange={e => setPassword2(e.target.value)}
@@ -190,7 +192,7 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                         )}
 
                         <Input
-                            label={activateOnly ? 'Aktivatsiya kaliti' : '3-qadam: aktivatsiya kaliti'}
+                            label={activateOnly ? t('firstrunsetup.aktivatsiya_kaliti') : t('firstrunsetup.3_qadam_aktivatsiya_kaliti')}
                             value={key}
                             onChange={e => setKey(e.target.value.toUpperCase())}
                             placeholder="XXXXXXXXXXXXXXXXXXXXXXXX"
@@ -198,9 +200,9 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                         />
 
                         <Button type="submit" disabled={busy} className="w-full justify-center">
-                            {busy ? 'Tekshirilmoqda…' : (
+                            {busy ? t('ui.tekshirilmoqda') : (
                                 <>
-                                    {activateOnly ? 'Aktivlashtirish' : 'Sozlashni yakunlash'}
+                                    {activateOnly ? t('superAdmin.clinics.activate') : t('firstrunsetup.sozlashni_yakunlash')}
                                     <ArrowRight className="w-4 h-4 ml-2" />
                                 </>
                             )}
@@ -209,7 +211,7 @@ export const FirstRunSetup: React.FC<Props> = ({ machineId, activateOnly = false
                 </Card>
 
                 <p className="text-center text-xs text-faint mt-4">
-                    Kalit yo'qolsa yoki kompyuter almashsa — sotuvchiga murojaat qiling.
+                    {t('firstrunsetup.kalit_yoqolsa_yoki_kompyuter')}
                 </p>
             </div>
         </div>

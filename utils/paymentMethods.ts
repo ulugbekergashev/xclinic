@@ -1,3 +1,4 @@
+import { tr } from '../context/LanguageContext';
 // To'lov usullarining yagona manbasi.
 // Ilgari har bir sahifada `type === 'Cash' ? 'Naqd' : ...` zanjiri takrorlanardi — yangi usul
 // qo'shilganda ular jimgina noto'g'ri yorliq ko'rsatardi. Endi barcha ro'yxat/yorliq shu yerdan.
@@ -18,19 +19,19 @@ export interface PaymentMethodMeta {
 }
 
 export const PAYMENT_METHODS: PaymentMethodMeta[] = [
-    { key: 'Cash', label: 'Naqd', short: 'Naqd', isMoneyIn: true, isCashDrawer: true, color: '#10B981' },
-    { key: 'Card', label: 'Karta (terminal)', short: 'Karta', isMoneyIn: true, isCashDrawer: false, color: '#3B82F6' },
+    { key: 'Cash', label: tr('ui.naqd'), short: tr('ui.naqd'), isMoneyIn: true, isCashDrawer: true, color: '#10B981' },
+    { key: 'Card', label: tr('paymentmethods.karta_terminal'), short: tr('paymentmethods.karta'), isMoneyIn: true, isCashDrawer: false, color: '#3B82F6' },
     { key: 'Click', label: 'Click / Payme', short: 'Click', isMoneyIn: true, isCashDrawer: false, color: '#06B6D4' },
-    { key: 'Transfer', label: "O'tkazma", short: "O'tkazma", isMoneyIn: true, isCashDrawer: false, color: '#6366F1' },
-    { key: 'Insurance', label: "Sug'urta", short: "Sug'urta", isMoneyIn: true, isCashDrawer: false, color: '#8B5CF6' },
+    { key: 'Transfer', label: tr('ui.otkazma'), short: tr('ui.otkazma'), isMoneyIn: true, isCashDrawer: false, color: '#6366F1' },
+    { key: 'Insurance', label: tr('paymentmethods.sugurta'), short: tr('paymentmethods.sugurta'), isMoneyIn: true, isCashDrawer: false, color: '#8B5CF6' },
     // Avansdan yechish — bemor pulni ilgari to'lagan, bugun kassaga yangi pul kirmaydi.
-    { key: 'Balance', label: 'Hisobdan (Avans)', short: 'Avans', isMoneyIn: false, isCashDrawer: false, color: '#F59E0B' },
+    { key: 'Balance', label: tr('finance.methods.balance'), short: tr('ui.avans'), isMoneyIn: false, isCashDrawer: false, color: '#F59E0B' },
     /* Qaytarish cheki. Kassaga PUL KIRMAYDI — aksincha chiqadi, lekin yashik
        hisobida uni `CashMovement` (type Refund) bajaradi. Chek esa qatorga
        bog'lash uchun kerak (ChargePayment.transactionId majburiy).
        Ikkisi ham daromad deb sanalsa, qaytarilgan pul kassada "qolib"
        ketardi: +40 000 tushum va −40 000 harakat bir-birini yo'q qilardi. */
-    { key: 'Refund', label: 'Qaytarish', short: 'Qaytarish', isMoneyIn: false, isCashDrawer: false, color: '#EF4444' },
+    { key: 'Refund', label: tr('finance.cash.refund'), short: tr('finance.cash.refund'), isMoneyIn: false, isCashDrawer: false, color: '#EF4444' },
 ];
 
 const META_BY_KEY = new Map<string, PaymentMethodMeta>(PAYMENT_METHODS.map(m => [m.key, m]));

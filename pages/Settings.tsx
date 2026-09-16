@@ -9,7 +9,7 @@ import { UserRole, Doctor, Receptionist, Clinic, Service, ServiceCategory, Revie
 import { User, DollarSign, Users, Edit, Trash2, CheckCircle, Bot, Phone, Star, MessageSquare, Building2, Plus, Activity, RefreshCw, FlaskConical, Shield, KeyRound, Copy, Eye, EyeOff, Link2, ChevronDown, HardDrive, Database, AlertTriangle, Download, HeartPulse, History, ArrowRight, Wifi, Cloud, Check, FileText } from 'lucide-react';
 import { api, API_URL, getAuthToken, isDemoMode } from '../services/api';
 import type { AiSettingsResponse } from '../services/api';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { NetworkAccessTab } from '../components/NetworkAccessTab';
 import { LabCatalogTab } from '../components/LabCatalogTab';
 
@@ -20,8 +20,8 @@ const DEPT_COLORS = [
    { name: 'Binafsha', value: '#7C3AED' },
    { name: 'Pushti', value: '#DB2777' },
    { name: 'Moviy', value: '#0891B2' },
-   { name: 'Yashil', value: '#059669' },
-   { name: 'Sariq', value: '#D97706' },
+   { name: tr('ui.yashil'), value: '#059669' },
+   { name: tr('ui.sariq'), value: '#D97706' },
    { name: 'Feruza', value: '#0D9488' },
    { name: 'Indigo', value: '#4F46E5' },
    { name: 'Jigarrang', value: '#B45309' },
@@ -33,13 +33,13 @@ import { EncounterTemplatesTab } from '../components/EncounterTemplatesTab';
 
 const DOCTOR_COLORS = [
    { name: 'Ko\'k', value: '#3B82F6' },
-   { name: 'Yashil', value: '#10B981' },
+   { name: tr('ui.yashil'), value: '#10B981' },
    { name: 'Binafsha', value: '#8B5CF6' },
    { name: 'Qizil', value: '#F43F5E' },
-   { name: 'Sariq', value: '#F59E0B' },
+   { name: tr('ui.sariq'), value: '#F59E0B' },
    { name: 'Havorang', value: '#06B6D4' },
    { name: 'To\'q ko\'k', value: '#6366F1' },
-   { name: 'To\'q sariq', value: '#FB923C' },
+   { name: tr('ui.toq_sariq'), value: '#FB923C' },
 ];
 
 
@@ -105,7 +105,7 @@ export const Settings: React.FC<SettingsProps> = ({
       } catch (error: any) {
          console.error('Cash settings save failed:', error);
          setCashShifts(currentClinic?.cashShiftsPerDay || 1);
-         toast.error(error?.message || 'Kassa sozlamasini saqlashda xatolik');
+         toast.error(error?.message || t('settings.kassa_sozlamasini_saqlashda_xatolik'));
       } finally {
          setCashShiftsSaving(false);
       }
@@ -368,7 +368,7 @@ export const Settings: React.FC<SettingsProps> = ({
    };
 
    const handleDeleteCategory = async (id: string) => {
-      if (!await confirmAction({ title: 'Kategoriyani o\'chirmoqchimisiz?' })) return;
+      if (!await confirmAction({ title: t('settings.services.deleteCategoryConfirm') })) return;
       onDeleteCategory(id);
       if (selectedCategory === id) setSelectedCategory(null);
    };
@@ -411,10 +411,10 @@ export const Settings: React.FC<SettingsProps> = ({
       try {
          const res = await api.sms.testSend(currentClinic.id, smsTestPhone);
          if (res.success) {
-            toast.success('Test SMS muvaffaqiyatli yuborildi!');
+            toast.success(t('settings.test_sms_muvaffaqiyatli_yuborildi'));
          }
       } catch (error: any) {
-         toast.error(error.message || 'SMS yuborishda xatolik yuz berdi. Sozlamalarni tekshiring.');
+         toast.error(error.message || t('settings.sms_yuborishda_xatolik_yuz'));
       } finally {
          setIsCheckingSms(false);
       }
@@ -448,12 +448,12 @@ export const Settings: React.FC<SettingsProps> = ({
             dmedApiSecret
          });
          if (res.valid) {
-            toast.success('DMED ulanishi muvaffaqiyatli!');
+            toast.success(t('settings.dmed_ulanishi_muvaffaqiyatli'));
          } else {
-            toast.error('Ulanishda xatolik: ' + ((res as any).error || 'Noma\'lum xatolik'));
+            toast.error(t('settings.ulanishda_xatolik') + ((res as any).error || t('settings.nomalum_xatolik')));
          }
       } catch (error: any) {
-         toast.error('DMED test xatosi: ' + error.message);
+         toast.error(t('settings.dmed_test_xatosi') + error.message);
       } finally {
          setIsCheckingDmed(false);
       }
@@ -583,7 +583,7 @@ export const Settings: React.FC<SettingsProps> = ({
          setBackupStatus(st);
          setCfgDraft((cur: any) => cur || st.config);
       } catch (e: any) {
-         setMaintError(e?.message || 'Ma\'lumotni yuklab bo\'lmadi');
+         setMaintError(e?.message || t('settings.malumotni_yuklab_bolmadi'));
       } finally {
          setMaintLoading(false);
       }
@@ -598,7 +598,7 @@ export const Settings: React.FC<SettingsProps> = ({
          setCfgDraft(saved);
          await loadMaintenance();
       } catch (e: any) {
-         setMaintError(e?.message || 'Sozlamani saqlab bo\'lmadi');
+         setMaintError(e?.message || t('net.saveFailed'));
       } finally {
          setCfgBusy(false);
       }
@@ -616,7 +616,7 @@ export const Settings: React.FC<SettingsProps> = ({
       try {
          setIntegrity(await api.maintenance.integrity());
       } catch (e: any) {
-         setMaintError(e?.message || 'Tekshirib bo\'lmadi');
+         setMaintError(e?.message || t('settings.tekshirib_bolmadi'));
       } finally {
          setIntegrityBusy(false);
       }
@@ -632,7 +632,7 @@ export const Settings: React.FC<SettingsProps> = ({
             setIntegrity(await api.maintenance.integrity());
          }
       } catch (e: any) {
-         setMaintError(e?.message || 'Qayta hisoblab bo\'lmadi');
+         setMaintError(e?.message || t('settings.qayta_hisoblab_bolmadi'));
       } finally {
          setIntegrityBusy(false);
       }
@@ -643,7 +643,7 @@ export const Settings: React.FC<SettingsProps> = ({
       // preload.ts `electron` nomi bilan ochadi (`electronAPI` emas)
       const picker = (window as any).electron?.selectBackupFolder;
       if (!picker) {
-         setMaintError('Papka tanlash faqat dastur oynasida ishlaydi. Yo\'lni qo\'lda kiriting.');
+         setMaintError(t('settings.papka_tanlash_faqat_dastur'));
          return;
       }
       try {
@@ -675,7 +675,7 @@ export const Settings: React.FC<SettingsProps> = ({
          setBackupNote('');
          await loadMaintenance();
       } catch (e: any) {
-         setMaintError(e?.message || 'Nusxa olinmadi');
+         setMaintError(e?.message || t('settings.nusxa_olinmadi'));
       } finally {
          setBackupBusy(false);
       }
@@ -691,7 +691,7 @@ export const Settings: React.FC<SettingsProps> = ({
          setRestoreConfirmText('');
          await loadMaintenance();
       } catch (e: any) {
-         setMaintError(e?.message || 'Tiklashni belgilab bo\'lmadi');
+         setMaintError(e?.message || t('settings.tiklashni_belgilab_bolmadi'));
       } finally {
          setBackupBusy(false);
       }
@@ -703,7 +703,7 @@ export const Settings: React.FC<SettingsProps> = ({
          await api.maintenance.cancelRestore();
          await loadMaintenance();
       } catch (e: any) {
-         setMaintError(e?.message || 'Bekor qilib bo\'lmadi');
+         setMaintError(e?.message || t('settings.bekor_qilib_bolmadi'));
       } finally {
          setBackupBusy(false);
       }
@@ -733,7 +733,7 @@ export const Settings: React.FC<SettingsProps> = ({
       try {
          setDeptList(await api.departments.getAll());
       } catch (e: any) {
-         setDeptError(e?.message || 'Bo\'limlarni yuklab bo\'lmadi');
+         setDeptError(e?.message || t('settings.bolimlarni_yuklab_bolmadi'));
       } finally {
          setDeptLoading(false);
       }
@@ -824,7 +824,7 @@ export const Settings: React.FC<SettingsProps> = ({
          setDeptModal(null);
          await loadDepartments();
       } catch (e: any) {
-         setDeptError(e?.message || 'Saqlab bo\'lmadi');
+         setDeptError(e?.message || t('ui.saqlab_bolmadi'));
       } finally {
          setDeptBusy(false);
       }
@@ -845,12 +845,12 @@ export const Settings: React.FC<SettingsProps> = ({
             doctors.filter((x: any) => x.departmentId === d.id).length,
          ];
          const detail = (bound[0] || bound[1])
-            ? ` Unga ${bound[0]} ta xizmat va ${bound[1]} ta shifokor bog'langan.`
+            ? fill(t('settings.unga_x_ta_xizmat'), bound[0], bound[1])
             : '';
          if (!await confirmAction({
             title: `«${d.name}» faolsizlantirilsinmi?`,
-            body: `Bo'lim registratura, kalendar va yangi qabullardan yo'qoladi.${detail}`
-               + " Eski yozuvlar joyida qoladi va bo'limni istalgan vaqtda qayta yoqish mumkin.",
+            body: fill(t('settings.bolim_registratura_kalendar_va'), detail)
+               + t('settings.eski_yozuvlar_joyida_qoladi'),
             /* `danger` YO'Q: amal qaytariladi, qizil tugma esa qo'rqitadi. */
             confirmLabel: 'Faolsizlantirish',
          })) return;
@@ -865,7 +865,7 @@ export const Settings: React.FC<SettingsProps> = ({
          }
          await loadDepartments();
       } catch (e: any) {
-         setDeptError(e?.message || 'O\'zgartirib bo\'lmadi');
+         setDeptError(e?.message || t('settings.ozgartirib_bolmadi'));
       } finally {
          setDeptBusy(false);
       }
@@ -893,7 +893,7 @@ export const Settings: React.FC<SettingsProps> = ({
          setAiSettings(data);
          setAiPreferred(data.preferred || '');
       } catch (err: any) {
-         toast.error(err?.message || 'AI sozlamalarini olib bo’lmadi');
+         toast.error(err?.message || t('settings.ai_sozlamalarini_olib_bolmadi'));
       }
    }, []);
 
@@ -913,9 +913,9 @@ export const Settings: React.FC<SettingsProps> = ({
          const data = await api.ai.saveSettings({ keys, preferred: aiPreferred || null });
          setAiSettings(data);
          setAiDraft({});
-         toast.success('Saqlandi');
+         toast.success(t('ui.saqlandi'));
       } catch (err: any) {
-         toast.error(err?.message || 'Saqlab bo’lmadi');
+         toast.error(err?.message || t('ui.saqlab_bolmadi'));
       } finally {
          setAiBusy(false);
       }
@@ -923,18 +923,18 @@ export const Settings: React.FC<SettingsProps> = ({
 
    const handleAiClear = async (name: string, label: string) => {
       if (!await confirmAction({
-         title: `${label} kaliti o'chirilsinmi?`,
-         body: 'AI boshqa provayder kaliti bilan ishlashda davom etadi. Kalit qolmasa — AI yordamchi o’chadi.',
+         title: fill(t('settings.x_kaliti_ochirilsinmi'), label),
+         body: t('settings.ai_boshqa_provayder_kaliti'),
          danger: true,
-         confirmLabel: "O'chirish",
+         confirmLabel: t('ui.ochirish_2'),
       })) return;
       setAiBusy(true);
       try {
          const data = await api.ai.saveSettings({ keys: { [name]: '' } });
          setAiSettings(data);
-         toast.success('Kalit o’chirildi');
+         toast.success(t('settings.kalit_ochirildi'));
       } catch (err: any) {
-         toast.error(err?.message || 'O’chirib bo’lmadi');
+         toast.error(err?.message || t('ui.ochirib_bolmadi'));
       } finally {
          setAiBusy(false);
       }
@@ -950,7 +950,7 @@ export const Settings: React.FC<SettingsProps> = ({
          const r = await api.ai.test();
          setAiTest({ ok: true, text: r.message || 'Ulanish ishladi.' });
       } catch (err: any) {
-         setAiTest({ ok: false, text: err?.message || 'Ulanib bo’lmadi' });
+         setAiTest({ ok: false, text: err?.message || t('settings.ulanib_bolmadi') });
       } finally {
          setAiTesting(false);
       }
@@ -987,8 +987,8 @@ export const Settings: React.FC<SettingsProps> = ({
                   { id: 'integrations', name: 'Integratsiyalar', icon: MessageSquare },
                   /* Qoida va uning IZI bir joyda: «kim nimani ko'radi» va
                      «kim nimani ko'rdi» — bitta savolning ikki tomoni. */
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: 'Ruxsatlar', icon: Shield }] : []),
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: 'Bo’limlar', icon: Building2 }] : []),
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: t('ui.ruxsatlar'), icon: Shield }] : []),
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: t('settings.bolimlar'), icon: Building2 }] : []),
                   /* Tahlillar katalogi. Laboratoriya ekrani katalog bo'sh
                      bo'lganda AYNAN shu yerga yuborardi, lekin bunday
                      vkladka mavjud emas edi. */
@@ -997,8 +997,8 @@ export const Settings: React.FC<SettingsProps> = ({
                      qabul paneli ularni ochadi, lekin YARATADIGAN ekran
                      yo'q edi: klinika o'rnatishda kelganlari bilan qolib
                      ketardi va bironta maydon qo'sha olmasdi. */
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'templates', name: "Ko'rik shablonlari", icon: FileText }] : []),
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: 'Xizmat ko’rsatish', icon: HardDrive }] : []),
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'templates', name: t('settings.korik_shablonlari'), icon: FileText }] : []),
+                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: t('settings.xizmat_korsatish'), icon: HardDrive }] : []),
                ].map((item) => (
                   <button
                      key={item.id}
@@ -1060,7 +1060,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            />
                            <div className="grid grid-cols-2 gap-4 mt-4">
                               <div>
-                                 <label className="block text-sm font-medium text-muted mb-1">Ishni boshlash vaqti</label>
+                                 <label className="block text-sm font-medium text-muted mb-1">{t('settings.ishni_boshlash_vaqti')}</label>
                                  <Select
                                     value={generalForm.startHour.toString()}
                                     onChange={e => setGeneralForm({ ...generalForm, startHour: parseInt(e.target.value) })}
@@ -1068,7 +1068,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  />
                               </div>
                               <div>
-                                 <label className="block text-sm font-medium text-muted mb-1">Ishni tugash vaqti</label>
+                                 <label className="block text-sm font-medium text-muted mb-1">{t('settings.ishni_tugash_vaqti')}</label>
                                  <Select
                                     value={generalForm.endHour.toString()}
                                     onChange={e => setGeneralForm({ ...generalForm, endHour: parseInt(e.target.value) })}
@@ -1087,8 +1087,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                     className="w-5 h-5 text-primary-600 border-line rounded focus:ring-primary-500"
                                  />
                                  <div>
-                                    <p className="text-sm font-medium text-ink">Chek chiqarish funksiyasi</p>
-                                    <p className="text-xs text-muted">Yoqilsa, to'lov qabul qilinganda avtomatik ravishda chek oynasi ochiladi.</p>
+                                    <p className="text-sm font-medium text-ink">{t('settings.chek_chiqarish_funksiyasi')}</p>
+                                    <p className="text-xs text-muted">{t('settings.yoqilsa_tolov_qabul_qilinganda')}</p>
                                  </div>
                               </label>
                            </div>
@@ -1101,26 +1101,26 @@ export const Settings: React.FC<SettingsProps> = ({
                                varaqda litsenziya bo'sh qolardi. */}
                            <div className="pt-4 border-t border-line space-y-4">
                               <div>
-                                 <p className="text-sm font-medium text-ink">Bosma blank</p>
+                                 <p className="text-sm font-medium text-ink">{t('settings.bosma_blank')}</p>
                                  <p className="text-xs text-muted">
-                                    Tahlil natijasi, xulosa va ma'lumotnomalarda chop etiladi.
+                                    {t('settings.tahlil_natijasi_xulosa_va')}
                                  </p>
                               </div>
                               <Input
-                                 label="Litsenziya raqami"
+                                 label={t('settings.litsenziya_raqami')}
                                  value={generalForm.licenseNumber}
                                  onChange={e => setGeneralForm({ ...generalForm, licenseNumber: e.target.value })}
-                                 placeholder="Masalan: LIC-001234"
+                                 placeholder={t('settings.masalan_lic_001234')}
                               />
                               <div>
                                  <label className="block text-sm font-medium text-muted mb-1">
-                                    Varaq pastidagi izoh
+                                    {t('settings.varaq_pastidagi_izoh')}
                                  </label>
                                  <textarea
                                     value={generalForm.letterheadNote}
                                     onChange={e => setGeneralForm({ ...generalForm, letterheadNote: e.target.value })}
                                     rows={2}
-                                    placeholder="Masalan: Natija faqat shu klinika uchun amal qiladi."
+                                    placeholder={t('settings.masalan_natija_faqat_shu')}
                                     className="w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                                  />
                               </div>
@@ -1151,18 +1151,16 @@ export const Settings: React.FC<SettingsProps> = ({
                               <Bot className="w-8 h-8" />
                            </div>
                            <div>
-                              <h2 className="text-xl font-bold text-ink">AI yordamchi</h2>
+                              <h2 className="text-xl font-bold text-ink">{t('ai.tab')}</h2>
                               <p className="text-sm text-muted">
-                                 «Bugun nechta qabul bor?» kabi savollar va hisobotlar uchun. Ishlashi uchun
-                                 kamida bitta provayder kaliti kerak.
+                                 {t('settings.bugun_nechta_qabul_bor')}
                               </p>
                            </div>
                         </div>
 
                         <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg border border-primary-100 dark:border-primary-800/40 mb-6 space-y-2">
                            <p className="text-sm text-primary-800 dark:text-primary-200">
-                              <strong>Uchtasidan bittasi yetadi.</strong> Bir nechtasi kiritilsa, biri limitga
-                              urilganda ikkinchisiga avtomatik o’tadi.
+                              <strong>Uchtasidan bittasi yetadi.</strong> {t('settings.bir_nechtasi_kiritilsa_biri')}
                            </p>
                            {/* MATN ROSTGA MOSLANDI (audit XC-37, XC-38).
 
@@ -1182,15 +1180,14 @@ export const Settings: React.FC<SettingsProps> = ({
                                   ko'rsatib, keraksiz qo'rquv uyg'otardi. */}
                            <p className="text-xs text-primary-700/80 dark:text-primary-300/80">
                               {isDemoMode()
-                                 ? "Namoyish nusxasida server yo'q — bu yerda kalit saqlanmaydi. Haqiqiy o'rnatmada u shu kompyuterdagi bazada qoladi va brauzerga uzatilmaydi."
-                                 : "Kalit shu kompyuterdagi bazada saqlanadi va faqat serverdan ishlatiladi — brauzerga uzatilmaydi."}
-                              {' '}Bemor ismi va telefoni AI ga yuborilishidan oldin niqoblanadi,
-                              lekin tashxis va davolash matni yuboriladi — buni hisobga oling.
+                                 ? t('settings.namoyish_nusxasida_server_yoq')
+                                 : t('settings.kalit_shu_kompyuterdagi_bazada')}
+                              {' '}{t('settings.bemor_ismi_va_telefoni')}
                            </p>
                         </div>
 
                         {!aiSettings ? (
-                           <p className="text-sm text-muted">Yuklanmoqda…</p>
+                           <p className="text-sm text-muted">{t('ui.yuklanmoqda')}</p>
                         ) : (
                         <form onSubmit={handleAiSave} className="space-y-5">
                            {aiSettings.providers.map((prov) => (
@@ -1205,23 +1202,23 @@ export const Settings: React.FC<SettingsProps> = ({
                                           <CheckCircle className="w-3.5 h-3.5" /> {prov.masked}
                                        </span>
                                     ) : (
-                                       <span className="text-xs text-faint whitespace-nowrap">kalit yo’q</span>
+                                       <span className="text-xs text-faint whitespace-nowrap">{t('settings.kalit_yoq')}</span>
                                     )}
                                  </div>
 
                                  <Input
-                                    label={prov.configured ? 'Yangi kalit (almashtirish uchun)' : 'API kalit'}
+                                    label={prov.configured ? t('settings.yangi_kalit_almashtirish_uchun') : t('settings.api_kalit')}
                                     type="password"
                                     value={aiDraft[prov.name] || ''}
                                     onChange={e => setAiDraft({ ...aiDraft, [prov.name]: e.target.value })}
-                                    placeholder={prov.configured ? 'Bo’sh qoldirilsa — o’zgarmaydi' : 'Kalitni shu yerga qo’ying'}
+                                    placeholder={prov.configured ? t('settings.bosh_qoldirilsa_ozgarmaydi') : t('settings.kalitni_shu_yerga_qoying')}
                                     autoComplete="off"
                                  />
 
                                  <div className="flex items-center gap-4 mt-2 flex-wrap">
                                     <a href={prov.url} target="_blank" rel="noopener noreferrer"
                                        className="text-xs text-primary-600 hover:underline inline-flex items-center gap-1">
-                                       <Link2 className="w-3 h-3" /> Kalit olish
+                                       <Link2 className="w-3 h-3" /> {t('settings.kalit_olish')}
                                     </a>
                                     {/* `.env` dagi kalitni bu yerdan o’chirib bo’lmaydi — buni
                                         aytmasak, «o’chirdim, lekin qolib ketdi» degan xulosa chiqardi. */}
@@ -1229,12 +1226,12 @@ export const Settings: React.FC<SettingsProps> = ({
                                        <button type="button" onClick={() => handleAiClear(prov.name, prov.label)}
                                           disabled={aiBusy}
                                           className="text-xs text-red-600 hover:underline inline-flex items-center gap-1">
-                                          <Trash2 className="w-3 h-3" /> Kalitni o’chirish
+                                          <Trash2 className="w-3 h-3" /> {t('settings.kalitni_ochirish')}
                                        </button>
                                     )}
                                     {prov.source === 'env' && (
                                        <span className="text-xs text-faint">
-                                          Serverdagi {prov.envName} dan olingan — bu yerdan o’chirilmaydi.
+                                          Serverdagi {prov.envName} {t('settings.dan_olingan_bu_yerdan')}
                                        </span>
                                     )}
                                  </div>
@@ -1243,24 +1240,24 @@ export const Settings: React.FC<SettingsProps> = ({
 
                            <div>
                               <label className="block text-sm font-medium text-muted mb-1">
-                                 Birinchi ishlatiladigan provayder
+                                 {t('settings.birinchi_ishlatiladigan_provayder')}
                               </label>
                               <Select
                                  value={aiPreferred}
                                  onChange={e => setAiPreferred(e.target.value)}
                                  options={[
-                                    { value: '', label: 'Avtomatik (kalit bor birinchisi)' },
+                                    { value: '', label: t('settings.avtomatik_kalit_bor_birinchisi') },
                                     ...aiSettings.providers.map(prov => ({ value: prov.name, label: prov.label })),
                                  ]}
                               />
                               <p className="text-xs text-faint mt-1">
-                                 Qolganlari zaxira bo’lib qoladi: tanlangani javob bermasa, keyingisiga o’tadi.
+                                 {t('settings.qolganlari_zaxira_bolib_qoladi')}
                               </p>
                            </div>
 
                            <div className="flex items-center gap-4 pt-2 flex-wrap">
                               <Button type="submit" disabled={aiBusy}>
-                                 {aiBusy ? 'Saqlanmoqda…' : t('common.save')}
+                                 {aiBusy ? t('ui.saqlanmoqda_3') : t('common.save')}
                               </Button>
                               <Button
                                  type="button"
@@ -1292,22 +1289,22 @@ export const Settings: React.FC<SettingsProps> = ({
                               <Activity className="w-8 h-8" />
                            </div>
                            <div>
-                              <h2 className="text-xl font-bold text-ink">DMED (IT-MED) Integratsiyasi</h2>
-                              <p className="text-sm text-muted">O'zbekiston milliy tibbiy axborot tizimi bilan bog'lanish va ma'lumotlarni sinxronizatsiya qilish.</p>
+                              <h2 className="text-xl font-bold text-ink">{t('settings.dmed_it_med_integratsiyasi')}</h2>
+                              <p className="text-sm text-muted">{t('settings.ozbekiston_milliy_tibbiy_axborot')}</p>
                            </div>
                         </div>
 
                         <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg border border-primary-100 dark:border-primary-800/40 mb-6">
                            <p className="text-sm text-primary-800 dark:text-primary-200">
-                              <strong>Eslatma:</strong> DMED tizimiga ulanish uchun klinika rasmiy ravishda SSV (Uzinfocom) orqali Client ID va Client Secret kalitlarini olgan bo'lishi shart.
+                              <strong>{t('calendar.reminder')}:</strong> {t('settings.dmed_tizimiga_ulanish_uchun')}
                            </p>
                         </div>
 
                         <form onSubmit={handleDmedSave} className="space-y-6">
                            <div className="flex items-center justify-between p-4 bg-elevated rounded-xl border border-line">
                               <div>
-                                 <h3 className="font-medium text-ink">DMED Integratsiyasini yoqish</h3>
-                                 <p className="text-sm text-muted">Agar yoqilsa, bemorlar profilida DMED ma'lumotlari paydo bo'ladi.</p>
+                                 <h3 className="font-medium text-ink">{t('settings.dmed_integratsiyasini_yoqish')}</h3>
+                                 <p className="text-sm text-muted">{t('settings.agar_yoqilsa_bemorlar_profilida')}</p>
                               </div>
                               <label className="relative inline-flex items-center cursor-pointer">
                                  <input 
@@ -1322,14 +1319,14 @@ export const Settings: React.FC<SettingsProps> = ({
 
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <Input 
-                                 label="DMED Client ID (API Key)" 
+                                 label={t('settings.dmed_client_id_api')} 
                                  value={dmedApiKey} 
                                  onChange={e => setDmedApiKey(e.target.value)} 
-                                 placeholder="Masalan: denta_clinic_123"
+                                 placeholder={t('settings.masalan_denta_clinic_123')}
                                  disabled={!dmedEnabled}
                               />
                               <Input 
-                                 label="DMED Client Secret" 
+                                 label={t('settings.dmed_client_secret')} 
                                  value={dmedApiSecret} 
                                  onChange={e => setDmedApiSecret(e.target.value)} 
                                  type="password"
@@ -1339,10 +1336,10 @@ export const Settings: React.FC<SettingsProps> = ({
                            </div>
                            
                            <Input 
-                              label="Klinika ID (DMED tizimidagi)" 
+                              label={t('settings.klinika_id_dmed_tizimidagi')} 
                               value={dmedClinicId} 
                               onChange={e => setDmedClinicId(e.target.value)} 
-                              placeholder="Masalan: 69213aa6-b1f2-11ee-9cc3..."
+                              placeholder={t('settings.masalan_69213aa6_b1f2_11ee')}
                               disabled={!dmedEnabled}
                            />
 
@@ -1389,29 +1386,28 @@ export const Settings: React.FC<SettingsProps> = ({
                               <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                                  <Building2 className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                               </div>
-                              <h2 className="text-xl font-bold text-ink">Bo'limlar</h2>
+                              <h2 className="text-xl font-bold text-ink">{t('settings.bolimlar')}</h2>
                            </div>
                            <Button onClick={openDeptCreate} disabled={deptBusy}>
-                              <Plus className="w-4 h-4 mr-1.5" /> Bo'lim qo'shish
+                              <Plus className="w-4 h-4 mr-1.5" /> {t('settings.bolim_qoshish')}
                            </Button>
                         </div>
                         <p className="text-sm text-muted mb-5">
-                           Shifokorlar, xizmatlar, qabullar va kalendar bo'limga bog'lanadi.
+                           {t('settings.shifokorlar_xizmatlar_qabullar_va')}
                            {/* Ilgari bu yerda «registratura faqat klinik bo'limlarni
                                ko'rsatadi» deb yozilgan edi — bu noto'g'ri: diagnostika
                                ham chiqadi. Endi qoida to'liq aytiladi, chunki aynan shu
                                izoh tufayli laboratoriya bo'limi «yo'qolgan» deb
                                hisoblangan (audit XC-05). */}
-                           <b> Klinik</b> va <b>diagnostika</b> bo'limlariga registratura bemorni o'zi yozadi.
-                           <b> Laboratoriya</b>, <b>statsionar</b> va <b>dorixona</b> esa shifokor buyurtmasi
-                           bilan ochiladi — ular registratura ro'yxatida ko'rinmaydi.
+                           <b> Klinik</b> {t('ui.va')} <b>{t('settings.diagnostika')}</b> {t('settings.bolimlariga_registratura_bemorni_ozi')}
+                           <b> {t('settings.laboratoriya')}</b>, <b>{t('settings.statsionar')}</b> {t('ui.va')} <b>{t('settings.dorixona')}</b> {t('settings.esa_shifokor_buyurtmasi_bilan')}
                         </p>
 
                         {deptError && (
                            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
                               <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                               <p className="text-sm text-red-700 dark:text-red-300 flex-1">{deptError}</p>
-                              <Button variant="secondary" size="sm" onClick={loadDepartments}>Qayta urinish</Button>
+                              <Button variant="secondary" size="sm" onClick={loadDepartments}>{t('ui.qayta_urinish')}</Button>
                            </div>
                         )}
 
@@ -1424,8 +1420,8 @@ export const Settings: React.FC<SettingsProps> = ({
                         ) : deptList.length === 0 ? (
                            <div className="text-center py-10 border border-dashed border-line rounded-lg">
                               <Building2 className="w-8 h-8 mx-auto text-faint mb-2" />
-                              <p className="text-sm text-muted mb-3">Bo'lim yo'q</p>
-                              <Button size="sm" onClick={openDeptCreate}>Birinchisini qo'shish</Button>
+                              <p className="text-sm text-muted mb-3">{t('settings.bolim_yoq')}</p>
+                              <Button size="sm" onClick={openDeptCreate}>{t('settings.birinchisini_qoshish')}</Button>
                            </div>
                         ) : (
                            <div className="space-y-2">
@@ -1445,13 +1441,13 @@ export const Settings: React.FC<SettingsProps> = ({
                                           </span>
                                           {!d.isActive && (
                                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-elevated text-muted">
-                                                o'chirilgan
+                                                {t('settings.ochirilgan')}
                                              </span>
                                           )}
                                        </div>
                                        <p className="text-xs text-muted mt-0.5">
                                           {DEPARTMENT_TYPE_LABELS[d.type as DepartmentType] || d.type}
-                                          {' · '}tartib {d.sortOrder ?? 0}
+                                          {' · '}{t('ui.tartib')} {d.sortOrder ?? 0}
                                        </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
@@ -1462,7 +1458,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                            faolsizlanadi. Eski nom qilinadigan ishga
                                            mos kelmasdi (audit XC-39). */}
                                        <Button variant="secondary" size="sm" onClick={() => toggleDepartmentActive(d)} disabled={deptBusy}>
-                                          {d.isActive ? 'Faolsizlantirish' : 'Yoqish'}
+                                          {d.isActive ? 'Faolsizlantirish' : t('net.turnOn')}
                                        </Button>
                                     </div>
                                  </div>
@@ -1484,15 +1480,14 @@ export const Settings: React.FC<SettingsProps> = ({
                               <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
                               <div className="flex-1 min-w-0">
                                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                                    Tiklash belgilangan: {restoreState.file}
+                                    {t('settings.tiklash_belgilangan')}: {restoreState.file}
                                  </p>
                                  <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
-                                    Dastur qayta ishga tushganda baza shu nusxadan tiklanadi.
-                                    Joriy baza avtomatik saqlanadi.
+                                    {t('settings.dastur_qayta_ishga_tushganda')}
                                  </p>
                               </div>
                               <Button variant="secondary" size="sm" onClick={handleCancelRestore} disabled={backupBusy}>
-                                 Bekor qilish
+                                 {t('common.cancel')}
                               </Button>
                            </div>
                         </Card>
@@ -1503,7 +1498,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="flex items-start gap-3">
                               <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                               <p className="text-sm text-red-700 dark:text-red-300 flex-1">{maintError}</p>
-                              <Button variant="secondary" size="sm" onClick={loadMaintenance}>Qayta urinish</Button>
+                              <Button variant="secondary" size="sm" onClick={loadMaintenance}>{t('ui.qayta_urinish')}</Button>
                            </div>
                         </Card>
                      )}
@@ -1514,10 +1509,10 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <Database className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h2 className="text-xl font-bold text-ink">Baza holati</h2>
+                           <h2 className="text-xl font-bold text-ink">{t('settings.baza_holati')}</h2>
                         </div>
                         <p className="text-sm text-muted mb-5">
-                           Qo'llab-quvvatlashga murojaat qilganda birinchi so'raladigan ma'lumot.
+                           {t('settings.qollab_quvvatlashga_murojaat_qilganda')}
                         </p>
 
                         {maintLoading && !schemaInfo ? (
@@ -1530,30 +1525,30 @@ export const Settings: React.FC<SettingsProps> = ({
                               <div>
                                  <p className="text-xs uppercase tracking-wide text-faint">Sxema versiyasi</p>
                                  <p className="text-sm font-mono font-semibold text-ink mt-1 break-all">
-                                    {schemaInfo.current || (schemaInfo.baseline ? 'boshlang’ich holat' : '—')}
+                                    {schemaInfo.current || (schemaInfo.baseline ? t('settings.boshlangich_holat') : '—')}
                                  </p>
                               </div>
                               <div>
-                                 <p className="text-xs uppercase tracking-wide text-faint">Qo'llanilgan</p>
+                                 <p className="text-xs uppercase tracking-wide text-faint">{t('settings.qollanilgan')}</p>
                                  <p className="text-sm font-semibold text-ink mt-1">
-                                    {schemaInfo.appliedCount} ta migratsiya
+                                    {schemaInfo.appliedCount} {t('settings.ta_migratsiya')}
                                  </p>
                               </div>
                               <div>
-                                 <p className="text-xs uppercase tracking-wide text-faint">Kutilmoqda</p>
+                                 <p className="text-xs uppercase tracking-wide text-faint">{t('visit.pending')}</p>
                                  <p className={`text-sm font-semibold mt-1 ${schemaInfo.pendingCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                    {schemaInfo.pendingCount > 0 ? `${schemaInfo.pendingCount} ta` : 'yo’q'}
+                                    {schemaInfo.pendingCount > 0 ? fill(t('ui.x_ta'), schemaInfo.pendingCount) : t('settings.yoq')}
                                  </p>
                               </div>
                            </div>
                         ) : (
-                           <p className="text-sm text-faint">Ma'lumot yo'q</p>
+                           <p className="text-sm text-faint">{t('ui.malumot_yoq')}</p>
                         )}
 
                         {schemaInfo?.pendingCount > 0 && (
                            <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                               <p className="text-sm text-amber-800 dark:text-amber-200">
-                                 Qo'llanilmagan o'zgarishlar bor. Dasturni qayta ishga tushiring.
+                                 {t('settings.qollanilmagan_ozgarishlar_bor_dasturni')}
                               </p>
                            </div>
                         )}
@@ -1565,7 +1560,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <Shield className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h2 className="text-xl font-bold text-ink">Yaxlitlik tekshiruvi</h2>
+                           <h2 className="text-xl font-bold text-ink">{t('settings.yaxlitlik_tekshiruvi')}</h2>
                         </div>
                         <p className="text-sm text-muted mb-5">
                            Pul va ombor yozuvlari bir-biriga mos kelishini tekshiradi. Faqat
@@ -1573,7 +1568,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         </p>
 
                         <Button onClick={handleCheckIntegrity} disabled={integrityBusy} className="mb-5">
-                           {integrityBusy ? 'Tekshirilmoqda…' : 'Tekshirishni boshlash'}
+                           {integrityBusy ? t('ui.tekshirilmoqda') : t('settings.tekshirishni_boshlash')}
                         </Button>
 
                         {integrity && (
@@ -1582,9 +1577,9 @@ export const Settings: React.FC<SettingsProps> = ({
                                  ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200'
                                  : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200'}`}>
                                  {integrity.ok
-                                    ? 'Buzilish topilmadi'
-                                    : `${integrity.errorCount} ta buzilish topildi`}
-                                 {integrity.warnCount > 0 && ` · ${integrity.warnCount} ta e'tibor talab qiladi`}
+                                    ? t('settings.buzilish_topilmadi')
+                                    : fill(t('settings.x_ta_buzilish_topildi'), integrity.errorCount)}
+                                 {integrity.warnCount > 0 && fill(t('settings.x_ta_etibor_talab'), integrity.warnCount)}
                               </div>
 
                               {integrity.checks.map((c: any) => {
@@ -1606,7 +1601,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                           </span>
                                        </div>
                                        <p className="text-xs text-muted mt-1">
-                                          {c.scanned} ta yozuv tekshirildi
+                                          {c.scanned} {t('settings.ta_yozuv_tekshirildi')}
                                        </p>
                                        {c.note && (
                                           <p className="text-xs text-muted mt-1.5 italic">{c.note}</p>
@@ -1629,7 +1624,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                                 </tbody>
                                              </table>
                                              {c.count > 20 && (
-                                                <p className="text-xs text-faint mt-1">…yana {c.count - 20} ta</p>
+                                                <p className="text-xs text-faint mt-1">{t('settings.yana')} {c.count - 20} {t('ui.ta')}</p>
                                              )}
                                           </div>
                                        )}
@@ -1639,17 +1634,17 @@ export const Settings: React.FC<SettingsProps> = ({
                                           <div className="mt-3 flex flex-wrap gap-2 items-center">
                                              <Button variant="secondary" size="sm"
                                                 onClick={() => handleRecalcBalances(false)} disabled={integrityBusy}>
-                                                Farqni ko'rish
+                                                {t('settings.farqni_korish')}
                                              </Button>
                                              <Button variant="secondary" size="sm"
                                                 onClick={() => handleRecalcBalances(true)} disabled={integrityBusy}>
-                                                Qayta hisoblab yozish
+                                                {t('settings.qayta_hisoblab_yozish')}
                                              </Button>
                                              {balanceFix && (
                                                 <span className="text-xs text-muted">
                                                    {balanceFix.dryRun
                                                       ? balanceFix.message
-                                                      : `${balanceFix.patientsFixed} ta bemor tuzatildi`}
+                                                      : fill(t('settings.x_ta_bemor_tuzatildi'), balanceFix.patientsFixed)}
                                                 </span>
                                              )}
                                           </div>
@@ -1667,11 +1662,10 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
                               <HardDrive className="w-5 h-5 text-primary-600 dark:text-primary-300" />
                            </div>
-                           <h2 className="text-xl font-bold text-ink">Zaxira nusxa</h2>
+                           <h2 className="text-xl font-bold text-ink">{t('settings.zaxira_nusxa')}</h2>
                         </div>
                         <p className="text-sm text-muted mb-5">
-                           Baza bilan birga bemor fotolari va tekshiruv fayllari ham saqlanadi.
-                           Nusxalar <code className="text-xs">%APPDATA%\xclinic\backups</code> papkasida.
+                           {t('settings.baza_bilan_birga_bemor')} <code className="text-xs">%APPDATA%\xclinic\backups</code> papkasida.
                         </p>
 
                         {/* ─── Holat: oxirgi nusxa qachon olingan ───────────
@@ -1689,22 +1683,22 @@ export const Settings: React.FC<SettingsProps> = ({
                                     <p className={`text-sm font-semibold ${backupStatus.stale
                                        ? 'text-red-800 dark:text-red-200' : 'text-green-800 dark:text-green-200'}`}>
                                        {!backupStatus.lastBackup
-                                          ? 'Zaxira nusxa hali olinmagan'
+                                          ? t('settings.zaxira_nusxa_hali_olinmagan')
                                           : backupStatus.ageDays === 0
-                                             ? 'Oxirgi nusxa: bugun'
+                                             ? t('settings.oxirgi_nusxa_bugun')
                                              : backupStatus.ageDays === 1
-                                                ? 'Oxirgi nusxa: kecha'
-                                                : `Oxirgi nusxa: ${backupStatus.ageDays} kun oldin`}
+                                                ? t('settings.oxirgi_nusxa_kecha')
+                                                : fill(t('settings.oxirgi_nusxa_x_kun'), backupStatus.ageDays)}
                                     </p>
                                     <p className="text-xs mt-1 text-muted">
                                        {backupStatus.lastBackup && (
                                           <>{fmtWhen(backupStatus.lastBackup.createdAt)} · {fmtBytes(backupStatus.lastBackup.sizeBytes)} · </>
                                        )}
-                                       Jami {backupStatus.count} ta nusxa, {fmtBytes(backupStatus.totalBytes)}
+                                       {t('ui.jami')} {backupStatus.count} {t('settings.ta_nusxa')}, {fmtBytes(backupStatus.totalBytes)}
                                     </p>
                                     {backupStatus.scheduler?.lastError && (
                                        <p className="text-xs mt-1 text-red-700 dark:text-red-300">
-                                          Oxirgi avtomatik nusxada xato: {backupStatus.scheduler.lastError}
+                                          {t('settings.oxirgi_avtomatik_nusxada_xato')}: {backupStatus.scheduler.lastError}
                                        </p>
                                     )}
                                  </div>
@@ -1723,21 +1717,19 @@ export const Settings: React.FC<SettingsProps> = ({
                                     className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500"
                                  />
                                  <span className="text-sm font-medium text-ink">
-                                    Har kuni avtomatik nusxa olish
+                                    {t('settings.har_kuni_avtomatik_nusxa')}
                                  </span>
                               </label>
 
                               <p className="text-xs text-muted mt-2 ml-7">
-                                 Belgilangan vaqtda kompyuter o'chiq bo'lsa, nusxa keyingi ishga
-                                 tushishda olinadi — o'tkazib yuborilgan kun yo'qolmaydi. Kompyuter
-                                 kechqurun o'chadigan bo'lsa, ish tugash vaqtini qo'ying.
+                                 {t('settings.belgilangan_vaqtda_kompyuter_ochiq')}
                               </p>
 
                               {cfgDraft.enabled && (
                                  <div className="mt-4 ml-7 space-y-4">
                                     <div className="flex flex-wrap items-end gap-3">
                                        <div>
-                                          <label className="block text-xs font-medium text-muted mb-1">Vaqt</label>
+                                          <label className="block text-xs font-medium text-muted mb-1">{t('ui.vaqt')}</label>
                                           <div className="flex items-center gap-1">
                                              <input type="number" min={0} max={23} value={cfgDraft.hour}
                                                 onChange={(e) => setCfgDraft((c: any) => ({ ...c, hour: Number(e.target.value) }))}
@@ -1752,11 +1744,11 @@ export const Settings: React.FC<SettingsProps> = ({
                                           <input type="checkbox" checked={!!cfgDraft.twiceDaily}
                                              onChange={(e) => setCfgDraft((c: any) => ({ ...c, twiceDaily: e.target.checked }))}
                                              className="h-4 w-4 rounded border-line text-primary-600" />
-                                          Kuniga ikki marta
+                                          {t('settings.kuniga_ikki_marta')}
                                        </label>
                                        {cfgDraft.twiceDaily && (
                                           <div>
-                                             <label className="block text-xs font-medium text-muted mb-1">Ikkinchi vaqt</label>
+                                             <label className="block text-xs font-medium text-muted mb-1">{t('settings.ikkinchi_vaqt')}</label>
                                              <div className="flex items-center gap-1">
                                                 <input type="number" min={0} max={23} value={cfgDraft.hour2 ?? 13}
                                                    onChange={(e) => setCfgDraft((c: any) => ({ ...c, hour2: Number(e.target.value) }))}
@@ -1777,10 +1769,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                         Maydonlarni qoldirish yolg'on bo'lardi: raqam
                                         turadi-yu, hech narsaga ta'sir qilmaydi. */}
                                     <p className="text-xs text-muted">
-                                       Nusxalar <b>hech qachon o'chirilmaydi</b> — izohsizi ham.
-                                       Joy tugab qolmasligi uchun jami hajmni yuqorida kuzatib
-                                       turing va kerak bo'lsa eskilarini tashqi diskka qo'lda
-                                       ko'chiring.
+                                       Nusxalar <b>{t('settings.hech_qachon_ochirilmaydi')}</b> — {t('settings.izohsizi_ham_joy_tugab')}
                                     </p>
 
                                     {/* ── NUSXA BULUT PAPKASIGA ────────────────────────
@@ -1828,7 +1817,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                                     <div>
                                        <label className="block text-xs font-medium text-muted mb-1">
-                                          Ikkinchi manzil (ixtiyoriy) — flesh, tarmoq diski yoki bulut papkasi
+                                          {t('settings.ikkinchi_manzil_ixtiyoriy_flesh')}
                                        </label>
                                        <div className="flex flex-col sm:flex-row gap-2">
                                           <Input
@@ -1838,12 +1827,11 @@ export const Settings: React.FC<SettingsProps> = ({
                                              className="flex-1"
                                           />
                                           <Button variant="secondary" size="sm" onClick={handlePickExtraDir}>
-                                             Papka tanlash
+                                             {t('settings.papka_tanlash')}
                                           </Button>
                                        </div>
                                        <p className="text-xs text-muted mt-1">
-                                          Disk ulanmagan bo'lsa asosiy nusxa baribir olinadi — faqat
-                                          ko'chirish o'tkazib yuboriladi.
+                                          {t('settings.disk_ulanmagan_bolsa_asosiy')}
                                        </p>
                                     </div>
                                  </div>
@@ -1851,7 +1839,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                               <div className="mt-4 ml-7">
                                  <Button size="sm" onClick={handleSaveBackupConfig} disabled={cfgBusy}>
-                                    {cfgBusy ? 'Saqlanmoqda…' : 'Jadvalni saqlash'}
+                                    {cfgBusy ? t('ui.saqlanmoqda_3') : t('settings.jadvalni_saqlash')}
                                  </Button>
                               </div>
                            </div>
@@ -1861,11 +1849,11 @@ export const Settings: React.FC<SettingsProps> = ({
                            <Input
                               value={backupNote}
                               onChange={(e: any) => setBackupNote(e.target.value)}
-                              placeholder="Izoh (ixtiyoriy): masalan, yangilanishdan oldin"
+                              placeholder={t('settings.izoh_ixtiyoriy_masalan_yangilanishdan')}
                               className="flex-1"
                            />
                            <Button onClick={handleCreateBackup} disabled={backupBusy}>
-                              {backupBusy ? 'Bajarilmoqda…' : 'Hozir nusxa olish'}
+                              {backupBusy ? 'Bajarilmoqda…' : t('settings.hozir_nusxa_olish')}
                            </Button>
                         </div>
 
@@ -1879,7 +1867,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            <div className="text-center py-8 border border-dashed border-line rounded-lg">
                               <HardDrive className="w-8 h-8 mx-auto text-faint mb-2" />
                               <p className="text-sm text-muted">
-                                 Nusxa hali yo'q. Birinchisini hozir oling.
+                                 {t('settings.nusxa_hali_yoq_birinchisini')}
                               </p>
                            </div>
                         ) : (
@@ -1891,7 +1879,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                        <p className="text-sm font-mono text-ink truncate">{b.file}</p>
                                        <p className="text-xs text-muted mt-0.5">
                                           {fmtWhen(b.createdAt)} · {fmtBytes(b.sizeBytes)}
-                                          {b.hasUploads ? ' · fayllar arxivi bor' : ' · faqat baza'}
+                                          {b.hasUploads ? t('settings.fayllar_arxivi_bor') : t('settings.faqat_baza')}
                                        </p>
                                        {b.note && (
                                           <p className="text-xs text-muted mt-1 italic truncate">{b.note}</p>
@@ -1926,10 +1914,9 @@ export const Settings: React.FC<SettingsProps> = ({
                   <AccessControlTab currentClinic={currentClinic} onClinicUpdated={onClinicUpdated}>
                         <Card className="p-6">
                            <div className="mb-4">
-                              <h3 className="text-base font-bold text-ink">Kassa smenalari</h3>
+                              <h3 className="text-base font-bold text-ink">{t('settings.kassa_smenalari')}</h3>
                               <p className="text-xs text-muted mt-1">
-                                 Smena kassir "Kunni yopish" bosgan daqiqada tugaydi — soat bo'yicha emas.
-                                 Undan keyingi to'lovlar keyingi smenaga o'tadi.
+                                 {t('settings.smena_kassir_kunni_yopish')}
                               </p>
                            </div>
                            <div className="flex flex-wrap items-center gap-2">
@@ -1943,15 +1930,15 @@ export const Settings: React.FC<SettingsProps> = ({
                                        ? 'bg-primary-600 text-white border-primary-600'
                                        : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                                  >
-                                    {n === 1 ? 'Kuniga 1 smena' : 'Kuniga 2 smena'}
+                                    {n === 1 ? t('settings.kuniga_1_smena') : t('settings.kuniga_2_smena')}
                                  </button>
                               ))}
-                              {cashShiftsSaving && <span className="text-xs text-faint">Saqlanmoqda...</span>}
+                              {cashShiftsSaving && <span className="text-xs text-faint">{t('ui.saqlanmoqda')}</span>}
                            </div>
                            <p className="text-[11px] text-faint mt-3">
                               {cashShifts === 1
-                                 ? 'Kassa sahifasida kun butunligicha ko\'rinadi.'
-                                 : 'Kassa sahifasida "1-smena / 2-smena" tanlagichi chiqadi. 2-smena 1-smena topshirgan naqddan boshlanadi.'}
+                                 ? t('settings.kassa_sahifasida_kun_butunligicha')
+                                 : t('settings.kassa_sahifasida_1_smena')}
                            </p>
                         </Card>
                   </AccessControlTab>
@@ -1975,12 +1962,12 @@ export const Settings: React.FC<SettingsProps> = ({
                             qarab boshqacha bo'ladi. */}
                         {deptList.length > 0 && (
                            <div className="mb-4 pb-4 border-b border-line">
-                              <p className="text-xs font-bold text-faint uppercase tracking-wider mb-2">Bo'limlar</p>
+                              <p className="text-xs font-bold text-faint uppercase tracking-wider mb-2">{t('settings.bolimlar')}</p>
                               <div className="space-y-1">
                                  <button
                                     onClick={() => setSelectedDept(null)}
                                     className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${!selectedDept ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-muted hover:bg-elevated'}`}>
-                                    Barcha bo'limlar
+                                    {t('ui.barcha_bolimlar')}
                                  </button>
                                  {deptList.filter((d: any) => d.isActive !== false).map((d: any) => (
                                     <button key={d.id} onClick={() => setSelectedDept(d.id)}
@@ -2026,7 +2013,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  <h2 className="text-lg font-medium text-ink">{t('settings.services.title')}</h2>
                                  <p className="text-sm text-muted">{t('settings.services.subtitle')}</p>
                               </div>
-                              <Button size="sm" onClick={() => handleOpenServiceModal()}>Xizmat Qo'shish</Button>
+                              <Button size="sm" onClick={() => handleOpenServiceModal()}>{t('settings.xizmat_qoshish')}</Button>
                            </div>
 
                            <div className="overflow-hidden rounded-lg border border-line">
@@ -2034,7 +2021,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  <thead className="bg-elevated">
                                     <tr>
                                        <th className="px-4 py-3 font-medium text-muted">{t('settings.services.thName')}</th>
-                                       <th className="px-4 py-3 font-medium text-muted">Bo'lim</th>
+                                       <th className="px-4 py-3 font-medium text-muted">{t('ui.bolim')}</th>
                                        <th className="px-4 py-3 font-medium text-muted">{t('settings.services.thPrice')}</th>
                                        <th className="px-4 py-3 font-medium text-muted text-right">{t('settings.services.thAction')}</th>
                                     </tr>
@@ -2048,7 +2035,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                              <td className="px-4 py-3 text-ink font-medium">{s.name}</td>
                                              <td className="px-4 py-3 text-muted">
                                                 {deptList.find((d: any) => d.id === (s as any).departmentId)?.name
-                                                   || <span className="text-faint">— bo'limsiz</span>}
+                                                   || <span className="text-faint">{t('settings.bolimsiz')}</span>}
                                              </td>
                                              <td className="px-4 py-3 text-muted">{formatMoney(s.price)} UZS</td>
                                              <td className="px-4 py-3 text-right">
@@ -2062,7 +2049,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                                    {onDeleteService && s.id && (
                                                       <button
                                                          onClick={async () => {
-                                                            if (!await confirmAction({ title: `"${s.name}" xizmatini o'chirishni tasdiqlaysizmi?`, danger: true, confirmLabel: "O'chirish" })) return;
+                                                            if (!await confirmAction({ title: fill(t('settings.x_xizmatini_ochirishni_tasdiqlaysizmi'), s.name), danger: true, confirmLabel: t('ui.ochirish_2') })) return;
                                                             await onDeleteService(s.id as number);
                                                          }}
                                                          className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition-colors"
@@ -2126,9 +2113,9 @@ export const Settings: React.FC<SettingsProps> = ({
 
                      <div className="space-y-6">
                         <div className="bg-elevated p-6 rounded-2xl border border-line-soft">
-                           <h3 className="font-bold text-ink mb-2">Shaxsiy Telegram Botni Ulash</h3>
+                           <h3 className="font-bold text-ink mb-2">{t('settings.shaxsiy_telegram_botni_ulash')}</h3>
                            <p className="text-sm text-muted mb-6">
-                              Telegram-da @BotFather orqali o'zingizning shaxsiy botingizni yarating va bot tokenini quyidagi maydonga kiritib, uni tizimga ulang.
+                              {t('settings.telegram_da_botfather_orqali')}
                            </p>
 
                            <form onSubmit={handleBotSave} className="space-y-4">
@@ -2151,7 +2138,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                  <CheckCircle className="w-5 h-5 text-emerald-500" />
                                  <div>
                                     <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">{t('settings.bot.active')}</p>
-                                    <p className="text-xs text-emerald-700 dark:text-emerald-400">Siz har kuni soat 22:00 da hisobotlarni qabul qilasiz.</p>
+                                    <p className="text-xs text-emerald-700 dark:text-emerald-400">{t('settings.siz_har_kuni_soat')}</p>
                                  </div>
                               </div>
                            </div>
@@ -2175,17 +2162,17 @@ export const Settings: React.FC<SettingsProps> = ({
                         <Card className="p-6 border-l-4 border-l-purple-500">
                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                               <div>
-                                 <p className="text-sm font-medium text-muted mb-1">Joriy SMS balans (Eskiz.uz)</p>
+                                 <p className="text-sm font-medium text-muted mb-1">{t('settings.joriy_sms_balans_eskiz')}</p>
                                  <div className="flex items-end gap-2">
                                     <p className="text-3xl font-bold text-ink">
-                                       {smsBalance !== null ? formatMoney(smsBalance) : 'Tekshirilmoqda...'}
+                                       {smsBalance !== null ? formatMoney(smsBalance) : t('auth.checking')}
                                     </p>
-                                    <span className="text-muted mb-1 font-medium">ta SMS qoldi</span>
+                                    <span className="text-muted mb-1 font-medium">{t('settings.ta_sms_qoldi')}</span>
                                  </div>
                               </div>
 
                               <div className="w-full md:w-auto p-4 bg-elevated rounded-xl border border-line-soft">
-                                 <p className="text-sm font-medium text-muted mb-3">Test SMS yuborish</p>
+                                 <p className="text-sm font-medium text-muted mb-3">{t('settings.test_sms_yuborish')}</p>
                                  <div className="flex gap-2">
                                     <Input 
                                        placeholder="998901234567" 
@@ -2193,7 +2180,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                        onChange={(e) => setSmsTestPhone(e.target.value)} 
                                     />
                                     <Button onClick={handleSmsTest} disabled={!smsTestPhone || !smsConnected || isCheckingSms} variant="secondary" className="whitespace-nowrap">
-                                       {isCheckingSms ? '...' : 'Yuborish'}
+                                       {isCheckingSms ? '...' : t('ui.yuborish')}
                                     </Button>
                                  </div>
                               </div>
@@ -2213,12 +2200,12 @@ export const Settings: React.FC<SettingsProps> = ({
                <Input label={t('settings.services.thName')} value={serviceForm.name} onChange={e => setServiceForm({ ...serviceForm, name: e.target.value })} required />
 
                <div>
-                  <label className="block text-sm font-medium text-muted mb-1">Kategoriya</label>
+                  <label className="block text-sm font-medium text-muted mb-1">{t('ui.kategoriya')}</label>
                   <Select
                      value={serviceForm.categoryId}
                      onChange={e => setServiceForm({ ...serviceForm, categoryId: e.target.value })}
                      options={[
-                        { value: '', label: 'Kategoriyasiz' },
+                        { value: '', label: t('settings.services.noCategory') },
                         ...categories.map(c => ({ value: c.id, label: c.name }))
                      ]}
                   />
@@ -2228,7 +2215,7 @@ export const Settings: React.FC<SettingsProps> = ({
                      onChange={e => setServiceForm({ ...serviceForm, price: e.target.value })} required />
                   {/* Davomiylik kalendardagi slot uzunligini belgilaydi.
                       Ilgari u qattiq 60 daqiqa edi. */}
-                  <Input label="Davomiyligi (daqiqa)" type="number" value={serviceForm.duration}
+                  <Input label={t('settings.davomiyligi_daqiqa')} type="number" value={serviceForm.duration}
                      onChange={e => setServiceForm({ ...serviceForm, duration: e.target.value })}
                      placeholder="60" />
                </div>
@@ -2237,12 +2224,12 @@ export const Settings: React.FC<SettingsProps> = ({
                    bo'yicha filtrlanadi. Ilgari uni formadan berib
                    bo'lmasdi. */}
                <div>
-                  <label className="block text-sm font-medium text-muted mb-1">Bo'lim</label>
+                  <label className="block text-sm font-medium text-muted mb-1">{t('ui.bolim')}</label>
                   <Select
                      value={serviceForm.departmentId}
                      onChange={e => setServiceForm({ ...serviceForm, departmentId: e.target.value })}
                      options={[
-                        { value: '', label: "Bo'limsiz — hamma joyda ko'rinadi" },
+                        { value: '', label: t('settings.bolimsiz_hamma_joyda_korinadi') },
                         ...deptList.filter((d: any) => d.isActive).map((d: any) => ({ value: d.id, label: d.name })),
                      ]}
                   />
@@ -2255,7 +2242,7 @@ export const Settings: React.FC<SettingsProps> = ({
                    yo'q edi. */}
                <div className="rounded-xl border border-line p-4">
                   <p className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
-                     Sarflanadigan materiallar
+                     {t('settings.sarflanadigan_materiallar')}
                   </p>
                   <ServiceRecipeEditor
                      serviceId={editingServiceId}
@@ -2296,10 +2283,10 @@ export const Settings: React.FC<SettingsProps> = ({
       {/* Bo'lim yaratish va tahrirlash */}
       {deptModal && (
          <Modal isOpen={true} onClose={() => setDeptModal(null)}
-            title={deptModal.mode === 'edit' ? 'Bo\'limni tahrirlash' : 'Yangi bo\'lim'}>
+            title={deptModal.mode === 'edit' ? t('settings.bolimni_tahrirlash') : t('settings.yangi_bolim')}>
             <div className="space-y-4">
                <div>
-                  <label className="block text-sm font-medium text-muted mb-1">Nomi</label>
+                  <label className="block text-sm font-medium text-muted mb-1">{t('ui.nomi')}</label>
                   <Input value={deptForm.name}
                      onChange={(e: any) => {
                         const name = e.target.value;
@@ -2309,30 +2296,30 @@ export const Settings: React.FC<SettingsProps> = ({
                            code: deptCodeTouched ? f.code : makeDeptCode(name),
                         }));
                      }}
-                     placeholder="Masalan: Kardiologiya" />
+                     placeholder={t('settings.masalan_kardiologiya')} />
                </div>
 
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                     <label className="block text-sm font-medium text-muted mb-1">Kod</label>
+                     <label className="block text-sm font-medium text-muted mb-1">{t('lab.code')}</label>
                      <Input value={deptForm.code}
                         onChange={(e: any) => {
                            setDeptCodeTouched(true);
                            setDeptForm(f => ({ ...f, code: e.target.value.toUpperCase() }));
                         }}
                         placeholder="KARD" />
-                     <p className="text-xs text-faint mt-1">Qisqa, takrorlanmaydigan belgi — nomdan o'zi yasaladi</p>
+                     <p className="text-xs text-faint mt-1">{t('settings.qisqa_takrorlanmaydigan_belgi_nomdan')}</p>
                   </div>
                   <div>
                      <label className="block text-sm font-medium text-muted mb-1">Tartib</label>
                      <Input type="number" value={deptForm.sortOrder}
                         onChange={(e: any) => setDeptForm(f => ({ ...f, sortOrder: e.target.value }))} />
-                     <p className="text-xs text-faint mt-1">Ro'yxatlarda joyi</p>
+                     <p className="text-xs text-faint mt-1">{t('settings.royxatlarda_joyi')}</p>
                   </div>
                </div>
 
                <div>
-                  <label className="block text-sm font-medium text-muted mb-1">Turi</label>
+                  <label className="block text-sm font-medium text-muted mb-1">{t('inp.kind')}</label>
                   <Select value={deptForm.type}
                      onChange={(e: any) => setDeptForm(f => ({ ...f, type: e.target.value }))}>
                      {(Object.keys(DEPARTMENT_TYPE_LABELS) as DepartmentType[]).map((k) => (
@@ -2342,11 +2329,11 @@ export const Settings: React.FC<SettingsProps> = ({
                   {/* Turni tushuntirish TALTIQ emas: noto'g'ri tanlangan tur — keyin
                       hech kim topa olmaydigan bo'lim. */}
                   <div className="mt-2 p-3 bg-elevated border border-line rounded-lg text-xs text-muted space-y-1">
-                     <p><b>Klinik</b> — registraturada bemor shu bo'limga yoziladi</p>
-                     <p><b>Laboratoriya</b> — tahlillar katalogi va yo'llanmalar</p>
-                     <p><b>Diagnostika</b> — UZI, EKG, rentgen</p>
-                     <p><b>Statsionar</b> — palata va koykalar</p>
-                     <p><b>Dorixona</b> — ombor va retseptlar</p>
+                     <p><b>Klinik</b> {t('settings.registraturada_bemor_shu_bolimga')}</p>
+                     <p><b>{t('settings.laboratoriya')}</b> {t('settings.tahlillar_katalogi_va_yollanmalar')}</p>
+                     <p><b>{t('settings.diagnostika_2')}</b> — {t('settings.uzi_ekg_rentgen')}</p>
+                     <p><b>{t('ui.statsionar')}</b> {t('settings.palata_va_koykalar')}</p>
+                     <p><b>{t('settings.dorixona_2')}</b> {t('settings.ombor_va_retseptlar')}</p>
                   </div>
                </div>
 
@@ -2364,7 +2351,7 @@ export const Settings: React.FC<SettingsProps> = ({
                            style={{ backgroundColor: c.value }} />
                      ))}
                   </div>
-                  <p className="text-xs text-faint mt-2">Navbat tablosida va kalendarda ishlatiladi</p>
+                  <p className="text-xs text-faint mt-2">{t('settings.navbat_tablosida_va_kalendarda')}</p>
                </div>
 
                {deptError && (
@@ -2372,10 +2359,10 @@ export const Settings: React.FC<SettingsProps> = ({
                )}
 
                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="secondary" onClick={() => setDeptModal(null)}>Bekor qilish</Button>
+                  <Button variant="secondary" onClick={() => setDeptModal(null)}>{t('common.cancel')}</Button>
                   <Button onClick={saveDepartment}
                      disabled={deptBusy || !deptForm.name.trim() || !deptForm.code.trim()}>
-                     {deptBusy ? 'Saqlanmoqda…' : 'Saqlash'}
+                     {deptBusy ? t('ui.saqlanmoqda_3') : t('ui.saqlash')}
                   </Button>
                </div>
             </div>
@@ -2392,26 +2379,24 @@ export const Settings: React.FC<SettingsProps> = ({
                      <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                      <div className="text-sm text-red-800 dark:text-red-200 space-y-2">
                         <p className="font-semibold">
-                           {fmtWhen(restoreTarget.createdAt)} dan KEYIN kiritilgan barcha ma'lumot yo'qoladi.
+                           {fmtWhen(restoreTarget.createdAt)} {t('settings.dan_keyin_kiritilgan_barcha')}
                         </p>
                         <p>
-                           Bu qabullar, to'lovlar, tahlil natijalari va boshqa hamma narsaga tegishli.
-                           Joriy baza almashtirishdan oldin avtomatik saqlanadi, lekin unga qaytish
-                           faqat qo'lda mumkin.
+                           {t('settings.bu_qabullar_tolovlar_tahlil')}
                         </p>
                      </div>
                   </div>
                </div>
 
                <div className="text-sm text-muted space-y-1">
-                  <p><span className="text-faint">Nusxa:</span> <span className="font-mono">{restoreTarget.file}</span></p>
+                  <p><span className="text-faint">{t('settings.nusxa')}:</span> <span className="font-mono">{restoreTarget.file}</span></p>
                   <p><span className="text-faint">Hajmi:</span> {fmtBytes(restoreTarget.sizeBytes)}</p>
-                  <p><span className="text-faint">Fayllar arxivi:</span> {restoreTarget.hasUploads ? 'bor' : 'yo’q'}</p>
+                  <p><span className="text-faint">Fayllar arxivi:</span> {restoreTarget.hasUploads ? t('settings.bor') : t('settings.yoq')}</p>
                </div>
 
                <div>
                   <label className="block text-sm font-medium text-muted mb-1">
-                     Tasdiqlash uchun <span className="font-mono font-bold">TIKLASH</span> deb yozing
+                     {t('settings.tasdiqlash_uchun')} <span className="font-mono font-bold">TIKLASH</span> {t('settings.deb_yozing')}
                   </label>
                   <Input
                      value={restoreConfirmText}
@@ -2421,17 +2406,16 @@ export const Settings: React.FC<SettingsProps> = ({
                </div>
 
                <p className="text-xs text-muted">
-                  Tiklash darhol bajarilmaydi: server bazani ochiq tutadi. Belgi qo'yiladi va
-                  almashtirish dastur qayta ishga tushganda bo'ladi. Shu paytgacha bekor qilish mumkin.
+                  {t('settings.tiklash_darhol_bajarilmaydi_server')}
                </p>
 
                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="secondary" onClick={() => setRestoreTarget(null)}>Bekor qilish</Button>
+                  <Button variant="secondary" onClick={() => setRestoreTarget(null)}>{t('common.cancel')}</Button>
                   <Button
                      onClick={handleStageRestore}
                      disabled={backupBusy || restoreConfirmText.trim().toUpperCase() !== 'TIKLASH'}
                   >
-                     Tiklashni belgilash
+                     {t('settings.tiklashni_belgilash')}
                   </Button>
                </div>
             </div>

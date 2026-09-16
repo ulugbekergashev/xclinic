@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { InventoryItem } from '../types';
 import { formatMoney } from '../utils/format';
 
+import { useLanguage } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    XIZMAT RETSEPTI — qaysi material, qancha ketadi.
 
@@ -34,6 +35,7 @@ interface Props {
 type Row = { itemId: string; quantity: string; note: string };
 
 export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, items, addToast }) => {
+    const { t } = useLanguage();
     const [rows, setRows] = useState<Row[]>([]);
     const [loading, setLoading] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -49,7 +51,7 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
                 note: l.note || '',
             })));
         } catch (e: any) {
-            setError(e?.data?.error || e?.message || "Retsept o'qilmadi");
+            setError(e?.data?.error || e?.message || t('servicerecipeeditor.retsept_oqilmadi'));
         } finally { setLoading(false); }
     }, []);
 
@@ -78,17 +80,17 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
                     quantity: Number(r.quantity),
                     note: r.note.trim() || undefined,
                 })));
-            addToast?.('success', 'Retsept saqlandi');
+            addToast?.('success', t('servicerecipeeditor.retsept_saqlandi'));
             await load(serviceId);
         } catch (e: any) {
-            setError(e?.data?.error || e?.message || 'Saqlanmadi');
+            setError(e?.data?.error || e?.message || t('ui.saqlanmadi'));
         } finally { setBusy(false); }
     };
 
     if (serviceId == null) {
         return (
             <p className="text-xs text-faint py-3">
-                Materiallarni xizmat saqlangandan keyin kiritish mumkin.
+                {t('servicerecipeeditor.materiallarni_xizmat_saqlangandan_keyin')}
             </p>
         );
     }
@@ -97,10 +99,10 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
         <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-4 text-xs">
                 <span className="text-muted">
-                    Tannarx: <b className="tabular-nums text-ink">{formatMoney(cost)}</b>
+                    {t('lab.cost')}: <b className="tabular-nums text-ink">{formatMoney(cost)}</b>
                 </span>
                 <span className={margin >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
-                    Marja: <b className="tabular-nums">{formatMoney(margin)}</b>
+                    {t('finance.report.margin')}: <b className="tabular-nums">{formatMoney(margin)}</b>
                     {price > 0 && ` (${Math.round((margin / price) * 100)}%)`}
                 </span>
             </div>
@@ -108,10 +110,10 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
             {loading ? (
-                <p className="text-sm text-faint py-4 text-center">Yuklanmoqda…</p>
+                <p className="text-sm text-faint py-4 text-center">{t('ui.yuklanmoqda')}</p>
             ) : rows.length === 0 ? (
                 <p className="text-sm text-faint py-4 text-center">
-                    Material biriktirilmagan — hisobotda tannarx nol bo'ladi
+                    {t('servicerecipeeditor.material_biriktirilmagan_hisobotda_tanna')}
                 </p>
             ) : (
                 <div className="space-y-2">
@@ -122,7 +124,7 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
                                 <select value={r.itemId}
                                     onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, itemId: e.target.value } : x))}
                                     className={inputCls + ' flex-1 min-w-[180px]'}>
-                                    <option value="">— Material —</option>
+                                    <option value="">— {t('servicerecipeeditor.material')} —</option>
                                     {items.map(m => (
                                         <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>
                                     ))}
@@ -151,12 +153,12 @@ export const ServiceRecipeEditor: React.FC<Props> = ({ serviceId, price = 0, ite
                 <button type="button"
                     onClick={() => setRows(rs => [...rs, { itemId: '', quantity: '', note: '' }])}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated">
-                    <Plus className="w-4 h-4" /> Material qo'shish
+                    <Plus className="w-4 h-4" /> {t('servicerecipeeditor.material_qoshish')}
                 </button>
                 <button type="button" onClick={save} disabled={busy}
                     className="ml-auto px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center gap-1.5">
                     {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-                    Retseptni saqlash
+                    {t('visit.saveRx')}
                 </button>
             </div>
         </div>

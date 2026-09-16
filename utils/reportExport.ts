@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { tr, fill } from '../context/LanguageContext';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Hisobotni Excelga chiqarish.
@@ -60,9 +61,9 @@ export function exportReportToExcel(data: ReportExportInput): void {
     const { from, to, clinicName } = data;
     const wb = XLSX.utils.book_new();
     const head = (title: string): Sheet => [
-        [clinicName || 'Klinika'],
+        [clinicName || tr('ui.klinika')],
         [title],
-        ['Davr', `${from} — ${to}`],
+        [tr('common.period'), `${from} — ${to}`],
         ['Tuzilgan', new Date().toLocaleString('uz-UZ')],
         [],
     ];
@@ -71,29 +72,29 @@ export function exportReportToExcel(data: ReportExportInput): void {
     if (data.summary?.totals) {
         const t = data.summary.totals;
         const rows: Sheet = [
-            ...head('UMUMIY HISOBOT'),
-            ['Ko\'rsatkich', 'Summa'],
-            ['Tushum (yozilgan)', t.revenue],
-            ['Olingan pul', t.collected],
-            ['Qarz', t.due],
-            ['Material tannarxi', t.materialCost],
-            ['Yalpi foyda', t.grossProfit],
-            ['Shifokor ulushi', t.doctorShare],
-            ['Boshqa xarajatlar', t.otherExpenses],
-            ['Sof foyda', t.netProfit],
+            ...head(tr('reportexport.umumiy_hisobot')),
+            [tr('reportexport.korsatkich'), tr('ui.summa')],
+            [tr('reportexport.tushum_yozilgan'), t.revenue],
+            [tr('ui.olingan_pul'), t.collected],
+            [tr('reportexport.qarz'), t.due],
+            [tr('reportexport.material_tannarxi'), t.materialCost],
+            [tr('finance.report.grossProfit'), t.grossProfit],
+            [tr('ui.shifokor_ulushi_2'), t.doctorShare],
+            [tr('reportexport.boshqa_xarajatlar'), t.otherExpenses],
+            [tr('finance.report.netProfit'), t.netProfit],
         ];
 
         if (data.compare?.previous) {
             const p = data.compare.previous;
             const d = data.compare.delta || {};
-            rows.push([], ['OLDINGI DAVR BILAN SOLISHTIRISH']);
-            rows.push(['Oldingi davr', `${p.from} — ${p.to} (${p.days} kun)`]);
-            rows.push(['Ko\'rsatkich', 'Hozir', 'Oldin', 'Farq', 'Foiz']);
+            rows.push([], [tr('reportexport.oldingi_davr_bilan_solishtirish')]);
+            rows.push([tr('reportexport.oldingi_davr'), fill(tr('reportexport.x_x_x_kun'), p.from, p.to, p.days)]);
+            rows.push([tr('reportexport.korsatkich'), tr('reportexport.hozir'), tr('reportexport.oldin'), tr('ui.farq'), tr('reportexport.foiz')]);
             const cur = data.compare.current || {};
             for (const [key, label] of [
-                ['revenue', 'Tushum'], ['collected', 'Olingan pul'],
-                ['expense', 'Xarajat'], ['profit', 'Foyda'],
-                ['visits', 'Qabullar'], ['avgCheck', "O'rtacha chek"],
+                ['revenue', tr('ui.tushum')], ['collected', tr('ui.olingan_pul')],
+                ['expense', tr('ui.xarajat')], ['profit', tr('finance.report.profit')],
+                ['visits', tr('ui.qabullar')], ['avgCheck', tr('finance.report.avgCheck')],
             ] as const) {
                 rows.push([
                     label, cur[key] ?? 0, p[key] ?? 0,
@@ -104,15 +105,15 @@ export function exportReportToExcel(data: ReportExportInput): void {
             }
         }
 
-        addSheet(wb, 'Umumiy', rows, [1, 2, 3], [30, 16, 16, 16, 10]);
+        addSheet(wb, tr('ui.umumiy_tab'), rows, [1, 2, 3], [30, 16, 16, 16, 10]);
     }
 
     /* ── 2. Bo'limlar ── */
     const deptRows = data.departments?.departments || data.summary?.byDepartment;
     if (deptRows?.length) {
         const rows: Sheet = [
-            ...head("BO'LIMLAR"),
-            ["Bo'lim", 'Daromad', "To'langan", 'Xarajat', 'Foyda', 'Koyka-kun'],
+            ...head(tr('reportexport.bolimlar')),
+            [tr('ui.bolim_2'), tr('reportexport.daromad'), tr('ui.tolangan_2'), tr('ui.xarajat'), tr('finance.report.profit'), tr('finance.report.bedDays')],
             ...deptRows.map((d: any) => [
                 d.name,
                 d.revenue ?? 0,
@@ -124,46 +125,46 @@ export function exportReportToExcel(data: ReportExportInput): void {
         ];
         if (data.departments?.totals) {
             const t = data.departments.totals;
-            rows.push([], ['JAMI', t.revenue, t.paid, t.expense, t.profit, t.bedDays]);
-            if (t.occupancy != null) rows.push(['Koyka bandligi', `${t.occupancy}%`]);
+            rows.push([], [tr('cashbook.jami'), t.revenue, t.paid, t.expense, t.profit, t.bedDays]);
+            if (t.occupancy != null) rows.push([tr('finance.report.bedOccupancy'), `${t.occupancy}%`]);
         }
-        addSheet(wb, "Bo'limlar", rows, [1, 2, 3, 4], [26, 15, 15, 15, 15, 12]);
+        addSheet(wb, tr('settings.bolimlar'), rows, [1, 2, 3, 4], [26, 15, 15, 15, 15, 12]);
     }
 
     /* ── 3. Shifokorlar ── */
     if (data.doctors?.doctors?.length) {
         const rows: Sheet = [
-            ...head('SHIFOKORLAR'),
-            ['Shifokor', 'Yozilgan', "To'langan", 'Qarz', 'Bemor', "O'rtacha chek", 'Hisoblangan ulush'],
+            ...head(tr('reportexport.shifokorlar')),
+            [tr('ui.shifokor_2'), tr('ui.yozilgan'), tr('ui.tolangan_2'), tr('reportexport.qarz'), tr('ui.bemor'), tr('finance.report.avgCheck'), tr('finance.report.accruedShare')],
             ...data.doctors.doctors.map((d: any) => [
                 d.name, d.revenue, d.paid, d.due, d.patientCount, d.avgCheck, d.accrued,
             ]),
         ];
         const t = data.doctors.totals;
-        if (t) rows.push([], ['JAMI', t.revenue, t.paid, t.due, '', '', t.accrued]);
-        rows.push([], ["Ulush TO'LANGAN pul bo'yicha hisoblanadi: qarzga yozilgan ish uchun pul hali kirmagan."]);
-        addSheet(wb, 'Shifokorlar', rows, [1, 2, 3, 5, 6], [26, 15, 15, 15, 10, 15, 18]);
+        if (t) rows.push([], [tr('cashbook.jami'), t.revenue, t.paid, t.due, '', '', t.accrued]);
+        rows.push([], [tr('reportexport.ulush_tolangan_pul_boyicha')]);
+        addSheet(wb, tr('ui.shifokorlar'), rows, [1, 2, 3, 5, 6], [26, 15, 15, 15, 10, 15, 18]);
     }
 
     /* ── 4. Chiqimlar ── */
     if (data.writeoffs) {
         const w = data.writeoffs;
         const rows: Sheet = [
-            ...head('CHIQIMLAR (tannarxda)'),
-            ['Behuda ketgan', w.wasteCost],
-            ['Xizmatga ishlatilgan', w.serviceCost],
-            ['Jami', w.totalCost],
-            ['Harakatlar soni', w.movementCount],
+            ...head(tr('reportexport.chiqimlar_tannarxda')),
+            [tr('finance.report.wasted'), w.wasteCost],
+            [tr('finance.report.usedForService'), w.serviceCost],
+            [tr('ui.jami'), w.totalCost],
+            [tr('reportexport.harakatlar_soni'), w.movementCount],
             [],
-            ['SABAB BO\'YICHA'],
-            ['Sabab', 'Soni', 'Summa'],
+            [tr('reportexport.sabab_boyicha')],
+            ['Sabab', tr('reportexport.soni'), tr('ui.summa')],
             ...(w.byReason || []).map((r: any) => [r.label || r.reason, r.count, r.cost]),
             [],
-            ['POZITSIYA BO\'YICHA'],
-            ['Nomi', 'Miqdor', 'Birlik', 'Summa'],
+            [tr('reportexport.pozitsiya_boyicha')],
+            [tr('ui.nomi'), tr('reportexport.miqdor'), tr('lab.unit'), tr('ui.summa')],
             ...(w.byItem || []).map((i: any) => [i.name, i.qty, i.unit || '', i.cost]),
         ];
-        addSheet(wb, 'Chiqimlar', rows, [1, 2, 3], [30, 12, 12, 15]);
+        addSheet(wb, tr('ui.chiqimlar'), rows, [1, 2, 3], [30, 12, 12, 15]);
     }
 
     /* ── 5. Smena svodi ── */
@@ -171,31 +172,31 @@ export function exportReportToExcel(data: ReportExportInput): void {
         const l = data.labShift.lab || {};
         const s = data.labShift.studies || {};
         const rows: Sheet = [
-            ...head(`SMENA SVODI (${data.labShift.date})`),
-            ['LABORATORIYA'],
-            ['Buyurtma', l.total ?? 0],
-            ['Proba olindi', l.collected ?? 0],
-            ['Proba olinmadi', l.notCollected ?? 0],
-            ['Shoshilinch', l.urgent ?? 0],
-            ["To'lanmagan (soni)", l.unpaidCount ?? 0],
-            ["To'lanmagan (summa)", l.unpaidSum ?? 0],
-            ['Tushum', l.revenue ?? 0],
-            ["O'rtacha bajarish (soat)", l.avgTurnaroundHours ?? '—'],
+            ...head(fill(tr('reportexport.smena_svodi_x'), data.labShift.date)),
+            [tr('reportexport.laboratoriya')],
+            [tr('finance.report.order'), l.total ?? 0],
+            [tr('finance.report.sampleTaken'), l.collected ?? 0],
+            [tr('finance.report.sampleNotTaken'), l.notCollected ?? 0],
+            [tr('reportexport.shoshilinch'), l.urgent ?? 0],
+            [tr('reportexport.tolanmagan_soni'), l.unpaidCount ?? 0],
+            [tr('reportexport.tolanmagan_summa'), l.unpaidSum ?? 0],
+            [tr('ui.tushum'), l.revenue ?? 0],
+            [tr('reportexport.ortacha_bajarish_soat'), l.avgTurnaroundHours ?? '—'],
             [],
-            ['DIAGNOSTIKA'],
-            ['Tekshiruv', s.total ?? 0],
-            ["To'lanmagan (soni)", s.unpaidCount ?? 0],
-            ["To'lanmagan (summa)", s.unpaidSum ?? 0],
-            ['Tushum', s.revenue ?? 0],
+            [tr('reportexport.diagnostika')],
+            [tr('finance.report.study'), s.total ?? 0],
+            [tr('reportexport.tolanmagan_soni'), s.unpaidCount ?? 0],
+            [tr('reportexport.tolanmagan_summa'), s.unpaidSum ?? 0],
+            [tr('ui.tushum'), s.revenue ?? 0],
             [],
-            ['Brak va qayta bajarish hisobga OLINMAYDI: tizimda bunday tushuncha yo\'q.'],
+            [tr('reportexport.brak_va_qayta_bajarish')],
         ];
-        addSheet(wb, 'Smena svodi', rows, [1], [28, 16]);
+        addSheet(wb, tr('ui.smena_svodi'), rows, [1], [28, 16]);
     }
 
     /* Hech qanday varaq bo'lmasa — bo'sh fayl bermaymiz */
     if (wb.SheetNames.length === 0) {
-        addSheet(wb, 'Hisobot', [...head('HISOBOT'), ["Bu davr uchun ma'lumot yo'q"]]);
+        addSheet(wb, tr('reportexport.hisobot'), [...head(tr('reportexport.hisobot_2')), [tr('reportexport.bu_davr_uchun_malumot')]]);
     }
 
     XLSX.writeFile(wb, `hisobot_${from}_${to}.xlsx`);

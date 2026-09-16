@@ -7,6 +7,7 @@ import { VisitCharge } from '../types';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { api } from '../services/api';
 
+import { useLanguage, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    BITTA BEMOR — KO'P QATOR — BITTA CHEK.
 
@@ -48,6 +49,7 @@ const remainingOf = (c: VisitCharge) => Math.round((c.total - (c.paidAmount || 0
 export const ChargePaymentModal: React.FC<Props> = ({
     isOpen, onClose, patientName, charges, patientId, receivedByName, role, onDone, addToast,
 }) => {
+    const { t } = useLanguage();
     const canDiscount = role === 'CLINIC_ADMIN' || role === 'RECEPTIONIST';
     const canRefund = role === 'CLINIC_ADMIN';
 
@@ -136,19 +138,19 @@ export const ChargePaymentModal: React.FC<Props> = ({
             if (n > 0) perCharge[id] = n;
         }
         const ids = Object.keys(perCharge);
-        if (ids.length === 0) { setError('Qator tanlanmagan'); return; }
+        if (ids.length === 0) { setError(t('chargepaymentmodal.qator_tanlanmagan')); return; }
 
         // Qator qarzidan ko'p kiritilmaganini oldindan tekshiramiz —
         // serverga bormasdan, kassir darhol tushunsin
         for (const id of ids) {
             const c = unpaid.find(x => x.id === id);
             if (c && perCharge[id] > remainingOf(c) + 0.001) {
-                setError(`"${c.name}" uchun ${num(perCharge[id])} — qarzdan (${num(remainingOf(c))}) ko'p`);
+                setError(fill(t('chargepaymentmodal.x_uchun_x_qarzdan'), c.name, num(perCharge[id]), num(remainingOf(c))));
                 return;
             }
         }
         if (splitMismatch) {
-            setError(`Usullar yig'indisi ${num(splitSum)}, umumiy summa ${num(selectedTotal)}`);
+            setError(fill(t('chargepaymentmodal.usullar_yigindisi_x_umumiy'), num(splitSum), num(selectedTotal)));
             return;
         }
 
@@ -162,11 +164,11 @@ export const ChargePaymentModal: React.FC<Props> = ({
                     ? { payments: splits.filter(p => (Number(p.amount) || 0) > 0).map(p => ({ method: p.method, amount: Number(p.amount) })) }
                     : { method: splits[0]?.method || 'Cash' }),
             });
-            addToast?.('success', `${num(selectedTotal)} so'm qabul qilindi`);
+            addToast?.('success', fill(t('chargepaymentmodal.x_som_qabul_qilindi'), num(selectedTotal)));
             onDone?.();
             onClose();
         } catch (e: any) {
-            setError(e?.message || "To'lov o'tmadi");
+            setError(e?.message || t('payment.failed'));
         } finally { setSaving(false); }
     };
 
@@ -175,11 +177,11 @@ export const ChargePaymentModal: React.FC<Props> = ({
         setBusyId(discountFor.id);
         try {
             await api.payments.discount(discountFor.id, Number(discountVal) || 0);
-            addToast?.('success', 'Chegirma qo\'yildi');
+            addToast?.('success', t('chargepaymentmodal.chegirma_qoyildi'));
             setDiscountFor(null);
             onDone?.();
         } catch (e: any) {
-            addToast?.('error', e?.message || 'Chegirma o\'tmadi');
+            addToast?.('error', e?.message || t('chargepaymentmodal.chegirma_otmadi'));
         } finally { setBusyId(''); }
     };
 
@@ -192,25 +194,25 @@ export const ChargePaymentModal: React.FC<Props> = ({
                 method: 'Cash',
                 reason: refundReason.trim() || undefined,
             });
-            addToast?.('success', 'Qaytarildi');
+            addToast?.('success', t('finance.cash.returned'));
             setRefundFor(null);
             setRefundReason('');
             onDone?.();
             loadPaid();
         } catch (e: any) {
-            addToast?.('error', e?.message || 'Qaytarish o\'tmadi');
+            addToast?.('error', e?.message || t('chargepaymentmodal.qaytarish_otmadi'));
         } finally { setBusyId(''); }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`To'lov — ${patientName}`} className="max-w-2xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={fill(t('chargepaymentmodal.tolov_x'), patientName)} className="max-w-2xl">
             <div className="space-y-4">
 
                 {/* ── Qatorlar ─────────────────────────────────────────────── */}
                 {unpaid.length === 0 ? (
                     <div className="py-6 text-center">
                         <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                        <p className="text-sm text-muted">To'lanmagan qator yo'q</p>
+                        <p className="text-sm text-muted">{t('chargepaymentmodal.tolanmagan_qator_yoq')}</p>
                     </div>
                 ) : (
                     <div className="border border-line rounded-xl divide-y divide-line max-h-64 overflow-y-auto">
@@ -224,15 +226,15 @@ export const ChargePaymentModal: React.FC<Props> = ({
                                         <p className="text-sm font-medium text-ink truncate">{c.name}</p>
                                         <p className="text-[11px] text-faint">
                                             {c.quantity > 1 && `${c.quantity} x ${num(c.unitPrice)} · `}
-                                            qarz {num(remainingOf(c))}
-                                            {(c.discount || 0) > 0 && ` · chegirma ${num(c.discount)}`}
-                                            {(c.paidAmount || 0) > 0 && ` · to'langan ${num(c.paidAmount)}`}
+                                            {t('ui.qarz')} {num(remainingOf(c))}
+                                            {(c.discount || 0) > 0 && fill(t('chargepaymentmodal.chegirma_x'), num(c.discount))}
+                                            {(c.paidAmount || 0) > 0 && fill(t('chargepaymentmodal.tolangan_x'), num(c.paidAmount))}
                                         </p>
                                     </div>
                                     {canDiscount && (
                                         <button
                                             onClick={() => { setDiscountFor(c); setDiscountVal(String(c.discount || 0)); }}
-                                            title="Chegirma"
+                                            title={t('finance.table.discount')}
                                             className="p-1.5 rounded-lg text-faint hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 shrink-0">
                                             <Percent className="w-4 h-4" />
                                         </button>
@@ -254,7 +256,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                     <div>
                         <div className="flex items-center justify-between mb-2">
                             <h4 className="text-xs font-bold uppercase tracking-wide text-muted">
-                                To'lov usuli
+                                {t('ui.tolov_usuli')}
                             </h4>
                             {splits.length < 3 && (
                                 <button
@@ -265,7 +267,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                                         amount: '',
                                     }])}
                                     className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1">
-                                    <Plus className="w-3 h-3" /> usul qo'shish
+                                    <Plus className="w-3 h-3" /> {t('chargepaymentmodal.usul_qoshish')}
                                 </button>
                             )}
                         </div>
@@ -280,7 +282,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                                     {multiMethod && (
                                         <>
                                             <div className="w-32 shrink-0">
-                                                <input type="number" value={p.amount} placeholder="summa"
+                                                <input type="number" value={p.amount} placeholder={t('chargepaymentmodal.summa')}
                                                     onChange={(e) => setSplits(s => s.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
                                                     className="w-full h-10 px-2 text-sm text-right tabular-nums border border-line rounded-lg bg-surface text-ink" />
                                             </div>
@@ -297,7 +299,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                         {multiMethod && (
                             <p className={`mt-2 text-xs ${splitMismatch ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-faint'}`}>
                                 Usullar: {num(splitSum)} / {num(selectedTotal)}
-                                {splitMismatch && ` — farq ${num(Math.abs(selectedTotal - splitSum))}`}
+                                {splitMismatch && fill(t('chargepaymentmodal.farq_x'), num(Math.abs(selectedTotal - splitSum)))}
                             </p>
                         )}
                     </div>
@@ -308,7 +310,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                     <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
                         <Banknote className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         <span className="text-sm text-emerald-900 dark:text-emerald-200">
-                            {selectedCount} qator
+                            {selectedCount} {t('ui.qator')}
                         </span>
                         <span className="ml-auto text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-300">
                             {num(selectedTotal)} UZS
@@ -327,18 +329,18 @@ export const ChargePaymentModal: React.FC<Props> = ({
                 {canRefund && paid.length > 0 && (
                     <details className="border border-line rounded-xl">
                         <summary className="p-3 text-xs font-bold uppercase tracking-wide text-muted cursor-pointer">
-                            To'langanlar ({paid.length}) — qaytarish
+                            To'langanlar ({paid.length}{t('chargepaymentmodal.qaytarish')}
                         </summary>
                         <div className="border-t border-line divide-y divide-line">
                             {paid.map(c => (
                                 <div key={c.id} className="p-3 flex items-center gap-3">
                                     <div className="min-w-0 flex-1">
                                         <p className="text-sm text-ink truncate">{c.name}</p>
-                                        <p className="text-[11px] text-faint">to'langan {num(c.paidAmount)}</p>
+                                        <p className="text-[11px] text-faint">{t('visit.paidShort')} {num(c.paidAmount)}</p>
                                     </div>
                                     <button onClick={() => { setRefundFor(c); setRefundVal(String(c.paidAmount || 0)); }}
                                         className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100">
-                                        <Undo2 className="w-3.5 h-3.5" /> Qaytarish
+                                        <Undo2 className="w-3.5 h-3.5" /> {t('finance.cash.refund')}
                                     </button>
                                 </div>
                             ))}
@@ -347,28 +349,28 @@ export const ChargePaymentModal: React.FC<Props> = ({
                 )}
 
                 <div className="flex items-center justify-end gap-2 pt-2">
-                    <Button variant="secondary" onClick={onClose}>Bekor</Button>
+                    <Button variant="secondary" onClick={onClose}>{t('ui.bekor')}</Button>
                     <Button onClick={submit} disabled={saving || selectedTotal <= 0 || splitMismatch}>
                         {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Check className="w-4 h-4 mr-1.5" />}
-                        {num(selectedTotal)} qabul qilish
+                        {num(selectedTotal)} {t('chargepaymentmodal.qabul_qilish')}
                     </Button>
                 </div>
             </div>
 
             {/* ── Chegirma ───────────────────────────────────────────────── */}
             <Modal isOpen={!!discountFor} onClose={() => setDiscountFor(null)}
-                title="Chegirma" className="max-w-sm">
+                title={t('finance.table.discount')} className="max-w-sm">
                 {discountFor && (
                     <div className="space-y-3">
                         <p className="text-sm text-muted">
-                            {discountFor.name} — narxi <b className="tabular-nums">{num(discountFor.unitPrice * (discountFor.quantity || 1))}</b>
+                            {discountFor.name} — {t('chargepaymentmodal.narxi')} <b className="tabular-nums">{num(discountFor.unitPrice * (discountFor.quantity || 1))}</b>
                         </p>
-                        <Input type="number" label="Chegirma summasi" value={discountVal}
+                        <Input type="number" label={t('chargepaymentmodal.chegirma_summasi')} value={discountVal}
                             onChange={(e) => setDiscountVal(e.target.value)} autoFocus
-                            helperText="Chegirma to'lovdan OLDIN hisobni kamaytiradi" />
+                            helperText={t('chargepaymentmodal.chegirma_tolovdan_oldin_hisobni')} />
                         <div className="flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setDiscountFor(null)}>Bekor</Button>
-                            <Button onClick={applyDiscount} disabled={busyId === discountFor.id}>Qo'yish</Button>
+                            <Button variant="secondary" onClick={() => setDiscountFor(null)}>{t('ui.bekor')}</Button>
+                            <Button onClick={applyDiscount} disabled={busyId === discountFor.id}>{t('chargepaymentmodal.qoyish')}</Button>
                         </div>
                     </div>
                 )}
@@ -376,24 +378,24 @@ export const ChargePaymentModal: React.FC<Props> = ({
 
             {/* ── Qaytarish ──────────────────────────────────────────────── */}
             <Modal isOpen={!!refundFor} onClose={() => setRefundFor(null)}
-                title="Pulni qaytarish" className="max-w-sm">
+                title={t('chargepaymentmodal.pulni_qaytarish')} className="max-w-sm">
                 {refundFor && (
                     <div className="space-y-3">
                         <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                             <p className="text-xs text-amber-800 dark:text-amber-200">
-                                Yashiqdan naqd chiqadi va kassa kitobiga yoziladi. Amal jurnalda qoladi.
+                                {t('chargepaymentmodal.yashiqdan_naqd_chiqadi_va')}
                             </p>
                         </div>
-                        <Input type="number" label="Qaytariladigan summa" value={refundVal}
+                        <Input type="number" label={t('chargepaymentmodal.qaytariladigan_summa')} value={refundVal}
                             onChange={(e) => setRefundVal(e.target.value)} autoFocus
-                            helperText={`To'langan: ${num(refundFor.paidAmount)}`} />
-                        <Input label="Sabab" value={refundReason} onChange={(e) => setRefundReason(e.target.value)}
-                            placeholder="Masalan: xizmat ko'rsatilmadi" />
+                            helperText={fill(t('chargepaymentmodal.tolangan_x_2'), num(refundFor.paidAmount))} />
+                        <Input label={t('chargepaymentmodal.sabab')} value={refundReason} onChange={(e) => setRefundReason(e.target.value)}
+                            placeholder={t('chargepaymentmodal.masalan_xizmat_korsatilmadi')} />
                         <div className="flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setRefundFor(null)}>Bekor</Button>
+                            <Button variant="secondary" onClick={() => setRefundFor(null)}>{t('ui.bekor')}</Button>
                             <Button variant="danger" onClick={applyRefund} disabled={busyId === refundFor.id}>
-                                Qaytarish
+                                {t('finance.cash.refund')}
                             </Button>
                         </div>
                     </div>

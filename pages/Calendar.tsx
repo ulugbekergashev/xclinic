@@ -21,7 +21,7 @@ import { SendMessageModal } from '../components/SendMessageModal';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, fill } from '../context/LanguageContext';
 
 interface CalendarProps {
   appointments: Appointment[];
@@ -318,7 +318,7 @@ export const Calendar: React.FC<CalendarProps> = ({
         navigate(`/patients/${appt.patientId}?visit=${f.visitId}`);
         return;
       }
-      toast.error(e?.message || "Qabulni ochib bo'lmadi");
+      toast.error(e?.message || t('ui.qabulni_ochib_bolmadi'));
     } finally {
       setArriving(null);
     }
@@ -355,10 +355,10 @@ export const Calendar: React.FC<CalendarProps> = ({
     setReminding(appt.id);
     try {
       await api.appointments.remind(appt.id);
-      toast.success('Eslatma yuborildi');
+      toast.success(t('calendar.eslatma_yuborildi'));
       setSelectedAppointment(prev => prev ? { ...prev, reminderSent: true } : prev);
     } catch (e: any) {
-      toast.error(e?.data?.error || e?.message || 'Eslatma yuborilmadi');
+      toast.error(e?.data?.error || e?.message || t('calendar.eslatma_yuborilmadi'));
     } finally {
       setReminding(null);
     }
@@ -384,14 +384,14 @@ export const Calendar: React.FC<CalendarProps> = ({
         <div className="flex items-center gap-4 w-full sm:w-auto">
           <h1 className="text-2xl font-bold text-ink">{t('calendar.title')}</h1>
           <div className="flex items-center bg-surface rounded-md shadow-sm border border-line flex-1 sm:flex-none justify-between sm:justify-start">
-            <button aria-label="Oldingi" onClick={handlePrev} className="p-2 hover:bg-elevated text-muted"><ChevronLeft className="w-4 h-4" /></button>
+            <button aria-label={t('calendar.oldingi')} onClick={handlePrev} className="p-2 hover:bg-elevated text-muted"><ChevronLeft className="w-4 h-4" /></button>
             <span className="px-4 text-sm font-medium min-w-[140px] text-center">
               {view === 'week'
                 ? `${displayDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${displayDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
                 : displayDays[0].toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
               }
             </span>
-            <button aria-label="Keyingi" onClick={handleNext} className="p-2 hover:bg-elevated text-muted"><ChevronRight className="w-4 h-4" /></button>
+            <button aria-label={t('calendar.keyingi')} onClick={handleNext} className="p-2 hover:bg-elevated text-muted"><ChevronRight className="w-4 h-4" /></button>
           </div>
           {/* View Toggle for Desktop/Tablet */}
           <div className="hidden md:flex bg-elevated rounded-lg p-1">
@@ -435,7 +435,7 @@ export const Calendar: React.FC<CalendarProps> = ({
               type="button"
               onClick={() => setDoctorFilter(on ? null : doc.id)}
               aria-pressed={on}
-              title={on ? 'Filtrni bekor qilish' : `Faqat Dr. ${doc.lastName}`}
+              title={on ? t('calendar.filtrni_bekor_qilish') : fill(t('calendar.faqat_dr_x'), doc.lastName)}
               className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors
                 ${on
                   ? 'border-line bg-surface text-white'
@@ -450,7 +450,7 @@ export const Calendar: React.FC<CalendarProps> = ({
         {doctorFilter && (
           <button type="button" onClick={() => setDoctorFilter(null)}
             className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline px-1">
-            Hammasi
+            {t('ui.hammasi')}
           </button>
         )}
       </div>
@@ -824,7 +824,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                     <div
                       key={o.id}
                       onClick={() => { setCurrentDate(new Date(o.date)); setView('day'); }}
-                      title={`Yana ${o.count} ta qabul:\n${o.names}\n\nKunlik ko'rinishda ochish uchun bosing`}
+                      title={fill(t('calendar.yana_x_ta_qabul'), o.count, o.names)}
                       className="absolute m-1 rounded-md border border-dashed border-line bg-elevated/80 text-[10px] font-semibold text-muted flex items-center justify-center cursor-pointer hover:bg-elevated transition-colors z-10"
                       style={{
                         top: `${topOffset}px`,
@@ -881,7 +881,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                       setSelectedAppointment(null);
                     }
                   }}
-                  title={onPatientClick ? "Bemor profiliga o'tish" : ""}
+                  title={onPatientClick ? t('calendar.bemor_profiliga_otish') : ""}
                 >
                   {selectedAppointment.patientName}
                 </h2>
@@ -891,7 +891,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                 <button
                   onClick={() => openEditModal(selectedAppointment)}
                   className="p-1.5 text-muted hover:text-primary-600 hover:bg-primary-50 rounded-md transition-colors"
-                  title="Qabulni tahrirlash"
+                  title={t('calendar.qabulni_tahrirlash')}
                 >
                   <Edit2 className="w-5 h-5" />
                 </button>
@@ -902,7 +902,7 @@ export const Calendar: React.FC<CalendarProps> = ({
             <div className="space-y-3">
               <div className="flex items-center gap-3 text-muted">
                 <Clock className="w-5 h-5 text-faint" />
-                <span>{selectedAppointment.date}, {selectedAppointment.time} ({selectedAppointment.duration} daq)</span>
+                <span>{selectedAppointment.date}, {selectedAppointment.time} ({selectedAppointment.duration} {t('common.min')})</span>
               </div>
               <div className="flex items-center gap-3 text-muted">
                 <User className="w-5 h-5 text-faint" />
@@ -934,7 +934,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                       {reminding === selectedAppointment.id
                         ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         : <Bell className="w-4 h-4 mr-2" />}
-                      {selectedAppointment.reminderSent ? 'Eslatma yuborilgan' : 'Eslatma'}
+                      {selectedAppointment.reminderSent ? t('calendar.eslatma_yuborilgan') : t('calendar.reminder')}
                     </Button>
 
                     <Button
@@ -965,15 +965,15 @@ export const Calendar: React.FC<CalendarProps> = ({
                     <button
                       onClick={async () => {
                         if (await confirmAction({
-                          title: 'Yozuv bekor qilinsinmi?',
-                          body: "Yozuv tarixda qoladi — o'chirilmaydi.",
-                          confirmLabel: 'Bekor qilish',
+                          title: t('calendar.yozuv_bekor_qilinsinmi'),
+                          body: t('calendar.yozuv_tarixda_qoladi_ochirilmaydi'),
+                          confirmLabel: t('ui.bekor_qilish'),
                         })) handleStatusUpdate('Cancelled');
                       }}
                       className="inline-flex items-center justify-center px-4 py-2 border border-line shadow-sm text-sm font-medium rounded-md text-muted bg-surface hover:bg-elevated focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-line flex-1"
                     >
                       <XCircle className="w-4 h-4 mr-2 text-faint" />
-                      Bekor qilish
+                      {t('common.cancel')}
                     </button>
 
                     {/* «KELDI» — ilgari bu yerda «Yakunlash» turardi va u
@@ -1002,7 +1002,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                       variant="ghost"
                       className="text-red-500 hover:text-red-700"
                       onClick={async () => {
-                        if (await confirmAction({ title: 'Haqiqatan ham bu qabulni butunlay o\'chirmoqchimisiz?', danger: true, confirmLabel: "O'chirish" })) {
+                        if (await confirmAction({ title: t('calendar.haqiqatan_ham_bu_qabulni'), danger: true, confirmLabel: t('ui.ochirish_2') })) {
                           try {
                             await onDeleteAppointment(selectedAppointment.id);
                             setSelectedAppointment(null);

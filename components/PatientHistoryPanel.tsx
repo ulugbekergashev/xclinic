@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 
+import { useLanguage, tr } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    "Avval nima bo'lgan" paneli.
 
@@ -44,10 +45,11 @@ const SEVERITY_UI: Record<string, string> = {
     Unknown: 'bg-elevated text-muted',
 };
 const SEVERITY_LABEL: Record<string, string> = {
-    Severe: "Og'ir", Mild: 'Yengil', Unknown: "Noma'lum",
+    Severe: tr('patienthistorypanel.ogir'), Mild: 'Yengil', Unknown: "Noma'lum",
 };
 
 export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addToast }) => {
+    const { t } = useLanguage();
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -65,7 +67,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
             if ((d.allergies || []).length > 0) setOpen(true);
             setError('');
         } catch (e: any) {
-            setError(e?.message || 'Tarixni yuklab bo\'lmadi');
+            setError(e?.message || t('ui.tarixni_yuklab_bolmadi'));
         } finally { setLoading(false); }
     }, [patientId]);
 
@@ -83,9 +85,9 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
             setAllergyForm({ substance: '', reaction: '', severity: 'Unknown' });
             setAddingAllergy(false);
             await load();
-            addToast?.('success', 'Allergiya qo\'shildi');
+            addToast?.('success', t('patienthistorypanel.allergiya_qoshildi'));
         } catch (e: any) {
-            addToast?.('error', e?.message || 'Saqlanmadi');
+            addToast?.('error', e?.message || t('ui.saqlanmadi'));
         } finally { setSaving(false); }
     };
 
@@ -94,7 +96,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
             await api.clinical.removeAllergy(patientId, id);
             await load();
         } catch (e: any) {
-            addToast?.('error', e?.message || 'O\'chirilmadi');
+            addToast?.('error', e?.message || t('ui.ochirilmadi'));
         }
     };
 
@@ -113,7 +115,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                 <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
                 <p className="text-sm text-red-700 dark:text-red-300 flex-1">{error}</p>
                 <button onClick={load} className="text-sm font-medium text-red-700 dark:text-red-300 hover:underline">
-                    Qayta urinish
+                    {t('ui.qayta_urinish')}
                 </button>
             </div>
         );
@@ -131,21 +133,21 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
             <button onClick={() => setOpen(!open)}
                 className="w-full flex items-center gap-3 p-3 text-left hover:bg-elevated transition-colors">
                 <Activity className="w-4 h-4 text-faint shrink-0" />
-                <span className="text-sm font-semibold text-ink">Avval nima bo'lgan</span>
+                <span className="text-sm font-semibold text-ink">{t('patienthistorypanel.avval_nima_bolgan')}</span>
 
                 {/* Yopiq holatda ham eng muhimi ko'rinadi */}
                 {allergies.length > 0 && (
                     <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
-                        ALLERGIYA: {allergies.map((a: any) => a.substance).join(', ')}
+                        {t('patienthistorypanel.allergiya')}: {allergies.map((a: any) => a.substance).join(', ')}
                     </span>
                 )}
                 {data.due > 0 && (
                     <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                        qarz {fmt(data.due)}
+                        {t('ui.qarz')} {fmt(data.due)}
                     </span>
                 )}
                 {!hasAnything && (
-                    <span className="text-xs text-faint">yozuv yo'q — birinchi murojaat</span>
+                    <span className="text-xs text-faint">{t('patienthistorypanel.yozuv_yoq_birinchi_murojaat')}</span>
                 )}
                 <span className="ml-auto text-faint">
                     {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -160,18 +162,18 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                         <div className="flex items-center gap-2 mb-2">
                             <AlertTriangle className="w-4 h-4 text-red-500" />
                             <h4 className="text-xs font-bold uppercase tracking-wide text-muted">
-                                Allergiya
+                                {t('patienthistorypanel.allergiya_2')}
                             </h4>
                             {canEdit && !addingAllergy && (
                                 <button onClick={() => setAddingAllergy(true)}
                                     className="ml-auto text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1">
-                                    <Plus className="w-3 h-3" /> qo'shish
+                                    <Plus className="w-3 h-3" /> {t('patienthistorypanel.qoshish')}
                                 </button>
                             )}
                         </div>
 
                         {allergies.length === 0 ? (
-                            <p className="text-sm text-faint">Ma'lumot yo'q</p>
+                            <p className="text-sm text-faint">{t('ui.malumot_yoq')}</p>
                         ) : (
                             <div className="space-y-1.5">
                                 {allergies.map((a: any) => (
@@ -186,7 +188,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                                         )}
                                         {canEdit && (
                                             <button onClick={() => removeAllergy(a.id)}
-                                                title="Faolsizlantirish (yozuv saqlanadi)"
+                                                title={t('patienthistorypanel.faolsizlantirish_yozuv_saqlanadi')}
                                                 className="ml-auto p-1 text-red-400 hover:text-red-600 shrink-0">
                                                 <X className="w-3.5 h-3.5" />
                                             </button>
@@ -200,11 +202,11 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                             <div className="mt-2 p-3 border border-line rounded-lg space-y-2">
                                 <input value={allergyForm.substance} autoFocus
                                     onChange={(e) => setAllergyForm(f => ({ ...f, substance: e.target.value }))}
-                                    placeholder="Dori yoki modda (masalan: Penitsillin)"
+                                    placeholder={t('patienthistorypanel.dori_yoki_modda_masalan')}
                                     className="w-full px-3 py-2 text-sm border border-line rounded-lg bg-surface text-ink" />
                                 <input value={allergyForm.reaction}
                                     onChange={(e) => setAllergyForm(f => ({ ...f, reaction: e.target.value }))}
-                                    placeholder="Qanday namoyon bo'ldi (ixtiyoriy)"
+                                    placeholder={t('patienthistorypanel.qanday_namoyon_boldi_ixtiyoriy')}
                                     className="w-full px-3 py-2 text-sm border border-line rounded-lg bg-surface text-ink" />
                                 <div className="flex items-center gap-2">
                                     <select value={allergyForm.severity}
@@ -212,15 +214,15 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                                         className="px-3 py-2 text-sm border border-line rounded-lg bg-surface text-ink">
                                         <option value="Unknown">Noma'lum</option>
                                         <option value="Mild">Yengil</option>
-                                        <option value="Severe">Og'ir</option>
+                                        <option value="Severe">{t('patienthistorypanel.ogir')}</option>
                                     </select>
                                     <button onClick={submitAllergy} disabled={saving || !allergyForm.substance.trim()}
                                         className="ml-auto px-3 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
-                                        Saqlash
+                                        {t('common.save')}
                                     </button>
                                     <button onClick={() => setAddingAllergy(false)}
                                         className="px-3 py-2 text-sm text-muted">
-                                        Bekor
+                                        {t('ui.bekor')}
                                     </button>
                                 </div>
                             </div>
@@ -231,7 +233,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                     {(data.chronic || []).length > 0 && (
                         <section>
                             <h4 className="text-xs font-bold uppercase tracking-wide text-muted mb-2">
-                                Surunkali kasalliklar
+                                {t('patienthistorypanel.surunkali_kasalliklar')}
                             </h4>
                             <div className="flex flex-wrap gap-1.5">
                                 {data.chronic.map((c: any) => (
@@ -259,7 +261,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                                         </span>
                                         {(r.refLow != null || r.refHigh != null) && (
                                             <span className="text-xs text-faint shrink-0">
-                                                norma {r.refLow ?? ''}–{r.refHigh ?? ''}
+                                                {t('ui.norma')} {r.refLow ?? ''}–{r.refHigh ?? ''}
                                             </span>
                                         )}
                                     </div>
@@ -272,7 +274,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                     {(data.recentVisits || []).length > 0 && (
                         <section>
                             <h4 className="text-xs font-bold uppercase tracking-wide text-muted mb-2">
-                                Oldingi qabullar
+                                {t('patienthistorypanel.oldingi_qabullar')}
                             </h4>
                             <div className="space-y-1.5">
                                 {data.recentVisits.map((v: any) => (
@@ -282,7 +284,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                                         <span className="text-xs text-faint shrink-0 w-20">{fmtDate(v.date)}</span>
                                         <div className="min-w-0 flex-1">
                                             <p className="text-ink truncate">
-                                                {v.department || 'Bo\'limsiz'}
+                                                {v.department || t('visit.noDept')}
                                                 {v.doctorName ? ` · ${v.doctorName}` : ''}
                                             </p>
                                             {v.diagnosis && (
@@ -300,7 +302,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                         {(data.recentLabs || []).length > 0 && (
                             <section>
                                 <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted mb-2">
-                                    <FlaskConical className="w-3.5 h-3.5" /> Tahlillar
+                                    <FlaskConical className="w-3.5 h-3.5" /> {t('patienthistorypanel.tahlillar')}
                                 </h4>
                                 <div className="space-y-1">
                                     {data.recentLabs.map((o: any) => (
@@ -315,7 +317,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                         {(data.recentStudies || []).length > 0 && (
                             <section>
                                 <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted mb-2">
-                                    <Scan className="w-3.5 h-3.5" /> Tekshiruvlar
+                                    <Scan className="w-3.5 h-3.5" /> {t('patienthistorypanel.tekshiruvlar')}
                                 </h4>
                                 <div className="space-y-1">
                                     {data.recentStudies.map((st: any) => (
@@ -331,7 +333,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                         {(data.activeMedications || []).length > 0 && (
                             <section>
                                 <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted mb-2">
-                                    <Pill className="w-3.5 h-3.5" /> Hozir qabul qilayotgan
+                                    <Pill className="w-3.5 h-3.5" /> {t('patienthistorypanel.hozir_qabul_qilayotgan')}
                                 </h4>
                                 <div className="space-y-1">
                                     {data.activeMedications.map((m: any, i: number) => (
@@ -346,13 +348,13 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                         {(data.admissions || []).length > 0 && (
                             <section>
                                 <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted mb-2">
-                                    <BedDouble className="w-3.5 h-3.5" /> Statsionar
+                                    <BedDouble className="w-3.5 h-3.5" /> {t('ui.statsionar')}
                                 </h4>
                                 <div className="space-y-1">
                                     {data.admissions.map((a: any) => (
                                         <p key={a.id} className="text-xs text-muted truncate">
                                             {fmtDate(a.admittedAt)}
-                                            {a.dischargedAt ? ` – ${fmtDate(a.dischargedAt)}` : ' — hozir yotibdi'}
+                                            {a.dischargedAt ? ` – ${fmtDate(a.dischargedAt)}` : t('patienthistorypanel.hozir_yotibdi')}
                                             {a.diagnosis ? `: ${a.diagnosis}` : ''}
                                         </p>
                                     ))}
@@ -365,7 +367,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                         <div className="flex items-center gap-2 pt-2 border-t border-line">
                             <Wallet className="w-4 h-4 text-amber-500" />
                             <span className="text-sm text-muted">
-                                To'lanmagan qarz: <b className="tabular-nums">{fmt(data.due)}</b> so'm
+                                {t('patienthistorypanel.tolanmagan_qarz')} <b className="tabular-nums">{fmt(data.due)}</b> {t('ui.som')}
                             </span>
                         </div>
                     )}

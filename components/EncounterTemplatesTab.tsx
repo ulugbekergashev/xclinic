@@ -7,6 +7,7 @@ import { Department, EncounterTemplate, EncounterField, EncounterFieldType } fro
 import { rangeForField } from '../shared/validation';
 import { Plus, Edit, Trash2, Loader2, X, GripVertical, Star } from 'lucide-react';
 
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    KO'RIK BAYONI SHABLONLARI — KONSTRUKTOR.
 
@@ -25,20 +26,20 @@ import { Plus, Edit, Trash2, Loader2, X, GripVertical, Star } from 'lucide-react
    ───────────────────────────────────────────────────────────────────────────── */
 
 const FIELD_TYPES: { value: EncounterFieldType; label: string; hint: string }[] = [
-    { value: 'text', label: 'Matn', hint: 'Bir qatorli yozuv' },
-    { value: 'textarea', label: "Ko'p qatorli", hint: 'Shikoyat, xulosa' },
-    { value: 'number', label: 'Son', hint: "O'lchov: harorat, puls" },
-    { value: 'select', label: 'Tanlov', hint: 'Variantlardan biri' },
-    { value: 'checkbox', label: 'Belgi', hint: 'Bor / yo\'q' },
+    { value: 'text', label: tr('ui.matn'), hint: tr('encountertemplatestab.bir_qatorli_yozuv') },
+    { value: 'textarea', label: tr('encountertemplatestab.kop_qatorli'), hint: tr('encountertemplatestab.shikoyat_xulosa') },
+    { value: 'number', label: 'Son', hint: tr('encountertemplatestab.olchov_harorat_puls') },
+    { value: 'select', label: tr('encountertemplatestab.tanlov'), hint: 'Variantlardan biri' },
+    { value: 'checkbox', label: tr('encountertemplatestab.belgi'), hint: tr('encountertemplatestab.bor_yoq') },
 ];
 
 /* Chegara tekshiruviga ulanadigan kalitlar — forma ularni taklif qiladi,
    shunda odam qo'lda yozib adashmaydi. */
 const VITAL_KEYS: { key: string; label: string }[] = [
-    { key: 'temperature', label: 'Harorat' },
-    { key: 'pulse', label: 'Puls' },
-    { key: 'bpSystolic', label: 'Bosim (yuqori)' },
-    { key: 'bpDiastolic', label: 'Bosim (pastki)' },
+    { key: 'temperature', label: tr('ui.harorat') },
+    { key: 'pulse', label: tr('inp.pulsePh') },
+    { key: 'bpSystolic', label: tr('encountertemplatestab.bosim_yuqori') },
+    { key: 'bpDiastolic', label: tr('encountertemplatestab.bosim_pastki') },
     { key: 'weight', label: 'Vazn' },
     { key: 'height', label: "Bo'y" },
     { key: 'spo2', label: 'SpO2' },
@@ -65,6 +66,7 @@ const emptyTemplate = {
 };
 
 export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
+    const { t: tr } = useLanguage();
     const [list, setList] = useState<EncounterTemplate[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterDept, setFilterDept] = useState('');
@@ -80,7 +82,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
         try {
             setList(await api.encounterTemplates.getAll());
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || "Shablonlar o'qilmadi");
+            toast.error(e?.data?.error || e?.message || tr('encountertemplatestab.shablonlar_oqilmadi'));
         } finally { setLoading(false); }
     }, []);
 
@@ -115,7 +117,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
         () => list.filter(t => !filterDept || t.departmentId === filterDept),
         [list, filterDept]);
 
-    const depName = (id: string) => departments.find(d => d.id === id)?.name || "Bo'limsiz";
+    const depName = (id: string) => departments.find(d => d.id === id)?.name || tr('visit.noDept');
 
     const setField = (i: number, patch: Partial<EncounterField>) =>
         setFields(fs => fs.map((f, j) => j === i ? { ...f, ...patch } : f));
@@ -160,21 +162,21 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
             close();
             await load();
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || 'Saqlanmadi');
+            toast.error(e?.data?.error || e?.message || tr('ui.saqlanmadi'));
         } finally { setSaving(false); }
     };
 
     const remove = async (t: EncounterTemplate) => {
         if (!await confirmAction({
-            title: `«${t.name}» shabloni o'chirilsinmi?`,
-            body: 'Shu shablon bilan yozilgan qabullar tegilmaydi — ularning bayoni joyida qoladi.',
-            danger: true, confirmLabel: "O'chirish",
+            title: fill(tr('encountertemplatestab.x_shabloni_ochirilsinmi'), t.name),
+            body: tr('encountertemplatestab.shu_shablon_bilan_yozilgan'),
+            danger: true, confirmLabel: tr('ui.ochirish_2'),
         })) return;
         try {
             await api.encounterTemplates.delete(t.id);
             await load();
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || "O'chirib bo'lmadi");
+            toast.error(e?.data?.error || e?.message || tr('ui.ochirib_bolmadi'));
         }
     };
 
@@ -182,32 +184,32 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
         <Card className="p-6">
             <div className="flex flex-wrap justify-between items-start gap-3 mb-5">
                 <div>
-                    <h2 className="text-lg font-medium text-ink">Ko'rik bayoni shablonlari</h2>
+                    <h2 className="text-lg font-medium text-ink">{tr('encountertemplatestab.korik_bayoni_shablonlari')}</h2>
                     <p className="text-sm text-muted">
-                        Shifokor qabulda to'ldiradigan maydonlar. Har bo'limning o'z shabloni bo'ladi.
+                        {tr('encountertemplatestab.shifokor_qabulda_toldiradigan_maydonlar')}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <Select value={filterDept} onChange={e => setFilterDept(e.target.value)}
                         options={[
-                            { value: '', label: 'Barcha bo\'limlar' },
+                            { value: '', label: tr('encountertemplatestab.barcha_bolimlar') },
                             ...departments.filter(d => d.isActive).map(d => ({ value: d.id, label: d.name })),
                         ]} />
                     <Button size="sm" onClick={openCreate} disabled={departments.length === 0}>
-                        <Plus className="w-4 h-4 mr-1" /> Shablon
+                        <Plus className="w-4 h-4 mr-1" /> {tr('ui.shablon')}
                     </Button>
                 </div>
             </div>
 
             {departments.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted">
-                    Avval bo'lim qo'shing — shablon bo'limga biriktiriladi.
+                    {tr('encountertemplatestab.avval_bolim_qoshing_shablon')}
                 </p>
             ) : loading ? (
-                <p className="py-10 text-center text-faint">Yuklanmoqda…</p>
+                <p className="py-10 text-center text-faint">{tr('ui.yuklanmoqda')}</p>
             ) : shown.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted">
-                    Shablon yo'q. Shifokor bayonni bo'sh varaqqa yozadi.
+                    {tr('encountertemplatestab.shablon_yoq_shifokor_bayonni')}
                 </p>
             ) : (
                 <div className="space-y-2">
@@ -219,27 +221,27 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                     {t.name}
                                     {t.isDefault && (
                                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                                            <Star className="w-3 h-3 fill-current" /> standart
+                                            <Star className="w-3 h-3 fill-current" /> {tr('encountertemplatestab.standart')}
                                         </span>
                                     )}
                                 </p>
                                 <p className="text-xs text-muted truncate">
                                     {depName(t.departmentId)}
                                     <span className="mx-1.5">·</span>
-                                    {(t.fields || []).length} maydon
+                                    {(t.fields || []).length} {tr('encountertemplatestab.maydon')}
                                     {t.gender && <><span className="mx-1.5">·</span>{t.gender === 'Male' ? 'erkaklar' : 'ayollar'}</>}
                                     {(t.minAge != null || t.maxAge != null) && (
                                         <><span className="mx-1.5">·</span>
-                                            {t.minAge ?? 0}–{t.maxAge ?? '∞'} yosh</>
+                                            {t.minAge ?? 0}–{t.maxAge ?? '∞'} {tr('patients.details.age')}</>
                                     )}
                                 </p>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                                <button onClick={() => openEdit(t)} title="Tahrirlash"
+                                <button onClick={() => openEdit(t)} title={tr('ui.tahrirlash')}
                                     className="p-2 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-md">
                                     <Edit className="w-4 h-4" />
                                 </button>
-                                <button onClick={() => remove(t)} title="O'chirish"
+                                <button onClick={() => remove(t)} title={tr('ui.ochirish')}
                                     className="p-2 text-faint hover:text-red-600 rounded-md">
                                     <Trash2 className="w-4 h-4" />
                                 </button>
@@ -251,13 +253,13 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
 
             {/* ── Konstruktor ────────────────────────────────────────────── */}
             <Modal isOpen={isOpen} onClose={close}
-                title={editing ? `${editing.name} — shablon` : 'Yangi shablon'}
+                title={editing ? fill(tr('encountertemplatestab.x_shablon'), editing.name) : tr('messagesmanagement.yangi_shablon')}
                 className="max-w-3xl">
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
-                        <Input label="Shablon nomi *" value={form.name}
+                        <Input label={tr('encountertemplatestab.shablon_nomi')} value={form.name}
                             onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-                        <Select label="Bo'lim *" value={form.departmentId}
+                        <Select label={tr('encountertemplatestab.bolim')} value={form.departmentId}
                             disabled={!!editing}
                             onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))}
                             options={departments.filter(d => d.isActive).map(d => ({ value: d.id, label: d.name }))} />
@@ -266,16 +268,16 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                     {/* Jins va yosh chegarasi (migratsiya 0031): erkak
                         bemorda ginekologiya shabloni ochilib qolgan edi. */}
                     <div className="grid grid-cols-3 gap-3">
-                        <Select label="Kimga mos" value={form.gender}
+                        <Select label={tr('encountertemplatestab.kimga_mos')} value={form.gender}
                             onChange={e => setForm(f => ({ ...f, gender: e.target.value as any }))}
                             options={[
-                                { value: '', label: 'Hammaga' },
+                                { value: '', label: tr('lab.anySex') },
                                 { value: 'Male', label: 'Erkaklar' },
                                 { value: 'Female', label: 'Ayollar' },
                             ]} />
-                        <Input label="Eng kichik yosh" type="number" value={form.minAge}
+                        <Input label={tr('encountertemplatestab.eng_kichik_yosh')} type="number" value={form.minAge}
                             onChange={e => setForm(f => ({ ...f, minAge: e.target.value }))} placeholder="—" />
-                        <Input label="Eng katta yosh" type="number" value={form.maxAge}
+                        <Input label={tr('encountertemplatestab.eng_katta_yosh')} type="number" value={form.maxAge}
                             onChange={e => setForm(f => ({ ...f, maxAge: e.target.value }))} placeholder="—" />
                     </div>
 
@@ -283,18 +285,18 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                         <input type="checkbox" checked={form.isDefault}
                             onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))}
                             className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500" />
-                        Bu bo'limda standart bo'lsin — qabul ochilganda o'zi tanlanadi
+                        {tr('encountertemplatestab.bu_bolimda_standart_bolsin')}
                     </label>
 
                     {/* ── Maydonlar ── */}
                     <div className="border-t border-line pt-4">
                         <p className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
-                            Maydonlar ({fields.length})
+                            {tr('encountertemplatestab.maydonlar')}{fields.length})
                         </p>
 
                         {fields.length === 0 ? (
                             <p className="text-sm text-faint py-4 text-center">
-                                Maydon yo'q — shablon bo'sh bayon beradi
+                                {tr('encountertemplatestab.maydon_yoq_shablon_bosh')}
                             </p>
                         ) : (
                             <div className="space-y-3">
@@ -312,7 +314,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                                 </div>
 
                                                 <div className="flex-1 grid grid-cols-2 gap-2">
-                                                    <input value={f.label} placeholder="Yorliq (shifokor ko'radi)"
+                                                    <input value={f.label} placeholder={tr('encountertemplatestab.yorliq_shifokor_koradi')}
                                                         onChange={e => {
                                                             const label = e.target.value;
                                                             /* Kalit yorliqdan O'ZI yasaladi, agar odam
@@ -321,7 +323,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                                             setField(i, auto ? { label, key: keyFromLabel(label) } : { label });
                                                         }}
                                                         className={inputCls} />
-                                                    <input value={f.key} placeholder="kalit"
+                                                    <input value={f.key} placeholder={tr('encountertemplatestab.kalit')}
                                                         onChange={e => setField(i, { key: e.target.value.trim() })}
                                                         className={inputCls + ' font-mono text-xs'} />
                                                 </div>
@@ -342,20 +344,20 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                                 </select>
 
                                                 {f.type === 'number' && (
-                                                    <input value={f.unit || ''} placeholder="birlik (°C, mm)"
+                                                    <input value={f.unit || ''} placeholder={tr('encountertemplatestab.birlik_c_mm')}
                                                         onChange={e => setField(i, { unit: e.target.value })}
                                                         className={inputCls + ' w-32'} />
                                                 )}
 
                                                 {f.type === 'select' && (
-                                                    <input value={(f.options || []).join(', ')} placeholder="variantlar, vergul bilan"
+                                                    <input value={(f.options || []).join(', ')} placeholder={tr('encountertemplatestab.variantlar_vergul_bilan')}
                                                         onChange={e => setField(i, {
                                                             options: e.target.value.split(',').map(x => x.trim()).filter(Boolean),
                                                         })}
                                                         className={inputCls + ' flex-1 min-w-[200px]'} />
                                                 )}
 
-                                                <input value={f.group || ''} placeholder="guruh (ixtiyoriy)"
+                                                <input value={f.group || ''} placeholder={tr('encountertemplatestab.guruh_ixtiyoriy')}
                                                     onChange={e => setField(i, { group: e.target.value })}
                                                     className={inputCls + ' w-40'} />
                                             </div>
@@ -364,7 +366,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                                                 odam «temp» deb yozadi va tekshiruv ishlamaydi. */}
                                             {range && (
                                                 <p className="pl-8 text-[11px] text-emerald-600 dark:text-emerald-400">
-                                                    Chegara tekshiruvi yoqildi: {range.label} {range.min}–{range.max} {range.unit}
+                                                    {tr('encountertemplatestab.chegara_tekshiruvi_yoqildi')}: {range.label} {range.min}–{range.max} {range.unit}
                                                 </p>
                                             )}
                                         </div>
@@ -377,7 +379,7 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                             <button type="button"
                                 onClick={() => setFields(fs => [...fs, { key: '', label: '', type: 'text' }])}
                                 className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated">
-                                <Plus className="w-4 h-4" /> Maydon
+                                <Plus className="w-4 h-4" /> {tr('encountertemplatestab.maydon_2')}
                             </button>
                             {/* Tayyor o'lchovlar: kalit TO'G'RI yozilsin — chegara
                                 tekshiruvi aynan kalitga ulanadi. */}
@@ -395,10 +397,10 @@ export const EncounterTemplatesTab: React.FC<Props> = ({ departments }) => {
                     </div>
 
                     <div className="flex justify-end gap-2 pt-2">
-                        <Button type="button" variant="secondary" onClick={close} disabled={saving}>Bekor</Button>
+                        <Button type="button" variant="secondary" onClick={close} disabled={saving}>{tr('ui.bekor')}</Button>
                         <Button type="button" onClick={save} disabled={saving}>
                             {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                            Saqlash
+                            {tr('ui.saqlash')}
                         </Button>
                     </div>
                 </div>

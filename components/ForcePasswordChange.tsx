@@ -3,6 +3,7 @@ import { KeyRound, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { api } from '../services/api';
 import * as auth from '../services/authStore';
 
+import { useLanguage } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    Standart parol bilan kirilganda ko'rsatiladigan YAGONA ekran.
 
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToast }) => {
+    const { t } = useLanguage();
     const [current, setCurrent] = useState('');
     const [next, setNext] = useState('');
     const [repeat, setRepeat] = useState('');
@@ -48,10 +50,10 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                Yangilash cookie'sini server shu javobda qo'ydi. */
             auth.setToken(r.token);
 
-            addToast('success', 'Parol almashtirildi');
+            addToast('success', t('forcepasswordchange.parol_almashtirildi'));
             onDone();
         } catch (err: any) {
-            setError(err?.message || "Parolni almashtirib bo'lmadi");
+            setError(err?.message || t('forcepasswordchange.parolni_almashtirib_bolmadi'));
         } finally {
             setBusy(false);
         }
@@ -69,19 +71,18 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                         <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-400" />
                     </div>
                     <h1 className="text-xl font-bold text-ink">
-                        Parolni almashtiring
+                        {t('forcepasswordchange.parolni_almashtiring')}
                     </h1>
                 </div>
 
                 <p className="text-sm text-muted mb-6">
-                    Siz standart parol bilan kirdingiz. Uni almashtirmaguncha dasturdan
-                    foydalanib bo'lmaydi — bemorlar ma'lumoti himoyasiz qolmasligi kerak.
+                    {t('forcepasswordchange.siz_standart_parol_bilan')}
                 </p>
 
                 <form onSubmit={submit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-muted mb-1.5">
-                            Joriy parol
+                            {t('forcepasswordchange.joriy_parol')}
                         </label>
                         <input
                             type={show ? 'text' : 'password'}
@@ -95,7 +96,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
 
                     <div>
                         <label className="block text-sm font-medium text-muted mb-1.5">
-                            Yangi parol
+                            {t('forcepasswordchange.yangi_parol')}
                         </label>
                         <div className="relative">
                             <input
@@ -109,21 +110,21 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                                 type="button"
                                 onClick={() => setShow((v) => !v)}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-muted"
-                                title={show ? 'Yashirish' : "Ko'rsatish"}
+                                title={show ? t('ui.yashirish') : t('inventory.ui.show')}
                             >
                                 {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
                         </div>
                         {tooShort && (
                             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                Kamida 8 belgi bo'lishi kerak
+                                {t('forcepasswordchange.kamida_8_belgi_bolishi')}
                             </p>
                         )}
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium text-muted mb-1.5">
-                            Yangi parolni takrorlang
+                            {t('forcepasswordchange.yangi_parolni_takrorlang')}
                         </label>
                         <input
                             type={show ? 'text' : 'password'}
@@ -134,7 +135,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                         />
                         {mismatch && (
                             <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                                Parollar mos kelmadi
+                                {t('forcepasswordchange.parollar_mos_kelmadi')}
                             </p>
                         )}
                     </div>
@@ -152,7 +153,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                                    disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
                     >
                         <KeyRound className="w-4 h-4" />
-                        {busy ? 'Saqlanmoqda…' : 'Parolni saqlash'}
+                        {busy ? t('ui.saqlanmoqda_3') : t('forcepasswordchange.parolni_saqlash')}
                     </button>
                 </form>
 
@@ -160,7 +161,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ onDone, onLogout, addToas
                     onClick={onLogout}
                     className="w-full mt-3 px-6 py-2.5 text-sm text-muted hover:text-ink transition-colors"
                 >
-                    Chiqish
+                    {t('common.logout')}
                 </button>
             </div>
         </div>

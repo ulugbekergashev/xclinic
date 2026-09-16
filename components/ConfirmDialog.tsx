@@ -10,8 +10,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { connectConfirm, disconnectConfirm, type ConfirmOptions } from '../services/confirm';
+import { useLanguage } from '../context/LanguageContext';
 
 export const ConfirmDialog: React.FC = () => {
+    const { t } = useLanguage();
     const [opts, setOpts] = useState<ConfirmOptions | null>(null);
     const resolver = useRef<((v: boolean) => void) | null>(null);
     const confirmBtn = useRef<HTMLButtonElement | null>(null);
@@ -84,7 +86,7 @@ export const ConfirmDialog: React.FC = () => {
                                    text-muted hover:bg-elevated
                                    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
                     >
-                        {opts.cancelLabel || 'Bekor qilish'}
+                        {opts.cancelLabel || t('ui.bekor_qilish')}
                     </button>
                     <button
                         ref={confirmBtn}
@@ -96,7 +98,7 @@ export const ConfirmDialog: React.FC = () => {
                                 ? 'bg-red-600 hover:bg-red-700 focus-visible:outline-red-600'
                                 : 'bg-primary-600 hover:bg-primary-700 focus-visible:outline-primary-600'}`}
                     >
-                        {opts.confirmLabel || 'Tasdiqlash'}
+                        {opts.confirmLabel || t('ui.tasdiqlash')}
                     </button>
                 </div>
             </div>

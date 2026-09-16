@@ -1,4 +1,5 @@
 import type { PaymentMethod } from './utils/paymentMethods';
+import { tr } from './context/LanguageContext';
 
 export type { PaymentMethod };
 
@@ -896,12 +897,14 @@ export interface LabTestParameter {
 
 export type DepartmentType = 'CLINICAL' | 'LAB' | 'DIAGNOSTIC' | 'INPATIENT' | 'PHARMACY';
 
+/* Yorliq tildan olinadi (`tr` — hook'siz, modul darajasida ishlaydi). Til
+   almashganda sahifa qayta yuklanadi, shuning uchun bir marta o'qilgani yetadi. */
 export const DEPARTMENT_TYPE_LABELS: Record<DepartmentType, string> = {
-  CLINICAL: 'Klinik qabul',
-  LAB: 'Laboratoriya',
-  DIAGNOSTIC: 'Diagnostika',
-  INPATIENT: 'Statsionar',
-  PHARMACY: 'Dorixona',
+  CLINICAL: tr('ui.dept_clinical'),
+  LAB: tr('ui.dept_lab'),
+  DIAGNOSTIC: tr('ui.dept_diagnostic'),
+  INPATIENT: tr('ui.dept_inpatient'),
+  PHARMACY: tr('ui.dept_pharmacy'),
 };
 
 /** Bo'lim — ko'p profilli klinikaning asosiy o'lchovi */

@@ -2,6 +2,7 @@ import { api } from '../services/api';
 import { formatFullName } from './format';
 import { todayISO } from './dateUtils';
 import type { Appointment, Doctor, Service, Visit } from '../types';
+import { tr } from '../context/LanguageContext';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    «KELDI» — kalendardagi yozuv bilan navbat orasidagi YAGONA ko'prik.
@@ -55,7 +56,7 @@ export async function markAppointmentArrived(
     const departmentId = appt.departmentId || doc?.departmentId || '';
     if (!departmentId) {
         throw new ArrivalError({ code: 'NO_DEPARTMENT' },
-            "Bu yozuvda bo'lim aniqlanmadi — qabulni qo'lda oching");
+            tr('arrival.bu_yozuvda_bolim_aniqlanmadi'));
     }
 
     let visit: Visit;
@@ -73,10 +74,10 @@ export async function markAppointmentArrived(
     } catch (e: any) {
         if (e?.status === 409 && e?.data?.visitId) {
             throw new ArrivalError({ code: 'EXISTS', visitId: e.data.visitId },
-                "Bu bemorga bugun shu bo'limda qabul allaqachon ochilgan");
+                tr('arrival.bu_bemorga_bugun_shu'));
         }
-        throw new ArrivalError({ code: 'FAILED', message: e?.message || 'Xatolik' },
-            e?.message || "Qabulni ochib bo'lmadi");
+        throw new ArrivalError({ code: 'FAILED', message: e?.message || tr('ui.xatolik') },
+            e?.message || tr('ui.qabulni_ochib_bolmadi'));
     }
 
     /* Yozuvdagi xizmat. AVVAL identifikator bo'yicha (migratsiya 0034),

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Volume2, VolumeX, Maximize2, MonitorPlay, Clock } from 'lucide-react';
 import { API_URL, isDemoMode, demoQueueBoard } from '../services/api';
 
+import { useLanguage, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    Navbat tablosi — kutish zalidagi ekran.
 
@@ -46,6 +47,7 @@ const REFRESH_MS = 5000;
    (audit XC-01). */
 
 export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClinicId }) => {
+    const { t } = useLanguage();
     const params = useParams<{ clinicId?: string }>();
     const clinicId = propClinicId || params.clinicId || '';
 
@@ -60,7 +62,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
         if (!voiceOn || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
         const dept = e.department ? `, ${e.department} bo'limiga` : '';
-        const textUz = `Navbat raqam ${e.ticket ?? e.queueNumber}${dept}, marhamat.`;
+        const textUz = fill(t('queueboard.navbat_raqam_xx_marhamat'), e.ticket ?? e.queueNumber, dept);
         const textRu = `Номер очереди ${e.ticket ?? e.queueNumber}${e.department ? `, в отделение ${e.department}` : ''}, пожалуйста.`;
 
         const voices = window.speechSynthesis.getVoices();
@@ -136,7 +138,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
         <div className="min-h-screen bg-surface text-white p-6 lg:p-10">
             {/* Sarlavha */}
             <div className="flex items-center gap-4 mb-8">
-                <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">Navbat</h1>
+                <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">{t('queueboard.navbat')}</h1>
                 <div className="ml-auto flex items-center gap-4">
                     <span className="flex items-center gap-2 text-2xl lg:text-3xl font-semibold tabular-nums text-faint">
                         <Clock className="w-6 h-6 text-muted" />
@@ -144,12 +146,12 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                     </span>
                     <button onClick={() => setVoiceOn(v => !v)}
                         className="p-2.5 rounded-lg bg-surface hover:bg-surface text-faint"
-                        title={voiceOn ? "Ovozni o'chirish" : 'Ovozni yoqish'}>
+                        title={voiceOn ? t('queueboard.ovozni_ochirish') : t('queueboard.ovozni_yoqish')}>
                         {voiceOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
                     </button>
-                    <button aria-label="To'liq ekran" onClick={goFullscreen}
+                    <button aria-label={t('queueboard.toliq_ekran')} onClick={goFullscreen}
                         className="p-2.5 rounded-lg bg-surface hover:bg-surface text-faint"
-                        title="To'liq ekran">
+                        title={t('queueboard.toliq_ekran')}>
                         <Maximize2 className="w-5 h-5" />
                     </button>
                     {/* KIOSK REJIMI (S5.6, audit B-1 tablo).
@@ -166,8 +168,8 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                             href={`#/board/${clinicId}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            aria-label="Kiosk rejimi — alohida oynada"
-                            title="Kiosk rejimi: menyusiz, alohida oynada"
+                            aria-label={t('queueboard.kiosk_rejimi_alohida_oynada')}
+                            title={t('queueboard.kiosk_rejimi_menyusiz_alohida')}
                             className="p-2.5 rounded-lg bg-surface hover:bg-surface text-faint inline-flex"
                         >
                             <MonitorPlay className="w-5 h-5" />
@@ -178,9 +180,9 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
 
             {/* Chaqirilganlar — asosiy qism */}
             <div className="mb-10">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted mb-4">Chaqirilmoqda</h2>
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted mb-4">{t('queueboard.chaqirilmoqda')}</h2>
                 {called.length === 0 ? (
-                    <div className="py-16 text-center text-muted text-xl">Hozircha chaqirilgan navbat yo'q</div>
+                    <div className="py-16 text-center text-muted text-xl">{t('queueboard.hozircha_chaqirilgan_navbat_yoq')}</div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
                         {called.map((e, i) => {
@@ -222,10 +224,10 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
             {/* Kutayotganlar */}
             <div>
                 <h2 className="text-sm font-semibold uppercase tracking-widest text-muted mb-4">
-                    Kutmoqda <span className="text-muted">({waiting.length})</span>
+                    {t('queueboard.kutmoqda')} <span className="text-muted">({waiting.length})</span>
                 </h2>
                 {waiting.length === 0 ? (
-                    <p className="text-muted">Navbat bo'sh</p>
+                    <p className="text-muted">{t('queueboard.navbat_bosh')}</p>
                 ) : (
                     <div className="flex flex-wrap gap-3">
                         {waiting.map((e, i) => (
@@ -240,7 +242,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
             </div>
 
             <p className="mt-10 text-xs text-muted">
-                Tablo har {REFRESH_MS / 1000} soniyada yangilanadi
+                {t('queueboard.tablo_har')} {REFRESH_MS / 1000} soniyada yangilanadi
             </p>
         </div>
     );

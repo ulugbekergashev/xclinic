@@ -3,6 +3,7 @@ import { formatDate } from '../utils/format';
 import { TrendingUp, TrendingDown, Minus, FlaskConical, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 
+import { useLanguage } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    TAHLIL DINAMIKASI.
 
@@ -36,6 +37,7 @@ const refText = (low?: number | null, high?: number | null) => {
 };
 
 export const LabDynamics: React.FC<Props> = ({ patientId }) => {
+    const { t } = useLanguage();
     const [series, setSeries] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -67,7 +69,7 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
                 <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
                 <p className="text-sm text-red-700 dark:text-red-300 flex-1">{error}</p>
                 <button onClick={load} className="text-sm font-medium text-red-700 dark:text-red-300 hover:underline">
-                    Qayta
+                    {t('ui.qayta')}
                 </button>
             </div>
         );
@@ -77,10 +79,9 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
         return (
             <div className="bg-surface rounded-xl border border-line p-6 text-center">
                 <FlaskConical className="w-8 h-8 mx-auto text-faint mb-2" />
-                <p className="text-sm text-muted">Raqamli tahlil natijasi yo'q</p>
+                <p className="text-sm text-muted">{t('labdynamics.raqamli_tahlil_natijasi_yoq')}</p>
                 <p className="text-[11px] text-faint mt-1">
-                    Dinamika faqat raqamli ko'rsatkichlardan quriladi: matnli natijalar
-                    ("salbiy", "topilmadi") bu yerga tushmaydi.
+                    {t('labdynamics.dinamika_faqat_raqamli_korsatkichlardan')}
                 </p>
             </div>
         );
@@ -90,8 +91,8 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
         <div className="bg-surface rounded-xl border border-line overflow-hidden">
             <div className="px-4 py-3 border-b border-line-soft flex items-center gap-2">
                 <FlaskConical className="w-4 h-4 text-faint" />
-                <h3 className="text-sm font-bold text-ink">Tahlil dinamikasi</h3>
-                <span className="text-xs text-faint">({series.length} ko'rsatkich)</span>
+                <h3 className="text-sm font-bold text-ink">{t('labdynamics.tahlil_dinamikasi')}</h3>
+                <span className="text-xs text-faint">({series.length} {t('lab.paramsShort')})</span>
             </div>
 
             <div className="divide-y divide-line">
@@ -110,9 +111,9 @@ export const LabDynamics: React.FC<Props> = ({ patientId }) => {
                                         {s.unit ? <span className="text-faint font-normal"> · {s.unit}</span> : null}
                                     </p>
                                     <p className="text-[11px] text-faint">
-                                        norma {refText(s.refLow, s.refHigh)}
-                                        {' · '}{s.count} o'lchov
-                                        {s.count < 2 ? ' (taqqoslash uchun yetarli emas)' : ''}
+                                        {t('ui.norma')} {refText(s.refLow, s.refHigh)}
+                                        {' · '}{s.count} {t('ui.olchov')}
+                                        {s.count < 2 ? t('labdynamics.taqqoslash_uchun_yetarli_emas') : ''}
                                         {' · '}{fmtDate(s.lastAt)}
                                     </p>
                                 </div>

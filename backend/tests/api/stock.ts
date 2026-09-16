@@ -280,8 +280,13 @@ async function main() {
         ok('summa = miqdor × narx', Math.round(mine[0]?.amount || 0) === 50000,
             String(mine[0]?.amount));
         ok('toifa \'Inventory\'', mine[0]?.category === 'Inventory', String(mine[0]?.category));
+        /* Yiqilganda NIMA qo'shilganini ko'rsatadi: sonning o'zi
+           («270 → 273») sababni aytmaydi — boshqa bir jarayon (ish haqi,
+           laboratoriya) shu oraliqda xarajat yozgan bo'lishi mumkin. */
+        const beforeIds = new Set(before.map((e: any) => e.id));
+        const extra = after.filter((e: any) => !beforeIds.has(e.id) && e.inventoryItemId !== expItemId);
         ok('xarajatlar soni bittaga oshdi', after.length === before.length + 1,
-            `${before.length} → ${after.length}`);
+            `${before.length} → ${after.length}; begona: ${extra.map((e: any) => `${e.category}/${e.title}`).join(', ') || '-'}`);
 
         /* Narxsiz kirim (bepul kelgan yoki narxi noma'lum tovar) nol
            summali qator yaratmasligi kerak — u faqat aralashtiradi. */

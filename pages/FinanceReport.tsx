@@ -12,7 +12,21 @@ import {
 } from 'lucide-react';
 import { Department } from '../types';
 import { api } from '../services/api';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, tr, fill, TranslationKey } from '../context/LanguageContext';
+/* SERVER NOMLARI. Hisobot manba turini («Xizmatlar», «Dorilar» …) va
+   bo'limsiz qatorni («Bo'limsiz») o'zbekcha nom bilan qaytaradi. Ekranda
+   ular tildagi yorliqqa almashadi; noma'lum nom o'zicha qoladi. */
+const SOURCE_KEYS: Record<string, TranslationKey> = {
+    Service: 'inpatient.xizmatlar',
+    Lab: 'settings.laboratoriya',
+    Study: 'settings.diagnostika_2',
+    Medication: 'inpatient.dorilar',
+    Bed: 'ui.statsionar',
+    Other: 'inpatient.boshqa',
+};
+const sourceLabel = (reason: string, fallback: string) => (SOURCE_KEYS[reason] ? tr(SOURCE_KEYS[reason]) : fallback);
+const deptName = (n: string) => (n === "Bo'limsiz" ? tr('visit.noDept') : n);
+
 import { exportReportToExcel } from '../utils/reportExport';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -69,8 +83,8 @@ const PALETTE = ['#0E5F55', '#2563EB', '#DC2626', '#7C3AED', '#0891B2', '#D97706
 
 /** Svod qatori — bitta o'lchov, izohi bilan */
 const LAB_STATUS: Record<string, string> = {
-    Ordered: 'Buyurtma berildi', Collected: 'Proba olindi',
-    InProgress: 'Bajarilmoqda', Completed: 'Tayyor', Cancelled: 'Bekor qilindi',
+    Ordered: tr('financereport.buyurtma_berildi'), Collected: tr('finance.report.sampleTaken'),
+    InProgress: 'Bajarilmoqda', Completed: tr('ui.tayyor'), Cancelled: tr('ui.bekor_qilindi'),
 };
 
 const Row: React.FC<{
@@ -102,7 +116,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
         try {
             setData(await api.reports.summary(from, to));
             setError('');
-        } catch (e: any) { setError(e.message || 'Hisobot yuklanmadi'); }
+        } catch (e: any) { setError(e.message || t('financereport.hisobot_yuklanmadi')); }
         finally { setLoading(false); }
     }, [from, to]);
 
@@ -166,7 +180,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             const res = await fn(from, to);
             setExtra(prev => ({ ...prev, [view]: res }));
         } catch (e: any) {
-            setError(e?.message || 'Hisobot yuklanmadi');
+            setError(e?.message || t('financereport.hisobot_yuklanmadi'));
         } finally {
             setExtraLoading(false);
         }
@@ -211,7 +225,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 summary: data, doctors, departments, writeoffs, compare, labShift,
             });
         } catch (e: any) {
-            setError(e?.message || 'Eksport qilinmadi');
+            setError(e?.message || t('financereport.eksport_qilinmadi'));
         } finally {
             setExporting(false);
         }
@@ -271,11 +285,11 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             {/* ── Kesim tanlash ─────────────────────────────────────────────── */}
             <div className="flex gap-1 border-b border-line overflow-x-auto">
                 {([
-                    ['summary', 'Umumiy'],
-                    ['doctors', 'Shifokorlar'],
-                    ['departments', "Bo'limlar"],
-                    ['writeoffs', 'Chiqimlar'],
-                    ['labshift', 'Smena svodi'],
+                    ['summary', t('ui.umumiy_tab')],
+                    ['doctors', t('ui.shifokorlar')],
+                    ['departments', t('settings.bolimlar')],
+                    ['writeoffs', t('ui.chiqimlar')],
+                    ['labshift', t('ui.smena_svodi')],
                 ] as const).map(([k, label]) => (
                     <button key={k} onClick={() => setView(k)}
                         className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${view === k
@@ -299,10 +313,10 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     <>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             <Tile label={t('finance.report.charged')} value={fmt(extra.doctors.totals.revenue)} unit="UZS" icon={TrendingUp} />
-                            <Tile label="To'langan" value={fmt(extra.doctors.totals.paid)} unit="UZS" icon={Wallet} tone="ok" />
+                            <Tile label={t('ui.tolangan')} value={fmt(extra.doctors.totals.paid)} unit="UZS" icon={Wallet} tone="ok" />
                             <Tile label={t('finance.report.debt')} value={fmt(extra.doctors.totals.due)} unit="UZS" icon={AlertCircle} tone="bad" />
                             <Tile label={t('finance.report.accruedShare')} value={fmt(extra.doctors.totals.accrued)} unit="UZS"
-                                icon={Percent} hint="to'langan pul bo'yicha" />
+                                icon={Percent} hint={t('financereport.tolangan_pul_boyicha')} />
                         </div>
 
                         <div className="bg-surface rounded-xl border border-line overflow-hidden">
@@ -322,7 +336,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     <tbody className="divide-y divide-line">
                                         {extra.doctors.doctors.map((d: any) => (
                                             <tr key={d.doctorId || d.name}>
-                                                <Td strong>{d.name}</Td>
+                                                <Td strong>{deptName(d.name)}</Td>
                                                 <Td right>{fmt(d.revenue)}</Td>
                                                 <Td right tone="ok">{fmt(d.paid)}</Td>
                                                 <Td right tone={d.due > 0 ? 'bad' : undefined}>{d.due > 0 ? fmt(d.due) : '—'}</Td>
@@ -335,9 +349,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                 </table>
                             </div>
                             <p className="px-3 py-2 text-[11px] text-faint border-t border-line-soft">
-                                Ulush TO'LANGAN pul bo'yicha hisoblanadi: qarzga yozilgan ish uchun pul
-                                hali kirmagan. Qaytarishlar ulushni kamaytiradi. Vedomostdagi raqam
-                                aynan shu.
+                                {t('financereport.ulush_tolangan_pul_boyicha')}
                             </p>
                         </div>
                     </>
@@ -382,7 +394,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                                     <span className="inline-flex items-center gap-2">
                                                         <span className="w-2 h-2 rounded-full shrink-0"
                                                             style={{ backgroundColor: d.color || colorOf(d.name, i) }} />
-                                                        {d.name}
+                                                        {deptName(d.name)}
                                                     </span>
                                                 </Td>
                                                 <Td right>{fmt(d.revenue)}</Td>
@@ -396,9 +408,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                 </table>
                             </div>
                             <p className="px-3 py-2 text-[11px] text-faint border-t border-line-soft">
-                                "Bo'limsiz" — bo'limi ko'rsatilmagan xarajat va yozuvlar. Ularni
-                                bo'limlarga majburan taqsimlamaymiz: taqsimlash qoidasini klinika
-                                o'zi belgilaydi, aks holda raqam soxta aniq bo'lib qoladi.
+                                {t('financereport.bolimsiz_bolimi_korsatilmagan_xarajat')}
                             </p>
                         </div>
                     </>
@@ -413,11 +423,11 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     <>
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                             <Tile label={t('finance.report.wasted')} value={fmt(extra.writeoffs.wasteCost)} unit="UZS"
-                                icon={TrendingDown} tone="bad" hint="muddati o'tgan, buzilgan, kam chiqqan" />
+                                icon={TrendingDown} tone="bad" hint={t('financereport.muddati_otgan_buzilgan_kam')} />
                             <Tile label={t('finance.report.usedForService')} value={fmt(extra.writeoffs.serviceCost)} unit="UZS"
-                                icon={Package} hint="bu yo'qotish emas — daromad keltirgan" />
+                                icon={Package} hint={t('financereport.bu_yoqotish_emas_daromad')} />
                             <Tile label={t('finance.report.totalOut')} value={fmt(extra.writeoffs.totalCost)} unit="UZS" icon={Package}
-                                hint={`${extra.writeoffs.movementCount} harakat`} />
+                                hint={fill(t('financereport.x_harakat'), extra.writeoffs.movementCount)} />
                         </div>
 
                         {(extra.writeoffs.byReason || []).length === 0 ? (
@@ -433,8 +443,8 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                         <tbody className="divide-y divide-line">
                                             {extra.writeoffs.byReason.map((r: any) => (
                                                 <tr key={r.reason}>
-                                                    <Td>{r.label}</Td>
-                                                    <Td right>{r.count} ta</Td>
+                                                    <Td>{sourceLabel(r.reason, r.label)}</Td>
+                                                    <Td right>{r.count} {t('ui.ta')}</Td>
                                                     <Td right strong tone={r.reason === 'Service' ? undefined : 'bad'}>
                                                         {fmt(r.cost)}
                                                     </Td>
@@ -464,8 +474,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                         )}
 
                         <p className="text-[11px] text-faint">
-                            Summalar TANNARXDA: yo'qolgan tovarning qiymati — uni sotib olishga
-                            ketgan pul, sotish narxi emas.
+                            {t('financereport.summalar_tannarxda_yoqolgan_tovarning')}
                         </p>
                     </>
                 )
@@ -480,7 +489,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 ) : (
                     <>
                         <p className="text-xs text-faint">
-                            Sana: {extra.labshift.date} (davr oxiri bo'yicha). Svod bir kunlik.
+                            {t('ui.sana')}: {extra.labshift.date} {t('financereport.davr_oxiri_boyicha_svod')}
                         </p>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -493,16 +502,16 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     <Row label={t('finance.report.sampleTaken')} value={extra.labshift.lab.collected} tone="ok" />
                                     <Row label={t('finance.report.sampleNotTaken')} value={extra.labshift.lab.notCollected}
                                         tone={extra.labshift.lab.notCollected > 0 ? 'warn' : undefined}
-                                        hint="bemor kelmagan yoki unutilgan" />
+                                        hint={t('financereport.bemor_kelmagan_yoki_unutilgan')} />
                                     {extra.labshift.lab.urgent > 0 && (
                                         <Row label={t('finance.report.urgent')} value={extra.labshift.lab.urgent} />
                                     )}
-                                    <Row label="To'lanmagan" value={extra.labshift.lab.unpaidCount}
+                                    <Row label={t('financereport.tolanmagan')} value={extra.labshift.lab.unpaidCount}
                                         tone={extra.labshift.lab.unpaidCount > 0 ? 'bad' : undefined}
                                         hint={extra.labshift.lab.unpaidSum > 0 ? `${fmt(extra.labshift.lab.unpaidSum)} UZS` : undefined} />
                                     <Row label={t('finance.report.revenue')} value={fmt(extra.labshift.lab.revenue)} unit="UZS" />
                                     {extra.labshift.lab.avgTurnaroundHours != null && (
-                                        <Row label="O'rtacha bajarish" value={extra.labshift.lab.avgTurnaroundHours} unit="soat"
+                                        <Row label={t('financereport.ortacha_bajarish')} value={extra.labshift.lab.avgTurnaroundHours} unit={t('visit.hours')}
                                             hint="probadan natijagacha" />
                                     )}
 
@@ -534,7 +543,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     <Activity className="w-4 h-4 text-faint" />{t('finance.report.diagnostics')}</h3>
                                 <div className="p-4 space-y-2">
                                     <Row label={t('finance.report.study')} value={extra.labshift.studies.total} />
-                                    <Row label="To'lanmagan" value={extra.labshift.studies.unpaidCount}
+                                    <Row label={t('financereport.tolanmagan')} value={extra.labshift.studies.unpaidCount}
                                         tone={extra.labshift.studies.unpaidCount > 0 ? 'bad' : undefined}
                                         hint={extra.labshift.studies.unpaidSum > 0 ? `${fmt(extra.labshift.studies.unpaidSum)} UZS` : undefined} />
                                     <Row label={t('finance.report.revenue')} value={fmt(extra.labshift.studies.revenue)} unit="UZS" />
@@ -553,8 +562,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                         </div>
 
                         <p className="text-[11px] text-faint">
-                            Brak va qayta bajarish hisobga OLINMAYDI: tizimda bunday tushuncha yo'q.
-                            Uni qo'shish alohida qaror — probani bekor qilish sababi kerak bo'ladi.
+                            {t('financereport.brak_va_qayta_bajarish')}
                         </p>
                     </>
                 )
@@ -573,17 +581,17 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                             <div className="flex flex-wrap items-baseline gap-2 mb-3">
                                 <p className="text-[11px] font-bold uppercase tracking-wide text-muted">{t('finance.report.vsPrev')}</p>
                                 <span className="text-[11px] text-faint">
-                                    {cmp.previous.from} — {cmp.previous.to} ({cmp.previous.days} kun)
+                                    {cmp.previous.from} — {cmp.previous.to} ({cmp.previous.days} {t('ui.kun')})
                                 </span>
                             </div>
                             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
                                 {([
-                                    ['revenue', 'Tushum', true],
-                                    ['collected', 'Olingan pul', true],
-                                    ['expense', 'Xarajat', true],
-                                    ['profit', 'Foyda', true],
-                                    ['visits', 'Qabullar', false],
-                                    ['avgCheck', "O'rtacha chek", true],
+                                    ['revenue', t('ui.tushum'), true],
+                                    ['collected', t('ui.olingan_pul'), true],
+                                    ['expense', t('ui.xarajat'), true],
+                                    ['profit', t('finance.report.profit'), true],
+                                    ['visits', t('ui.qabullar'), false],
+                                    ['avgCheck', t('finance.report.avgCheck'), true],
                                 ] as const).map(([key, label, money]) => {
                                     /* KO'RSATKICH YO'Q BO'LSA — SHU PLITKA
                                        TUSHIB QOLADI, SAHIFA EMAS.
@@ -617,7 +625,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                                     ? ` (${d.pct > 0 ? '+' : ''}${d.pct}%)`
                                                     /* Oldingi davr nol bo'lsa foiz yo'q:
                                                        "cheksiz o'sish" ma'nosiz raqam */
-                                                    : (cur > 0 ? ' (yangi)' : '')}
+                                                    : (cur > 0 ? t('financereport.yangi') : '')}
                                             </p>
                                         </div>
                                     );
@@ -629,33 +637,30 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     {/* Asosiy raqamlar */}
                     <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
                         <Tile label={t('finance.report.revenue')} value={fmt(totals.revenue)} unit="UZS" icon={TrendingUp}
-                            hint={`olindi: ${fmt(totals.collected)}`} />
+                            hint={fill(t('financereport.olindi_x'), fmt(totals.collected))} />
                         <Tile label={t('finance.report.periodDebt')} value={fmt(totals.due)} unit="UZS" icon={AlertCircle}
-                            tone={totals.due > 0 ? 'warn' : undefined} hint="shu davrda to'lanmagani" />
+                            tone={totals.due > 0 ? 'warn' : undefined} hint={t('financereport.shu_davrda_tolanmagani')} />
                         {data.openDebt && (
                             <Tile label={t('finance.report.openDebt')} value={fmt(data.openDebt.amount)} unit="UZS" icon={AlertCircle}
                                 tone={data.openDebt.amount > 0 ? 'bad' : undefined}
-                                hint={`${data.openDebt.patients} bemor · hozirgi holat`} />
+                                hint={fill(t('financereport.x_bemor_hozirgi_holat'), data.openDebt.patients)} />
                         )}
                         <Tile label={t('finance.report.material')} value={fmt(totals.materialCost)} unit="UZS" icon={Package}
-                            hint="retsept bo'yicha" />
+                            hint={t('financereport.retsept_boyicha')} />
                         <Tile label={t('finance.report.grossProfit')} value={fmt(totals.grossProfit)} unit="UZS" icon={Percent}
-                            hint="tushum − material" />
+                            hint={t('financereport.tushum_material')} />
                         <Tile label={t('finance.report.doctorShare')} value={fmt(totals.doctorShare)} unit="UZS" icon={Users} />
                         <Tile label={t('finance.report.netProfit')} value={fmt(totals.netProfit)} unit="UZS"
                             icon={totals.netProfit >= 0 ? TrendingUp : TrendingDown}
                             tone={totals.netProfit >= 0 ? 'ok' : 'bad'}
-                            hint="barcha xarajatlardan keyin" />
+                            hint={t('financereport.barcha_xarajatlardan_keyin')} />
                     </div>
 
                     {/* Eski stomatologik laboratoriya xarajati qolgan bo'lsa */}
                     {totals.legacyLabExpense > 0 && (
                         <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                             <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                            <p className="text-sm text-amber-800 dark:text-amber-200">{t('finance.report.old')}<b>«Laboratoriya» xarajatlari: {fmt(totals.legacyLabExpense)} UZS</b> topildi.
-                                Bular stomatologiya davridan qolgan — o'sha paytda protez tashqi laboratoriyaga
-                                buyurtma qilinardi. Endi laboratoriya o'z bo'limimiz va daromad keltiradi,
-                                shuning uchun bu summa sof foydadan <b>chegirilmadi</b>.
+                            <p className="text-sm text-amber-800 dark:text-amber-200">{t('finance.report.old')}<b>{t('financereport.laboratoriya_xarajatlari')}: {fmt(totals.legacyLabExpense)} UZS</b> {t('financereport.topildi_bular_stomatologiya_davridan')} <b>chegirilmadi</b>.
                             </p>
                         </div>
                     )}
@@ -706,7 +711,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                                     <td className="py-2 pr-3">
                                                         <span className="inline-flex items-center gap-2">
                                                             <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: colorOf(d.name, i) }} />
-                                                            <span className="text-ink">{d.name}</span>
+                                                            <span className="text-ink">{deptName(d.name)}</span>
                                                         </span>
                                                     </td>
                                                     <td className="py-2 pr-3 text-right tabular-nums text-ink">{fmt(d.revenue)}</td>
@@ -724,8 +729,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     </table>
                                 </div>
                                 <p className="text-[11px] text-faint mt-2">
-                                    Material — xizmat retsepti bo'yicha hisoblangan tannarx. Retsept yozilmagan
-                                    xizmatlarda u nol bo'lib ko'rinadi.
+                                    {t('financereport.material_xizmat_retsepti_boyicha')}
                                 </p>
                             </>
                         )}
@@ -745,7 +749,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                             <div key={s.source}>
                                                 <div className="flex items-baseline gap-2 text-sm">
                                                     <span className="text-ink">{s.label}</span>
-                                                    <span className="text-[11px] text-faint">{s.count} ta</span>
+                                                    <span className="text-[11px] text-faint">{s.count} {t('ui.ta')}</span>
                                                     <span className="ml-auto tabular-nums font-medium text-ink">{fmt(s.revenue)}</span>
                                                     <span className="text-[11px] text-faint w-9 text-right">{Math.round(pct)}%</span>
                                                 </div>
@@ -774,8 +778,8 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                                 tickFormatter={(v) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(v)} />
                                             <Tooltip formatter={(v: any) => `${fmt(Number(v))} UZS`}
                                                 contentStyle={{ background: 'rgba(17,24,39,.95)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
-                                            <Line type="monotone" dataKey="revenue" name="Tushum" stroke="#0E5F55" strokeWidth={2} dot={false} />
-                                            <Line type="monotone" dataKey="collected" name="Olingan" stroke="#2563EB" strokeWidth={2} dot={false} strokeDasharray="4 3" />
+                                            <Line type="monotone" dataKey="revenue" name={t('ui.tushum')} stroke="#0E5F55" strokeWidth={2} dot={false} />
+                                            <Line type="monotone" dataKey="collected" name={t('financereport.olingan')} stroke="#2563EB" strokeWidth={2} dot={false} strokeDasharray="4 3" />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -795,7 +799,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     {data.byDoctor.slice(0, 10).map(d => (
                                         <div key={d.doctorName} className="flex items-center gap-3 text-sm">
                                             <span className="text-ink truncate">{d.doctorName}</span>
-                                            <span className="text-[11px] text-faint shrink-0">{d.count} ta</span>
+                                            <span className="text-[11px] text-faint shrink-0">{d.count} {t('ui.ta')}</span>
                                             <span className="ml-auto tabular-nums font-medium text-ink shrink-0">{fmt(d.revenue)}</span>
                                         </div>
                                     ))}

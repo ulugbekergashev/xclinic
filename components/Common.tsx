@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react';
 
+import { useLanguage, tr } from '../context/LanguageContext';
 // --- Buttons ---
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -57,21 +58,21 @@ export const Card: React.FC<{ children: React.ReactNode; className?: string }> =
 
 // --- Badge ---
 const STATUS_TRANSLATIONS: Record<string, string> = {
-  'active': 'Faol',
-  'archived': 'Arxiv',
-  'paid': 'To\'landi',
-  'pending': 'Kutilmoqda',
+  'active': tr('ui.faol'),
+  'archived': tr('patients.filter.archived'),
+  'paid': tr('installmentstab.tolandi'),
+  'pending': tr('visit.pending'),
   'confirmed': 'Tasdiqlandi',
-  'completed': 'Yakunlandi',
-  'cancelled': 'Bekor qilindi',
-  'no-show': 'Kelmadi',
-  'checked-in': 'Keldi',
-  'overdue': 'Qarzdor',
-  'healthy': 'Sog\'lom',
-  'cavity': 'Karies',
+  'completed': tr('common.yakunlandi'),
+  'cancelled': tr('ui.bekor_qilindi'),
+  'no-show': tr('ui.kelmadi'),
+  'checked-in': tr('ui.keldi'),
+  'overdue': tr('common.qarzdor'),
+  'healthy': tr('patients.details.teethChart.healthy'),
+  'cavity': tr('patients.details.teethChart.cavity'),
   'filled': 'Plomba',
-  'missing': 'Yo\'q',
-  'crown': 'Qoplama'
+  'missing': tr('patients.details.teethChart.missingShort'),
+  'crown': tr('patients.details.teethChart.crownShort')
 };
 
 /* RAMKALI NISHON.
@@ -84,6 +85,7 @@ const STATUS_TRANSLATIONS: Record<string, string> = {
 
    Bitta o'zgaruvchi — rang nomi; fon/matn/ramka undan hosil bo'ladi. */
 export const Badge: React.FC<{ status?: string }> = ({ status = 'pending' }) => {
+    const { t } = useLanguage();
   let colorClass = 'bg-elevated text-muted border-line';
   const lowerStatus = (status || 'pending').toLowerCase();
 
@@ -241,7 +243,8 @@ interface SearchableSelectProps {
   className?: string;
 }
 
-export const SearchableSelect: React.FC<SearchableSelectProps> = ({ label, value, onChange, options, placeholder = 'Tanlang...', className = '' }) => {
+export const SearchableSelect: React.FC<SearchableSelectProps> = ({ label, value, onChange, options, placeholder = tr('common.tanlang'), className = '' }) => {
+    const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const wrapperRef = React.useRef<HTMLDivElement>(null);
@@ -281,7 +284,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({ label, value
             <input
               type="text"
               className="w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink placeholder:text-faint outline-none focus:border-primary-500/50"
-              placeholder="Qidirish..."
+              placeholder={t('common.search')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onClick={(e) => e.stopPropagation()}
@@ -290,7 +293,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({ label, value
           </div>
           <div className="overflow-y-auto flex-1 p-1">
             {filteredOptions.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-faint text-center">Topilmadi</div>
+              <div className="px-3 py-4 text-sm text-faint text-center">{t('ui.topilmadi')}</div>
             ) : (
               filteredOptions.map((opt) => (
                 <div
@@ -321,6 +324,7 @@ export const Modal: React.FC<{
   children: React.ReactNode;
   className?: string;
 }> = ({ isOpen, onClose, title, children, className = 'max-w-lg' }) => {
+    const { t } = useLanguage();
   if (!isOpen) return null;
 
   return (
@@ -335,7 +339,7 @@ export const Modal: React.FC<{
         className={`relative w-full ${className} panel shadow-2xl overflow-hidden max-h-[90vh] flex flex-col`}>
         <div className="flex items-center justify-between border-b border-line px-5 py-4 sm:px-6">
           <h3 className="text-lg font-bold tracking-tight text-ink">{title}</h3>
-          <button aria-label="Yopish" onClick={onClose} className="w-9 h-9 -mr-1.5 flex items-center justify-center rounded-full text-faint hover:text-ink hover:bg-elevated transition-colors">
+          <button aria-label={t('common.close')} onClick={onClose} className="w-9 h-9 -mr-1.5 flex items-center justify-center rounded-full text-faint hover:text-ink hover:bg-elevated transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -359,6 +363,7 @@ export interface ToastMessage {
 }
 
 export const Toast: React.FC<ToastMessage & { onClose: (id: string) => void }> = ({ id, type, message, action, durationMs, onClose }) => {
+    const { t } = useLanguage();
   /* «Bekor qilish» li toast UZOQROQ turadi (S3.6): o'chirishni qaytarish
      uchun 4 soniya kam — foydalanuvchi xabarni o'qib, qaror qilishi kerak. */
   useEffect(() => {
@@ -395,7 +400,7 @@ export const Toast: React.FC<ToastMessage & { onClose: (id: string) => void }> =
           {action.label}
         </button>
       )}
-      <button onClick={() => onClose(id)} className="text-faint hover:text-ink transition-colors" aria-label="Yopish">
+      <button onClick={() => onClose(id)} className="text-faint hover:text-ink transition-colors" aria-label={t('common.close')}>
         <X className="w-4 h-4" />
       </button>
     </div>

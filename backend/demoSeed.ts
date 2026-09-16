@@ -780,9 +780,18 @@ async function main() {
                 : soon ? new Date(today.getTime() + int(10, 45) * DAY).toISOString().slice(0, 10)
                 : new Date(today.getTime() + int(200, 700) * DAY).toISOString().slice(0, 10);
             const qty = int(40, 400);
+            /* `cost` — BIRLIK narx, partiya jami EMAS.
+
+               Server (`inventory.ts`, `/stock-movements/in`) `cost` ni bir
+               dona uchun deb oladi va xarajatni `cost × quantity` qilib
+               yozadi. Bu yerda ilgari `qty × price × 0.75` — ya'ni JAMI —
+               yuborilardi, server uni yana miqdorga ko'paytirardi: 393 dona
+               UZI geli 3,7 milliard so'mlik xarajat bo'lib chiqqan, eganing
+               hisobotida sof foyda −69,5 milliard turgan. Sotib olish narxi
+               sotish narxining 75 % i — shu niyat edi. */
             const r = await api('POST', '/stock-movements/in', {
                 itemId: it.id, quantity: qty,
-                cost: Math.round(qty * (it.price || 1000) * 0.75),
+                cost: Math.round((it.price || 1000) * 0.75),
                 batchNumber: `P-${dayStr(int(10, 200)).replace(/-/g, '')}-${b + 1}`,
                 expiryDate: expiry,
                 note: 'Yetkazib beruvchidan qabul qilindi',

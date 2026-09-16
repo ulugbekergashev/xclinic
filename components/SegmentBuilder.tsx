@@ -2,6 +2,7 @@ import React from 'react';
 import { AudienceSegment, SegmentCondition, SegmentFieldDescriptor } from '../types';
 import { X, Plus } from 'lucide-react';
 
+import { useLanguage, tr } from '../context/LanguageContext';
 /**
  * Auditoriya konstruktori — "kimga yuborish" savolining YAGONA UI'si.
  * Qo'lda yuborishda ham, jadval bo'yicha qoidada ham shu komponent ishlatiladi.
@@ -17,15 +18,15 @@ const inputCls = "px-3 py-2 bg-surface border border-line rounded-lg text-sm out
 const PRESETS: { label: string; conditions: SegmentCondition[] }[] = [
     { label: '👩 Ayollar', conditions: [{ field: 'gender', op: 'eq', value: 'Female' }] },
     { label: '👨 Erkaklar', conditions: [{ field: 'gender', op: 'eq', value: 'Male' }] },
-    { label: '🧒 Bolalar (18 gacha)', conditions: [{ field: 'age', op: 'lte', value: 18 }] },
-    { label: '⏰ Qarzi bor', conditions: [{ field: 'hasDebt', op: 'is_true' }] },
-    { label: '🎁 Shu oy tug\'ilganlar', conditions: [{ field: 'birthdayMonth', op: 'eq', value: 'current' }] },
+    { label: tr('segmentbuilder.bolalar_18_gacha'), conditions: [{ field: 'age', op: 'lte', value: 18 }] },
+    { label: tr('segmentbuilder.qarzi_bor'), conditions: [{ field: 'hasDebt', op: 'is_true' }] },
+    { label: tr('segmentbuilder.shu_oy_tugilganlar'), conditions: [{ field: 'birthdayMonth', op: 'eq', value: 'current' }] },
     { label: '🔄 6 oydan beri kelmagan', conditions: [{ field: 'lastVisit', op: 'before', value: 6 }] },
-    { label: '✈️ Botga ulanmagan', conditions: [{ field: 'hasTelegram', op: 'is_false' }] },
-    { label: '🆕 Yangi (30 kun)', conditions: [{ field: 'registered', op: 'within', value: 30 }] },
-    { label: '⭐ VIP (5 mln+)', conditions: [{ field: 'totalSpent', op: 'gte', value: 5000000 }] },
-    { label: '❗ 2+ marta kelmagan', conditions: [{ field: 'noShowCount', op: 'gte', value: 2 }] },
-    { label: '📅 Qabuli yo\'q', conditions: [{ field: 'hasUpcomingAppointment', op: 'is_false' }] },
+    { label: tr('segmentbuilder.botga_ulanmagan'), conditions: [{ field: 'hasTelegram', op: 'is_false' }] },
+    { label: tr('segmentbuilder.yangi_30_kun'), conditions: [{ field: 'registered', op: 'within', value: 30 }] },
+    { label: tr('segmentbuilder.vip_5_mln'), conditions: [{ field: 'totalSpent', op: 'gte', value: 5000000 }] },
+    { label: tr('segmentbuilder.2_marta_kelmagan'), conditions: [{ field: 'noShowCount', op: 'gte', value: 2 }] },
+    { label: tr('segmentbuilder.qabuli_yoq'), conditions: [{ field: 'hasUpcomingAppointment', op: 'is_false' }] },
 ];
 
 const isGroup = (c: SegmentCondition): boolean => Array.isArray(c.conditions);
@@ -47,6 +48,7 @@ const ConditionRow: React.FC<{
     count?: number;
     onChange: (patch: Partial<SegmentCondition>) => void;
 }> = ({ cond, fields, count, onChange }) => {
+    const { t } = useLanguage();
     const def = fields.find(f => f.id === cond.field);
     const op = def?.operators.find(o => o.id === cond.op);
     const arity = op?.arity ?? 1;
@@ -102,7 +104,7 @@ const ConditionRow: React.FC<{
                             onChange={e => onChange({ value: [e.target.value, Array.isArray(cond.value) ? cond.value[1] : 12] })}
                             className={inputCls}
                         >
-                            <option value="">— muolaja —</option>
+                            <option value="">— {t('segmentbuilder.muolaja')} —</option>
                             {(def.options || []).map(o => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
                             ))}
@@ -121,7 +123,7 @@ const ConditionRow: React.FC<{
                         onChange={e => onChange({ value: e.target.value })}
                         className={inputCls}
                     >
-                        <option value="">— tanlang —</option>
+                        <option value="">{t('segmentbuilder.tanlang')}</option>
                         {def.options.map(o => (
                             <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
@@ -131,7 +133,7 @@ const ConditionRow: React.FC<{
                         type="text"
                         value={String(cond.value ?? '')}
                         onChange={e => onChange({ value: e.target.value })}
-                        placeholder="matn"
+                        placeholder={t('segmentbuilder.matn')}
                         className={`${inputCls} w-40`}
                     />
                 ) : arity === 2 ? (
@@ -165,7 +167,7 @@ const ConditionRow: React.FC<{
             )}
 
             {count !== undefined && (
-                <span className="text-xs text-faint font-mono tabular-nums">{count} ta</span>
+                <span className="text-xs text-faint font-mono tabular-nums">{count} {t('ui.ta')}</span>
             )}
         </>
     );
@@ -179,6 +181,7 @@ const GroupEditor: React.FC<{
     depth: number;
     onChange: (next: SegmentCondition) => void;
 }> = ({ node, fields, counts, depth, onChange }) => {
+    const { t } = useLanguage();
     const conditions = node.conditions || [];
     const match = node.match === 'any' ? 'any' : 'all';
 
@@ -208,13 +211,13 @@ const GroupEditor: React.FC<{
             {conditions.map((cond, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
                     {i > 0 ? (
-                        <button aria-label="VA / YOKI almashtirish"
+                        <button aria-label={t('segmentbuilder.va_yoki_almashtirish')}
                             type="button"
                             onClick={toggleMatch}
-                            title="VA / YOKI almashtirish"
+                            title={t('segmentbuilder.va_yoki_almashtirish')}
                             className="px-2 py-1 text-[10px] font-bold rounded-md bg-elevated text-muted hover:text-primary-600 uppercase tracking-wider min-w-[46px]"
                         >
-                            {match === 'all' ? 'VA' : 'YOKI'}
+                            {match === 'all' ? 'VA' : t('segmentbuilder.yoki')}
                         </button>
                     ) : (
                         <span className="min-w-[46px]" />
@@ -241,7 +244,7 @@ const GroupEditor: React.FC<{
                     <button
                         type="button"
                         onClick={() => removeAt(i)}
-                        title={isGroup(cond) ? "Guruhni olib tashlash" : "Shartni olib tashlash"}
+                        title={isGroup(cond) ? t('segmentbuilder.guruhni_olib_tashlash') : t('segmentbuilder.shartni_olib_tashlash')}
                         className="p-1.5 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors ml-auto"
                     >
                         <X className="w-4 h-4" />
@@ -255,20 +258,20 @@ const GroupEditor: React.FC<{
                     onClick={addCondition}
                     className="flex items-center gap-1.5 text-sm font-bold text-primary-600 hover:text-primary-700"
                 >
-                    <Plus className="w-4 h-4" /> Shart
+                    <Plus className="w-4 h-4" /> {t('segmentbuilder.shart')}
                 </button>
                 {depth < 2 && (
                     <button
                         type="button"
                         onClick={addGroup}
                         className="flex items-center gap-1.5 text-xs font-bold text-muted hover:text-primary-600"
-                        title="Qavs ichida alohida mantiq: ayol VA (VIP YOKI implant)"
+                        title={t('segmentbuilder.qavs_ichida_alohida_mantiq')}
                     >
-                        <Plus className="w-3.5 h-3.5" /> Qavs
+                        <Plus className="w-3.5 h-3.5" /> {t('segmentbuilder.qavs')}
                     </button>
                 )}
                 {conditions.length === 0 && depth === 0 && (
-                    <span className="text-xs text-faint">Shartsiz — klinikaning barcha bemorlari</span>
+                    <span className="text-xs text-faint">{t('segmentbuilder.shartsiz_klinikaning_barcha_bemorlari')}</span>
                 )}
             </div>
         </div>
@@ -284,6 +287,7 @@ interface Props {
 }
 
 export const SegmentBuilder: React.FC<Props> = ({ value, onChange, fields, conditionCounts }) => {
+    const { t } = useLanguage();
     const conditions = value.conditions || [];
     const match = value.match === 'any' ? 'any' : 'all';
 
@@ -323,8 +327,8 @@ export const SegmentBuilder: React.FC<Props> = ({ value, onChange, fields, condi
             {conditions.length > 1 && (
                 <p className="text-xs text-faint">
                     {match === 'all'
-                        ? 'Barcha shartlar bajarilishi kerak'
-                        : 'Shartlardan bittasi bajarilsa yetarli'}
+                        ? t('segmentbuilder.barcha_shartlar_bajarilishi_kerak')
+                        : t('segmentbuilder.shartlardan_bittasi_bajarilsa_yetarli')}
                     {' · '}"Qavs" tugmasi bilan ichma-ich mantiq tuziladi: ayol VA (VIP YOKI implant)
                 </p>
             )}

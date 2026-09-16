@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatNumber } from '../utils/format';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { confirmAction } from '../services/confirm';
 import { Card, Button, Input, Modal, Select } from '../components/Common';
 import { InventoryItem, UserRole } from '../types';
@@ -61,12 +61,12 @@ const fmtWhen = (iso: string) => {
 };
 
 const MOVEMENT_LABEL: Record<string, string> = {
-    In: 'Kirim', Out: 'Chiqim', Adjust: 'Tuzatish', Writeoff: 'Hisobdan chiqarish',
-    Transfer: "Ko'chirish",
+    In: tr('inventory.ui.stockIn'), Out: tr('inventory.ui.stockOut'), Adjust: tr('ui.tuzatish'), Writeoff: tr('inventory.hisobdan_chiqarish'),
+    Transfer: tr('ui.kochirish'),
 };
 const REASON_LABEL: Record<string, string> = {
-    Purchase: 'Xarid', Service: 'Xizmat', Expired: 'Muddati o\'tgan',
-    Damaged: 'Buzilgan', Inventory: 'Inventarizatsiya', Manual: 'Qo\'lda',
+    Purchase: 'Xarid', Service: tr('ui.xizmat'), Expired: tr('inventory.muddati_otgan'),
+    Damaged: 'Buzilgan', Inventory: tr('inventory.inventarizatsiya'), Manual: tr('ui.qolda'),
 };
 /** Qo'lda chiqim sabablari — "Xizmat" yo'q, u avtomatik retsept orqali yoziladi */
 const OUT_REASONS = ['Expired', 'Damaged', 'Manual'];
@@ -126,7 +126,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             }));
             setError('');
         } catch (e: any) {
-            setError(e?.message || 'Harakatlarni yuklab bo\'lmadi');
+            setError(e?.message || t('inventory.harakatlarni_yuklab_bolmadi'));
         } finally { setMovLoading(false); }
     }, [movFilter]);
 
@@ -136,7 +136,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             setAlerts(await api.stock.alerts(60));
             setError('');
         } catch (e: any) {
-            setError(e?.message || 'Ogohlantirishlarni yuklab bo\'lmadi');
+            setError(e?.message || t('inventory.ogohlantirishlarni_yuklab_bolmadi'));
         } finally { setAlertsLoading(false); }
     }, []);
 
@@ -157,7 +157,7 @@ export const Inventory: React.FC<InventoryProps> = ({
         // Dori bo'lsa muddat majburiy: aks holda FEFO ishlamaydi va muddati
         // o'tgan qoldiq omborda ko'rinmay yig'iladi
         if (inTarget.isMedication && !inForm.expiryDate) {
-            setError('Dori uchun yaroqlilik muddati majburiy');
+            setError(t('inventory.dori_uchun_yaroqlilik_muddati'));
             return;
         }
         setBusy(true); setError('');
@@ -175,7 +175,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             if (tab === 'movements') loadMovements();
             if (tab === 'batches') loadAlerts();
         } catch (e: any) {
-            setError(e?.message || 'Kirim yozilmadi');
+            setError(e?.message || t('inventory.kirim_yozilmadi'));
         } finally { setBusy(false); }
     };
 
@@ -203,10 +203,10 @@ export const Inventory: React.FC<InventoryProps> = ({
             for (const b of sorted) {
                 if (left <= 0) break;
                 const take = Math.min(left, b.quantity);
-                plan.push({ batch: b.batchNumber || 'partiya raqamsiz', expiry: b.expiryDate || null, take });
+                plan.push({ batch: b.batchNumber || t('inventory.partiya_raqamsiz'), expiry: b.expiryDate || null, take });
                 left -= take;
             }
-            if (left > 0) plan.push({ batch: 'partiyasiz (qoldiq yetmadi)', expiry: null, take: left });
+            if (left > 0) plan.push({ batch: t('inventory.partiyasiz_qoldiq_yetmadi'), expiry: null, take: left });
             setOutPreview(plan);
         } catch { setOutPreview([]); }
     }, []);
@@ -243,16 +243,16 @@ export const Inventory: React.FC<InventoryProps> = ({
                 const list = (e.data.expired || [])
                     .map((b: any) => `${b.batchNumber || 'raqamsiz'} (${b.expiryDate}, ${b.quantity})`)
                     .join(NL);
-                const okToForce = await confirmAction({ title: [e.data.error, '', "Muddati o'tgan partiyalar:", list, '',
-                     "Baribir sarflansinmi? Bu jurnalda ko'rinib turadi."].join(NL) });
+                const okToForce = await confirmAction({ title: [e.data.error, '', t('inventory.muddati_otgan_partiyalar'), list, '',
+                     t('inventory.baribir_sarflansinmi_bu_jurnalda')].join(NL) });
                 if (okToForce) {
                     try { await doIssue(true); }
-                    catch (e2: any) { setError(e2?.message || 'Chiqim yozilmadi'); }
+                    catch (e2: any) { setError(e2?.message || t('inventory.chiqim_yozilmadi')); }
                 }
                 setBusy(false);
                 return;
             }
-            setError(e?.message || 'Chiqim yozilmadi');
+            setError(e?.message || t('inventory.chiqim_yozilmadi'));
         } finally { setBusy(false); }
     };
 
@@ -271,7 +271,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             setMoveTarget(null);
             if (tab === 'movements') loadMovements();
         } catch (e: any) {
-            setError(e?.message || "Ko'chirish yozilmadi");
+            setError(e?.message || t('inventory.kochirish_yozilmadi'));
         } finally { setBusy(false); }
     };
 
@@ -281,7 +281,7 @@ export const Inventory: React.FC<InventoryProps> = ({
         try {
             setHistoryRows(await api.stock.movements({ itemId: item.id }));
         } catch (e: any) {
-            setError(e?.message || 'Tarixni yuklab bo\'lmadi');
+            setError(e?.message || t('ui.tarixni_yuklab_bolmadi'));
         }
     };
 
@@ -301,14 +301,14 @@ export const Inventory: React.FC<InventoryProps> = ({
             for (const r of auditChanged) {
                 await api.stock.adjust({
                     itemId: r.item.id, actualQuantity: r.actual as number,
-                    note: `Inventarizatsiya ${todayISO()}`, userName,
+                    note: fill(t('inventory.inventarizatsiya_x'), todayISO()), userName,
                 });
             }
             setAuditValues({});
             setAuditConfirm(false);
             reloadItems();
         } catch (e: any) {
-            setError(e?.message || 'Inventarizatsiya yozilmadi');
+            setError(e?.message || t('inventory.inventarizatsiya_yozilmadi'));
         } finally { setBusy(false); }
     };
 
@@ -345,7 +345,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             setEditTarget(null);
             reloadItems();
         } catch (err: any) {
-            setError(err?.message || 'Saqlanmadi');
+            setError(err?.message || t('ui.saqlanmadi'));
         } finally { setBusy(false); }
     };
 
@@ -370,10 +370,10 @@ export const Inventory: React.FC<InventoryProps> = ({
     const expiredItems = items.filter((i) => (i.expiredQuantity || 0) > 0);
 
     const TABS: { id: Tab; name: string; icon: React.ElementType }[] = [
-        { id: 'stock', name: 'Qoldiqlar', icon: Package },
-        { id: 'movements', name: 'Harakatlar', icon: History },
-        { id: 'batches', name: 'Partiya va muddat', icon: CalendarClock },
-        { id: 'audit', name: 'Inventarizatsiya', icon: ClipboardCheck },
+        { id: 'stock', name: t('ui.qoldiqlar'), icon: Package },
+        { id: 'movements', name: t('common.actions'), icon: History },
+        { id: 'batches', name: t('inventory.partiya_va_muddat'), icon: CalendarClock },
+        { id: 'audit', name: t('inventory.inventarizatsiya'), icon: ClipboardCheck },
     ];
 
     return (
@@ -382,7 +382,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <Package className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-ink">Ombor</h2>
+                    <h2 className="text-xl font-bold text-ink">{t('inventory.ombor')}</h2>
                 </div>
                 {!readOnly && (
                     <Button size="sm" onClick={() => setAddOpen(true)}>
@@ -408,7 +408,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                 <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                     <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                     <p className="text-sm text-red-700 dark:text-red-300 flex-1">{error}</p>
-                    <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 text-sm">yopish</button>
+                    <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 text-sm">{t('inventory.yopish')}</button>
                 </div>
             )}
 
@@ -422,7 +422,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <div className="p-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 flex items-center gap-2">
                             <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
                             <p className="text-sm text-red-800 dark:text-red-200">
-                                {expiredItems.length} ta mahsulotda muddati o'tgan qoldiq bor — ular sarflanmaydi
+                                {expiredItems.length} {t('inventory.ta_mahsulotda_muddati_otgan')}
                             </p>
                         </div>
                     )}
@@ -431,7 +431,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center gap-2">
                             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                             <p className="text-sm text-amber-800 dark:text-amber-200">
-                                {lowStock.length} ta mahsulot minimal qoldiqdan tushgan
+                                {lowStock.length} {t('inventory.ta_mahsulot_minimal_qoldiqdan')}
                             </p>
                         </div>
                     )}
@@ -453,12 +453,12 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                 <p className="text-sm font-semibold text-ink truncate">{it.name}</p>
                                                 {it.isMedication && (
                                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-                                                        dori
+                                                        {t('inventory.dori')}
                                                     </span>
                                                 )}
                                                 {low && (
                                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                                                        kam qoldi
+                                                        {t('inventory.kam_qoldi')}
                                                     </span>
                                                 )}
                                                 {/* MUDDATI O'TGAN (S2.5, audit B-25). Ilgari bu belgi
@@ -467,15 +467,15 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                     borligini bilmasdi. */}
                                                 {(it.expiredQuantity || 0) > 0 && (
                                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                                                        title={`${fmt(it.expiredQuantity || 0)} ${it.unit} muddati o'tgan — sarflab bo'lmaydi`}>
-                                                        MUDDATI O'TGAN {fmt(it.expiredQuantity || 0)}
+                                                        title={fill(t('inventory.x_x_muddati_otgan'), fmt(it.expiredQuantity || 0), it.unit)}>
+                                                        {t('inventory.muddati_otgan_2')} {fmt(it.expiredQuantity || 0)}
                                                     </span>
                                                 )}
                                             </div>
                                             <p className="text-xs text-muted mt-0.5">
-                                                minimal {fmt(it.minQuantity || 0)} {it.unit}
-                                                {it.price ? ` · tannarx ${fmt(it.price)}` : ''}
-                                                {it.nextExpiry ? ` · eng yaqin muddat ${it.nextExpiry.split('-').reverse().join('.')}` : ''}
+                                                {t('inventory.minimal')} {fmt(it.minQuantity || 0)} {it.unit}
+                                                {it.price ? fill(t('inventory.tannarx_x'), fmt(it.price)) : ''}
+                                                {it.nextExpiry ? fill(t('inventory.eng_yaqin_muddat_x'), it.nextExpiry.split('-').reverse().join('.')) : ''}
                                             </p>
                                         </div>
                                         <div className="text-right shrink-0 min-w-[90px]">
@@ -494,7 +494,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                         <ArrowUpFromLine className="w-4 h-4" />
                                                     </Button>
                                                     {departments.length > 0 && (
-                                                        <Button variant="secondary" size="sm" title="Ko'chirish"
+                                                        <Button variant="secondary" size="sm" title={t('ui.kochirish')}
                                                             onClick={() => {
                                                                 setMoveForm({ quantity: '', fromDepartmentId: '', toDepartmentId: '', note: '' });
                                                                 setMoveTarget(it);
@@ -513,7 +513,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                 <History className="w-4 h-4" />
                                             </Button>
                                             {!readOnly && (
-                                                <Button variant="secondary" size="sm" onClick={() => onDeleteItem(it.id)} title="O'chirish">
+                                                <Button variant="secondary" size="sm" onClick={() => onDeleteItem(it.id)} title={t('ui.ochirish')}>
                                                     <Trash2 className="w-4 h-4 text-red-500" />
                                                 </Button>
                                             )}
@@ -562,7 +562,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                                         </p>
                                         <p className="text-xs text-muted truncate">
                                             {MOVEMENT_LABEL[m.type] || m.type} · {REASON_LABEL[m.reason] || m.reason}
-                                            {m.batch?.batchNumber ? ` · partiya ${m.batch.batchNumber}` : ''}
+                                            {m.batch?.batchNumber ? fill(t('inventory.partiya_x'), m.batch.batchNumber) : ''}
                                             {m.userName ? ` · ${m.userName}` : ''}
                                             {m.note ? ` · ${m.note}` : ''}
                                         </p>
@@ -587,7 +587,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                             <CalendarClock className="w-8 h-8 mx-auto text-faint mb-2" />
                             <p className="text-sm text-muted">{t('inventory.ui.noAlerts')}</p>
                             <p className="text-xs text-faint mt-1">
-                                Partiyalar kirim paytida yaroqlilik muddati ko'rsatilganda paydo bo'ladi
+                                {t('inventory.partiyalar_kirim_paytida_yaroqlilik')}
                             </p>
                         </div>
                     ) : (
@@ -595,7 +595,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                             {alerts.expiring.length > 0 && (
                                 <div>
                                     <h3 className="text-sm font-semibold text-ink mb-2">
-                                        Muddati o'tgan va yaqinlashgan ({alerts.expiring.length})
+                                        {t('inventory.muddati_otgan_va_yaqinlashgan')}{alerts.expiring.length})
                                     </h3>
                                     <div className="space-y-1.5">
                                         {alerts.expiring.map((b: any) => (
@@ -609,9 +609,9 @@ export const Inventory: React.FC<InventoryProps> = ({
                                                         {b.item?.name || '—'}
                                                     </p>
                                                     <p className="text-xs text-muted">
-                                                        {b.batchNumber ? `partiya ${b.batchNumber} · ` : ''}
-                                                        muddat {b.expiryDate}
-                                                        {b.expired ? ' · MUDDATI O\'TGAN' : ''}
+                                                        {b.batchNumber ? fill(t('inventory.partiya_x_2'), b.batchNumber) : ''}
+                                                        {t('inventory.muddat')} {b.expiryDate}
+                                                        {b.expired ? t('inventory.muddati_otgan_3') : ''}
                                                     </p>
                                                 </div>
                                                 <span className="text-sm font-bold tabular-nums shrink-0">
@@ -626,7 +626,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                             {alerts.lowStock.length > 0 && (
                                 <div>
                                     <h3 className="text-sm font-semibold text-ink mb-2">
-                                        Minimal qoldiqdan tushgan ({alerts.lowStock.length})
+                                        {t('inventory.minimal_qoldiqdan_tushgan')}{alerts.lowStock.length})
                                     </h3>
                                     <div className="space-y-1.5">
                                         {alerts.lowStock.map((r: any) => (
@@ -649,9 +649,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             {tab === 'audit' && (
                 <Card className="p-4">
                     <p className="text-sm text-muted mb-4">
-                        Har mahsulot uchun HAQIQIY qoldiqni kiriting. Farq pastda ko'rinadi.
-                        Inventarizatsiya BUTUNLIGICHA o'tkaziladi — bittalab saqlash yo'q,
-                        aks holda yarmi yopilmagan holda qolib ketadi.
+                        {t('inventory.har_mahsulot_uchun_haqiqiy')}
                     </p>
 
                     {items.length === 0 ? (
@@ -663,17 +661,17 @@ export const Inventory: React.FC<InventoryProps> = ({
                                     <div key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 border border-line rounded-lg">
                                         <p className="text-sm text-ink flex-1 min-w-0 truncate">{item.name}</p>
                                         <span className="text-xs text-faint shrink-0 w-28">
-                                            hisobda {fmt(item.quantity || 0)} {item.unit}
+                                            {t('inventory.hisobda')} {fmt(item.quantity || 0)} {item.unit}
                                         </span>
                                         <Input type="number" step="any"
                                             value={auditValues[item.id] ?? ''}
                                             onChange={(e: any) => setAuditValues(v => ({ ...v, [item.id]: e.target.value }))}
-                                            placeholder="haqiqiy"
+                                            placeholder={t('inventory.haqiqiy')}
                                             containerClassName="w-full sm:w-28"
                                             disabled={readOnly} />
                                         <span className={`text-sm font-bold tabular-nums shrink-0 w-24 text-right
                                             ${diff === null ? 'text-faint' : diff === 0 ? 'text-faint' : diff > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                            {diff === null ? '—' : diff === 0 ? 'to\'g\'ri' : `${diff > 0 ? '+' : ''}${fmt(diff)}`}
+                                            {diff === null ? '—' : diff === 0 ? t('inventory.togri') : `${diff > 0 ? '+' : ''}${fmt(diff)}`}
                                         </span>
                                     </div>
                                 ))}
@@ -695,24 +693,23 @@ export const Inventory: React.FC<InventoryProps> = ({
             {/* ─── Mahsulot qo'shish ──────────────────────────────────────── */}
             <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title={t('inventory.ui.newItem')}>
                 <form onSubmit={handleAdd} className="space-y-4">
-                    <Input label="Nomi" value={addForm.name} required
+                    <Input label={t('ui.nomi')} value={addForm.name} required
                         onChange={(e: any) => setAddForm(f => ({ ...f, name: e.target.value }))} />
                     <div className="grid grid-cols-2 gap-3">
-                        <Input label="O'lchov birligi" value={addForm.unit} required placeholder="dona, ml, quti"
+                        <Input label={t('inventory.olchov_birligi')} value={addForm.unit} required placeholder={t('inventory.dona_ml_quti')}
                             onChange={(e: any) => setAddForm(f => ({ ...f, unit: e.target.value }))} />
                         <Input label={t('inventory.ui.minQty')} type="number" value={addForm.minQuantity}
                             onChange={(e: any) => setAddForm(f => ({ ...f, minQuantity: e.target.value }))} />
                     </div>
                     <Input label={t('inventory.ui.costPerUnit')} type="number" value={addForm.price}
-                        helperText="Xizmat retsepti tannarxni shu narxdan hisoblaydi"
+                        helperText={t('inventory.xizmat_retsepti_tannarxni_shu')}
                         onChange={(e: any) => setAddForm(f => ({ ...f, price: e.target.value }))} />
                     <label className="flex items-center gap-2 text-sm text-muted">
                         <input type="checkbox" checked={addForm.isMedication} className="w-4 h-4 rounded"
                             onChange={(e) => setAddForm(f => ({ ...f, isMedication: e.target.checked }))} />{t('inventory.ui.isMedicationHint')}</label>
                     <div className="p-3 bg-elevated border border-line rounded-lg">
                         <p className="text-xs text-muted">
-                            Boshlang'ich qoldiq bu yerda kiritilmaydi: qoldiq faqat KIRIM orqali
-                            paydo bo'ladi, shunda har birlikning qayerdan kelgani ko'rinadi.
+                            {t('inventory.boshlangich_qoldiq_bu_yerda')}
                         </p>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -726,16 +723,16 @@ export const Inventory: React.FC<InventoryProps> = ({
             {editTarget && (
                 <Modal isOpen={true} onClose={() => setEditTarget(null)} title={`${t('inventory.ui.edit')} — ${editTarget.name}`}>
                     <form onSubmit={handleEditSave} className="space-y-4">
-                        <Input label="Nomi" value={editForm.name} required
+                        <Input label={t('ui.nomi')} value={editForm.name} required
                             onChange={(e: any) => setEditForm(f => ({ ...f, name: e.target.value }))} />
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="O'lchov birligi" value={editForm.unit} required placeholder="dona, ml, quti"
+                            <Input label={t('inventory.olchov_birligi')} value={editForm.unit} required placeholder={t('inventory.dona_ml_quti')}
                                 onChange={(e: any) => setEditForm(f => ({ ...f, unit: e.target.value }))} />
                             <Input label={t('inventory.ui.minQty')} type="number" value={editForm.minQuantity}
                                 onChange={(e: any) => setEditForm(f => ({ ...f, minQuantity: e.target.value }))} />
                         </div>
                         <Input label={t('inventory.ui.costPerUnit')} type="number" value={editForm.price}
-                            helperText="Xizmat retsepti tannarxni shu narxdan hisoblaydi"
+                            helperText={t('inventory.xizmat_retsepti_tannarxni_shu')}
                             onChange={(e: any) => setEditForm(f => ({ ...f, price: e.target.value }))} />
                         <label className="flex items-center gap-2 text-sm text-muted">
                             <input type="checkbox" checked={editForm.isMedication} className="w-4 h-4 rounded"
@@ -755,10 +752,10 @@ export const Inventory: React.FC<InventoryProps> = ({
 
             {/* ─── Kirim ──────────────────────────────────────────────────── */}
             {inTarget && (
-                <Modal isOpen={true} onClose={() => setInTarget(null)} title={`Kirim — ${inTarget.name}`}>
+                <Modal isOpen={true} onClose={() => setInTarget(null)} title={fill(t('inventory.kirim_x'), inTarget.name)}>
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label={`Miqdor (${inTarget.unit})`} type="number" step="any" value={inForm.quantity}
+                            <Input label={fill(t('inventory.miqdor_x'), inTarget.unit)} type="number" step="any" value={inForm.quantity}
                                 onChange={(e: any) => setInForm(f => ({ ...f, quantity: e.target.value }))} />
                             <Input label={t('inventory.ui.costUnit')} type="number" value={inForm.cost}
                                 onChange={(e: any) => setInForm(f => ({ ...f, cost: e.target.value }))} />
@@ -766,7 +763,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <div className="grid grid-cols-2 gap-3">
                             <Input label={t('inventory.ui.batchNumber')} value={inForm.batchNumber}
                                 onChange={(e: any) => setInForm(f => ({ ...f, batchNumber: e.target.value }))} />
-                            <Input label={inTarget.isMedication ? 'Yaroqlilik muddati (majburiy)' : 'Yaroqlilik muddati'}
+                            <Input label={inTarget.isMedication ? t('inventory.yaroqlilik_muddati_majburiy') : t('inventory.yaroqlilik_muddati')}
                                 type="date" value={inForm.expiryDate}
                                 onChange={(e: any) => setInForm(f => ({ ...f, expiryDate: e.target.value }))} />
                         </div>
@@ -775,7 +772,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <div className="flex justify-end gap-2">
                             <Button variant="secondary" onClick={() => setInTarget(null)}>{t('inventory.ui.cancel')}</Button>
                             <Button onClick={submitIn} disabled={busy || !(Number(inForm.quantity) > 0)}>
-                                {busy ? 'Saqlanmoqda…' : 'Kirimni yozish'}
+                                {busy ? t('ui.saqlanmoqda_3') : t('inventory.kirimni_yozish')}
                             </Button>
                         </div>
                     </div>
@@ -784,9 +781,9 @@ export const Inventory: React.FC<InventoryProps> = ({
 
             {/* ─── Chiqim ─────────────────────────────────────────────────── */}
             {outTarget && (
-                <Modal isOpen={true} onClose={() => setOutTarget(null)} title={`Chiqim — ${outTarget.name}`}>
+                <Modal isOpen={true} onClose={() => setOutTarget(null)} title={fill(t('inventory.chiqim_x'), outTarget.name)}>
                     <div className="space-y-4">
-                        <Input label={`Miqdor (${outTarget.unit})`} type="number" step="any" value={outForm.quantity}
+                        <Input label={fill(t('inventory.miqdor_x'), outTarget.unit)} type="number" step="any" value={outForm.quantity}
                             onChange={(e: any) => {
                                 const v = e.target.value;
                                 setOutForm(f => ({ ...f, quantity: v }));
@@ -822,7 +819,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <div className="flex justify-end gap-2">
                             <Button variant="secondary" onClick={() => setOutTarget(null)}>{t('inventory.ui.cancel')}</Button>
                             <Button onClick={submitOut} disabled={busy || !(Number(outForm.quantity) > 0)}>
-                                {busy ? 'Saqlanmoqda…' : 'Chiqimni yozish'}
+                                {busy ? t('ui.saqlanmoqda_3') : t('inventory.chiqimni_yozish')}
                             </Button>
                         </div>
                     </div>
@@ -831,15 +828,14 @@ export const Inventory: React.FC<InventoryProps> = ({
 
             {/* ─── Ko'chirish ─────────────────────────────────────────────── */}
             {moveTarget && (
-                <Modal isOpen={true} onClose={() => setMoveTarget(null)} title={`Ko'chirish — ${moveTarget.name}`}>
+                <Modal isOpen={true} onClose={() => setMoveTarget(null)} title={fill(t('inventory.kochirish_x'), moveTarget.name)}>
                     <div className="space-y-4">
                         <div className="p-3 bg-elevated border border-line rounded-lg">
                             <p className="text-xs text-muted">
-                                Ko'chirish klinika ICHIDA bo'ladi: umumiy qoldiq o'zgarmaydi,
-                                faqat qayerdan qayerga ketgani yozib qo'yiladi.
+                                {t('inventory.kochirish_klinika_ichida_boladi')}
                             </p>
                         </div>
-                        <Input label={`Miqdor (${moveTarget.unit}) — mavjud ${fmt(moveTarget.quantity || 0)}`}
+                        <Input label={fill(t('inventory.miqdor_x_mavjud_x'), moveTarget.unit, fmt(moveTarget.quantity || 0))}
                             type="number" step="any" value={moveForm.quantity}
                             onChange={(e: any) => setMoveForm(f => ({ ...f, quantity: e.target.value }))} />
                         <Select label={t('inventory.ui.fromOptional')} value={moveForm.fromDepartmentId}
@@ -851,7 +847,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         </Select>
                         <Select label={t('inventory.ui.toWhere')} value={moveForm.toDepartmentId}
                             onChange={(e: any) => setMoveForm(f => ({ ...f, toDepartmentId: e.target.value }))}>
-                            <option value="">Tanlang…</option>
+                            <option value="">{t('inventory.tanlang')}</option>
                             {departments.filter(d => d.isActive !== false && d.id !== moveForm.fromDepartmentId).map(d => (
                                 <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
@@ -862,7 +858,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                             <Button variant="secondary" onClick={() => setMoveTarget(null)}>{t('inventory.ui.cancel')}</Button>
                             <Button onClick={submitMove}
                                 disabled={busy || !(Number(moveForm.quantity) > 0) || !moveForm.toDepartmentId}>
-                                {busy ? 'Saqlanmoqda…' : "Ko'chirishni yozish"}
+                                {busy ? t('ui.saqlanmoqda_3') : t('inventory.kochirishni_yozish')}
                             </Button>
                         </div>
                     </div>
@@ -871,7 +867,7 @@ export const Inventory: React.FC<InventoryProps> = ({
 
             {/* ─── Tarix ──────────────────────────────────────────────────── */}
             {historyItem && (
-                <Modal isOpen={true} onClose={() => setHistoryItem(null)} title={`Tarix — ${historyItem.name}`}>
+                <Modal isOpen={true} onClose={() => setHistoryItem(null)} title={fill(t('inventory.tarix_x'), historyItem.name)}>
                     {historyRows.length === 0 ? (
                         <p className="text-sm text-faint py-6 text-center">{t('inventory.ui.noMoves')}</p>
                     ) : (
@@ -895,11 +891,10 @@ export const Inventory: React.FC<InventoryProps> = ({
 
             {/* ─── Inventarizatsiyani tasdiqlash ──────────────────────────── */}
             {auditConfirm && (
-                <Modal isOpen={true} onClose={() => setAuditConfirm(false)} title="Inventarizatsiyani o'tkazish">
+                <Modal isOpen={true} onClose={() => setAuditConfirm(false)} title={t('inventory.inventarizatsiyani_otkazish')}>
                     <div className="space-y-4">
                         <p className="text-sm text-muted">
-                            {auditChanged.length} ta qatorda farq bor. Har biri uchun tuzatish harakati
-                            yoziladi — qoldiq haqiqiy qiymatga tenglashadi va farq tarixda qoladi.
+                            {auditChanged.length} {t('inventory.ta_qatorda_farq_bor')}
                         </p>
                         <div className="max-h-64 overflow-y-auto space-y-1">
                             {auditChanged.map((r) => (
@@ -914,7 +909,7 @@ export const Inventory: React.FC<InventoryProps> = ({
                         <div className="flex justify-end gap-2">
                             <Button variant="secondary" onClick={() => setAuditConfirm(false)}>{t('inventory.ui.cancel')}</Button>
                             <Button onClick={submitAudit} disabled={busy}>
-                                {busy ? 'Yozilmoqda…' : 'Tasdiqlash'}
+                                {busy ? 'Yozilmoqda…' : t('ui.tasdiqlash')}
                             </Button>
                         </div>
                     </div>

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ClipboardList, Save, ChevronDown } from 'lucide-react';
 import type { Department, EncounterTemplate, EncounterField } from '../types';
+import { useLanguage, fill } from '../context/LanguageContext';
 import {
     validateEncounterField, rangeForField, isVitalAbnormal, calcBmi, bmiLabel,
     ENCOUNTER_FIELD_TO_VITAL,
@@ -42,6 +43,7 @@ export const EncounterForm: React.FC<Props> = ({
     departments, templates, departmentId, templateId, patientGender, patientAge,
     value, readOnly = false, onChange, onSave, onDepartmentChange,
 }) => {
+    const { t } = useLanguage();
     const [data, setData] = useState<Record<string, any>>(() => parseValue(value));
     const [activeTemplateId, setActiveTemplateId] = useState<string | undefined>(templateId);
     const [dirty, setDirty] = useState(false);
@@ -215,7 +217,7 @@ export const EncounterForm: React.FC<Props> = ({
                             )}
                         </div>
                         {problem && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{problem}</p>}
-                        {abnormal && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Normadan tashqarida</p>}
+                        {abnormal && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('encounterform.normadan_tashqarida')}</p>}
                     </div>
                 );
             }
@@ -233,7 +235,7 @@ export const EncounterForm: React.FC<Props> = ({
             <div className="p-4 border-b border-line flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                     <ClipboardList className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                    <h3 className="font-semibold text-ink">Qabul bayoni</h3>
+                    <h3 className="font-semibold text-ink">{t('ui.qabul_bayoni')}</h3>
                 </div>
 
                 {onDepartmentChange && (
@@ -243,7 +245,7 @@ export const EncounterForm: React.FC<Props> = ({
                             onChange={e => onDepartmentChange(e.target.value)}
                             className={`${inputClass} pr-8 appearance-none min-w-[180px]`}
                         >
-                            <option value="">Bo'limni tanlang</option>
+                            <option value="">{t('encounterform.bolimni_tanlang')}</option>
                             {clinicalDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                         <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
@@ -269,11 +271,11 @@ export const EncounterForm: React.FC<Props> = ({
                 <div className="p-8 text-center">
                     <p className="text-muted text-sm">
                         {departmentId
-                            ? "Bu bo'lim uchun shablon yaratilmagan."
-                            : "Bo'limni tanlang."}
+                            ? t('encounterform.bu_bolim_uchun_shablon')
+                            : t('ui.bolimni_tanlang')}
                     </p>
                     <p className="text-faint text-xs mt-1">
-                        Shablonlar Sozlamalar → Bo'limlar bo'limida tahrirlanadi.
+                        {t('encounterform.shablonlar_sozlamalar_bolimlar_bolimida')}
                     </p>
                 </div>
             ) : (
@@ -310,7 +312,7 @@ export const EncounterForm: React.FC<Props> = ({
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2 border-t border-line">
                             {problems.length > 0 && (
                                 <p className="text-xs text-red-600 dark:text-red-400 flex-1">
-                                    {problems.length === 1 ? problems[0] : `${problems.length} ta ko'rsatkich chegaradan tashqarida`}
+                                    {problems.length === 1 ? problems[0] : fill(t('encounterform.x_ta_korsatkich_chegaradan'), problems.length)}
                                 </p>
                             )}
                             <button
@@ -323,7 +325,7 @@ export const EncounterForm: React.FC<Props> = ({
                                            hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 <Save className="w-4 h-4" />
-                                {dirty ? 'Saqlash' : 'Saqlangan'}
+                                {dirty ? t('ui.saqlash') : 'Saqlangan'}
                             </button>
                         </div>
                     )}
@@ -335,6 +337,7 @@ export const EncounterForm: React.FC<Props> = ({
 
 /** Saqlangan bayonni faqat o'qish uchun ko'rsatadi (bemor tarixi, chop etish) */
 export const EncounterSummary: React.FC<{ template?: EncounterTemplate; value?: string | null }> = ({ template, value }) => {
+    const { t } = useLanguage();
     const data = parseValue(value);
     const filled = (template?.fields || []).filter(f => {
         const v = data[f.key];
@@ -342,7 +345,7 @@ export const EncounterSummary: React.FC<{ template?: EncounterTemplate; value?: 
     });
 
     if (!filled.length) {
-        return <p className="text-sm text-faint">Bayon to'ldirilmagan</p>;
+        return <p className="text-sm text-faint">{t('encounterform.bayon_toldirilmagan')}</p>;
     }
 
     return (

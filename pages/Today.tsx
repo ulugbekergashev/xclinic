@@ -12,7 +12,7 @@ import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole } from '.
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { maskPhone } from '../utils/accessControl';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, fill } from '../context/LanguageContext';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
 import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
@@ -182,7 +182,7 @@ export const Today: React.FC<Props> = ({
     const callVisit = async (v: Visit) => {
         setBusyVisit(v.id);
         try { await api.visits.call(v.id); await loadToday(); addToast('success', `№${v.queueNumber ?? '—'} chaqirildi`); }
-        catch (e: any) { addToast('error', e?.message || 'Xatolik'); }
+        catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
         finally { setBusyVisit(null); }
     };
 
@@ -270,9 +270,9 @@ export const Today: React.FC<Props> = ({
 
     /** Qabulni ochishga nima to'sqinlik qilyapti. `null` — hammasi tayyor. */
     const blockingReason = useMemo(() => {
-        if (!patient) return 'Avval bemorni tanlang yoki yangisini qo\'shing.';
-        if (!departmentId) return "Bo'limni tanlang.";
-        if (!isDiagnosticDept && !doctorId && deptDoctors.length > 0) return 'Shifokorni tanlang.';
+        if (!patient) return t('today.avval_bemorni_tanlang_yoki');
+        if (!departmentId) return t('ui.bolimni_tanlang');
+        if (!isDiagnosticDept && !doctorId && deptDoctors.length > 0) return t('today.shifokorni_tanlang');
         return null;
     }, [patient, departmentId, isDiagnosticDept, doctorId, deptDoctors]);
 
@@ -381,10 +381,10 @@ export const Today: React.FC<Props> = ({
         try {
             const r = await markAppointmentArrived(appt, { doctors, services });
             if (r.appointmentNotClosed) {
-                addToast('info', "Qabul ochildi, lekin kalendardagi yozuv holati yangilanmadi");
+                addToast('info', t('today.qabul_ochildi_lekin_kalendardagi'));
             }
             setLastTicket({ ...r.visit, patient: appt.patient || null });
-            addToast('success', `${appt.patientName} — navbat №${r.visit.queueNumber ?? '—'}`);
+            addToast('success', fill(t('today.x_navbat_x'), appt.patientName, r.visit.queueNumber ?? '—'));
             loadToday();
             loadTodayAppts();
         } catch (e: any) {
@@ -394,15 +394,15 @@ export const Today: React.FC<Props> = ({
                 navigate(`/patients/${appt.patientId}?visit=${f.visitId}`);
                 return;
             }
-            setError(e?.message || "Qabulni ochib bo'lmadi");
+            setError(e?.message || t('ui.qabulni_ochib_bolmadi'));
         } finally {
             setArriving(null);
         }
     };
 
     const openVisit = async () => {
-        if (!patient) { setError('Bemorni tanlang'); return; }
-        if (!departmentId) { setError("Bo'limni tanlang"); return; }
+        if (!patient) { setError(t('ui.bemorni_tanlang')); return; }
+        if (!departmentId) { setError(t('encounterform.bolimni_tanlang')); return; }
 
         /* SHIFOKORSIZ QABUL (audit B-21).
 
@@ -414,7 +414,7 @@ export const Today: React.FC<Props> = ({
            DIAGNOSTIKADA shifokor shart emas: tekshiruvni laborant yoki
            texnik bajaradi va u navbat ro'yxatiga bog'lanmaydi. */
         if (!isDiagnosticDept && !doctorId) {
-            setError("Shifokorni tanlang — aks holda qabul hech kimning navbatida ko'rinmaydi");
+            setError(t('today.shifokorni_tanlang_aks_holda'));
             return;
         }
         setSaving(true); setError('');
@@ -437,7 +437,7 @@ export const Today: React.FC<Props> = ({
             }
 
             setLastTicket({ ...visit, patient });
-            addToast('success', `Qabul ochildi — navbat №${visit.queueNumber ?? '—'}`);
+            addToast('success', fill(t('today.qabul_ochildi_navbat_x'), visit.queueNumber ?? '—'));
             reset();
             loadToday();
         } catch (e: any) {
@@ -455,7 +455,7 @@ export const Today: React.FC<Props> = ({
                     status: e.data.status || '',
                 });
             } else {
-                setError(e.message || 'Qabul ochilmadi');
+                setError(e.message || t('today.qabul_ochilmadi'));
             }
         } finally { setSaving(false); }
     };
@@ -490,11 +490,11 @@ export const Today: React.FC<Props> = ({
                 catch (err) { console.error("Xizmat qo'shilmadi", err); }
             }
             setLastTicket({ ...visit, patient: patient! });
-            addToast('success', `Ikkinchi qabul ochildi — navbat №${visit.queueNumber ?? '—'}`);
+            addToast('success', fill(t('today.ikkinchi_qabul_ochildi_navbat'), visit.queueNumber ?? '—'));
             reset();
             loadToday();
         } catch (e: any) {
-            setError(e.message || 'Qabul ochilmadi');
+            setError(e.message || t('today.qabul_ochilmadi'));
         } finally { setSaving(false); }
     };
 
@@ -504,12 +504,12 @@ export const Today: React.FC<Props> = ({
         const room = doctors.find(d => d.id === v.doctorId)?.room || '';
         const w = window.open('', '_blank', 'width=380,height=520');
         if (!w) return;
-        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>{t('reception.ticket')}</title>
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${t('reception.ticket')}</title>
 <style>@page{size:80mm auto;margin:4mm}body{font-family:'Segoe UI',Arial,sans-serif;text-align:center;margin:0;padding:8px}
 .n{font-size:64px;font-weight:800;line-height:1;margin:10px 0}
 .c{font-size:15px;font-weight:700}.d{font-size:13px;margin:3px 0}.s{border-top:1px dashed #000;margin:10px 0}
 </style></head><body>
-<div class="c">${currentClinic?.name || 'Klinika'}</div>
+<div class="c">${currentClinic?.name || t('ui.klinika')}</div>
 <div class="s"></div>
 <div class="d">${dept?.name || ''}</div>
 <div class="n">${v.queueNumber ?? '—'}</div>
@@ -684,14 +684,14 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
                                 <CalendarIcon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                                Bugunga yozilganlar
+                                {t('today.bugunga_yozilganlar')}
                                 <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
                                     {waitingAppts.length}
                                 </span>
                             </h3>
                             <button type="button" onClick={() => navigate('/calendar')}
                                 className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
-                                Kalendar →
+                                {t('today.kalendar')}
                             </button>
                         </div>
                         <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -704,18 +704,18 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                     <div className="min-w-0 flex-1">
                                         <p className="text-sm font-medium text-ink truncate">{a.patientName}</p>
                                         <p className="text-xs text-muted truncate">
-                                            {a.type || 'Qabul'}{a.doctorName ? ` · ${a.doctorName}` : ''}
+                                            {a.type || t('nav.visit')}{a.doctorName ? ` · ${a.doctorName}` : ''}
                                         </p>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={() => markArrived(a)}
                                         disabled={arriving === a.id}
-                                        title="Qabulni ochish — bo'lim, shifokor va xizmat yozuvdan olinadi"
+                                        title={t('today.qabulni_ochish_bolim_shifokor')}
                                         className="shrink-0 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center gap-1.5"
                                     >
                                         <CheckCircle className="w-3.5 h-3.5" />
-                                        {arriving === a.id ? 'Ochilmoqda...' : 'Keldi'}
+                                        {arriving === a.id ? 'Ochilmoqda...' : t('ui.keldi')}
                                     </button>
                                 </div>
                             ))}
@@ -729,7 +729,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     ma'nosiz osilib qolardi. */}
                 {canRegister && (<>
                 <div className="flex items-center gap-2 text-sm pt-2">
-                    {[['1', 'Bemor'], ['2', "Bo'lim"], ['3', 'Qabul']].map(([n, label], i) => {
+                    {[['1', t('ui.bemor')], ['2', t('ui.bolim_2')], ['3', t('nav.visit')]].map(([n, label], i) => {
                         const idx = i + 1;
                         const cls = step > idx ? stepDone : step === idx ? stepNow : stepIdle;
                         return (
@@ -745,7 +745,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                 </div>
                 {/* 1. Bemor */}
                 <div className="bg-surface rounded-xl border border-line p-4">
-                    <h3 className="text-sm font-semibold text-ink mb-3">1. Bemor</h3>
+                    <h3 className="text-sm font-semibold text-ink mb-3">{t('today.1_bemor')}</h3>
 
                     {patient ? (
                         <div className="flex items-center gap-3 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
@@ -760,7 +760,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             </div>
                             <button onClick={() => { setPatient(null); setSearch(''); }}
                                 className="text-sm text-muted hover:text-muted">
-                                O'zgartirish
+                                {t('common.change')}
                             </button>
                         </div>
                     ) : (
@@ -807,7 +807,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
 
                             <button onClick={() => setShowNewPatient(true)}
                                 className="mt-3 flex items-center gap-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline">
-                                <UserPlus className="w-4 h-4" /> Yangi bemor qo'shish
+                                <UserPlus className="w-4 h-4" /> {t('today.yangi_bemor_qoshish')}
                             </button>
                         </>
                     )}
@@ -815,7 +815,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
 
                 {/* 2. Bo'lim va shifokor */}
                 <div className={`bg-surface rounded-xl border border-line p-4 ${!patient ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <h3 className="text-sm font-semibold text-ink mb-3">2. Bo'lim va shifokor</h3>
+                    <h3 className="text-sm font-semibold text-ink mb-3">{t('today.2_bolim_va_shifokor')}</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {/* Yorliqlar `htmlFor` orqali maydonga ulanadi: ekran
                             o'quvchi dasturda maydon nomsiz o'qilmasin va
@@ -832,39 +832,39 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                                 buzuq deb o'ylardi (audit XC-05). */}
                             {hiddenDepts.length > 0 && (
                                 <p className="mt-1 text-[11px] text-faint">
-                                    {hiddenDepts.map(d => d.name).join(', ')} — bu yerda yo'q: ular shifokor buyurtmasi bilan ochiladi.
+                                    {hiddenDepts.map(d => d.name).join(', ')} — {t('today.bu_yerda_yoq_ular')}
                                 </p>
                             )}
                         </div>
                         <div>
                             <label htmlFor="rc-doctor" className="block text-xs font-medium text-muted mb-1.5">
-                                Shifokor{isDiagnosticDept ? '' : ' *'}
-                                {deptDoctors.length === 0 && departmentId ? " (bo'limda shifokor yo'q)" : ''}
+                                {t('ui.shifokor_2')}{isDiagnosticDept ? '' : ' *'}
+                                {deptDoctors.length === 0 && departmentId ? t('today.bolimda_shifokor_yoq') : ''}
                             </label>
                             <select id="rc-doctor" value={doctorId} onChange={e => setDoctorId(e.target.value)}
                                 disabled={!departmentId} className={inputCls}>
                                 <option value="">
-                                    {!departmentId ? "Avval bo'limni tanlang"
-                                        : isDiagnosticDept ? t('reception.unassigned') : 'Shifokorni tanlang'}
+                                    {!departmentId ? t('visit.pickDept')
+                                        : isDiagnosticDept ? t('reception.unassigned') : t('today.shifokorni_tanlang_2')}
                                 </option>
                                 {deptDoctors.map(d => <option key={d.id} value={d.id}>{formatFullName(d)}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label htmlFor="rc-service" className="block text-xs font-medium text-muted mb-1.5">Xizmat (qabul turi)</label>
+                            <label htmlFor="rc-service" className="block text-xs font-medium text-muted mb-1.5">{t('today.xizmat_qabul_turi')}</label>
                             <select id="rc-service" value={serviceId} onChange={e => setServiceId(e.target.value ? Number(e.target.value) : '')}
                                 disabled={!departmentId} className={inputCls}>
-                                <option value="">{departmentId ? 'Xizmatsiz' : "Avval bo'limni tanlang"}</option>
+                                <option value="">{departmentId ? 'Xizmatsiz' : t('visit.pickDept')}</option>
                                 {deptServices.map(s => <option key={s.id} value={s.id}>{s.name} — {fmt(s.price)}</option>)}
                             </select>
                             {departmentId && deptServices.length === 0 && (
                                 <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-                                    Bu bo'limga xizmat biriktirilmagan — Sozlamalar &gt; Xizmatlar bo'limida belgilang.
+                                    {t('today.bu_bolimga_xizmat_biriktirilmagan')}
                                 </p>
                             )}
                         </div>
                         <div>
-                            <label htmlFor="rc-complaints" className="block text-xs font-medium text-muted mb-1.5">Shikoyat (ixtiyoriy)</label>
+                            <label htmlFor="rc-complaints" className="block text-xs font-medium text-muted mb-1.5">{t('today.shikoyat_ixtiyoriy')}</label>
                             <input id="rc-complaints" value={complaints} onChange={e => setComplaints(e.target.value)} className={inputCls} placeholder={t('reception.complaintsPh')} />
                         </div>
                     </div>
@@ -875,7 +875,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     <div>
                         <p className="text-sm text-muted">{t('reception.toPay')}</p>
                         <p className="text-2xl font-bold text-ink tabular-nums">
-                            {fmt(selectedService?.price || 0)} <span className="text-base font-normal">so'm</span>
+                            {fmt(selectedService?.price || 0)} <span className="text-base font-normal">{t('ui.som')}</span>
                         </p>
                     </div>
                     {/* NIMA YETISHMAYOTGANI aytiladi. Ilgari tugma jimgina
@@ -889,9 +889,9 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         {blockingReason && (
                             <p className="text-xs text-amber-600 dark:text-amber-400 max-w-[16rem] text-right">{blockingReason}</p>
                         )}
-                        <button aria-label="Qabulni ochish" onClick={openVisit} disabled={!!blockingReason || saving}
+                        <button aria-label={t('today.qabulni_ochish')} onClick={openVisit} disabled={!!blockingReason || saving}
                             className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                            {saving ? 'Ochilmoqda...' : 'Qabulni ochish'} <ArrowRight className="w-4 h-4" />
+                            {saving ? 'Ochilmoqda...' : t('today.qabulni_ochish')} <ArrowRight className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
@@ -902,13 +902,13 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         <CheckCircle className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                         <div>
                             <p className="font-medium text-ink">
-                                Navbat №{lastTicket.queueNumber} — {lastTicket.patient?.lastName} {lastTicket.patient?.firstName}
+                                {t('today.navbat')}{lastTicket.queueNumber} — {lastTicket.patient?.lastName} {lastTicket.patient?.firstName}
                             </p>
                             <p className="text-xs text-muted">{t('reception.queued')}</p>
                         </div>
                         <button onClick={() => printTicket(lastTicket)}
                             className="ml-auto flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-sm font-medium hover:bg-elevated">
-                            <Printer className="w-4 h-4" /> Talon chiqarish
+                            <Printer className="w-4 h-4" /> {t('today.talon_chiqarish')}
                         </button>
                     </div>
                 )}
@@ -922,7 +922,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                     <h3 className="font-semibold text-ink">
                         {userRole === UserRole.DOCTOR ? t('today.myQueue') : t('reception.todayQueue')}
                     </h3>
-                    <span className="text-sm text-muted">{groups.active.length} ta</span>
+                    <span className="text-sm text-muted">{groups.active.length} {t('ui.ta')}</span>
                     <button aria-label={t('reception.refresh')} onClick={loadToday} className="ml-auto p-1.5 text-faint hover:text-muted" title={t('reception.refresh')}>
                         <RefreshCw className="w-4 h-4" />
                     </button>
@@ -936,7 +936,7 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                         className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left hover:bg-amber-500/15 transition-colors">
                         <Wallet className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                         <span className="text-sm font-bold text-amber-700 dark:text-amber-300">
-                            {t('today.toPay')}: {dueTotal.people} ta bemor
+                            {t('today.toPay')}: {dueTotal.people} {t('patients.badges.patientsCount')}
                         </span>
                         <span className="ml-auto text-sm font-black tabular-nums text-amber-700 dark:text-amber-300">
                             {formatNumber(dueTotal.sum)}
@@ -1038,33 +1038,32 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
                             <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                             <div>
                                 <h3 className="font-semibold text-ink">
-                                    Bu bemorga bugun qabul ochilgan
+                                    {t('today.bu_bemorga_bugun_qabul')}
                                 </h3>
                                 <p className="text-sm text-muted mt-1">
-                                    Shu bo'limda navbat №{duplicate.queueNumber ?? '—'}
-                                    {duplicate.status ? `, holati: ${duplicate.status}` : ''}.
+                                    {t('today.shu_bolimda_navbat')}{duplicate.queueNumber ?? '—'}
+                                    {duplicate.status ? fill(t('today.holati_x'), duplicate.status) : ''}.
                                 </p>
                             </div>
                         </div>
 
                         <p className="text-xs text-muted mb-4">
-                            Yangi qabul ochilsa, konsultatsiya narxi IKKINCHI marta
-                            hisobga tushadi. Bemor qaytib kelgan bo'lsa — mavjud qabulni ochish kerak.
+                            {t('today.yangi_qabul_ochilsa_konsultatsiya')}
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-2">
                             <button onClick={openExisting}
                                 className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
-                                Mavjud qabulni ochish
+                                {t('today.mavjud_qabulni_ochish')}
                             </button>
                             <button onClick={forceNew} disabled={saving}
                                 className="flex-1 px-4 py-2 border border-amber-400 text-amber-700 dark:text-amber-300 rounded-lg text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50">
-                                Baribir yangisini ochish
+                                {t('today.baribir_yangisini_ochish')}
                             </button>
                         </div>
                         <button onClick={() => setDuplicate(null)}
                             className="w-full mt-2 px-4 py-2 text-sm text-muted hover:bg-elevated rounded-lg">
-                            Bekor qilish
+                            {t('common.cancel')}
                         </button>
                     </div>
                 </div>

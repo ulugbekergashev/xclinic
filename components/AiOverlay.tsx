@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { UserRole } from '../types';
 import { AiAssistant } from '../pages/AiAssistant';
 
+import { useLanguage } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    AI YORDAMCHI — SAHIFA USTIDA, SAHIFA ICHIDA EMAS.
 
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export const AiOverlay: React.FC<Props> = ({ open, onClose, userRole }) => {
+    const { t } = useLanguage();
     /* Escape yopadi va ochiq turganda sahifa orqada skroll qilmaydi. */
     useEffect(() => {
         if (!open) return;
@@ -42,7 +44,7 @@ export const AiOverlay: React.FC<Props> = ({ open, onClose, userRole }) => {
             onClick={onClose} role="dialog" aria-modal="true">
             <div className="w-full max-w-5xl bg-canvas rounded-2xl shadow-2xl my-auto relative"
                 onClick={e => e.stopPropagation()}>
-                <button onClick={onClose} aria-label="Yopish"
+                <button onClick={onClose} aria-label={t('common.close')}
                     className="absolute top-3 right-3 z-10 p-2 rounded-lg text-faint hover:text-muted hover:bg-elevated">
                     <X className="w-5 h-5" />
                 </button>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, fill } from '../context/LanguageContext';
 import { formatFullName } from '../utils/format';
 import {
     ChevronLeft, ChevronRight, Download, Wallet, Banknote, CreditCard,
@@ -134,12 +134,12 @@ const SummaryTiles: React.FC<{ totals: CashBookTotals; drawer?: number }> = ({ t
     const { t } = useLanguage();
     return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <Tile label={t('finance.cash.totalRevenue')} value={totals.gross} icon={Coins} hint={`${totals.paymentCount} ta to'lov`} />
+        <Tile label={t('finance.cash.totalRevenue')} value={totals.gross} icon={Coins} hint={fill(t('cashbook.x_ta_tolov'), totals.paymentCount)} />
         <Tile label={t('finance.cash.cash')} value={totals.cashIn} icon={Banknote} tone="cash" />
-        <Tile label={t('finance.cash.cashless')} value={totals.nonCashIn} icon={CreditCard} tone="card" hint="Karta / Click / o'tkazma" />
-        <Tile label={t('finance.cash.expense')} value={totals.expenseTotal} icon={TrendingDown} tone="expense" hint={`naqd: ${num(totals.cashExpense)}`} />
-        <Tile label={t('finance.cash.leftInDrawer')} value={drawer ?? totals.drawer} icon={Wallet} tone="drawer" hint="naqd yashik" />
-        <Tile label={t('finance.cash.creditGiven')} value={totals.unpaid} icon={AlertCircle} hint="to'lanmagan" />
+        <Tile label={t('finance.cash.cashless')} value={totals.nonCashIn} icon={CreditCard} tone="card" hint={t('cashbook.karta_click_otkazma')} />
+        <Tile label={t('finance.cash.expense')} value={totals.expenseTotal} icon={TrendingDown} tone="expense" hint={fill(t('cashbook.naqd_x'), num(totals.cashExpense))} />
+        <Tile label={t('finance.cash.leftInDrawer')} value={drawer ?? totals.drawer} icon={Wallet} tone="drawer" hint={t('cashbook.naqd_yashik')} />
+        <Tile label={t('finance.cash.creditGiven')} value={totals.unpaid} icon={AlertCircle} hint={t('visit.unpaidShort')} />
     </div>
 );
 };
@@ -168,7 +168,7 @@ const MethodStrip: React.FC<{ totals: CashBookTotals }> = ({ totals }) => {
                         <div>
                             <p className="text-[11px] text-faint leading-tight">{t('finance.cash.fromAdvance')}</p>
                             <p className="text-sm font-bold text-muted leading-tight">
-                                {num(totals.fromBalance)} <span className="text-[10px] font-normal">· kassaga kirmagan</span>
+                                {num(totals.fromBalance)} <span className="text-[10px] font-normal">{t('cashbook.kassaga_kirmagan')}</span>
                             </p>
                         </div>
                     </div>
@@ -186,18 +186,18 @@ const ClosureChip: React.FC<{
     const { t } = useLanguage();
     if (!status?.closed) {
         if (!hasActivity) return <span className="text-faint">·</span>;
-        return <span className="text-[10px] font-bold text-faint uppercase">ochiq</span>;
+        return <span className="text-[10px] font-bold text-faint uppercase">{t('card.openVisitBadge')}</span>;
     }
     if (status.changedAfterClose) {
         return (
-            <span title="Yopilgandan keyin o'zgargan" className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                <AlertCircle className="w-3 h-3" /> o'zgardi
+            <span title={t('cashbook.yopilgandan_keyin_ozgargan')} className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                <AlertCircle className="w-3 h-3" /> {t('cashbook.ozgardi')}
             </span>
         );
     }
     const exact = Math.abs(status.closure?.difference || 0) < 1;
     return exact ? (
-        <span title="Kassa to'g'ri keldi" className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+        <span title={t('cashbook.kassa_togri_keldi')} className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
             <Check className="w-3 h-3" /> yopildi
         </span>
     ) : (
@@ -264,7 +264,7 @@ const CashFlowPanel: React.FC<{
             key="opening"
             label={t('finance.cash.atDayStart')}
             value={totals.openingCash}
-            hint={day.openingAnchorDate ? `${formatDateLabel(day.openingAnchorDate)} yopilishidan` : 'hali yopilmagan'}
+            hint={day.openingAnchorDate ? `${formatDateLabel(day.openingAnchorDate)} yopilishidan` : t('cashbook.hali_yopilmagan')}
         />, ''
     );
     if (totals.cashIn) push(<FlowStep key="in" label={t('finance.cash.cashIn')} value={totals.cashIn} sign="+" tone="in" />, '+');
@@ -302,7 +302,7 @@ const CashFlowPanel: React.FC<{
                         <div className="mt-5 pt-4 border-t border-dashed border-line">
                             <p className="text-[11px] text-faint uppercase tracking-wide mb-2 flex items-center gap-1.5">
                                 <CreditCard className="w-3.5 h-3.5" />
-                                Naqdsiz (hisob raqam) — yashikda emas
+                                {t('cashbook.naqdsiz_hisob_raqam_yashikda')}
                             </p>
                             <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
                                 <FlowStep label={t('finance.cash.received')} value={totals.nonCashIn} sign="+" tone="in" />
@@ -313,14 +313,13 @@ const CashFlowPanel: React.FC<{
                                     </>
                                 )}
                                 <Operator>=</Operator>
-                                <FlowStep label="Hisobga qo'shildi" value={totals.nonCashIn - totals.nonCashExpense} />
+                                <FlowStep label={t('cashbook.hisobga_qoshildi')} value={totals.nonCashIn - totals.nonCashExpense} />
                             </div>
                         </div>
                     )}
                     {!day.openingAnchorDate && (
                         <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
-                            Hali birorta kun yopilmagan — kun boshi 0 deb olindi. Birinchi marta
-                            yopganingizdan keyin qoldiq har kuni o'zi ko'chib boradi.
+                            {t('cashbook.hali_birorta_kun_yopilmagan')}
                         </p>
                     )}
                 </div>
@@ -341,7 +340,7 @@ const CashFlowPanel: React.FC<{
                                     <span className="font-semibold tabular-nums">{num(closure.closure.countedCash)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                    <span className="font-bold text-muted">Farq</span>
+                                    <span className="font-bold text-muted">{t('ui.farq')}</span>
                                     <span className={`font-black tabular-nums ${exact
                                         ? 'text-emerald-600 dark:text-emerald-400'
                                         : 'text-red-600 dark:text-red-400'}`}>
@@ -429,25 +428,24 @@ const ClosureBanner: React.FC<{
                     <div>
                         <p className="text-sm font-bold text-ink">
                             {status.changedAfterClose
-                                ? 'Kun yopilgan, lekin keyin o\'zgardi'
-                                : exact ? 'Kun yopilgan — kassa to\'g\'ri keldi' : 'Kun yopilgan — farq bor'}
+                                ? t('cashbook.kun_yopilgan_lekin_keyin')
+                                : exact ? t('cashbook.kun_yopilgan_kassa_togri') : t('cashbook.kun_yopilgan_farq_bor')}
                         </p>
                         <p className="text-xs text-muted mt-1">
-                            Sanalgan <b>{num(c.countedCash)}</b>
+                            {t('ui.sanalgan')} <b>{num(c.countedCash)}</b>
                             <span className="mx-1.5">·</span>{t('finance.cash.byLedger')}<b>{num(status.changedAfterClose ? currentDrawer : c.expectedCash)}</b>
                             <span className="mx-1.5">·</span>
-                            Farq <b className={exact ? '' : diff > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}>
+                            {t('ui.farq')} <b className={exact ? '' : diff > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}>
                                 {diff > 0 ? '+' : ''}{num(diff)}
                             </b>
                         </p>
                         {status.changedAfterClose && (
                             <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                                Yopilgandan keyin bu kunga to'lov yoki xarajat qo'shilgan.
-                                Naqdni qayta sanab, kunni yangilang.
+                                {t('cashbook.yopilgandan_keyin_bu_kunga')}
                             </p>
                         )}
                         <p className="text-[11px] text-faint mt-1.5">
-                            {c.closedByName || 'Xodim'} · {new Date(c.closedAt).toLocaleString('uz-UZ')}
+                            {c.closedByName || t('staff.xodim')} · {new Date(c.closedAt).toLocaleString('uz-UZ')}
                             {c.note ? ` · ${c.note}` : ''}
                         </p>
                     </div>
@@ -688,7 +686,7 @@ export const CashBook: React.FC<CashBookProps> = ({
             setServerExpected(await api.cashShift.expected(date));
         } catch (e: any) {
             setServerExpected(null);
-            setExpectedError(e?.message || 'Server hisobi olinmadi');
+            setExpectedError(e?.message || t('cashbook.server_hisobi_olinmadi'));
         } finally {
             setExpectedLoading(false);
         }
@@ -717,10 +715,10 @@ export const CashBook: React.FC<CashBookProps> = ({
         setOpeningShift(true);
         try {
             await api.cashShift.open({ date, shift: multiShift ? activeShift : 1 });
-            addToast?.('success', 'Smena ochildi');
+            addToast?.('success', t('cashbook.smena_ochildi'));
             onChargesChanged?.();
         } catch (e: any) {
-            addToast?.('error', e?.message || "Smenani ochib bo'lmadi");
+            addToast?.('error', e?.message || t('cashbook.smenani_ochib_bolmadi'));
         } finally {
             setOpeningShift(false);
         }
@@ -931,10 +929,10 @@ export const CashBook: React.FC<CashBookProps> = ({
        o'zgaradi, buyurtmada esa eskisi qoladi. Ular manbasidan
        tuzatiladi. */
     const expenseSource = (e: Expense): string | null => {
-        if (e.labOrderId) return 'Laboratoriya buyurtmasi';
-        if (e.inventoryItemId) return 'Ombor kirimi';
-        if (e.category === 'DoctorShare') return 'Shifokor ulushi';
-        if (e.category === 'Salary') return 'Oylik vedomosti';
+        if (e.labOrderId) return t('cashbook.laboratoriya_buyurtmasi');
+        if (e.inventoryItemId) return t('cashbook.ombor_kirimi');
+        if (e.category === 'DoctorShare') return t('ui.shifokor_ulushi_2');
+        if (e.category === 'Salary') return t('cashbook.oylik_vedomosti');
         return null;
     };
 
@@ -953,7 +951,7 @@ export const CashBook: React.FC<CashBookProps> = ({
 
     const handleDeleteExpense = async () => {
         if (!editingExpense || !onDeleteExpense) return;
-        if (!window.confirm(`«${editingExpense.title}» xarajati o'chirilsinmi? Kassa qoldig'i qayta hisoblanadi.`)) return;
+        if (!window.confirm(fill(t('cashbook.x_xarajati_ochirilsinmi_kassa'), editingExpense.title))) return;
         setExpenseDeleting(true);
         try {
             await onDeleteExpense(editingExpense.id);
@@ -1050,7 +1048,7 @@ export const CashBook: React.FC<CashBookProps> = ({
             <div className={`flex flex-col lg:flex-row items-start lg:items-center gap-4 ${embedded ? 'lg:justify-end' : 'justify-between'}`}>
                 {!embedded && (
                     <div>
-                        <h1 className="text-2xl font-bold text-ink">Kassa</h1>
+                        <h1 className="text-2xl font-bold text-ink">{t('cashbook.kassa')}</h1>
                         <p className="text-sm text-muted">{t('finance.cash.realMoneyHint')}</p>
                     </div>
                 )}
@@ -1147,7 +1145,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 <ChevronRight className="w-4 h-4 text-muted" />
                             </button>
                             {date !== today && (
-                                <Button variant="ghost" size="sm" onClick={() => changeDate(today)}>Bugun</Button>
+                                <Button variant="ghost" size="sm" onClick={() => changeDate(today)}>{t('ui.bugun')}</Button>
                             )}
                         </div>
                     ) : (
@@ -1205,9 +1203,9 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         ? 'bg-surface text-primary-600 shadow-sm'
                                         : 'text-muted hover:text-muted'}`}
                                 >
-                                    {w.shift}-smena
+                                    {w.shift}-{t('cashbook.smena')}
                                     {w.isOpen
-                                        ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="ochiq" />
+                                        ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title={t('card.openVisitBadge')} />
                                         : <Check className="w-3 h-3 text-emerald-500" />}
                                 </button>
                             );
@@ -1236,9 +1234,9 @@ export const CashBook: React.FC<CashBookProps> = ({
                         <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
                             <Users className="w-4 h-4 text-faint" />
                             <h2 className="text-sm font-bold text-ink">
-                                To'lovlar — shifokorlar bo'yicha
+                                {t('cashbook.tolovlar_shifokorlar_boyicha')}
                             </h2>
-                            <span className="text-xs text-faint">({day.rows.length} ta)</span>
+                            <span className="text-xs text-faint">({day.rows.length} {t('ui.ta')})</span>
                         </div>
 
                         {day.rows.length === 0 ? (
@@ -1253,15 +1251,15 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     <thead className="bg-elevated">
                                         <tr>
                                             <th className="px-4 py-3 text-left text-[11px] font-bold text-muted uppercase sticky left-0 bg-elevated z-10 min-w-[180px]">
-                                                Bemor
+                                                {t('common.patient')}
                                             </th>
-                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-muted uppercase w-20">Vaqt</th>
+                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-muted uppercase w-20">{t('ui.vaqt')}</th>
                                             {doctorCols.map(col => (
                                                 <th key={col.id} className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase whitespace-nowrap min-w-[110px]">
                                                     {col.name}
                                                 </th>
                                             ))}
-                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-muted uppercase whitespace-nowrap">Usul</th>
+                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-muted uppercase whitespace-nowrap">{t('finance.table.method')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-line">
@@ -1314,7 +1312,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     <tfoot className="bg-elevated border-t-2 border-line">
                                         <tr>
                                             <td className="px-4 py-3 font-bold text-ink sticky left-0 bg-elevated z-10">
-                                                JAMI
+                                                {t('cashbook.jami')}
                                             </td>
                                             <td />
                                             {doctorCols.map(col => (
@@ -1349,7 +1347,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                         <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
                             <ListOrdered className="w-4 h-4 text-faint" />
                             <h2 className="text-sm font-bold text-ink">{t('finance.cash.dayPayments')}</h2>
-                            <span className="text-xs text-faint">({day.rows.length} ta)</span>
+                            <span className="text-xs text-faint">({day.rows.length} {t('ui.ta')})</span>
                         </div>
                         {day.rows.length === 0 ? (
                             <p className="px-5 py-8 text-center text-sm text-muted">{t('finance.cash.noPayments')}</p>
@@ -1369,7 +1367,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 <span className="mx-1.5">·</span>
                                                 {getPaymentMethodLabel(row.method)}
                                                 {row.receivedByName && (
-                                                    <><span className="mx-1.5">·</span>qabul qildi: {row.receivedByName}</>
+                                                    <><span className="mx-1.5">·</span>{t('cashbook.qabul_qildi')}: {row.receivedByName}</>
                                                 )}
                                             </p>
                                         </div>
@@ -1400,8 +1398,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                     }}
                                                     disabled={transactions.find(t => t.id === row.id)?.linkedToCharges}
                                                     title={transactions.find(t => t.id === row.id)?.linkedToCharges
-                                                        ? "Xizmat qatorlariga bog'langan chek — summasini «Qaytarish» orqali tuzating"
-                                                        : 'Tuzatish'}
+                                                        ? t('cashbook.xizmat_qatorlariga_boglangan_chek')
+                                                        : t('ui.tuzatish')}
                                                     className="p-1.5 rounded-lg text-faint hover:text-primary-600 hover:bg-elevated transition-colors disabled:opacity-30 disabled:hover:text-faint disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                                 >
                                                     <Pencil className="w-4 h-4" />
@@ -1414,7 +1412,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             {canRefundCharges && row.patientId && row.method !== 'Refund' && (
                                                 <button
                                                     onClick={() => openChargePayment(row.patientName, row.patientId)}
-                                                    title="Qaytarish yoki qolgan qatorlarni to'lash"
+                                                    title={t('cashbook.qaytarish_yoki_qolgan_qatorlarni')}
                                                     className="p-1.5 rounded-lg text-faint hover:text-amber-600 hover:bg-elevated transition-colors"
                                                 >
                                                     <Undo2 className="w-4 h-4" />
@@ -1425,8 +1423,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                     onClick={() => setDeletingRow(row)}
                                                     disabled={transactions.find(t => t.id === row.id)?.linkedToCharges}
                                                     title={transactions.find(t => t.id === row.id)?.linkedToCharges
-                                                        ? "Xizmat qatorlariga bog'langan chek — o'chirib bo'lmaydi, «Qaytarish» dan foydalaning"
-                                                        : "O'chirish"}
+                                                        ? t('cashbook.xizmat_qatorlariga_boglangan_chek_2')
+                                                        : t('ui.ochirish_2')}
                                                     className="p-1.5 rounded-lg text-faint hover:text-red-600 hover:bg-elevated transition-colors disabled:opacity-30 disabled:hover:text-faint disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
@@ -1455,7 +1453,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             <div className="flex items-center gap-2 min-w-0">
                                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
                                 <h2 className="text-sm font-bold text-ink truncate">{t('finance.cash.unpaid')}</h2>
-                                <span className="text-xs text-faint">({unpaidItems.length} ta)</span>
+                                <span className="text-xs text-faint">({unpaidItems.length} {t('ui.ta')})</span>
                             </div>
                             <span className="text-sm font-black text-amber-600 dark:text-amber-400 tabular-nums shrink-0">
                                 {num(unpaidTotal)} UZS
@@ -1504,8 +1502,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                         <div className="px-5 py-4 border-b border-line-soft flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <TrendingDown className="w-4 h-4 text-faint" />
-                                <h2 className="text-sm font-bold text-ink">Xarajatlar</h2>
-                                <span className="text-xs text-faint">({day.expenses.length} ta)</span>
+                                <h2 className="text-sm font-bold text-ink">{t('cashbook.xarajatlar')}</h2>
+                                <span className="text-xs text-faint">({day.expenses.length} {t('ui.ta')})</span>
                             </div>
                             <span className="text-sm font-black text-red-600 dark:text-red-400 tabular-nums">
                                 {num(day.totals.expenseTotal)} UZS
@@ -1519,7 +1517,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         onClick={openExpenseModal}
                                         className="mt-2 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
                                     >
-                                        Xarajat qo'shish →
+                                        {t('cashbook.xarajat_qoshish')}
                                     </button>
                                 )}
                             </div>
@@ -1547,8 +1545,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         {editable ? (
                                             <button
                                                 onClick={() => openExpenseEdit(e)}
-                                                title="Tuzatish"
-                                                aria-label={`${e.title} — tuzatish`}
+                                                title={t('ui.tuzatish')}
+                                                aria-label={fill(t('cashbook.x_tuzatish'), e.title)}
                                                 className="shrink-0 p-1.5 rounded-lg text-faint hover:text-primary-600 hover:bg-elevated transition-colors"
                                             ><Pencil className="w-3.5 h-3.5" /></button>
                                         ) : (
@@ -1566,7 +1564,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
                                 <ArrowDownToLine className="w-4 h-4 text-faint" />
                                 <h2 className="text-sm font-bold text-ink">{t('finance.cash.cashMoves')}</h2>
-                                <span className="text-xs text-faint">({day.movements.length} ta)</span>
+                                <span className="text-xs text-faint">({day.movements.length} {t('ui.ta')})</span>
                             </div>
                             {day.movements.length === 0 ? (
                                 <div className="px-5 py-8 text-center">
@@ -1577,13 +1575,13 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 onClick={() => openMovement('Encashment')}
                                                 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
                                             >
-                                                Inkassatsiya →
+                                                {t('cashbook.inkassatsiya')}
                                             </button>
                                             <button
                                                 onClick={() => openMovement('Refund')}
                                                 className="text-xs font-bold text-muted hover:underline"
                                             >
-                                                Qaytarish →
+                                                {t('cashbook.qaytarish')}
                                             </button>
                                         </div>
                                     )}
@@ -1612,7 +1610,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             {onDeleteCashMovement && (
                                                 <button
                                                     onClick={() => onDeleteCashMovement(m.id).catch(() => { })}
-                                                    title="O'chirish"
+                                                    title={t('ui.ochirish')}
                                                     className="p-1.5 rounded-lg text-faint hover:text-red-600 hover:bg-elevated transition-colors shrink-0"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
@@ -1635,13 +1633,13 @@ export const CashBook: React.FC<CashBookProps> = ({
                         >
                             <History className="w-4 h-4 text-faint" />
                             <h2 className="text-sm font-bold text-ink">{t('finance.cash.auditTrail')}</h2>
-                            <span className="text-xs text-faint">kim nimani o'chirgan yoki tuzatgan</span>
+                            <span className="text-xs text-faint">{t('cashbook.kim_nimani_ochirgan_yoki')}</span>
                             <ChevronDown className={`w-4 h-4 text-faint ml-auto transition-transform ${auditOpen ? 'rotate-180' : ''}`} />
                         </button>
                         {auditOpen && (
                             <div className="border-t border-line-soft">
                                 {auditLoading ? (
-                                    <p className="px-5 py-6 text-center text-sm text-faint">Yuklanmoqda...</p>
+                                    <p className="px-5 py-6 text-center text-sm text-faint">{t('ui.yuklanmoqda_2')}</p>
                                 ) : auditLogs.length === 0 ? (
                                     <p className="px-5 py-6 text-center text-sm text-muted">{t('finance.cash.noChanges')}</p>
                                 ) : (
@@ -1651,14 +1649,14 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 <div className="min-w-0">
                                                     <p className="text-sm text-ink">{log.summary}</p>
                                                     <p className="text-[11px] text-faint">
-                                                        {log.byName || 'Xodim'}
+                                                        {log.byName || t('staff.xodim')}
                                                         <span className="mx-1.5">.</span>
                                                         {new Date(log.createdAt).toLocaleString('uz-UZ')}
                                                     </p>
                                                 </div>
                                                 {log.afterClose && (
                                                     <span className="shrink-0 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">
-                                                        yopilgandan keyin
+                                                        {t('cashbook.yopilgandan_keyin')}
                                                     </span>
                                                 )}
                                             </li>
@@ -1698,7 +1696,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                         {isWaiting ? t('finance.cash.awaitingPayment') : t('finance.cash.nowInClinic')}
                                     </h2>
                                     <span className="text-xs text-faint">
-                                        ({rows.length} {isWaiting ? "ta ketishdan oldin" : "ta to'lovsiz"})
+                                        ({rows.length} {isWaiting ? t('cashbook.ta_ketishdan_oldin') : t('cashbook.ta_tolovsiz')})
                                     </span>
                                     <span className={`ml-auto text-sm font-black tabular-nums ${isWaiting
                                         ? 'text-amber-600 dark:text-amber-400'
@@ -1719,7 +1717,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                             <div className="min-w-0 flex-1">
                                                 <p className="text-sm font-medium text-ink truncate">{g.patientName}</p>
                                                 <p className="text-[11px] text-faint">
-                                                    {(g.items || []).length} ta xizmat
+                                                    {(g.items || []).length} {t('cashbook.ta_xizmat')}
                                                     {(g.items || []).length > 0 ? ` · ${g.items.map((i: any) => i.name).join(', ').slice(0, 60)}` : ''}
                                                 </p>
                                             </div>
@@ -1744,11 +1742,11 @@ export const CashBook: React.FC<CashBookProps> = ({
                             <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
                                 <LockOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                 <span className="text-sm text-emerald-900 dark:text-emerald-200">
-                                    Smena ochiq{openedShift.openedByName ? ` — ${openedShift.openedByName}` : ''}
+                                    {t('cashbook.smena_ochiq')}{openedShift.openedByName ? ` — ${openedShift.openedByName}` : ''}
                                     {openedShift.openedAt ? ` · ${new Date(openedShift.openedAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}` : ''}
                                 </span>
                                 <span className="text-xs text-emerald-700 dark:text-emerald-300 ml-auto tabular-nums">
-                                    boshlang'ich naqd {num(openedShift.openingCash || 0)}
+                                    {t('cashbook.boshlangich_naqd')} {num(openedShift.openingCash || 0)}
                                 </span>
                             </div>
                         ) : (
@@ -1758,7 +1756,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 <Button size="sm" variant="secondary" className="ml-auto"
                                     onClick={handleOpenShift} disabled={openingShift}>
                                     {openingShift ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <LockOpen className="w-3.5 h-3.5 mr-1.5" />}
-                                    Smenani ochish
+                                    {t('cashbook.smenani_ochish')}
                                 </Button>
                             </div>
                         )
@@ -1778,7 +1776,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
                         <CalendarDays className="w-4 h-4 text-faint" />
                         <h2 className="text-sm font-bold text-ink">{t('finance.cash.dayBook')}</h2>
-                        <span className="text-xs text-faint">kunni bosing — o'sha kun varag'i ochiladi</span>
+                        <span className="text-xs text-faint">{t('cashbook.kunni_bosing_osha_kun')}</span>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -1787,10 +1785,10 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     <th className="px-4 py-3 text-left text-[11px] font-bold text-muted uppercase sticky left-0 bg-elevated z-10">{t('common.day')}</th>
                                     <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('finance.cash.cash')}</th>
                                     <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('finance.cash.cashless')}</th>
-                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">Jami</th>
+                                    <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('common.total')}</th>
                                     <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase">{t('finance.cash.expense')}</th>
                                     <th className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase whitespace-nowrap">{t('finance.cash.leftInDrawer')}</th>
-                                    <th className="px-3 py-3 text-center text-[11px] font-bold text-muted uppercase whitespace-nowrap">Holat</th>
+                                    <th className="px-3 py-3 text-center text-[11px] font-bold text-muted uppercase whitespace-nowrap">{t('inventory.thStatus')}</th>
                                     {doctorCols.map(col => (
                                         <th key={col.id} className="px-3 py-3 text-right text-[11px] font-bold text-faint uppercase whitespace-nowrap min-w-[100px]">
                                             {col.name}
@@ -1808,7 +1806,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     >
                                         <td className="px-4 py-2.5 font-semibold text-ink sticky left-0 bg-surface z-10 whitespace-nowrap">
                                             {String(d.day).padStart(2, '0')}
-                                            {d.date === today && <span className="ml-2 text-[10px] text-primary-600 font-bold">bugun</span>}
+                                            {d.date === today && <span className="ml-2 text-[10px] text-primary-600 font-bold">{t('cashbook.bugun')}</span>}
                                         </td>
                                         <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
                                             {d.totals.cashIn ? num(d.totals.cashIn) : '—'}
@@ -1838,7 +1836,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             </tbody>
                             <tfoot className="bg-elevated border-t-2 border-line">
                                 <tr>
-                                    <td className="px-4 py-3 font-black text-ink sticky left-0 bg-elevated z-10">JAMI</td>
+                                    <td className="px-4 py-3 font-black text-ink sticky left-0 bg-elevated z-10">{t('cashbook.jami')}</td>
                                     <td className="px-3 py-3 text-right font-black tabular-nums text-emerald-600 dark:text-emerald-400">{num(monthData.totals.cashIn)}</td>
                                     <td className="px-3 py-3 text-right font-black tabular-nums text-blue-600 dark:text-blue-400">{num(monthData.totals.nonCashIn)}</td>
                                     <td className="px-3 py-3 text-right font-black tabular-nums text-ink">{num(monthData.totals.gross)}</td>
@@ -1847,7 +1845,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     <td className="px-3 py-3 text-center text-[11px] font-bold text-muted whitespace-nowrap">
                                         {monthData.days.filter(d => closureByDate.get(d.date)?.closed).length}
                                         {' / '}
-                                        {monthData.days.filter(d => d.hasActivity).length} yopilgan
+                                        {monthData.days.filter(d => d.hasActivity).length} {t('ui.yopilgan')}
                                     </td>
                                     {doctorCols.map(col => {
                                         const total = monthData.days.reduce((s, d) => s + (d.byDoctor[col.id] || 0), 0);
@@ -1896,7 +1894,7 @@ export const CashBook: React.FC<CashBookProps> = ({
             <Modal
                 isOpen={isExpenseOpen}
                 onClose={() => { setIsExpenseOpen(false); setEditingExpense(null); }}
-                title={`${editingExpense ? 'Xarajatni tuzatish' : 'Xarajat'} — ${formatDateLabel(date)}`}
+                title={`${editingExpense ? t('cashbook.xarajatni_tuzatish') : t('ui.xarajat')} — ${formatDateLabel(date)}`}
                 className="max-w-md"
             >
                 <div className="space-y-4">
@@ -1912,7 +1910,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     {departments.length > 0 && (
                         <div>
                             <Select
-                                label="Bo'lim"
+                                label={t('ui.bolim')}
                                 value={expenseForm.departmentId}
                                 onChange={e => setExpenseForm(f => ({ ...f, departmentId: e.target.value }))}
                             >
@@ -1926,7 +1924,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     )}
 
                     <Input
-                        label="Nomi *"
+                        label={t('cashbook.nomi')}
                         value={expenseForm.title}
                         onChange={e => setExpenseForm(f => ({ ...f, title: e.target.value }))}
                         placeholder={t('finance.cash.expensePlaceholder')}
@@ -1959,7 +1957,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             ))}
                         </div>
                         <p className="text-[11px] text-faint mt-1.5">
-                            Naqd tanlansa kassadagi pul kamayadi. Boshqasi hisob raqamdan chiqadi.
+                            {t('cashbook.naqd_tanlansa_kassadagi_pul')}
                         </p>
                         {/* NAQD YASHIQDA YETARLI PUL BORMI. Yashiqda jismonan
                             yo'q pulni chiqarib bo'lmaydi, lekin hech qanday
@@ -1972,9 +1970,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             yomonroq. Ogohlantiramiz. */}
                         {expenseForm.method === 'Cash' && expenseAmount > cashOnHand && (
                             <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                                Kassadagi naqd — {num(cashOnHand)} so'm. Bu xarajatdan keyin qoldiq
-                                manfiy bo'ladi ({num(cashOnHand - expenseAmount)}). Kun boshidagi
-                                qoldiq kiritilganini tekshiring.
+                                {t('cashbook.kassadagi_naqd')} — {num(cashOnHand)} {t('cashbook.som_bu_xarajatdan_keyin')}{num(cashOnHand - expenseAmount)}{t('cashbook.kun_boshidagi_qoldiq_kiritilganini')}
                             </p>
                         )}
                     </div>
@@ -1990,7 +1986,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     </div>
 
                     <p className="text-[11px] text-faint">
-                        Oylik va shifokor ulushi bu yerda yo'q — ular Hisobot tabida rasmiylashtiriladi.
+                        {t('cashbook.oylik_va_shifokor_ulushi')}
                     </p>
 
                     <div className="flex gap-2">
@@ -2001,20 +1997,20 @@ export const CashBook: React.FC<CashBookProps> = ({
                             <button
                                 onClick={handleDeleteExpense}
                                 disabled={expenseDeleting || expenseSaving}
-                                title="O'chirish"
+                                title={t('ui.ochirish')}
                                 className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-bold text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-all"
                             >
                                 {expenseDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                             </button>
                         )}
-                        <Button variant="secondary" className="flex-1" onClick={() => { setIsExpenseOpen(false); setEditingExpense(null); }}>Bekor</Button>
+                        <Button variant="secondary" className="flex-1" onClick={() => { setIsExpenseOpen(false); setEditingExpense(null); }}>{t('ui.bekor')}</Button>
                         <button
                             onClick={handleSaveExpense}
                             disabled={expenseSaving || expenseDeleting || !canSaveExpense}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm text-white bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed transition-all"
                         >
                             {expenseSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {expenseSaving ? 'Saqlanmoqda...' : 'Saqlash'}
+                            {expenseSaving ? t('ui.saqlanmoqda_2') : t('ui.saqlash')}
                         </button>
                     </div>
                 </div>
@@ -2051,7 +2047,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             onClick={() => setMovementForm(f => ({ ...f, amount: String(Math.max(0, Math.round(drawerNow))) }))}
                             className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
                         >
-                            Hammasini olish ({num(drawerNow)})
+                            {t('cashbook.hammasini_olish')}{num(drawerNow)})
                         </button>
                     )}
 
@@ -2061,7 +2057,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             value={movementForm.patientId}
                             onChange={e => setMovementForm(f => ({ ...f, patientId: e.target.value }))}
                             options={[
-                                { value: '', label: 'Tanlanmagan' },
+                                { value: '', label: t('ui.tanlanmagan') },
                                 ...patients.map(pt => ({ value: pt.id, label: `${formatFullName(pt)}` })),
                             ]}
                         />
@@ -2073,24 +2069,24 @@ export const CashBook: React.FC<CashBookProps> = ({
                             value={movementForm.note}
                             onChange={e => setMovementForm(f => ({ ...f, note: e.target.value }))}
                             rows={2}
-                            placeholder={movementType === 'Encashment' ? 'Kimga topshirildi' : 'Nima uchun qaytarildi'}
+                            placeholder={movementType === 'Encashment' ? 'Kimga topshirildi' : t('cashbook.nima_uchun_qaytarildi')}
                             className="w-full px-3 py-2.5 bg-surface border border-line rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 placeholder-faint"
                         />
                     </div>
 
                     <p className="text-[11px] text-faint">
-                        Bu xarajat emas — kassadagi naqdni kamaytiradi, lekin klinikaning sof foydasiga ta'sir qilmaydi.
+                        {t('cashbook.bu_xarajat_emas_kassadagi')}
                     </p>
 
                     <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1" onClick={() => setMovementType(null)}>Bekor</Button>
+                        <Button variant="secondary" className="flex-1" onClick={() => setMovementType(null)}>{t('ui.bekor')}</Button>
                         <button
                             onClick={handleSaveMovement}
                             disabled={movementSaving || !canSaveMovement}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-600/50 disabled:cursor-not-allowed transition-all"
                         >
                             {movementSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {movementSaving ? 'Saqlanmoqda...' : 'Saqlash'}
+                            {movementSaving ? t('ui.saqlanmoqda_2') : t('ui.saqlash')}
                         </button>
                     </div>
                 </div>
@@ -2100,33 +2096,32 @@ export const CashBook: React.FC<CashBookProps> = ({
             <Modal
                 isOpen={deletingRow !== null}
                 onClose={() => setDeletingRow(null)}
-                title="To'lovni o'chirish"
+                title={t('cashbook.tolovni_ochirish')}
                 className="max-w-md"
             >
                 <div className="space-y-4">
                     <p className="text-sm text-muted">
-                        <b>{deletingRow?.patientName}</b> — <b>{num(deletingRow?.amount || 0)} UZS</b> to'lovi o'chiriladi.
+                        <b>{deletingRow?.patientName}</b> — <b>{num(deletingRow?.amount || 0)} UZS</b> {t('cashbook.tolovi_ochiriladi')}
                     </p>
                     {closureStatus.closed && (
                         <div className="rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
                             <p className="text-xs text-amber-700 dark:text-amber-400">
-                                Bu kun allaqachon yopilgan. O'chirsangiz kassa summasi o'zgaradi va
-                                "yopilgandan keyin o'zgardi" belgisi chiqadi.
+                                {t('cashbook.bu_kun_allaqachon_yopilgan')}
                             </p>
                         </div>
                     )}
                     <p className="text-[11px] text-faint">
-                        O'chirish izda qoladi: kim, qachon va qaysi to'lovni o'chirgani yozib qo'yiladi.
+                        {t('cashbook.ochirish_izda_qoladi_kim')}
                     </p>
                     <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1" onClick={() => setDeletingRow(null)}>Bekor</Button>
+                        <Button variant="secondary" className="flex-1" onClick={() => setDeletingRow(null)}>{t('ui.bekor')}</Button>
                         <button
                             onClick={handleDeleteRow}
                             disabled={deleting}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm text-white bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 transition-all"
                         >
                             {deleting && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {deleting ? "O'chirilmoqda..." : "O'chirish"}
+                            {deleting ? "O'chirilmoqda..." : t('ui.ochirish_2')}
                         </button>
                     </div>
                 </div>
@@ -2147,7 +2142,7 @@ export const CashBook: React.FC<CashBookProps> = ({
             <Modal
                 isOpen={editingTx !== null}
                 onClose={() => setEditingTx(null)}
-                title="To'lovni tuzatish"
+                title={t('cashbook.tolovni_tuzatish')}
                 className="max-w-md"
             >
                 <div className="space-y-4">
@@ -2190,15 +2185,15 @@ export const CashBook: React.FC<CashBookProps> = ({
                     {closureStatus.closed && (
                         <div className="rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
                             <p className="text-xs text-amber-700 dark:text-amber-400">
-                                Bu kun yopilgan. O'zgartirsangiz kassa summasi o'zgaradi va izda qoladi.
+                                {t('cashbook.bu_kun_yopilgan_ozgartirsangiz')}
                             </p>
                         </div>
                     )}
 
                     <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1" onClick={() => setEditingTx(null)}>Bekor</Button>
+                        <Button variant="secondary" className="flex-1" onClick={() => setEditingTx(null)}>{t('ui.bekor')}</Button>
                         <Button className="flex-1" onClick={handleSaveEdit} disabled={editSaving || !canSaveEdit}>
-                            {editSaving ? 'Saqlanmoqda...' : 'Saqlash'}
+                            {editSaving ? t('ui.saqlanmoqda_2') : t('ui.saqlash')}
                         </Button>
                     </div>
                 </div>
@@ -2216,7 +2211,7 @@ export const CashBook: React.FC<CashBookProps> = ({
             <Modal
                 isOpen={isCloseOpen}
                 onClose={() => setIsCloseOpen(false)}
-                title={`Kunni yopish — ${formatDateLabel(date)}`}
+                title={fill(t('cashbook.kunni_yopish_x'), formatDateLabel(date))}
             >
                 <div className="space-y-5">
                     <div className="rounded-xl bg-elevated p-4 space-y-2 text-sm">
@@ -2240,14 +2235,13 @@ export const CashBook: React.FC<CashBookProps> = ({
                         </div>
                         {serverExpected && (
                             <p className="text-[11px] text-faint pt-1">
-                                Server hisobi: {serverExpected.sources?.paymentCount ?? 0} to'lov,
-                                boshlang'ich {num(serverExpected.openingCash)}
+                                {t('cashbook.server_hisobi')}: {serverExpected.sources?.paymentCount ?? 0} {t('cashbook.tolov_boshlangich')} {num(serverExpected.openingCash)}
                                 {serverExpected.sources?.openingFrom ? ` (${formatDateLabel(String(serverExpected.sources.openingFrom))} yopilishidan)` : ''}
                             </p>
                         )}
                         {expectedError && (
                             <p className="text-[11px] text-amber-700 dark:text-amber-300 pt-1">
-                                Server hisobi olinmadi ({expectedError}) — ekrandagi hisob bilan yopiladi.
+                                {t('cashbook.server_hisobi_olinmadi_2')}{expectedError}{t('cashbook.ekrandagi_hisob_bilan_yopiladi')}
                             </p>
                         )}
                     </div>
@@ -2263,13 +2257,11 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                                 <div>
                                     <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
-                                        Bugun {serverExpected.openCharges.count} xizmat to'lanmagan
+                                        {t('cashbook.bugun_2')} {serverExpected.openCharges.count} {t('cashbook.xizmat_tolanmagan')}
                                         — {num(serverExpected.openCharges.due)} UZS
                                     </p>
                                     <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
-                                        {serverExpected.openCharges.patients} bemor. Kassa to'g'ri kelishi
-                                        mumkin, lekin bu pul olinmagan. Kunni yopish taqiqlanmaydi —
-                                        bilib turishingiz uchun.
+                                        {serverExpected.openCharges.patients} {t('cashbook.bemor_kassa_togri_kelishi')}
                                     </p>
                                 </div>
                             </div>
@@ -2291,7 +2283,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             aylantirardi — ya'ni sanashning o'zi ma'nosiz
                             bo'lib qolardi. Olib tashlandi (C6). */}
                         <p className="mt-2 text-[11px] text-faint">
-                            Pulni sanab, haqiqiy summani kiriting. Farqni tizim o'zi chiqaradi.
+                            {t('cashbook.pulni_sanab_haqiqiy_summani')}
                         </p>
                     </div>
 
@@ -2300,7 +2292,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20'
                             : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'}`}>
                             <div className="flex items-center justify-between">
-                                <span className="text-sm font-bold text-ink">Farq</span>
+                                <span className="text-sm font-bold text-ink">{t('ui.farq')}</span>
                                 <span className={`text-lg font-black tabular-nums ${Math.abs(previewDifference) < 1
                                     ? 'text-emerald-600 dark:text-emerald-400'
                                     : 'text-red-600 dark:text-red-400'}`}>
@@ -2309,10 +2301,10 @@ export const CashBook: React.FC<CashBookProps> = ({
                             </div>
                             <p className="text-xs text-muted mt-1">
                                 {Math.abs(previewDifference) < 1
-                                    ? "Kassa to'g'ri keldi."
+                                    ? t('cashbook.kassa_togri_keldi_2')
                                     : previewDifference > 0
-                                        ? "Kassada hisobdan ko'p pul bor — kiritilmagan to'lov bo'lishi mumkin."
-                                        : "Kassada hisobdan kam pul bor — yozilmagan xarajat bo'lishi mumkin."}
+                                        ? t('cashbook.kassada_hisobdan_kop_pul')
+                                        : t('cashbook.kassada_hisobdan_kam_pul')}
                             </p>
                         </div>
                     )}
@@ -2355,18 +2347,17 @@ export const CashBook: React.FC<CashBookProps> = ({
                     </div>
 
                     <p className="text-[11px] text-faint">
-                        Yopish kunni qulflamaydi — kechroq kelgan to'lov baribir yoziladi.
-                        Shunda bu sahifada "yopilgandan keyin o'zgardi" belgisi chiqadi.
+                        {t('cashbook.yopish_kunni_qulflamaydi_kechroq')}
                     </p>
 
                     <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1" onClick={() => setIsCloseOpen(false)}>Bekor</Button>
+                        <Button variant="secondary" className="flex-1" onClick={() => setIsCloseOpen(false)}>{t('ui.bekor')}</Button>
                         <Button
                             className="flex-1"
                             onClick={handleCloseDay}
                             disabled={closeSaving || countedInput.trim() === '' || !isFinite(countedValue)}
                         >
-                            {closeSaving ? 'Saqlanmoqda...' : closureStatus.closed ? 'Yangilash' : 'Kunni yopish'}
+                            {closeSaving ? t('ui.saqlanmoqda_2') : closureStatus.closed ? t('ui.yangilash') : t('finance.cash.closeDay')}
                         </Button>
                     </div>
                 </div>

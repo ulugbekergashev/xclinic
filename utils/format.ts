@@ -1,3 +1,4 @@
+import { tr, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    SANA VA RAQAM — bitta ko'rinish (S4.5, audit B-29).
 
@@ -125,7 +126,7 @@ export function formatMoney(n: number | null | undefined): string {
 
 /** `1 234 567 so'm` */
 export function formatSom(n: number | null | undefined): string {
-    return `${formatMoney(n)} so'm`;
+    return fill(tr('ui.x_som'), formatMoney(n));
 }
 
 /** `12,5%` */

@@ -1172,6 +1172,28 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         const { patientId, patientName, departmentId, doctorId, doctorName, bedId, reason, diagnosis, dailyRate } = req.body;
         if (!patientId) return res.status(400).json({ error: 'Bemor majburiy' });
 
+        /* BITTA BEMOR — BITTA FAOL YOTISH.
+
+           Ilgari faqat KOYKA tekshirilardi («Koyka band»), bemorning o'zi
+           emas. Natijada bir bemorni ikkinchi koykaga ham yotqizish mumkin
+           edi va bazada aynan shunday ikkita holat topildi: ikki bemor
+           ikki koykada. Oqibati pulga tegadi — koyka-kun ikki marta
+           hisoblanadi, bandlik soni esa yolg'on ko'rsatadi. */
+        const openAdmission = await prisma.admission.findFirst({
+            where: { clinicId, patientId, status: 'Active' },
+            include: { bed: { include: { ward: true } } },
+        });
+        if (openAdmission) {
+            const where = openAdmission.bed
+                ? ` (${openAdmission.bed.ward?.name || '?'}, ${openAdmission.bed.label || '?'})`
+                : '';
+            return res.status(409).json({
+                error: `Bemor allaqachon yotibdi${where}. Avval chiqaring, keyin yangi yotqizing.`,
+                code: 'PATIENT_ALREADY_ADMITTED',
+                admissionId: openAdmission.id,
+            });
+        }
+
         // Koyka band bo'lmasligi kerak — aks holda ikki bemor bir koykada qoladi
         if (bedId) {
             const bed = await prisma.bed.findUnique({ where: { id: bedId }, include: { ward: true } });

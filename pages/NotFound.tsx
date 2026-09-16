@@ -14,11 +14,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { FileQuestion, ArrowLeft, Home } from 'lucide-react';
 import { UserRole } from '../types';
 
+import { useLanguage } from '../context/LanguageContext';
 interface Props {
     userRole: UserRole;
 }
 
 export const NotFound: React.FC<Props> = ({ userRole }) => {
+    const { t } = useLanguage();
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -34,16 +36,16 @@ export const NotFound: React.FC<Props> = ({ userRole }) => {
                 <FileQuestion className="w-8 h-8 text-muted" />
             </div>
 
-            <h1 className="text-2xl font-bold text-ink">Sahifa topilmadi</h1>
+            <h1 className="text-2xl font-bold text-ink">{t('notfound.sahifa_topilmadi')}</h1>
 
             <p className="mt-2 text-sm text-muted max-w-md">
-                Bunday manzil yo'q:{' '}
+                {t('notfound.bunday_manzil_yoq')}:{' '}
                 <code className="px-1.5 py-0.5 rounded bg-elevated text-ink">
                     {location.pathname}
                 </code>
             </p>
             <p className="mt-1 text-sm text-muted max-w-md">
-                Havola eskirgan bo'lishi yoki manzilda xato bo'lishi mumkin.
+                {t('notfound.havola_eskirgan_bolishi_yoki')}
             </p>
 
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
@@ -55,7 +57,7 @@ export const NotFound: React.FC<Props> = ({ userRole }) => {
                                hover:bg-elevated"
                 >
                     <ArrowLeft className="w-4 h-4" />
-                    Orqaga
+                    {t('common.back')}
                 </button>
                 <button
                     type="button"
@@ -64,7 +66,7 @@ export const NotFound: React.FC<Props> = ({ userRole }) => {
                                bg-primary-600 text-white hover:bg-primary-700"
                 >
                     <Home className="w-4 h-4" />
-                    Bosh sahifaga
+                    {t('notfound.bosh_sahifaga')}
                 </button>
             </div>
         </div>

@@ -8,7 +8,7 @@ import {
 import { LabOrder, LabTest, LabOrderItem, LabResultRow, Patient, Department, Clinic } from '../types';
 import { api } from '../services/api';
 import { EmptyState } from '../components/Common';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { printLabResult } from '../utils/printForms';
 import { useNavigate } from 'react-router-dom';
 import { DoctorPicker } from '../components/DoctorPicker';
@@ -26,16 +26,16 @@ import { DoctorPicker } from '../components/DoctorPicker';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
     Ordered: { label: "Yo'llandi", color: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400', icon: Clock },
-    Collected: { label: 'Namuna olindi', color: 'bg-primary-100 text-primary-700 border-primary-200 dark:bg-primary-900/30 dark:text-primary-400', icon: Beaker },
+    Collected: { label: tr('laborders.namuna_olindi'), color: 'bg-primary-100 text-primary-700 border-primary-200 dark:bg-primary-900/30 dark:text-primary-400', icon: Beaker },
     InProgress: { label: 'Bajarilmoqda', color: 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400', icon: FlaskConical },
-    Completed: { label: 'Tayyor', color: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400', icon: CheckCircle },
-    Cancelled: { label: 'Bekor qilindi', color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400', icon: X },
+    Completed: { label: tr('ui.tayyor'), color: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400', icon: CheckCircle },
+    Cancelled: { label: tr('ui.bekor_qilindi'), color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400', icon: X },
 };
 
 const FLAG_UI: Record<string, { label: string; cls: string; Icon: React.ElementType }> = {
-    High: { label: 'Yuqori', cls: 'text-red-600 dark:text-red-400', Icon: ArrowUp },
-    Low: { label: 'Past', cls: 'text-blue-600 dark:text-blue-400', Icon: ArrowDown },
-    Normal: { label: 'Norma', cls: 'text-faint', Icon: Minus },
+    High: { label: tr('laborders.yuqori'), cls: 'text-red-600 dark:text-red-400', Icon: ArrowUp },
+    Low: { label: tr('laborders.past'), cls: 'text-blue-600 dark:text-blue-400', Icon: ArrowDown },
+    Normal: { label: tr('lab.reference'), cls: 'text-faint', Icon: Minus },
 };
 
 interface Props {
@@ -116,7 +116,7 @@ export const LabOrders: React.FC<Props> = ({
     // ── Yo'llanma yaratish ──────────────────────────────────────────────────
     const createOrder = async () => {
         if (!form.patientName.trim() || form.testIds.length === 0) {
-            setError("Bemor va kamida bitta tahlil tanlanishi kerak");
+            setError(t('laborders.bemor_va_kamida_bitta'));
             return;
         }
         setSaving(true); setError('');
@@ -133,7 +133,7 @@ export const LabOrders: React.FC<Props> = ({
             setShowNew(false);
             setForm({ patientId: '', patientName: '', doctorId: '', doctorName: defaultDoctorName || '', testIds: [], priority: 'Normal' });
         } catch (e: any) {
-            setError(e.message || 'Yo\'llanma yaratilmadi');
+            setError(e.message || t('laborders.yollanma_yaratilmadi'));
         } finally { setSaving(false); }
     };
 
@@ -148,7 +148,7 @@ export const LabOrders: React.FC<Props> = ({
                 d[`${item.id}:${p.parameterId}`] = p.value || '';
             }));
             setDraft(d);
-        } catch (e: any) { setError(e.message || 'Natijalarni ochib bo\'lmadi'); }
+        } catch (e: any) { setError(e.message || t('laborders.natijalarni_ochib_bolmadi')); }
     };
 
     const saveResults = async () => {
@@ -166,14 +166,14 @@ export const LabOrders: React.FC<Props> = ({
             await reload();
             onExpensesChanged?.();
         } catch (e: any) {
-            setError(e.message || 'Saqlanmadi');
+            setError(e.message || t('ui.saqlanmadi'));
         } finally { setSaving(false); }
     };
 
     const removeOrder = async (id: string) => {
-        if (!await confirmAction({ title: "Yo'llanma va uning natijalari o'chiriladi. Davom etasizmi?", danger: true, confirmLabel: "O'chirish" })) return;
+        if (!await confirmAction({ title: t('laborders.yollanma_va_uning_natijalari'), danger: true, confirmLabel: t('ui.ochirish_2') })) return;
         try { await api.labOrders.delete(id); await reload(); onExpensesChanged?.(); }
-        catch (e: any) { setError(e.message || 'O\'chirilmadi'); }
+        catch (e: any) { setError(e.message || t('ui.ochirilmadi')); }
     };
 
     /* Ilgari bu `window.print()` edi — ya'ni DASTUR OYNASI bosilardi:
@@ -199,7 +199,7 @@ export const LabOrders: React.FC<Props> = ({
             { ...resultsOrder, patient },
             currentClinic || undefined,
         );
-        if (!opened) setError("Bosma oyna bloklandi — brauzer sozlamalarini tekshiring");
+        if (!opened) setError(t('laborders.bosma_oyna_bloklandi_brauzer'));
     };
 
     const inputCls = 'w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
@@ -211,13 +211,13 @@ export const LabOrders: React.FC<Props> = ({
                 <div className="flex items-center gap-2 mr-auto">
                     <FlaskConical className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                     <h2 className="text-xl font-bold text-ink">{t('lab.title')}</h2>
-                    <span className="text-sm text-muted">{filtered.length} ta yo'llanma</span>
+                    <span className="text-sm text-muted">{filtered.length} {t('laborders.ta_yollanma')}</span>
                 </div>
                 {/* Yo'llanmalar odatda shifokordan keladi (Qabul → Tahlilga yuborish).
                     Bu tugma faqat to'g'ridan-to'g'ri kelgan bemor uchun. */}
                 <button onClick={() => setShowNew(true)}
                     className="flex items-center gap-2 px-4 py-2 border border-line text-muted rounded-lg text-sm font-medium hover:bg-elevated">
-                    <Plus className="w-4 h-4" /> Tashqi yo'llanma
+                    <Plus className="w-4 h-4" /> {t('laborders.tashqi_yollanma')}
                 </button>
             </div>
 
@@ -239,10 +239,10 @@ export const LabOrders: React.FC<Props> = ({
                             dastur foydalanuvchini yo'q joyga jo'natardi.
                             Endi vkladka bor va bu HAVOLA. */}
                         <p className="mt-0.5 opacity-90">
-                            Yo'llanma yaratishdan oldin tahlillarni qo'shing.{' '}
+                            {t('laborders.yollanma_yaratishdan_oldin_tahlillarni')}{' '}
                             <button type="button" onClick={() => navigate('/settings')}
                                 className="underline font-medium hover:opacity-80">
-                                Sozlamalar → {t('lab.tab')}
+                                {t('laborders.sozlamalar')} {t('lab.tab')}
                             </button>
                         </p>
                     </div>
@@ -291,17 +291,17 @@ export const LabOrders: React.FC<Props> = ({
                                                 imkoni yo'q edi, laborant kassaga qo'ng'iroq qilardi. */}
                                             {(order as any).paid === true && (
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                                    To'langan
+                                                    {t('ui.tolangan')}
                                                 </span>
                                             )}
                                             {(order as any).paid === false && (
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                                                    To'lanmagan{(order as any).due ? ` · ${fmt((order as any).due)}` : ''}
+                                                    {t('ui.tolanmagan')}{(order as any).due ? ` · ${fmt((order as any).due)}` : ''}
                                                 </span>
                                             )}
                                             {(order as any).sampleCollectedAt && (
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-elevated text-muted">
-                                                    Proba olindi
+                                                    {t('finance.report.sampleTaken')}
                                                 </span>
                                             )}
                                         </div>
@@ -319,11 +319,11 @@ export const LabOrders: React.FC<Props> = ({
                                                 || '—'}
                                         </p>
                                         <p className="text-xs text-faint mt-1">
-                                            {order.doctorName || 'Shifokor ko\'rsatilmagan'} · {fmtDate(order.orderedAt)}
+                                            {order.doctorName || t('laborders.shifokor_korsatilmagan')} · {fmtDate(order.orderedAt)}
                                         </p>
                                     </div>
                                     <div className="text-right shrink-0">
-                                        <p className="font-semibold text-ink tabular-nums">{fmt(order.totalPrice || 0)} so'm</p>
+                                        <p className="font-semibold text-ink tabular-nums">{fmt(order.totalPrice || 0)} {t('ui.som')}</p>
                                         <div className="flex gap-2 mt-2">
                                             {/* Bemor keldi va proba olindi. Sana maydoni bor edi,
                                                 lekin uni faqat umumiy tahrirlash orqali
@@ -331,12 +331,12 @@ export const LabOrders: React.FC<Props> = ({
                                             {!(order as any).sampleCollectedAt && order.status !== 'Completed' && order.status !== 'Cancelled' && (
                                                 <button onClick={() => collectSample(order)} disabled={saving}
                                                     className="px-3 py-1.5 text-xs font-medium border border-line text-muted rounded-lg hover:border-primary-400 disabled:opacity-50">
-                                                    Proba olindi
+                                                    {t('finance.report.sampleTaken')}
                                                 </button>
                                             )}
                                             <button onClick={() => openResults(order)}
                                                 className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
-                                                Natijalar
+                                                {t('laborders.natijalar')}
                                             </button>
                                             <button onClick={() => removeOrder(order.id)}
                                                 className="p-1.5 text-faint hover:text-red-500 rounded-lg" title={t('common.delete')}>
@@ -378,7 +378,7 @@ export const LabOrders: React.FC<Props> = ({
                                     {/* Normani jins/yoshga qarab tanlash uchun bemor bog'lanishi muhim */}
                                     {!form.patientId && (
                                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                            Bemor tanlanmasa, norma jins bo'yicha aniqlanmaydi
+                                            {t('laborders.bemor_tanlanmasa_norma_jins')}
                                         </p>
                                     )}
                                 </div>
@@ -415,7 +415,7 @@ export const LabOrders: React.FC<Props> = ({
                                                 <span className="flex-1 min-w-0">
                                                     <span className="block text-sm font-medium text-ink truncate">{t.name}</span>
                                                     <span className="block text-xs text-muted">
-                                                        {t.code} · {t.sampleType} · {t.turnaroundHours} soat
+                                                        {t.code} · {t.sampleType} · {t.turnaroundHours} {tr('visit.hours')}
                                                     </span>
                                                 </span>
                                                 <span className="text-sm tabular-nums text-muted">{fmt(t.price)}</span>
@@ -432,18 +432,18 @@ export const LabOrders: React.FC<Props> = ({
                                 </select>
                                 <div className="ml-auto text-right">
                                     <span className="text-sm text-muted">{t('common.totalLabel')}</span>
-                                    <span className="font-semibold text-ink tabular-nums">{fmt(selectedTotal)} so'm</span>
+                                    <span className="font-semibold text-ink tabular-nums">{fmt(selectedTotal)} {t('ui.som')}</span>
                                 </div>
                             </div>
                         </div>
 
                         <div className="p-5 border-t border-line flex justify-end gap-3">
                             <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">
-                                Bekor qilish
+                                {t('common.cancel')}
                             </button>
                             <button onClick={createOrder} disabled={saving}
                                 className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {saving ? 'Saqlanmoqda...' : 'Yaratish'}
+                                {saving ? t('ui.saqlanmoqda_2') : t('ui.yaratish')}
                             </button>
                         </div>
                     </div>
@@ -458,9 +458,9 @@ export const LabOrders: React.FC<Props> = ({
                             <div className="min-w-0">
                                 <h3 className="font-semibold text-ink truncate">{resultsOrder.patientName}</h3>
                                 <p className="text-xs text-muted">
-                                    {resultsOrder.patientSex === 'Male' ? 'Erkak' : resultsOrder.patientSex === 'Female' ? 'Ayol' : 'Jins ko\'rsatilmagan'}
-                                    {resultsOrder.patientAge != null ? ` · ${resultsOrder.patientAge} yosh` : ''}
-                                    {' · Normalar shu bemorga moslangan'}
+                                    {resultsOrder.patientSex === 'Male' ? t('ui.erkak') : resultsOrder.patientSex === 'Female' ? t('ui.ayol') : t('laborders.jins_korsatilmagan')}
+                                    {resultsOrder.patientAge != null ? fill(t('laborders.x_yosh'), resultsOrder.patientAge) : ''}
+                                    {t('laborders.normalar_shu_bemorga_moslangan')}
                                 </p>
                             </div>
                             <div className="ml-auto flex items-center gap-2">
@@ -521,11 +521,11 @@ export const LabOrders: React.FC<Props> = ({
 
                         <div className="p-5 border-t border-line flex justify-end gap-3">
                             <button onClick={() => setResultsOrder(null)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">
-                                Yopish
+                                {t('common.close')}
                             </button>
                             <button onClick={saveResults} disabled={saving}
                                 className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {saving ? 'Saqlanmoqda...' : 'Natijalarni saqlash'}
+                                {saving ? t('ui.saqlanmoqda_2') : t('laborders.natijalarni_saqlash')}
                             </button>
                         </div>
                     </div>

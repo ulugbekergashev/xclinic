@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { formatMoney } from '../utils/format';
+import { useLanguage, fill } from '../context/LanguageContext';
 import {
     Wallet, AlertTriangle, CalendarCheck, Users, ChevronRight,
     ChevronDown, ChevronUp, CheckCircle2,
@@ -62,6 +63,7 @@ const Tile: React.FC<{
 );
 
 export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
+    const { t } = useLanguage();
     const navigate = useNavigate();
     const [data, setData] = useState<any>(null);
     const [attention, setAttention] = useState<any>(null);
@@ -101,12 +103,12 @@ export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                     <h2 className="text-lg font-bold text-ink">
-                        Xush kelibsiz{userName ? `, ${userName}` : ''}
+                        {t('header.welcome')}{userName ? `, ${userName}` : ''}
                     </h2>
                     <p className="text-sm text-muted">
                         {items.length === 0
-                            ? 'E\'tibor kutayotgan ish yo\'q'
-                            : `${items.length} ta ish e'tiboringizni kutmoqda`}
+                            ? t('ownerhome.etibor_kutayotgan_ish_yoq')
+                            : fill(t('ownerhome.x_ta_ish_etiboringizni'), items.length)}
                     </p>
                 </div>
                 <button type="button" onClick={() => setOpen(v => !v)}
@@ -122,7 +124,7 @@ export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
                         bosilardi. E2E sinovi buni darhol ko'rsatdi.
 
                         «Yig'ish» ning juftligi ham shu: yig'ish ↔ yoyish. */}
-                    {open ? 'Yig\'ish' : 'Yoyish'}
+                    {open ? t('ui.yigish') : t('ui.yoyish')}
                 </button>
             </div>
 
@@ -130,13 +132,13 @@ export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
                 <>
                     <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
                         <Tile
-                            title="Bugun kassaga" icon={Wallet}
+                            title={t('ownerhome.bugun_kassaga')} icon={Wallet}
                             value={formatMoney(data.today.revenue)}
-                            hint={`${data.today.payments} ta to'lov · oy boshidan ${formatMoney(data.month.revenue)}`}
+                            hint={fill(t('ownerhome.x_ta_tolov_oy'), data.today.payments, formatMoney(data.month.revenue))}
                             onClick={() => navigate('/finance')}
                         />
                         <Tile
-                            title="Qarz" icon={AlertTriangle}
+                            title={t('ownerhome.qarz')} icon={AlertTriangle}
                             danger={debtors.overdue30 > 0}
                             /* `amount`, `total` EMAS. Server (`snapshot.ts`)
                                `debt: { amount, charges, patients }` qaytaradi —
@@ -147,19 +149,19 @@ export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
                                noto'g'ri raqam chiqaradi. */
                             value={formatMoney(data.debt?.amount ?? 0)}
                             hint={debtors.overdue30 > 0
-                                ? `${debtors.patients} bemor · ${debtors.overdue30} tasi 30 kundan oshgan`
-                                : `${debtors.patients} ta bemor`}
+                                ? fill(t('ownerhome.x_bemor_x_tasi'), debtors.patients, debtors.overdue30)
+                                : fill(t('ownerhome.x_ta_bemor'), debtors.patients)}
                             onClick={() => navigate('/finance')}
                         />
                         <Tile
-                            title="Bugun" icon={CalendarCheck}
+                            title={t('ui.bugun')} icon={CalendarCheck}
                             value={`${data.today.visits} / ${data.today.appointments}`}
-                            hint="qabul ochildi / yozilgan"
+                            hint={t('ownerhome.qabul_ochildi_yozilgan')}
                         />
                         <Tile
-                            title="Bemorlar" icon={Users}
+                            title={t('ownerhome.bemorlar')} icon={Users}
                             value={data.patients.total}
-                            hint={`7 kunda +${data.patients.newLast7Days} yangi`}
+                            hint={fill(t('ownerhome.7_kunda_x_yangi'), data.patients.newLast7Days)}
                             onClick={() => navigate('/patients')}
                         />
                     </div>
@@ -167,12 +169,12 @@ export const OwnerHome: React.FC<{ userName?: string }> = ({ userName }) => {
                     {/* ── Bugun hal qilinsin ─────────────────────────────── */}
                     <div className="rounded-xl border border-line bg-surface overflow-hidden">
                         <div className="px-4 py-3 border-b border-line-soft">
-                            <p className="text-sm font-bold text-ink">Bugun hal qilinsin</p>
+                            <p className="text-sm font-bold text-ink">{t('ownerhome.bugun_hal_qilinsin')}</p>
                         </div>
                         {items.length === 0 ? (
                             <div className="px-4 py-5 flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
                                 <CheckCircle2 className="w-4 h-4" />
-                                Ochiq savol yo'q — smena yopilgan, muddat va natijalar joyida.
+                                {t('ownerhome.ochiq_savol_yoq_smena')}
                             </div>
                         ) : (
                             <div className="divide-y divide-line">

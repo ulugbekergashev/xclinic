@@ -5,6 +5,7 @@ import { toast } from '../services/toast';
 import { formatUzPhone } from '../shared/validation';
 import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
 
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    DAVOMAT — HAMMA XODIM BO'YICHA.
 
@@ -40,8 +41,8 @@ const thisPeriod = () => {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-    DOCTOR: 'Shifokor', RECEPTIONIST: 'Registrator',
-    LAB_TECHNICIAN: 'Laborant', NURSE: 'Hamshira',
+    DOCTOR: tr('ui.shifokor_2'), RECEPTIONIST: tr('ui.registrator'),
+    LAB_TECHNICIAN: tr('ui.laborant'), NURSE: tr('ui.hamshira'),
 };
 
 const Stat: React.FC<{ title: string; value: React.ReactNode; hint?: string }> = ({ title, value, hint }) => (
@@ -53,6 +54,7 @@ const Stat: React.FC<{ title: string; value: React.ReactNode; hint?: string }> =
 );
 
 export const StaffAttendanceReport: React.FC = () => {
+    const { t } = useLanguage();
     const [period, setPeriod] = useState(thisPeriod());
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -62,7 +64,7 @@ export const StaffAttendanceReport: React.FC = () => {
         try {
             setData(await api.hr.attendanceSummary(period));
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || 'Davomat olinmadi');
+            toast.error(e?.data?.error || e?.message || t('staffattendancereport.davomat_olinmadi'));
             setData(null);
         } finally {
             setLoading(false);
@@ -77,7 +79,7 @@ export const StaffAttendanceReport: React.FC = () => {
     const exportCsv = () => {
         const rows = data?.rows || [];
         if (!rows.length) return;
-        const head = ['Ism familiya', 'Lavozim', 'Rol', 'Belgilangan kun', 'Keldi', 'Kechikdi', 'Kelmadi', 'Sababli', 'Davomat %', 'Telefon'];
+        const head = [t('staffattendancereport.ism_familiya'), t('ui.lavozim'), 'Rol', t('staffattendancereport.belgilangan_kun'), t('ui.keldi'), 'Kechikdi', t('ui.kelmadi'), t('ui.sababli'), t('staffattendancereport.davomat'), t('ui.telefon')];
         const esc = (v: any) => {
             const s = String(v ?? '');
             return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -107,9 +109,9 @@ export const StaffAttendanceReport: React.FC = () => {
         <div className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-lg font-bold text-ink">Xodimlar davomati</h2>
+                    <h2 className="text-lg font-bold text-ink">{t('staffattendancereport.xodimlar_davomati')}</h2>
                     <p className="text-sm text-muted">
-                        Kun xodim kartasidagi «Ish grafigi» bo'limidan belgilanadi
+                        {t('staffattendancereport.kun_xodim_kartasidagi_ish')}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -133,14 +135,14 @@ export const StaffAttendanceReport: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-                <Stat title="Jami xodim" value={data ? data.staffTotal : '—'} />
-                <Stat title="O'rtacha davomat"
+                <Stat title={t('ui.jami_xodim')} value={data ? data.staffTotal : '—'} />
+                <Stat title={t('staffattendancereport.ortacha_davomat')}
                     value={data?.avgPercent != null ? `${data.avgPercent}%` : '—'}
-                    hint={data ? `${data.trackedStaff} ta xodim bo'yicha` : undefined} />
-                <Stat title="Eng yaxshi davomat"
+                    hint={data ? fill(t('staffattendancereport.x_ta_xodim_boyicha'), data.trackedStaff) : undefined} />
+                <Stat title={t('staffattendancereport.eng_yaxshi_davomat')}
                     value={data?.best ? data.best.name.split(' ')[0] : '—'}
-                    hint={data?.best ? `${data.best.percent}%` : 'belgilangan kun yo\'q'} />
-                <Stat title="Belgilangan kunlar" value={data ? data.markedDays : '—'} />
+                    hint={data?.best ? `${data.best.percent}%` : t('staffattendancereport.belgilangan_kun_yoq')} />
+                <Stat title={t('staffattendancereport.belgilangan_kunlar')} value={data ? data.markedDays : '—'} />
             </div>
 
             <Card className="overflow-hidden">
@@ -149,20 +151,20 @@ export const StaffAttendanceReport: React.FC = () => {
                         <Loader2 className="w-5 h-5 animate-spin inline" />
                     </div>
                 ) : rows.length === 0 ? (
-                    <div className="py-16 text-center text-muted">Xodim yo'q</div>
+                    <div className="py-16 text-center text-muted">{t('staffattendancereport.xodim_yoq')}</div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="text-left text-xs text-muted border-b border-line">
-                                    <th className="py-3 px-4 font-medium">Ism familiya</th>
-                                    <th className="py-3 px-4 font-medium">Lavozim</th>
-                                    <th className="py-3 px-4 font-medium text-right">Belgilangan kun</th>
-                                    <th className="py-3 px-4 font-medium text-right">Keldi</th>
+                                    <th className="py-3 px-4 font-medium">{t('staffattendancereport.ism_familiya')}</th>
+                                    <th className="py-3 px-4 font-medium">{t('ui.lavozim')}</th>
+                                    <th className="py-3 px-4 font-medium text-right">{t('staffattendancereport.belgilangan_kun')}</th>
+                                    <th className="py-3 px-4 font-medium text-right">{t('staffattendancereport.keldi')}</th>
                                     <th className="py-3 px-4 font-medium text-right">Kechikdi</th>
-                                    <th className="py-3 px-4 font-medium text-right">Kelmadi</th>
-                                    <th className="py-3 px-4 font-medium text-right">Davomat %</th>
-                                    <th className="py-3 px-4 font-medium">Telefon</th>
+                                    <th className="py-3 px-4 font-medium text-right">{t('staffattendancereport.kelmadi')}</th>
+                                    <th className="py-3 px-4 font-medium text-right">{t('staffattendancereport.davomat')}</th>
+                                    <th className="py-3 px-4 font-medium">{t('ui.telefon')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -172,7 +174,7 @@ export const StaffAttendanceReport: React.FC = () => {
                                         <td className="py-3 px-4 text-ink">
                                             {r.name}
                                             {r.status !== 'Active' && (
-                                                <span className="ml-2 text-[10px] text-faint">arxiv</span>
+                                                <span className="ml-2 text-[10px] text-faint">{t('staffattendancereport.arxiv')}</span>
                                             )}
                                         </td>
                                         <td className="py-3 px-4 text-muted">{r.position}</td>
@@ -209,9 +211,7 @@ export const StaffAttendanceReport: React.FC = () => {
             </Card>
 
             <p className="text-xs text-muted">
-                Foiz belgilangan kunlardan hisoblanadi, kalendar kunlaridan emas. Kechikkan kun
-                kelgan deb sanaladi. Davomat oylikdan avtomatik ushlanmaydi — ushlash xodim
-                kartasida jarima bo'lib yoziladi.
+                {t('staffattendancereport.foiz_belgilangan_kunlardan_hisoblanadi')}
             </p>
         </div>
     );

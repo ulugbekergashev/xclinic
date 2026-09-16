@@ -3,6 +3,7 @@ import { Plus, X, Check, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { Department, Service } from '../types';
 
+import { useLanguage } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    SHIFOKOR STAVKALARI.
 
@@ -35,6 +36,7 @@ type Row = { serviceId: string; departmentId: string; percent: string; role: str
 export const DoctorRatesEditor: React.FC<Props> = ({
     doctorId, fallbackPercent, departments = [], services: servicesProp, clinicId, addToast,
 }) => {
+    const { t } = useLanguage();
     const [rows, setRows] = useState<Row[]>([]);
     const [services, setServices] = useState<Service[]>(servicesProp || []);
     const [loading, setLoading] = useState(false);
@@ -74,10 +76,10 @@ export const DoctorRatesEditor: React.FC<Props> = ({
                 percent: Number(r.percent) || 0,
                 role: r.role,
             })));
-            addToast?.('success', 'Stavkalar saqlandi');
+            addToast?.('success', t('doctorrateseditor.stavkalar_saqlandi'));
             await load(doctorId);
         } catch (e: any) {
-            setError(e?.message || 'Saqlanmadi');
+            setError(e?.message || t('ui.saqlanmadi'));
         } finally { setBusy(false); }
     };
 
@@ -85,8 +87,7 @@ export const DoctorRatesEditor: React.FC<Props> = ({
         <div className="space-y-3">
             <div className="p-3 rounded-lg bg-canvas/40 border border-line">
                 <p className="text-xs text-muted">
-                    Stavka ANIQROQDAN umumiyga qarab tanlanadi: xizmat → bo'lim →
-                    umumiy stavka → kartadagi foiz
+                    {t('doctorrateseditor.stavka_aniqroqdan_umumiyga_qarab')}
                     {fallbackPercent != null ? ` (${fallbackPercent}%)` : ''}.
                     Ya'ni bu jadval bo'sh bo'lsa, hisob avvalgidek ishlaydi.
                 </p>
@@ -95,10 +96,10 @@ export const DoctorRatesEditor: React.FC<Props> = ({
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
             {loading ? (
-                <p className="text-sm text-faint py-6 text-center">Yuklanmoqda…</p>
+                <p className="text-sm text-faint py-6 text-center">{t('ui.yuklanmoqda')}</p>
             ) : rows.length === 0 ? (
                 <p className="text-sm text-faint py-6 text-center">
-                    Stavka yo'q — kartadagi umumiy foiz ishlatiladi
+                    {t('doctorrateseditor.stavka_yoq_kartadagi_umumiy')}
                 </p>
             ) : (
                 <div className="space-y-2">
@@ -107,7 +108,7 @@ export const DoctorRatesEditor: React.FC<Props> = ({
                             <select value={r.serviceId}
                                 onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, serviceId: e.target.value } : x))}
                                 className={inputCls + ' flex-1 min-w-[180px]'}>
-                                <option value="">Barcha xizmatlar</option>
+                                <option value="">{t('doctorrateseditor.barcha_xizmatlar')}</option>
                                 {services.map(sv => (
                                     <option key={sv.id} value={String(sv.id)}>{sv.name}</option>
                                 ))}
@@ -116,7 +117,7 @@ export const DoctorRatesEditor: React.FC<Props> = ({
                             <select value={r.departmentId}
                                 onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, departmentId: e.target.value } : x))}
                                 className={inputCls + ' min-w-[150px]'}>
-                                <option value="">Barcha bo'limlar</option>
+                                <option value="">{t('ui.barcha_bolimlar')}</option>
                                 {departments.filter(d => d.isActive).map(d => (
                                     <option key={d.id} value={d.id}>{d.name}</option>
                                 ))}
@@ -125,7 +126,7 @@ export const DoctorRatesEditor: React.FC<Props> = ({
                             <select value={r.role}
                                 onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, role: e.target.value } : x))}
                                 className={inputCls + ' min-w-[120px]'}>
-                                <option value="Doctor">Shifokor</option>
+                                <option value="Doctor">{t('common.doctor')}</option>
                                 <option value="Assistant">Assistent</option>
                             </select>
 
@@ -149,12 +150,12 @@ export const DoctorRatesEditor: React.FC<Props> = ({
                 <button type="button"
                     onClick={() => setRows(rs => [...rs, { serviceId: '', departmentId: '', percent: '', role: 'Doctor' }])}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated">
-                    <Plus className="w-4 h-4" /> Qator qo'shish
+                    <Plus className="w-4 h-4" /> {t('doctorrateseditor.qator_qoshish')}
                 </button>
                 <button type="button" onClick={save} disabled={busy}
                     className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                     {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    Stavkalarni saqlash
+                    {t('doctorrateseditor.stavkalarni_saqlash')}
                 </button>
             </div>
         </div>

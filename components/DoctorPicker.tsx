@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Doctor } from '../types';
 import { formatDoctorName } from '../utils/format';
 
+import { useLanguage } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    SHIFOKORNI TANLASH — YAGONA QOIDA.
 
@@ -59,6 +60,7 @@ export const DoctorPicker: React.FC<DoctorPickerProps> = ({
     doctors, value, onChange, label, departmentId, emptyLabel,
     required, disabled, className = '', id,
 }) => {
+    const { t } = useLanguage();
     const autoId = React.useId();
     const selectId = id || autoId;
 
@@ -88,7 +90,7 @@ export const DoctorPicker: React.FC<DoctorPickerProps> = ({
                 className="w-full h-10 rounded-lg border border-line bg-transparent px-3 text-sm focus:ring-2 focus:ring-primary-500 outline-none disabled:opacity-60"
             >
                 {(emptyLabel || !value) && (
-                    <option value="">{emptyLabel || '— Tanlang —'}</option>
+                    <option value="">{emptyLabel || t('doctorpicker.tanlang')}</option>
                 )}
                 {list.map(d => (
                     <option key={d.id} value={d.id}>
@@ -100,14 +102,14 @@ export const DoctorPicker: React.FC<DoctorPickerProps> = ({
             </select>
             {staleWarning && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                    Bu shifokor hozir faol emas — yozuvda eskisi qolgan.
+                    {t('doctorpicker.bu_shifokor_hozir_faol')}
                 </p>
             )}
             {list.length === 0 && (
                 <p className="text-[11px] text-faint mt-1">
                     {departmentId
-                        ? "Bu bo'limda faol shifokor yo'q"
-                        : "Faol shifokor yo'q — Sozlamalar → Xodimlar"}
+                        ? t('doctorpicker.bu_bolimda_faol_shifokor')
+                        : t('doctorpicker.faol_shifokor_yoq_sozlamalar')}
                 </p>
             )}
         </div>

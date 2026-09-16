@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { DiagnosticStudy, Modality, MODALITY_LABELS, Patient, Department, Service, Clinic } from '../types';
 import { api, getFileUrl, API_URL, isDemoMode } from '../services/api';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { EmptyState } from '../components/Common';
 import { printStudyConclusion } from '../utils/printForms';
 
@@ -22,8 +22,8 @@ import { printStudyConclusion } from '../utils/printForms';
 const STATUS_UI: Record<string, { label: string; cls: string; Icon: React.ElementType }> = {
     Ordered: { label: "Yo'llandi", cls: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400', Icon: Clock },
     InProgress: { label: 'Bajarilmoqda', cls: 'bg-primary-100 text-primary-700 border-primary-200 dark:bg-primary-900/30 dark:text-primary-400', Icon: Activity },
-    Completed: { label: 'Tayyor', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400', Icon: CheckCircle },
-    Cancelled: { label: 'Bekor qilindi', cls: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400', Icon: X },
+    Completed: { label: tr('ui.tayyor'), cls: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400', Icon: CheckCircle },
+    Cancelled: { label: tr('ui.bekor_qilindi'), cls: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400', Icon: X },
 };
 
 const MODALITIES: Modality[] = ['UZI', 'EKG', 'RENTGEN', 'ENDOSKOPIYA', 'MRT', 'KT'];
@@ -69,7 +69,7 @@ export const Diagnostics: React.FC<Props> = ({
 
     const reload = useCallback(async () => {
         try { setStudies(await api.studies.getAll()); }
-        catch (e: any) { setError(e.message || 'Yuklab bo\'lmadi'); }
+        catch (e: any) { setError(e.message || t('ui.yuklab_bolmadi')); }
     }, []);
 
     useEffect(() => { reload(); }, [reload]);
@@ -93,7 +93,7 @@ export const Diagnostics: React.FC<Props> = ({
 
     const create = async () => {
         if (!form.patientId || !form.name.trim()) {
-            setError('Bemor va tekshiruv nomi majburiy');
+            setError(t('diagnostics.bemor_va_tekshiruv_nomi'));
             return;
         }
         setSaving(true); setError('');
@@ -137,9 +137,9 @@ export const Diagnostics: React.FC<Props> = ({
                matn bilan ko'rsatiladi. */
             if (e?.status === 402) {
                 const due = e?.data?.due ?? e?.due;
-                setError(`Tekshiruv to'lanmagan${due ? ` — ${fmt(due)} so'm qarz` : ''}. Bemorni kassaga yo'naltiring.`);
+                setError(fill(t('diagnostics.tekshiruv_tolanmaganx_bemorni_kassaga'), due ? fill(t('diagnostics.x_som_qarz'), fmt(due)) : ''));
             } else {
-                setError(e.message || 'Saqlanmadi');
+                setError(e.message || t('ui.saqlanmadi'));
             }
         }
         finally { setSaving(false); }
@@ -162,7 +162,7 @@ export const Diagnostics: React.FC<Props> = ({
             },
             currentClinic || undefined,
         );
-        if (!opened) setError('Bosma oyna bloklandi');
+        if (!opened) setError(t('diagnostics.bosma_oyna_bloklandi'));
     };
 
     // Rasm yuklash — bemor fotolari bilan bir xil endpoint mexanizmi
@@ -172,7 +172,7 @@ export const Diagnostics: React.FC<Props> = ({
         /* Demoda fayl serverga bormaydi — server yo'q. Foydalanuvchiga
            nima bo'lganini aytamiz, jimgina yiqilmaymiz. */
         if (isDemoMode()) {
-            setError("Namoyish nusxasida fayl yuklab bo'lmaydi — u klinikadagi serverda saqlanadi.");
+            setError(t('diagnostics.namoyish_nusxasida_fayl_yuklab'));
             setUploading(false);
             return;
         }
@@ -193,9 +193,9 @@ export const Diagnostics: React.FC<Props> = ({
     };
 
     const remove = async (id: string) => {
-        if (!await confirmAction({ title: "Tekshiruv o'chiriladi. Davom etasizmi?", danger: true, confirmLabel: "O'chirish" })) return;
+        if (!await confirmAction({ title: t('diagnostics.tekshiruv_ochiriladi_davom_etasizmi'), danger: true, confirmLabel: t('ui.ochirish_2') })) return;
         try { await api.studies.delete(id); await reload(); }
-        catch (e: any) { setError(e.message || 'O\'chirilmadi'); }
+        catch (e: any) { setError(e.message || t('ui.ochirilmadi')); }
     };
 
     const inputCls = 'w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
@@ -206,11 +206,11 @@ export const Diagnostics: React.FC<Props> = ({
                 <div className="flex items-center gap-2 mr-auto">
                     <Activity className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                     <h2 className="text-xl font-bold text-ink">{t('diag.title')}</h2>
-                    <span className="text-sm text-muted">{filtered.length} ta tekshiruv</span>
+                    <span className="text-sm text-muted">{filtered.length} {t('diagnostics.ta_tekshiruv')}</span>
                 </div>
                 <button onClick={() => setShowNew(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
-                    <Plus className="w-4 h-4" /> Yangi tekshiruv
+                    <Plus className="w-4 h-4" /> {t('diagnostics.yangi_tekshiruv')}
                 </button>
             </div>
 
@@ -262,12 +262,12 @@ export const Diagnostics: React.FC<Props> = ({
                                                 qator to'lanmagan ekani ma'lum bo'lardi. */}
                                             {s.paid === true && (
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                                    To'langan
+                                                    {t('ui.tolangan')}
                                                 </span>
                                             )}
                                             {s.paid === false && (
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                                                    To'lanmagan{s.due ? ` · ${fmt(s.due)}` : ''}
+                                                    {t('ui.tolanmagan')}{s.due ? ` · ${fmt(s.due)}` : ''}
                                                 </span>
                                             )}
                                             {!!s.files?.length && (
@@ -285,14 +285,14 @@ export const Diagnostics: React.FC<Props> = ({
                                         <p className="text-xs text-faint mt-1">{fmtDate(s.orderedAt)}</p>
                                     </div>
                                     <div className="text-right shrink-0">
-                                        <p className="font-semibold text-ink tabular-nums">{fmt(s.price || 0)} so'm</p>
+                                        <p className="font-semibold text-ink tabular-nums">{fmt(s.price || 0)} {t('ui.som')}</p>
                                         <div className="flex gap-2 mt-2">
                                             <button onClick={() => openStudy(s)}
                                                 className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
-                                                Xulosa
+                                                {t('diagnostics.xulosa')}
                                             </button>
                                             <button onClick={() => remove(s.id)}
-                                                className="p-1.5 text-faint hover:text-red-500 rounded-lg" title="O'chirish">
+                                                className="p-1.5 text-faint hover:text-red-500 rounded-lg" title={t('ui.ochirish')}>
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
@@ -355,7 +355,7 @@ export const Diagnostics: React.FC<Props> = ({
                         <div className="p-5 border-t border-line flex justify-end gap-3">
                             <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">{t('common.cancel2')}</button>
                             <button onClick={create} disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {saving ? 'Saqlanmoqda...' : 'Yaratish'}
+                                {saving ? t('ui.saqlanmoqda_2') : t('ui.yaratish')}
                             </button>
                         </div>
                     </div>
@@ -399,7 +399,7 @@ export const Diagnostics: React.FC<Props> = ({
                                     <label className="text-sm font-medium text-muted">{t('diag.images')}</label>
                                     <label className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-line rounded-lg cursor-pointer hover:bg-elevated">
                                         <Upload className="w-3.5 h-3.5" />
-                                        {uploading ? 'Yuklanmoqda...' : 'Rasm qo\'shish'}
+                                        {uploading ? t('ui.yuklanmoqda_2') : t('diagnostics.rasm_qoshish')}
                                         <input type="file" accept="image/*" className="hidden" disabled={uploading}
                                             onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ''; }} />
                                     </label>
@@ -422,11 +422,11 @@ export const Diagnostics: React.FC<Props> = ({
                         <div className="p-5 border-t border-line flex justify-end gap-3">
                             <button onClick={() => saveStudy(false)} disabled={saving}
                                 className="px-4 py-2 text-sm font-medium border border-line rounded-lg hover:bg-elevated disabled:opacity-50">
-                                Saqlash
+                                {t('common.save')}
                             </button>
                             <button onClick={() => saveStudy(true)} disabled={saving}
                                 className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                Tayyor deb belgilash
+                                {t('diagnostics.tayyor_deb_belgilash')}
                             </button>
                         </div>
                     </div>

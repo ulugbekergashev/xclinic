@@ -7,7 +7,7 @@ import { UserRole, AccessControl, RoleAccess, Clinic } from '../types';
 import { parseAccessControl } from '../utils/accessControl';
 import { accessModulesFor } from '../utils/navigation';
 import { SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 
 /* ────────────────────────────────────────────────────────────────────────────
    RUXSATLAR — IKKI JOYDAN OCHILADI, BITTA JOYDA YOZILGAN.
@@ -28,16 +28,16 @@ import { useLanguage } from '../context/LanguageContext';
    ─────────────────────────────────────────────────────────────────────────── */
 
 const ROLE_LABEL: Record<string, string> = {
-   CLINIC_ADMIN: 'Klinika egasi', DOCTOR: 'Shifokor', RECEPTIONIST: 'Registrator',
-   NURSE: 'Hamshira', LAB_TECHNICIAN: 'Laborant',
+   CLINIC_ADMIN: tr('accesscontroltab.klinika_egasi'), DOCTOR: tr('ui.shifokor_2'), RECEPTIONIST: tr('ui.registrator'),
+   NURSE: tr('ui.hamshira'), LAB_TECHNICIAN: tr('ui.laborant'),
 };
 const ACTION_LABEL: Record<string, string> = {
    View: "Ko'rdi", Create: "Yaratdi", Update: "O'zgartirdi",
    Delete: "O'chirdi", Print: "Bosdi", Export: "Yukladi",
 };
 const ENTITY_LABEL: Record<string, string> = {
-   Patient: 'Bemor kartasi', Visit: 'Qabul', PatientDocument: 'Hujjat',
-   PatientPhoto: 'Surat', DiagnosticStudy: 'Tekshiruv', LabOrder: 'Tahlil',
+   Patient: tr('accesscontroltab.bemor_kartasi'), Visit: tr('nav.visit'), PatientDocument: tr('ui.hujjat'),
+   PatientPhoto: tr('ui.surat'), DiagnosticStudy: tr('finance.report.study'), LabOrder: tr('accesscontroltab.tahlil'),
 };
 
 type AccessRoleKey = 'doctor' | 'receptionist' | 'labTechnician' | 'nurse';
@@ -100,7 +100,7 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
          onClinicUpdated?.();
       } catch (error: any) {
          console.error('Failed to save access control:', error);
-         toast.error(error?.message || 'Ruxsatlarni saqlashda xatolik. Backend yangilanganiga ishonch hosil qiling.');
+         toast.error(error?.message || t('accesscontroltab.ruxsatlarni_saqlashda_xatolik_backend'));
       } finally {
          setAccessSaving(false);
       }
@@ -150,20 +150,19 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                            <Shield className="w-5 h-5 text-primary-600 dark:text-primary-400" />
                         </div>
                         <div>
-                           <h2 className="text-lg font-semibold text-ink">Ruxsatlarni boshqarish</h2>
+                           <h2 className="text-lg font-semibold text-ink">{t('accesscontroltab.ruxsatlarni_boshqarish')}</h2>
                            <p className="text-sm text-muted mt-1">
-                              Shifokor va resepshn qaysi bo'limlar va ma'lumotlarni ko'rishini belgilang.
-                              Belgisi olib tashlangan modul menyuda ko'rinmaydi. Bosh sahifa (Dashboard) har doim ochiq qoladi.
+                              {t('accesscontroltab.shifokor_va_resepshn_qaysi')}
                            </p>
                         </div>
                      </div>
                   </Card>
 
                   {([
-                     { roleKey: 'receptionist' as const, roleId: UserRole.RECEPTIONIST, title: 'Registrator', desc: 'Qabulxona xodimlari uchun' },
-                     { roleKey: 'doctor' as const, roleId: UserRole.DOCTOR, title: 'Shifokor', desc: 'Shifokorlar uchun' },
-                     { roleKey: 'labTechnician' as const, roleId: UserRole.LAB_TECHNICIAN, title: 'Laborant', desc: 'Tahlil natijalarini kiritadi' },
-                     { roleKey: 'nurse' as const, roleId: UserRole.NURSE, title: 'Hamshira', desc: 'Dori beradi, palatani olib boradi' },
+                     { roleKey: 'receptionist' as const, roleId: UserRole.RECEPTIONIST, title: t('ui.registrator'), desc: t('ui.qabulxona_xodimlari_uchun') },
+                     { roleKey: 'doctor' as const, roleId: UserRole.DOCTOR, title: t('ui.shifokor_2'), desc: t('ui.shifokorlar_uchun') },
+                     { roleKey: 'labTechnician' as const, roleId: UserRole.LAB_TECHNICIAN, title: t('ui.laborant'), desc: t('ui.tahlil_natijalarini_kiritadi') },
+                     { roleKey: 'nurse' as const, roleId: UserRole.NURSE, title: t('ui.hamshira'), desc: t('ui.dori_beradi_palatani_olib') },
                   ]).map(({ roleKey, roleId, title, desc }) => {
                      const roleAccess = accessForm[roleKey] || {};
                      const hidden = roleAccess.hiddenModules || [];
@@ -182,7 +181,7 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                               <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl">
                                  {([
                                     { key: 'simple' as const, label: 'Sodda', active: isSimplePreset(roleKey, roleId) },
-                                    { key: 'all' as const, label: 'Hammasi', active: (accessForm[roleKey]?.hiddenModules || []).length === 0 },
+                                    { key: 'all' as const, label: t('ui.hammasi'), active: (accessForm[roleKey]?.hiddenModules || []).length === 0 },
                                  ]).map(p => (
                                     <button
                                        key={p.key}
@@ -200,12 +199,11 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
 
                            {roleKey === 'receptionist' && (
                               <p className="text-xs text-muted mb-3 -mt-2">
-                                 <b>Sodda</b> — faqat kundalik ish uchun kerak bo'lgan bo'limlar qoladi
-                                 (Bemorlar, Kalendar, Kassa, Navbat). Menyu qisqarsa, yangi xodim tezroq o'rganadi.
+                                 <b>Sodda</b> — {t('accesscontroltab.faqat_kundalik_ish_uchun')}
                               </p>
                            )}
 
-                           <p className="text-xs font-bold text-faint uppercase tracking-wider mb-3">Ko'rinadigan modullar</p>
+                           <p className="text-xs font-bold text-faint uppercase tracking-wider mb-3">{t('accesscontroltab.korinadigan_modullar')}</p>
                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-6">
                               {modules.map(m => {
                                  const visible = !hidden.includes(m.id);
@@ -225,7 +223,7 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                               })}
                            </div>
 
-                           <p className="text-xs font-bold text-faint uppercase tracking-wider mb-3">Maxfiy ma'lumotlar</p>
+                           <p className="text-xs font-bold text-faint uppercase tracking-wider mb-3">{t('accesscontroltab.maxfiy_malumotlar')}</p>
                            <div className="space-y-2">
                               <label className="flex items-start gap-3 p-3 rounded-xl border border-line cursor-pointer hover:border-primary-300 transition-colors">
                                  <input
@@ -235,8 +233,8 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                                     className="w-4 h-4 mt-0.5 rounded text-primary-600 focus:ring-primary-500"
                                  />
                                  <div>
-                                    <p className="text-sm font-semibold text-ink">Moliyaviy ko'rsatkichlarni ko'rsatish</p>
-                                    <p className="text-xs text-muted">Dashboarddagi tushum, o'rtacha chek, kutilayotgan to'lovlar va qarzdorlar ro'yxati</p>
+                                    <p className="text-sm font-semibold text-ink">{t('accesscontroltab.moliyaviy_korsatkichlarni_korsatish')}</p>
+                                    <p className="text-xs text-muted">{t('accesscontroltab.dashboarddagi_tushum_ortacha_chek')}</p>
                                  </div>
                               </label>
                               {roleKey === 'doctor' && (
@@ -248,8 +246,8 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                                        className="w-4 h-4 mt-0.5 rounded text-primary-600 focus:ring-primary-500"
                                     />
                                     <div>
-                                       <p className="text-sm font-semibold text-ink">Bemor telefon raqamlarini ko'rsatish</p>
-                                       <p className="text-xs text-muted">O'chirilsa, shifokorga raqamlar yulduzcha bilan maskalanadi (masalan, +*** ** *** ** 67)</p>
+                                       <p className="text-sm font-semibold text-ink">{t('accesscontroltab.bemor_telefon_raqamlarini_korsatish')}</p>
+                                       <p className="text-xs text-muted">{t('accesscontroltab.ochirilsa_shifokorga_raqamlar_yulduzcha')}</p>
                                     </div>
                                  </label>
                               )}
@@ -261,46 +259,46 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
 
                   <div className="flex items-center gap-3">
                      <Button onClick={handleAccessSave} disabled={accessSaving}>
-                        {accessSaving ? 'Saqlanmoqda...' : accessSaved ? 'Saqlandi ✓' : 'Saqlash'}
+                        {accessSaving ? t('ui.saqlanmoqda_2') : accessSaved ? t('accesscontroltab.saqlandi') : t('ui.saqlash')}
                      </Button>
-                     {accessSaved && <span className="text-sm text-success-600 font-medium">Ruxsatlar yangilandi, sahifa yangilanmoqda...</span>}
+                     {accessSaved && <span className="text-sm text-success-600 font-medium">{t('accesscontroltab.ruxsatlar_yangilandi_sahifa_yangilanmoqd')}</span>}
                   </div>
 
          {children}
                <Card className="p-6">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-5">
                      <div>
-                        <h2 className="text-lg font-medium text-ink">Kirish jurnali</h2>
+                        <h2 className="text-lg font-medium text-ink">{t('accesscontroltab.kirish_jurnali')}</h2>
                         <p className="text-sm text-muted">
-                           Bemor kartasini kim ochgani va o'zgartirgani.
+                           {t('accesscontroltab.bemor_kartasini_kim_ochgani')}
                            {logData?.retentionMonths ? ` ${logData.retentionMonths} oy saqlanadi.` : ''}
                         </p>
                      </div>
                      <Button size="sm" variant="secondary" onClick={loadAccessLog} disabled={logLoading}>
-                        <RefreshCw className={`w-4 h-4 mr-1.5 ${logLoading ? 'animate-spin' : ''}`} /> Yangilash
+                        <RefreshCw className={`w-4 h-4 mr-1.5 ${logLoading ? 'animate-spin' : ''}`} /> {t('ui.yangilash')}
                      </Button>
                   </div>
 
                   <div className="flex flex-wrap items-end gap-3 mb-4">
                      <div>
-                        <label className="block text-[11px] text-muted mb-1">Boshlanish</label>
+                        <label className="block text-[11px] text-muted mb-1">{t('finance.report.from')}</label>
                         <input type="date" value={logFrom} onChange={e => setLogFrom(e.target.value)}
                            className="px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm" />
                      </div>
                      <div>
-                        <label className="block text-[11px] text-muted mb-1">Tugash</label>
+                        <label className="block text-[11px] text-muted mb-1">{t('finance.report.to')}</label>
                         <input type="date" value={logTo} onChange={e => setLogTo(e.target.value)}
                            className="px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm" />
                      </div>
                      <div>
-                        <label className="block text-[11px] text-muted mb-1">Amal</label>
+                        <label className="block text-[11px] text-muted mb-1">{t('settings.services.thAction')}</label>
                         <select value={logAction} onChange={e => setLogAction(e.target.value)}
                            className="px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm">
-                           <option value="">Barchasi</option>
-                           <option value="View">Ko'rish</option>
-                           <option value="Create">Yaratish</option>
-                           <option value="Update">O'zgartirish</option>
-                           <option value="Print">Bosish</option>
+                           <option value="">{t('ui.barchasi')}</option>
+                           <option value="View">{t('accesscontroltab.korish')}</option>
+                           <option value="Create">{t('ui.yaratish')}</option>
+                           <option value="Update">{t('common.change')}</option>
+                           <option value="Print">{t('accesscontroltab.bosish')}</option>
                         </select>
                      </div>
                   </div>
@@ -319,7 +317,7 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                   ) : !logData || logData.items.length === 0 ? (
                      <div className="text-center py-10">
                         <Shield className="w-8 h-8 text-faint mx-auto mb-2" />
-                        <p className="text-sm text-muted">Bu davrda yozuv yo'q</p>
+                        <p className="text-sm text-muted">{t('ui.bu_davrda_yozuv_yoq')}</p>
                      </div>
                   ) : (
                      <>
@@ -327,7 +325,7 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                            <table className="w-full min-w-[640px]">
                               <thead className="bg-canvas/40 border-b border-line">
                                  <tr>
-                                    {['Vaqt', 'Kim', 'Roli', 'Amal', 'Nima', 'Bemor'].map(h => (
+                                    {[t('ui.vaqt'), t('ui.kim'), 'Roli', t('settings.services.thAction'), t('accesscontroltab.nima'), t('ui.bemor')].map(h => (
                                        <th key={h} className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-muted">
                                           {h}
                                        </th>
@@ -357,8 +355,8 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                            </table>
                         </div>
                         <p className="text-[11px] text-faint mt-2">
-                           {logData.total} yozuv
-                           {logData.truncated ? ` — oxirgi ${logData.items.length} tasi ko'rsatilgan, davrni toraytiring` : ''}.
+                           {logData.total} {t('accesscontroltab.yozuv')}
+                           {logData.truncated ? fill(t('accesscontroltab.oxirgi_x_tasi_korsatilgan'), logData.items.length) : ''}.
                            Jurnalga faqat server yozadi: tashqaridan yozib bo'lmaydi.
                         </p>
                      </>

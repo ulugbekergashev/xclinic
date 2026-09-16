@@ -9,6 +9,7 @@ import { normalizeUzPhone } from '../utils/phone';
 import { validatePatient, formatUzPhone } from '../shared/validation';
 import { DoctorPicker } from './DoctorPicker';
 
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    BEMOR FORMASI — YAGONA.
 
@@ -39,11 +40,11 @@ const MAX_AGE_YEARS = 120;
 function dobProblem(dob: string): string | null {
     if (!dob) return null;
     const d = new Date(dob + 'T00:00:00Z');
-    if (isNaN(d.getTime())) return "Sana noto'g'ri";
+    if (isNaN(d.getTime())) return tr('patientformmodal.sana_notogri');
     const now = new Date();
-    if (d.getTime() > now.getTime()) return 'Sana kelajakda';
+    if (d.getTime() > now.getTime()) return tr('patientformmodal.sana_kelajakda');
     const years = (now.getTime() - d.getTime()) / (365.25 * 24 * 3600 * 1000);
-    if (years > MAX_AGE_YEARS) return `${MAX_AGE_YEARS} yoshdan katta — sanani tekshiring`;
+    if (years > MAX_AGE_YEARS) return fill(tr('patientformmodal.x_yoshdan_katta_sanani'), MAX_AGE_YEARS);
     return null;
 }
 
@@ -80,6 +81,7 @@ export const PatientFormModal: React.FC<Props> = ({
     isOpen, onClose, patient = null, onCreate, onUpdate,
     doctors = [], userRole, doctorId, compact = false, allowPhoto = false, onSaved,
 }) => {
+    const { t } = useLanguage();
     const isEdit = !!patient;
     const [form, setForm] = useState({ ...emptyForm });
     const [showMore, setShowMore] = useState(!compact);
@@ -150,7 +152,7 @@ export const PatientFormModal: React.FC<Props> = ({
             }));
             setShowMore(true);
         } catch (e: any) {
-            toast.error(e.message || 'JSHSHIR bo\'yicha ma\'lumot topilmadi');
+            toast.error(e.message || t('patientformmodal.jshshir_boyicha_malumot_topilmadi'));
         } finally {
             setLookupLoading(false);
         }
@@ -216,7 +218,7 @@ export const PatientFormModal: React.FC<Props> = ({
                 // Server tekshiruvi — maydon ostiga tushadi
                 setFieldErrors(e.data.fields);
             } else {
-                toast.error(e?.message || "Bemorni saqlab bo'lmadi");
+                toast.error(e?.message || t('patientformmodal.bemorni_saqlab_bolmadi'));
             }
         } finally {
             setSaving(false);
@@ -247,11 +249,11 @@ export const PatientFormModal: React.FC<Props> = ({
 
     return (
         <Modal isOpen={isOpen} onClose={close}
-            title={isEdit ? 'Bemor ma\'lumotlari' : 'Yangi bemor qo\'shish'} className="max-w-xl">
+            title={isEdit ? t('patientformmodal.bemor_malumotlari') : t('today.yangi_bemor_qoshish')} className="max-w-xl">
             {duplicates && duplicates.length > 0 && (
                 <div className="mb-4 p-4 border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
                     <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-2">
-                        Bunday bemor allaqachon bor — yangisini yaratishga ishonchingiz komilmi?
+                        {t('patientformmodal.bunday_bemor_allaqachon_bor')}
                     </p>
                     <div className="space-y-1.5 mb-3">
                         {duplicates.map((d) => (
@@ -268,18 +270,18 @@ export const PatientFormModal: React.FC<Props> = ({
                                 <p className="text-xs text-muted">
                                     {formatUzPhone(d.phone)}
                                     {d.dob ? ` · ${d.dob}` : ''}
-                                    {d.cardNumber ? ` · karta ${d.cardNumber}` : ''}
-                                    {d.lastVisit && d.lastVisit !== 'Never' ? ` · oxirgi tashrif ${d.lastVisit}` : ''}
+                                    {d.cardNumber ? fill(t('patientformmodal.karta_x'), d.cardNumber) : ''}
+                                    {d.lastVisit && d.lastVisit !== 'Never' ? fill(t('patientformmodal.oxirgi_tashrif_x'), d.lastVisit) : ''}
                                 </p>
                             </button>
                         ))}
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button type="button" variant="secondary" size="sm" onClick={() => setDuplicates(null)}>
-                            Orqaga
+                            {t('common.back')}
                         </Button>
                         <Button type="button" size="sm" disabled={saving} onClick={() => void submit(true)}>
-                            {saving ? 'Saqlanmoqda…' : 'Baribir yangi yaratish'}
+                            {saving ? t('ui.saqlanmoqda_3') : t('patientformmodal.baribir_yangi_yaratish')}
                         </Button>
                     </div>
                 </div>
@@ -293,7 +295,7 @@ export const PatientFormModal: React.FC<Props> = ({
                 {Object.values(fieldErrors).some(Boolean) && (
                     <div role="alert" className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2">
                         <p className="text-sm font-medium text-red-700 dark:text-red-300">
-                            Saqlash uchun quyidagilarni to'g'rilang:
+                            {t('patientformmodal.saqlash_uchun_quyidagilarni_togrilang')}
                         </p>
                         <ul className="mt-1 text-xs text-red-700 dark:text-red-300 list-disc list-inside">
                             {Object.entries(fieldErrors)
@@ -305,19 +307,19 @@ export const PatientFormModal: React.FC<Props> = ({
 
                 <div className="grid grid-cols-2 gap-3">
                     <div>
-                        <Input label="Familiya *" name="lastName" value={form.lastName}
+                        <Input label={t('ui.familiya')} name="lastName" value={form.lastName}
                             onChange={e => { setForm(f => ({ ...f, lastName: e.target.value })); if (fieldErrors.lastName) setFieldErrors(v => ({ ...v, lastName: '' })); }} required />
                         {fieldErrors.lastName && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.lastName}</p>}
                     </div>
                     <div>
-                        <Input label="Ism *" name="firstName" value={form.firstName}
+                        <Input label={t('ui.ism')} name="firstName" value={form.firstName}
                             onChange={e => { setForm(f => ({ ...f, firstName: e.target.value })); if (fieldErrors.firstName) setFieldErrors(v => ({ ...v, firstName: '' })); }} required />
                         {fieldErrors.firstName && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.firstName}</p>}
                     </div>
                 </div>
 
                 <div>
-                    <Input label="Telefon" name="phone" value={form.phone}
+                    <Input label={t('ui.telefon')} name="phone" value={form.phone}
                         onChange={e => {
                             setForm(f => ({ ...f, phone: e.target.value }));
                             if (fieldErrors.phone) setFieldErrors(v => ({ ...v, phone: '' }));
@@ -331,7 +333,7 @@ export const PatientFormModal: React.FC<Props> = ({
                         <p className="text-xs text-red-600 dark:text-red-400 mt-1">{fieldErrors.phone}</p>
                     ) : form.phone.trim() && !normalizeUzPhone(form.phone) ? (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                            Raqam tanilmadi. Masalan: +998 90 123 45 67
+                            {t('patientformmodal.raqam_tanilmadi_masalan_998')}
                         </p>
                     ) : null}
                 </div>
@@ -343,7 +345,7 @@ export const PatientFormModal: React.FC<Props> = ({
                         className="flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700"
                     >
                         <ChevronDown className={`w-4 h-4 transition-transform ${showMore ? 'rotate-180' : ''}`} />
-                        Qo'shimcha ma'lumot
+                        {t('patientformmodal.qoshimcha_malumot')}
                     </button>
                 )}
 
@@ -351,30 +353,30 @@ export const PatientFormModal: React.FC<Props> = ({
                     <div className="space-y-4 pt-1">
                         <div className="flex gap-2 items-end">
                             <div className="flex-1">
-                                <Input label="JSHSHIR (PINFL)" name="pinfl" value={form.pinfl}
+                                <Input label={t('patientformmodal.jshshir_pinfl')} name="pinfl" value={form.pinfl}
                                     onChange={e => setForm(f => ({ ...f, pinfl: e.target.value.replace(/\D/g, '') }))}
-                                    placeholder="14 raqam" maxLength={14} inputMode="numeric" />
+                                    placeholder={t('patientformmodal.14_raqam')} maxLength={14} inputMode="numeric" />
                                 {form.pinfl.length > 0 && form.pinfl.length !== 14 && (
                                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                        14 ta raqam bo'lishi kerak ({form.pinfl.length} ta kiritildi)
+                                        {t('patientformmodal.14_ta_raqam_bolishi')}{form.pinfl.length} {t('patientformmodal.ta_kiritildi')})
                                     </p>
                                 )}
                             </div>
                             {/* Karta raqami — registratura og'zaki aytadigan va
                                 qog'ozga yozadigan raqam. UUID buning uchun yaroqsiz. */}
-                            <Input label="Karta raqami" name="cardNumber" containerClassName="flex-1" value={form.cardNumber}
+                            <Input label={t('ui.karta_raqami')} name="cardNumber" containerClassName="flex-1" value={form.cardNumber}
                                 onChange={e => setForm(f => ({ ...f, cardNumber: e.target.value }))}
-                                placeholder="Masalan: 001234" />
+                                placeholder={t('patientformmodal.masalan_001234')} />
                             <Button type="button" variant="secondary" onClick={handleLookupPinfl} disabled={lookupLoading} className="h-10">
                                 {lookupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                             </Button>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="Qo'shimcha telefon" name="secondaryPhone" value={form.secondaryPhone}
+                            <Input label={t('ui.qoshimcha_telefon')} name="secondaryPhone" value={form.secondaryPhone}
                                 onChange={e => setForm(f => ({ ...f, secondaryPhone: e.target.value }))} />
                             <div>
-                                <Input label="Tug'ilgan sana" name="dob" type="date" value={form.dob}
+                                <Input label={t('patientformmodal.tugilgan_sana')} name="dob" type="date" value={form.dob}
                                     onChange={e => setForm(f => ({ ...f, dob: e.target.value }))} />
                                 {dobProblem(form.dob) && (
                                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{dobProblem(form.dob)}</p>
@@ -382,7 +384,7 @@ export const PatientFormModal: React.FC<Props> = ({
                             </div>
                         </div>
 
-                        <Input label="Manzil" name="address" value={form.address}
+                        <Input label={t('settings.general.address')} name="address" value={form.address}
                             onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
 
                         {/* Rasm — faqat yaratishda. Kartada uni almashtirish
@@ -403,7 +405,7 @@ export const PatientFormModal: React.FC<Props> = ({
                                         <button type="button"
                                             onClick={e => { e.preventDefault(); e.stopPropagation(); setPhoto(null); }}
                                             className="text-xs text-red-500 hover:text-red-600 font-medium z-20 relative">
-                                            O'chirish
+                                            {t('ui.ochirish_2')}
                                         </button>
                                     </div>
                                 ) : (
@@ -411,7 +413,7 @@ export const PatientFormModal: React.FC<Props> = ({
                                         <div className="w-12 h-12 rounded-full bg-surface shadow-sm flex items-center justify-center text-primary-500 group-hover:scale-110 transition-transform">
                                             <Plus className="w-6 h-6" />
                                         </div>
-                                        <span className="text-sm font-bold text-muted">Rasm yuklash</span>
+                                        <span className="text-sm font-bold text-muted">{t('patientformmodal.rasm_yuklash')}</span>
                                         <span className="text-[10px] text-muted">JPG, PNG, WEBP</span>
                                     </div>
                                 )}
@@ -420,16 +422,16 @@ export const PatientFormModal: React.FC<Props> = ({
 
                         {!isDoctor && doctors.length > 0 && (
                             <DoctorPicker
-                                label="Biriktirilgan shifokor"
+                                label={t('patientformmodal.biriktirilgan_shifokor')}
                                 doctors={doctors}
                                 value={form.doctorId}
-                                emptyLabel="Tanlanmagan"
+                                emptyLabel={t('ui.tanlanmagan')}
                                 onChange={(id) => setForm(f => ({ ...f, doctorId: id }))}
                             />
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-muted mb-1">Jins</label>
+                            <label className="block text-sm font-medium text-muted mb-1">{t('patients.modal.gender')}</label>
                             <div className="flex gap-2">
                                 {(['Male', 'Female'] as const).map(g => (
                                     <button
@@ -440,21 +442,21 @@ export const PatientFormModal: React.FC<Props> = ({
                                             ? 'bg-primary-600 text-white border-primary-600'
                                             : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                                     >
-                                        {g === 'Male' ? 'Erkak' : 'Ayol'}
+                                        {g === 'Male' ? t('ui.erkak') : t('ui.ayol')}
                                     </button>
                                 ))}
                             </div>
                             <p className="text-[11px] text-faint mt-1">
-                                Jins va tug'ilgan sana tahlil normalarini to'g'ri tanlash uchun kerak.
+                                {t('patientformmodal.jins_va_tugilgan_sana')}
                             </p>
                         </div>
 
                         {/* Holat — faqat tahrirlashda. Yangi bemor har doim faol. */}
                         {isEdit && (
                             <div>
-                                <label className="block text-sm font-medium text-muted mb-1">Holat</label>
+                                <label className="block text-sm font-medium text-muted mb-1">{t('inventory.thStatus')}</label>
                                 <div className="flex gap-2">
-                                    {([['Active', 'Faol'], ['Archived', 'Arxiv']] as const).map(([val, label]) => (
+                                    {([['Active', t('ui.faol')], ['Archived', t('patients.filter.archived')]] as const).map(([val, label]) => (
                                         <button
                                             key={val}
                                             type="button"
@@ -471,12 +473,12 @@ export const PatientFormModal: React.FC<Props> = ({
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-muted mb-1">Tibbiy tarix</label>
+                            <label className="block text-sm font-medium text-muted mb-1">{t('patientformmodal.tibbiy_tarix')}</label>
                             <textarea
                                 value={form.medicalHistory}
                                 onChange={e => setForm(f => ({ ...f, medicalHistory: e.target.value }))}
                                 rows={2}
-                                placeholder="Allergiya, surunkali kasalliklar..."
+                                placeholder={t('patients.modal.medicalHistoryPlaceholder')}
                                 className="w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                             />
                         </div>
@@ -484,9 +486,9 @@ export const PatientFormModal: React.FC<Props> = ({
                 )}
 
                 <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="secondary" onClick={close} disabled={saving}>Bekor</Button>
+                    <Button type="button" variant="secondary" onClick={close} disabled={saving}>{t('ui.bekor')}</Button>
                     <Button type="submit" disabled={saving}>
-                        {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saqlanmoqda...</> : 'Saqlash'}
+                        {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t('ui.saqlanmoqda')}</> : t('ui.saqlash')}
                     </Button>
                 </div>
             </form>

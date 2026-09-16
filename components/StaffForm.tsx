@@ -6,6 +6,7 @@ import { formatFullName } from '../utils/format';
 import { Department, Service } from '../types';
 import { Loader2, Users, Phone, FlaskConical, HeartPulse } from 'lucide-react';
 
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
    XODIM FORMASI — YAGONA.
 
@@ -45,36 +46,36 @@ export interface StaffRow {
 
 export const DOCTOR_COLORS = [
     { name: "Ko'k", value: '#3B82F6' },
-    { name: 'Yashil', value: '#10B981' },
+    { name: tr('ui.yashil'), value: '#10B981' },
     { name: 'Binafsha', value: '#8B5CF6' },
     { name: 'Qizil', value: '#F43F5E' },
-    { name: 'Sariq', value: '#F59E0B' },
+    { name: tr('ui.sariq'), value: '#F59E0B' },
     { name: 'Havorang', value: '#06B6D4' },
     { name: "To'q ko'k", value: '#6366F1' },
-    { name: "To'q sariq", value: '#FB923C' },
+    { name: tr('ui.toq_sariq'), value: '#FB923C' },
 ];
 
 export const ROLES: {
     key: StaffRole; label: string; icon: React.ElementType; hint: string; badge: string;
 }[] = [
     {
-        key: 'DOCTOR', label: 'Shifokor', icon: Users,
-        hint: "Qabul qiladi, tashxis qo'yadi",
+        key: 'DOCTOR', label: tr('ui.shifokor_2'), icon: Users,
+        hint: tr('staffform.qabul_qiladi_tashxis_qoyadi'),
         badge: 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300',
     },
     {
-        key: 'RECEPTIONIST', label: 'Registrator', icon: Phone,
-        hint: 'Yozadi, navbat ochadi, kassa',
+        key: 'RECEPTIONIST', label: tr('ui.registrator'), icon: Phone,
+        hint: tr('staffform.yozadi_navbat_ochadi_kassa'),
         badge: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
     },
     {
-        key: 'LAB_TECHNICIAN', label: 'Laborant', icon: FlaskConical,
-        hint: 'Tahlil natijalarini kiritadi',
+        key: 'LAB_TECHNICIAN', label: tr('ui.laborant'), icon: FlaskConical,
+        hint: tr('ui.tahlil_natijalarini_kiritadi'),
         badge: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
     },
     {
-        key: 'NURSE', label: 'Hamshira', icon: HeartPulse,
-        hint: 'Dori beradi, palatani olib boradi',
+        key: 'NURSE', label: tr('ui.hamshira'), icon: HeartPulse,
+        hint: tr('ui.dori_beradi_palatani_olib'),
         badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
     },
 ];
@@ -137,6 +138,7 @@ export async function removeStaff(role: StaffRole, id: string) {
 export const StaffForm: React.FC<Props> = ({
     mode, role, row, departments = [], onClose, onSaved,
 }) => {
+    const { t } = useLanguage();
     const shows = FIELDS[role];
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState(() => row ? {
@@ -198,7 +200,7 @@ export const StaffForm: React.FC<Props> = ({
             const saved = await saveStaff(role, mode === 'edit' && row ? row.id : null, data);
             onSaved(saved);
         } catch (err: any) {
-            toast.error(err?.data?.error || err?.message || "Saqlab bo'lmadi");
+            toast.error(err?.data?.error || err?.message || t('ui.saqlab_bolmadi'));
         } finally {
             setSaving(false);
         }
@@ -208,54 +210,54 @@ export const StaffForm: React.FC<Props> = ({
         <Modal isOpen onClose={onClose} className="max-w-2xl"
             title={mode === 'edit' && row
                 ? `${formatFullName(row)} — ${roleMeta(role).label}`
-                : `Yangi ${roleMeta(role).label.toLowerCase()}`}>
+                : fill(t('staffform.yangi_x'), roleMeta(role).label.toLowerCase())}>
             <form onSubmit={save} className="space-y-4">
                 <p className="text-xs text-muted">{roleMeta(role).hint}</p>
 
                 <div className="grid grid-cols-2 gap-3">
-                    <Input label="Familiya *" value={form.lastName}
+                    <Input label={t('ui.familiya')} value={form.lastName}
                         onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} required />
-                    <Input label="Ism *" value={form.firstName}
+                    <Input label={t('ui.ism')} value={form.firstName}
                         onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} required />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                    <Input label="Telefon" value={form.phone}
+                    <Input label={t('ui.telefon')} value={form.phone}
                         onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                         placeholder="+998 90 123 45 67" />
-                    <Input label="Lavozim" value={form.specialty}
+                    <Input label={t('ui.lavozim')} value={form.specialty}
                         onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))}
-                        placeholder={role === 'DOCTOR' ? 'Kardiolog' : 'Masalan: katta hamshira'} />
+                        placeholder={role === 'DOCTOR' ? t('staffform.kardiolog') : t('staffform.masalan_katta_hamshira')} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                    <Select label="Bo'lim" value={form.departmentId}
+                    <Select label={t('ui.bolim')} value={form.departmentId}
                         onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))}
                         options={[
-                            { value: '', label: 'Tanlanmagan' },
+                            { value: '', label: t('ui.tanlanmagan') },
                             ...departments.filter(d => d.isActive).map(d => ({ value: d.id, label: d.name })),
                         ]} />
                     <Input label="Kabinet" value={form.room}
                         onChange={e => setForm(f => ({ ...f, room: e.target.value }))}
-                        placeholder="Masalan: 204" />
+                        placeholder={t('staffform.masalan_204')} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                    <Input label="Ish boshlanishi (soat)" type="number" min={0} max={23}
+                    <Input label={t('staffform.ish_boshlanishi_soat')} type="number" min={0} max={23}
                         value={form.startHour}
                         onChange={e => setForm(f => ({ ...f, startHour: e.target.value }))}
                         placeholder="9" />
-                    <Input label="Ish tugashi (soat)" type="number" min={0} max={23}
+                    <Input label={t('staffform.ish_tugashi_soat')} type="number" min={0} max={23}
                         value={form.endHour}
                         onChange={e => setForm(f => ({ ...f, endHour: e.target.value }))}
                         placeholder="18" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                    <Input label="Elektron pochta" type="email" value={form.email}
+                    <Input label={t('doctors.details.email')} type="email" value={form.email}
                         onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
                     {shows.share ? (
-                        <Input label="Qo'shimcha telefon" value={form.secondaryPhone}
+                        <Input label={t('ui.qoshimcha_telefon')} value={form.secondaryPhone}
                             onChange={e => setForm(f => ({ ...f, secondaryPhone: e.target.value }))} />
                     ) : <div />}
                 </div>
@@ -264,7 +266,7 @@ export const StaffForm: React.FC<Props> = ({
                     <div className="grid grid-cols-2 gap-3">
                         <Input label="Login" value={form.username}
                             onChange={e => setForm(f => ({ ...f, username: e.target.value }))} />
-                        <Input label={mode === 'edit' ? "Yangi parol (bo'sh — o'zgarmaydi)" : 'Parol'}
+                        <Input label={mode === 'edit' ? t('staffform.yangi_parol_bosh_ozgarmaydi') : t('ui.parol')}
                             type="password" value={form.password}
                             onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
                     </div>
@@ -273,35 +275,33 @@ export const StaffForm: React.FC<Props> = ({
                 {/* ── OYLIK. To'rt rolda ham (0036). Ilgari u faqat shifokorda
                     bor edi va registratorning oyligi daftarda qolardi. ── */}
                 <div className="rounded-xl border border-line p-4 space-y-3">
-                    <p className="text-xs font-bold text-muted uppercase tracking-wider">Oylik</p>
-                    <Input label="Asosiy oylik (UZS)" type="number" value={form.fixedSalary}
+                    <p className="text-xs font-bold text-muted uppercase tracking-wider">{t('ui.oylik')}</p>
+                    <Input label={t('staffform.asosiy_oylik_uzs')} type="number" value={form.fixedSalary}
                         onChange={e => setForm(f => ({ ...f, fixedSalary: e.target.value }))}
                         placeholder="3000000" />
 
                     {shows.share && (
                         <>
                             <div className="grid grid-cols-2 gap-3">
-                                <Input label="Xizmat foizi (%)" type="number" value={form.percentage}
+                                <Input label={t('staffform.xizmat_foizi')} type="number" value={form.percentage}
                                     onChange={e => setForm(f => ({ ...f, percentage: e.target.value }))} />
-                                <Select label="Maosh turi" value={form.salaryType}
+                                <Select label={t('staffform.maosh_turi')} value={form.salaryType}
                                     onChange={e => setForm(f => ({ ...f, salaryType: e.target.value }))}
                                     options={[
-                                        { value: 'none', label: 'Belgilanmagan — faqat foiz' },
-                                        { value: 'kpi', label: 'Faqat xizmat foizi' },
-                                        { value: 'fixed', label: "Faqat qat'iy summa" },
-                                        { value: 'fixed_kpi', label: "Qat'iy summa + foiz" },
+                                        { value: 'none', label: t('staffform.belgilanmagan_faqat_foiz') },
+                                        { value: 'kpi', label: t('staffform.faqat_xizmat_foizi') },
+                                        { value: 'fixed', label: t('staffform.faqat_qatiy_summa') },
+                                        { value: 'fixed_kpi', label: t('staffform.qatiy_summa_foiz') },
                                     ]} />
                             </div>
                             <p className="text-[11px] text-faint">
-                                Shifokorda asosiy oylik ham, ulush ham VEDOMOST orqali to'lanadi —
-                                shuning uchun xodim kartasidan ikkinchi marta to'lanmaydi.
+                                {t('staffform.shifokorda_asosiy_oylik_ham')}
                             </p>
                         </>
                     )}
                     {!shows.share && (
                         <p className="text-[11px] text-faint">
-                            Oylik xodim kartasidagi «Maosh» bo'limidan to'lanadi va kassaga
-                            xarajat bo'lib tushadi.
+                            {t('staffform.oylik_xodim_kartasidagi_maosh')}
                         </p>
                     )}
                 </div>
@@ -324,20 +324,20 @@ export const StaffForm: React.FC<Props> = ({
                 )}
 
                 {mode === 'edit' && (
-                    <Select label="Holat" value={form.status}
+                    <Select label={t('inventory.thStatus')} value={form.status}
                         onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
                         options={[
-                            { value: 'Active', label: 'Faol' },
-                            { value: 'Vacation', label: "Ta'tilda" },
+                            { value: 'Active', label: t('ui.faol') },
+                            { value: 'Vacation', label: t('ui.tatilda') },
                             { value: 'Inactive', label: 'Ishlamayapti' },
                         ]} />
                 )}
 
                 <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Bekor</Button>
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>{t('ui.bekor')}</Button>
                     <Button type="submit" disabled={saving}>
                         {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        Saqlash
+                        {t('ui.saqlash')}
                     </Button>
                 </div>
             </form>

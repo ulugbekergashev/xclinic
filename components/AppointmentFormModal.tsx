@@ -7,7 +7,7 @@ import { todayISO } from '../utils/dateUtils';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
 import { Plus, Loader2 } from 'lucide-react';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, fill } from '../context/LanguageContext';
 import { DoctorPicker } from './DoctorPicker';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -149,11 +149,11 @@ export const AppointmentFormModal: React.FC<Props> = ({
             const code = err?.data?.code || err?.code;
             if (code === 'DOCTOR_BUSY') {
                 const busy = err?.data?.conflict;
-                const when = busy ? `${busy.time} — ${busy.patientName || 'bemor'}` : '';
+                const when = busy ? `${busy.time} — ${busy.patientName || t('appointmentformmodal.bemor')}` : '';
                 const okToForce = await confirmAction({
-                    title: when ? `Bu vaqtda shifokor band: ${when}` : 'Bu vaqtda shifokor band',
-                    body: 'Baribir yozilsinmi?',
-                    confirmLabel: 'Baribir yozish',
+                    title: when ? fill(t('appointmentformmodal.bu_vaqtda_shifokor_band'), when) : t('appointmentformmodal.bu_vaqtda_shifokor_band_2'),
+                    body: t('appointmentformmodal.baribir_yozilsinmi'),
+                    confirmLabel: t('appointmentformmodal.baribir_yozish'),
                 });
                 if (okToForce) {
                     try {
@@ -161,11 +161,11 @@ export const AppointmentFormModal: React.FC<Props> = ({
                         onClose();
                         onSaved?.();
                     } catch (e2: any) {
-                        toast.error(e2?.data?.error || e2?.message || 'Yozib bo\'lmadi');
+                        toast.error(e2?.data?.error || e2?.message || t('appointmentformmodal.yozib_bolmadi'));
                     }
                 }
             } else {
-                toast.error(err?.data?.error || err?.message || 'Yozib bo\'lmadi');
+                toast.error(err?.data?.error || err?.message || t('appointmentformmodal.yozib_bolmadi'));
             }
         } finally {
             setSaving(false);

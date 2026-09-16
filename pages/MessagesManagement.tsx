@@ -9,6 +9,7 @@ import { MessageChannelSettings } from '../components/MessageChannelSettings';
 import { api } from '../services/api';
 import { analyzeSms, hasTypographicApostrophe, fixApostrophes } from '../utils/sms';
 import { processTemplate } from '../utils/messageTemplate';
+import { useLanguage, tr, fill } from '../context/LanguageContext';
 import {
     Settings as SettingsIcon,
     MessageSquare, Clock, Send, CalendarDays, Plus, X, Pencil, Trash2,
@@ -28,13 +29,13 @@ interface MessagesManagementProps {
 
 // Shablon o'zgaruvchilari (backend processTemplate bilan mos)
 const TEMPLATE_VARS: { token: string; label: string }[] = [
-    { token: '{bemor_ismi}', label: '+ Bemor ismi' },
+    { token: '{bemor_ismi}', label: tr('messagesmanagement.bemor_ismi') },
     { token: '{bemor_familyasi}', label: '+ Familya' },
-    { token: '{sana}', label: '+ Sana' },
-    { token: '{vaqt}', label: '+ Vaqt' },
-    { token: '{klinika_nomi}', label: '+ Klinika nomi' },
-    { token: '{shifokor_ismi}', label: '+ Shifokor ismi' },
-    { token: '{qarz}', label: '+ Qarz miqdori' },
+    { token: '{sana}', label: tr('messagesmanagement.sana') },
+    { token: '{vaqt}', label: tr('messagesmanagement.vaqt') },
+    { token: '{klinika_nomi}', label: tr('messagesmanagement.klinika_nomi') },
+    { token: '{shifokor_ismi}', label: tr('messagesmanagement.shifokor_ismi') },
+    { token: '{qarz}', label: tr('messagesmanagement.qarz_miqdori') },
 ];
 
 /* NOMA'LUM TOKENLARNI TOPISH.
@@ -72,35 +73,35 @@ const TRIGGER_ICONS: Record<string, string> = {
 const triggerIcon = (id: string) => TRIGGER_ICONS[id] || '⚙️';
 
 const offsetUnitLabel = (unit: 'hour' | 'day' | 'month') =>
-    unit === 'hour' ? 'soat' : unit === 'day' ? 'kun' : 'oy';
+    unit === 'hour' ? tr('visit.hours') : unit === 'day' ? tr('ui.kun') : 'oy';
 
 const CHANNEL_OPTIONS: { value: MessageChannel; label: string; hint: string }[] = [
-    { value: 'telegram_first', label: '✈️→📱 Avval Telegram', hint: 'Bemor botga ulangan bo\'lsa — bepul Telegram. Ulanmagan yoki xato bo\'lsa — SMS. Eng tejamli variant.' },
-    { value: 'telegram', label: '✈️ Telegram', hint: 'Faqat Telegram. Botga ulanmagan bemorlarga xabar bormaydi.' },
-    { value: 'sms', label: '📱 SMS', hint: 'Faqat SMS. Har bir xabar uchun pul yechiladi.' },
-    { value: 'both', label: '⚠️ Ikkalasi', hint: 'Telegram VA SMS — ikkalasi ham yuboriladi. Botga ulangan bemor ikki marta xabar oladi va SMS uchun baribir pul ketadi.' },
+    { value: 'telegram_first', label: tr('messagesmanagement.avval_telegram'), hint: tr('messagesmanagement.bemor_botga_ulangan_bolsa') },
+    { value: 'telegram', label: '✈️ Telegram', hint: tr('messagesmanagement.faqat_telegram_botga_ulanmagan') },
+    { value: 'sms', label: '📱 SMS', hint: tr('messagesmanagement.faqat_sms_har_bir') },
+    { value: 'both', label: '⚠️ Ikkalasi', hint: tr('messagesmanagement.telegram_va_sms_ikkalasi') },
 ];
 
 // Auditoriya filtrlari SegmentBuilder komponentida, hisoblash esa serverda —
 // bu yerda takrorlanmaydi.
 
 const SOURCE_LABELS: Record<string, string> = {
-    manual: "Qo'lda yuborildi",
-    bulk: "Qo'lda yuborildi",
-    auto: 'Avtomatik',
-    scheduled: 'Jadval bo\'yicha',
-    before_appointment: 'Qabuldan oldin',
-    after_appointment: 'Qabuldan keyin',
-    new_patient: 'Yangi bemor',
-    payment_received: "To'lov",
+    manual: tr('messagesmanagement.qolda_yuborildi'),
+    bulk: tr('messagesmanagement.qolda_yuborildi'),
+    auto: tr('messagesmanagement.avtomatik'),
+    scheduled: tr('messagesmanagement.jadval_boyicha'),
+    before_appointment: tr('messagesmanagement.qabuldan_oldin'),
+    after_appointment: tr('messagesmanagement.qabuldan_keyin'),
+    new_patient: tr('reception.newPatient'),
+    payment_received: tr('patients.details.payments.payButton'),
     recall: 'Profilaktika',
-    debt_reminder: 'Qarz eslatma',
-    debt: 'Qarz eslatma',
-    birthday: "Tug'ilgan kun",
-    noshow: 'Kelmagan bemor',
-    no_show: 'Kelmagan bemor',
+    debt_reminder: tr('messagesmanagement.qarz_eslatma'),
+    debt: tr('messagesmanagement.qarz_eslatma'),
+    birthday: tr('messagesmanagement.tugilgan_kun'),
+    noshow: tr('messagesmanagement.kelmagan_bemor'),
+    no_show: tr('messagesmanagement.kelmagan_bemor'),
     test: 'Test',
-    retry: 'Qayta yuborish',
+    retry: tr('messagesmanagement.qayta_yuborish'),
 };
 
 const inputCls = "w-full px-3 py-2.5 bg-surface border border-line rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20 placeholder-faint";
@@ -111,9 +112,9 @@ const labelCls = "block text-xs font-bold text-muted uppercase tracking-wider mb
 function eskizStatusBadge(status?: string | null): { label: string; cls: string } | null {
     if (!status) return null;
     const s = status.toLowerCase();
-    if (s === 'error') return { label: 'Yuborishda xatolik', cls: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
-    if (s === 'not_found') return { label: 'Eskiz\'da topilmadi', cls: 'bg-elevated text-muted' };
-    if (/(declin|reject|rad)/.test(s)) return { label: `Rad etildi (${status})`, cls: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
+    if (s === 'error') return { label: tr('messagesmanagement.yuborishda_xatolik'), cls: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
+    if (s === 'not_found') return { label: tr('messagesmanagement.eskizda_topilmadi'), cls: 'bg-elevated text-muted' };
+    if (/(declin|reject|rad)/.test(s)) return { label: fill(tr('messagesmanagement.rad_etildi_x'), status), cls: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
     if (/(confirm|approv|activ|tasdiq)/.test(s)) return { label: `Tasdiqlandi (${status})`, cls: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' };
     return { label: `Moderatsiyada (${status})`, cls: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' };
 }
@@ -154,7 +155,7 @@ const FunnelRow: React.FC<{ label: string; value: number; diff?: number; isDeduc
                 <span className="text-xs text-faint">{diff > 0 ? `+${diff}` : diff}</span>
             )}
             <span className={`font-bold ${isDeduction ? 'text-amber-600' : 'text-ink'}`}>
-                {isDeduction ? value : `${value} ta`}
+                {isDeduction ? value : fill(tr('ui.x_ta'), value)}
             </span>
         </span>
     </div>
@@ -163,6 +164,7 @@ const FunnelRow: React.FC<{ label: string; value: number; diff?: number; isDeduc
 export const MessagesManagement: React.FC<MessagesManagementProps> = ({
     clinicId, currentClinic, doctors, addToast, onClinicUpdated
 }) => {
+    const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState<'templates' | 'auto' | 'manual' | 'history' | 'settings'>('templates');
 
     // ── Ma'lumotlar ──
@@ -242,16 +244,16 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
             if (editingTemplate) {
                 const updated = await api.messageTemplates.update(editingTemplate.id, templateForm);
                 setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? updated : t));
-                addToast('success', 'Shablon yangilandi.');
+                addToast('success', t('messagesmanagement.shablon_yangilandi'));
             } else {
                 const created = await api.messageTemplates.create({ ...templateForm, clinicId });
                 setTemplates(prev => [created, ...prev]);
-                addToast('success', "Shablon qo'shildi.");
+                addToast('success', t('messagesmanagement.shablon_qoshildi'));
             }
             setIsTemplateFormOpen(false);
             setEditingTemplate(null);
         } catch (e: any) {
-            addToast('error', e.message || 'Xatolik yuz berdi');
+            addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
         } finally {
             setTemplateSaving(false);
         }
@@ -264,20 +266,20 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
             const updated = await api.messageTemplates.syncEskizStatus(tpl.id);
             setTemplates(prev => prev.map(t => t.id === tpl.id ? updated : t));
         } catch (e: any) {
-            addToast('error', e.message || 'Holatni tekshirishda xatolik');
+            addToast('error', e.message || t('messagesmanagement.holatni_tekshirishda_xatolik'));
         } finally {
             setSyncingTemplateId(null);
         }
     };
 
     const handleDeleteTemplate = async (tpl: MessageTemplate) => {
-        if (!await confirmAction({ title: `"${tpl.name}" shablonini o'chirishni tasdiqlaysizmi?`, danger: true, confirmLabel: "O'chirish" })) return;
+        if (!await confirmAction({ title: fill(t('messagesmanagement.x_shablonini_ochirishni_tasdiqlaysizmi'), tpl.name), danger: true, confirmLabel: t('ui.ochirish_2') })) return;
         try {
             await api.messageTemplates.delete(tpl.id);
             setTemplates(prev => prev.filter(t => t.id !== tpl.id));
-            addToast('info', "Shablon o'chirildi.");
+            addToast('info', t('messagesmanagement.shablon_ochirildi'));
         } catch (e: any) {
-            addToast('error', e.message || "Shablon avtomatik qoidada ishlatilmoqda bo'lishi mumkin");
+            addToast('error', e.message || t('messagesmanagement.shablon_avtomatik_qoidada_ishlatilmoqda'));
         }
     };
 
@@ -338,15 +340,15 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
             if (editingRule) {
                 const updated = await api.automationRules.update(editingRule.id, payload);
                 setRules(prev => prev.map(r => r.id === editingRule.id ? updated : r));
-                addToast('success', 'Qoida yangilandi.');
+                addToast('success', t('messagesmanagement.qoida_yangilandi'));
             } else {
                 const created = await api.automationRules.create({ ...payload, active: true, clinicId });
                 setRules(prev => [created, ...prev]);
-                addToast('success', "Qoida qo'shildi.");
+                addToast('success', t('messagesmanagement.qoida_qoshildi'));
             }
             closeRuleForm();
         } catch (e: any) {
-            addToast('error', e.message || 'Xatolik yuz berdi');
+            addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
         } finally {
             setRuleSaving(false);
         }
@@ -357,18 +359,18 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
             const updated = await api.automationRules.update(rule.id, { active: !rule.active });
             setRules(prev => prev.map(r => r.id === rule.id ? updated : r));
         } catch (e: any) {
-            addToast('error', e.message || 'Xatolik yuz berdi');
+            addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
         }
     };
 
     const handleDeleteRule = async (rule: AutomationRule) => {
-        if (!await confirmAction({ title: `"${rule.name}" qoidasini o'chirishni tasdiqlaysizmi?`, danger: true, confirmLabel: "O'chirish" })) return;
+        if (!await confirmAction({ title: fill(t('messagesmanagement.x_qoidasini_ochirishni_tasdiqlaysizmi'), rule.name), danger: true, confirmLabel: t('ui.ochirish_2') })) return;
         try {
             await api.automationRules.delete(rule.id);
             setRules(prev => prev.filter(r => r.id !== rule.id));
-            addToast('info', "Qoida o'chirildi.");
+            addToast('info', t('messagesmanagement.qoida_ochirildi'));
         } catch (e: any) {
-            addToast('error', e.message || 'Xatolik yuz berdi');
+            addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
         }
     };
 
@@ -443,24 +445,24 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
     // ── Segmentni saqlash ──
     const handleSaveSegment = async () => {
-        const name = prompt('Segment nomi (masalan: "8 mart — ayollar"):');
+        const name = prompt(t('messagesmanagement.segment_nomi_masalan_8'));
         if (!name || !name.trim()) return;
         try {
             const saved = await api.messages.saveSegment(clinicId, name.trim(), segment);
             setSavedSegments(prev => [saved, ...prev.filter(s => s.id !== saved.id)]);
-            addToast('success', `"${saved.name}" saqlandi.`);
+            addToast('success', fill(t('messagesmanagement.x_saqlandi'), saved.name));
         } catch (e: any) {
-            addToast('error', e.message || 'Saqlashda xatolik');
+            addToast('error', e.message || t('ui.saqlashda_xatolik'));
         }
     };
 
     const handleDeleteSegment = async (s: SavedSegment) => {
-        if (!await confirmAction({ title: `"${s.name}" segmentini o'chirishni tasdiqlaysizmi?`, danger: true, confirmLabel: "O'chirish" })) return;
+        if (!await confirmAction({ title: fill(t('messagesmanagement.x_segmentini_ochirishni_tasdiqlaysizmi'), s.name), danger: true, confirmLabel: t('ui.ochirish_2') })) return;
         try {
             await api.messages.deleteSegment(clinicId, s.id);
             setSavedSegments(prev => prev.filter(x => x.id !== s.id));
         } catch (e: any) {
-            addToast('error', e.message || 'Xatolik');
+            addToast('error', e.message || t('ui.xatolik'));
         }
     };
 
@@ -509,17 +511,17 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
         if (!manualMessage.trim()) return;
         const testChannel: 'sms' | 'telegram' = manualChannel === 'telegram' ? 'telegram' : 'sms';
         if (testChannel === 'sms' && !testPhone.trim()) {
-            addToast('error', 'Test uchun telefon raqamini kiriting');
+            addToast('error', t('messagesmanagement.test_uchun_telefon_raqamini'));
             return;
         }
         setTestSending(true);
         try {
             await api.messages.testSend(clinicId, manualMessage, testChannel, testPhone.trim(), previewPatient?.id);
             addToast('success', testChannel === 'telegram'
-                ? 'Test xabar klinika Telegramiga yuborildi.'
-                : `Test SMS ${testPhone} raqamiga yuborildi.`);
+                ? t('messagesmanagement.test_xabar_klinika_telegramiga')
+                : fill(t('messagesmanagement.test_sms_x_raqamiga'), testPhone));
         } catch (e: any) {
-            addToast('error', e.message || 'Test yuborishda xatolik');
+            addToast('error', e.message || t('messagesmanagement.test_yuborishda_xatolik'));
         } finally {
             setTestSending(false);
         }
@@ -535,9 +537,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
         setCooldownSaving(true);
         try {
             await api.messages.saveSettings(clinicId, days);
-            addToast('success', days === 0 ? "Chastota chegarasi o'chirildi." : `Chegara: ${days} kunda bir marta.`);
+            addToast('success', days === 0 ? t('messagesmanagement.chastota_chegarasi_ochirildi') : fill(t('messagesmanagement.chegara_x_kunda_bir'), days));
         } catch (e: any) {
-            addToast('error', e.message || 'Saqlashda xatolik');
+            addToast('error', e.message || t('ui.saqlashda_xatolik'));
         } finally {
             setCooldownSaving(false);
         }
@@ -557,9 +559,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     if (status.error) {
                         addToast('error', status.error);
                     } else if ((status.failed || 0) > 0) {
-                        addToast('info', `Yuborildi: ${status.sent} ta, xato: ${status.failed} ta.`);
+                        addToast('info', fill(t('messagesmanagement.yuborildi_x_ta_xato'), status.sent, status.failed));
                     } else {
-                        addToast('success', `${status.sent} ta xabar muvaffaqiyatli yuborildi!`);
+                        addToast('success', fill(t('messagesmanagement.x_ta_xabar_muvaffaqiyatli'), status.sent));
                     }
                 }
             }).catch(() => { });
@@ -571,18 +573,18 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
     const handleManualSend = async () => {
         if (!manualMessage.trim() || recipientCount === 0) return;
         const costNote = viaSms > 0
-            ? `\n\n✈️ Telegram: ${viaTelegram} ta (bepul)\n📱 SMS: ${viaSms} ta × ${smsInfo.parts} qism = ${totalSmsParts} SMS (pullik)`
-            : `\n\nHammasi Telegram orqali — bepul.`;
-        if (!await confirmAction({ title: `${recipientCount} ta bemorga xabar yuborilsinmi?${costNote}` })) return;
+            ? fill(t('messagesmanagement.telegram_x_ta_bepul'), viaTelegram, viaSms, smsInfo.parts, totalSmsParts)
+            : t('messagesmanagement.hammasi_telegram_orqali_bepul');
+        if (!await confirmAction({ title: fill(t('messagesmanagement.x_ta_bemorga_xabar'), recipientCount, costNote) })) return;
         setManualSending(true);
         try {
             const result = await api.messages.sendBulk(clinicId, recipientIds, manualMessage, manualChannel, ignoreCooldown);
-            addToast('info', `${result.total} ta bemorga yuborish boshlandi. Jarayonni Tarix bo'limida kuzating.`);
+            addToast('info', fill(t('messagesmanagement.x_ta_bemorga_yuborish'), result.total));
             setBulkJob({ active: true, total: result.total, sent: 0, failed: 0, done: false });
             setManualMessage('');
             setActiveTab('history');
         } catch (e: any) {
-            addToast('error', e.message || 'Yuborishda xatolik yuz berdi');
+            addToast('error', e.message || t('messagesmanagement.yuborishda_xatolik_yuz_berdi'));
         } finally {
             setManualSending(false);
         }
@@ -622,12 +624,12 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
         setRetrying(true);
         try {
             const result = await api.messages.retry(clinicId, ids);
-            const skippedNote = result.skipped > 0 ? `, ${result.skipped} ta qayta yuborib bo'lmadi` : '';
-            addToast(result.success > 0 ? 'success' : 'info', `Qayta yuborildi: ${result.success} ta muvaffaqiyatli, ${result.failed} ta xato${skippedNote}.`);
+            const skippedNote = result.skipped > 0 ? fill(t('messagesmanagement.x_ta_qayta_yuborib'), result.skipped) : '';
+            addToast(result.success > 0 ? 'success' : 'info', fill(t('messagesmanagement.qayta_yuborildi_x_ta'), result.success, result.failed, skippedNote));
             setSelectedLogIds(new Set());
             loadLogs();
         } catch (e: any) {
-            addToast('error', e.message || 'Qayta yuborishda xatolik');
+            addToast('error', e.message || t('messagesmanagement.qayta_yuborishda_xatolik'));
         } finally {
             setRetrying(false);
         }
@@ -658,14 +660,14 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
     );
 
     const TABS = [
-        { id: 'templates' as const, label: 'Shablonlar', icon: MessageSquare },
-        { id: 'auto' as const, label: 'Avtomatik', icon: Clock },
-        { id: 'manual' as const, label: "Qo'lda", icon: Send },
-        { id: 'history' as const, label: 'Tarix', icon: CalendarDays },
+        { id: 'templates' as const, label: t('messagesmanagement.shablonlar'), icon: MessageSquare },
+        { id: 'auto' as const, label: t('messagesmanagement.avtomatik'), icon: Clock },
+        { id: 'manual' as const, label: t('ui.qolda'), icon: Send },
+        { id: 'history' as const, label: t('messagesmanagement.tarix'), icon: CalendarDays },
         /* KANAL SOZLAMASI SHU YERDA. Ilgari u Sozlamalar → Integratsiyalar
            da turardi: shablon yozayotgan odam xabar qaysi yo'l bilan
            ketishini bilish uchun boshqa bo'limga borishi kerak edi. */
-        { id: 'settings' as const, label: 'Sozlamalar', icon: SettingsIcon },
+        { id: 'settings' as const, label: t('nav.settings'), icon: SettingsIcon },
     ];
 
     return (
@@ -676,13 +678,18 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     <MessageSquare className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                 </div>
                 <div>
-                    <h1 className="text-2xl font-bold text-ink">Xabarlar</h1>
-                    <p className="text-sm text-muted">Avtomatik va qo'lda SMS/Telegram xabar yuborish boshqaruvi</p>
+                    <h1 className="text-2xl font-bold text-ink">{t('nav.messages')}</h1>
+                    <p className="text-sm text-muted">{t('messagesmanagement.avtomatik_va_qolda_sms')}</p>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="grid grid-cols-4 gap-1 bg-elevated rounded-2xl p-1.5">
+            {/* Ustunlar soni TABLAR SONIGA teng bo'lishi shart. Bu yerda
+                `grid-cols-4` turardi, tablar esa beshta («Sozlamalar» keyin
+                qo'shilgan) — beshinchisi ikkinchi qatorga sinib, yolg'iz
+                turardi. Sondan hosil qilinadi, qo'lda yozilmaydi. */}
+            <div className="grid gap-1 bg-elevated rounded-2xl p-1.5"
+                style={{ gridTemplateColumns: `repeat(${TABS.length}, minmax(0, 1fr))` }}>
                 {TABS.map(tab => (
                     <button
                         key={tab.id}
@@ -709,20 +716,20 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             ))}
                         </div>
                         <Button onClick={() => openTemplateForm()}>
-                            <Plus className="w-4 h-4 mr-1" /> Yangi shablon
+                            <Plus className="w-4 h-4 mr-1" /> {t('messagesmanagement.yangi_shablon')}
                         </Button>
                     </div>
 
                     <div className="flex items-center gap-2 px-4 py-2.5 bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-900/40 rounded-xl text-xs text-primary-700 dark:text-primary-400">
                         <Smartphone className="w-3.5 h-3.5 shrink-0" />
-                        <span>Eskiz SMS ulangan bo'lsa, shablon saqlangach fonda Eskiz moderatsiyasiga yuboriladi (o'zgaruvchilar Eskiz talab qilgan <code className="font-mono">%w</code> ko'rinishiga aylantiriladi). Holatini "🔄" tugmasi bilan yangilab turing.</span>
+                        <span>{t('messagesmanagement.eskiz_sms_ulangan_bolsa')} <code className="font-mono">%w</code> {t('messagesmanagement.korinishiga_aylantiriladi_holatini_tugma')}</span>
                     </div>
 
                     {isTemplateFormOpen && (
                         <Card className="p-6 space-y-4">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-lg font-bold text-ink">
-                                    {editingTemplate ? 'Shablonni tahrirlash' : 'Yangi shablon'}
+                                    {editingTemplate ? t('messagesmanagement.shablonni_tahrirlash') : t('messagesmanagement.yangi_shablon')}
                                 </h2>
                                 <button onClick={() => { setIsTemplateFormOpen(false); setEditingTemplate(null); }} className="text-faint hover:text-muted">
                                     <X className="w-5 h-5" />
@@ -730,13 +737,13 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             </div>
                             <input
                                 type="text"
-                                placeholder="Shablon nomi"
+                                placeholder={t('messagesmanagement.shablon_nomi')}
                                 value={templateForm.name}
                                 onChange={e => setTemplateForm(f => ({ ...f, name: e.target.value }))}
                                 className={inputCls}
                             />
                             <textarea
-                                placeholder="Xabar matni. Masalan: Hurmatli {bemor_ismi}, qabulingiz {sana} kuni {vaqt} da."
+                                placeholder={t('messagesmanagement.xabar_matni_masalan_hurmatli')}
                                 value={templateForm.text}
                                 onChange={e => setTemplateForm(f => ({ ...f, text: e.target.value }))}
                                 rows={4}
@@ -751,15 +758,14 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         {unknownTokens(templateForm.text).map(t => (
                                             <code key={t} className="font-mono font-semibold">{'{' + t + '}'}</code>
                                         )).reduce((a: any, b: any) => a === null ? b : <>{a}, {b}</>, null)}
-                                        {' '}— u almashtirilmaydi va bemorga xuddi shu ko'rinishda ketadi.
-                                        Yuqoridagi tugmalardan foydalaning.
+                                        {' '}— {t('messagesmanagement.u_almashtirilmaydi_va_bemorga')}
                                     </span>
                                 </div>
                             )}
                             <div className="flex justify-end gap-2 pt-2">
-                                <Button variant="secondary" onClick={() => { setIsTemplateFormOpen(false); setEditingTemplate(null); }}>Bekor</Button>
+                                <Button variant="secondary" onClick={() => { setIsTemplateFormOpen(false); setEditingTemplate(null); }}>{t('ui.bekor')}</Button>
                                 <Button onClick={handleSaveTemplate} disabled={templateSaving || !templateForm.name.trim() || !templateForm.text.trim()}>
-                                    {templateSaving ? 'Saqlanmoqda...' : 'Saqlash'}
+                                    {templateSaving ? t('ui.saqlanmoqda_2') : t('ui.saqlash')}
                                 </Button>
                             </div>
                         </Card>
@@ -787,15 +793,15 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                 onClick={() => handleSyncEskizStatus(tpl)}
                                                 disabled={syncingTemplateId === tpl.id}
                                                 className="p-2 text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
-                                                title={tpl.eskizStatus ? 'Eskiz holatini yangilash' : "Eskiz moderatsiyasiga yuborish"}
+                                                title={tpl.eskizStatus ? t('messagesmanagement.eskiz_holatini_yangilash') : t('messagesmanagement.eskiz_moderatsiyasiga_yuborish')}
                                             >
                                                 <RefreshCw className={`w-4 h-4 ${syncingTemplateId === tpl.id ? 'animate-spin' : ''}`} />
                                             </button>
                                         )}
-                                        <button onClick={() => openTemplateForm(tpl)} className="p-2 text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Tahrirlash">
+                                        <button onClick={() => openTemplateForm(tpl)} className="p-2 text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title={t('ui.tahrirlash')}>
                                             <Pencil className="w-4 h-4" />
                                         </button>
-                                        <button onClick={() => handleDeleteTemplate(tpl)} className="p-2 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="O'chirish">
+                                        <button onClick={() => handleDeleteTemplate(tpl)} className="p-2 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title={t('ui.ochirish')}>
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
@@ -804,7 +810,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         })}
                         {templates.length === 0 && !isTemplateFormOpen && (
                             <Card className="p-10 text-center text-muted">
-                                Hozircha shablonlar yo'q. "Yangi shablon" tugmasi bilan birinchisini yarating.
+                                {t('messagesmanagement.hozircha_shablonlar_yoq_yangi')}
                             </Card>
                         )}
                     </div>
@@ -820,8 +826,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             <div>
                                 <h3 className="font-bold text-ink text-sm">Chastota chegarasi</h3>
                                 <p className="text-xs text-muted mt-0.5">
-                                    Bitta bemorga shu muddat ichida bittadan ko'p xabar yuborilmaydi.
-                                    Qabul eslatmalari bundan mustasno — ular baribir yetib boradi.
+                                    {t('messagesmanagement.bitta_bemorga_shu_muddat')}
                                 </p>
                             </div>
                             <div className="flex items-center gap-1">
@@ -834,7 +839,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                             ? 'bg-primary-600 text-white'
                                             : 'text-muted hover:bg-elevated'}`}
                                     >
-                                        {d === 0 ? "O'chiq" : `${d} kun`}
+                                        {d === 0 ? "O'chiq" : fill(t('ui.x_kun'), d)}
                                     </button>
                                 ))}
                             </div>
@@ -843,7 +848,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                     <div className="flex justify-end">
                         <Button onClick={() => openRuleForm()}>
-                            <Plus className="w-4 h-4 mr-1" /> Yangi qoida
+                            <Plus className="w-4 h-4 mr-1" /> {t('messagesmanagement.yangi_qoida')}
                         </Button>
                     </div>
 
@@ -851,9 +856,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         <Card className="p-6 space-y-4">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-lg font-bold text-ink">
-                                    {editingRule ? 'Qoidani tahrirlash' : 'Yangi qoida'}
+                                    {editingRule ? t('messagesmanagement.qoidani_tahrirlash') : t('messagesmanagement.yangi_qoida')}
                                 </h2>
-                                <button aria-label="Yopish" onClick={closeRuleForm} className="text-faint hover:text-muted">
+                                <button aria-label={t('common.close')} onClick={closeRuleForm} className="text-faint hover:text-muted">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
@@ -861,42 +866,42 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-sm text-amber-700 dark:text-amber-400">
                                     <span className="flex items-center gap-2">
                                         <AlertTriangle className="w-4 h-4 shrink-0" />
-                                        Avval kamida bitta shablon yarating — qoida shablonsiz ishlamaydi.
+                                        {t('messagesmanagement.avval_kamida_bitta_shablon')}
                                     </span>
                                     <button
                                         onClick={() => { closeRuleForm(); setActiveTab('templates'); openTemplateForm(); }}
                                         className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-all"
                                     >
-                                        Shablon yaratish
+                                        {t('messagesmanagement.shablon_yaratish')}
                                     </button>
                                 </div>
                             )}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className={labelCls}>Qoida nomi</label>
+                                    <label className={labelCls}>{t('messagesmanagement.qoida_nomi')}</label>
                                     <input
                                         type="text"
-                                        placeholder="Masalan: Qabuldan 2 soat oldin eslatma"
+                                        placeholder={t('messagesmanagement.masalan_qabuldan_2_soat')}
                                         value={ruleForm.name}
                                         onChange={e => setRuleForm(f => ({ ...f, name: e.target.value }))}
                                         className={inputCls}
                                     />
                                 </div>
                                 <div>
-                                    <label className={labelCls}>Shablon</label>
+                                    <label className={labelCls}>{t('ui.shablon')}</label>
                                     <select
                                         value={ruleForm.templateId}
                                         onChange={e => setRuleForm(f => ({ ...f, templateId: e.target.value }))}
                                         className={inputCls}
                                     >
-                                        <option value="">— Shablon tanlang —</option>
+                                        <option value="">{t('messagesmanagement.shablon_tanlang')}</option>
                                         {templates.map(t => (
                                             <option key={t.id} value={t.id}>{t.name}</option>
                                         ))}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className={labelCls}>Qachon yuborilsin</label>
+                                    <label className={labelCls}>{t('messagesmanagement.qachon_yuborilsin')}</label>
                                     <select
                                         value={ruleForm.trigger}
                                         onChange={e => {
@@ -934,7 +939,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 )}
                             </div>
                             <div>
-                                <label className={labelCls}>Yuborish kanali</label>
+                                <label className={labelCls}>{t('messagesmanagement.yuborish_kanali')}</label>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                     {CHANNEL_OPTIONS.map(({ value, label, hint }) => (
                                         <button
@@ -956,16 +961,16 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             </div>
                             {activeTriggerDef?.supportsSchedule && (
                                 <div className="p-4 bg-elevated rounded-xl space-y-3">
-                                    <label className={labelCls}>Qachon yuborilsin</label>
+                                    <label className={labelCls}>{t('messagesmanagement.qachon_yuborilsin')}</label>
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         <select
                                             value={ruleForm.schedule.kind}
                                             onChange={e => setRuleForm(f => ({ ...f, schedule: { ...f.schedule, kind: e.target.value as RuleSchedule['kind'] } }))}
                                             className={inputCls}
                                         >
-                                            <option value="daily">Har kuni</option>
-                                            <option value="weekly">Har hafta</option>
-                                            <option value="monthly">Har oy</option>
+                                            <option value="daily">{t('messagesmanagement.har_kuni')}</option>
+                                            <option value="weekly">{t('messagesmanagement.har_hafta')}</option>
+                                            <option value="monthly">{t('messagesmanagement.har_oy')}</option>
                                         </select>
                                         {ruleForm.schedule.kind === 'weekly' && (
                                             <select
@@ -985,7 +990,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                 className={inputCls}
                                             >
                                                 {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
-                                                    <option key={d} value={d}>{d}-kuni</option>
+                                                    <option key={d} value={d}>{d}-{t('messagesmanagement.kuni')}</option>
                                                 ))}
                                             </select>
                                         )}
@@ -1015,13 +1020,13 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
 
                             {activeTriggerDef?.supportsDoctorFilter !== false && (
                                 <div>
-                                    <label className={labelCls}>Shifokor filtri (ixtiyoriy)</label>
+                                    <label className={labelCls}>{t('messagesmanagement.shifokor_filtri_ixtiyoriy')}</label>
                                     <select
                                         value={ruleForm.doctorId}
                                         onChange={e => setRuleForm(f => ({ ...f, doctorId: e.target.value }))}
                                         className={inputCls}
                                     >
-                                        <option value="">Barcha shifokorlar</option>
+                                        <option value="">{t('messagesmanagement.barcha_shifokorlar')}</option>
                                         {doctors.map(d => (
                                             <option key={d.id} value={d.id}>{formatFullName(d)}</option>
                                         ))}
@@ -1032,19 +1037,18 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 <div className="text-xs text-faint space-y-1">
                                     {activeTriggerDef.sendWindow && (
                                         <p>
-                                            Yuborish vaqti: <strong>{activeTriggerDef.sendWindow.fromHour}:00 – {activeTriggerDef.sendWindow.toHour}:00</strong> oralig'ida
-                                            (bemorlarga tunda xabar ketmaydi).
+                                            {t('messagesmanagement.yuborish_vaqti')}: <strong>{activeTriggerDef.sendWindow.fromHour}:00 – {activeTriggerDef.sendWindow.toHour}:00</strong> {t('messagesmanagement.oraligida_bemorlarga_tunda_xabar')}
                                         </p>
                                     )}
                                     {!activeTriggerDef.respectCooldown && cooldownDays > 0 && (
-                                        <p>Bu trigger transaksion hisoblanadi — chastota chegarasiga ({cooldownDays} kun) bo'ysunmaydi.</p>
+                                        <p>{t('messagesmanagement.bu_trigger_transaksion_hisoblanadi')}{cooldownDays} {t('messagesmanagement.kun_boysunmaydi')}</p>
                                     )}
                                 </div>
                             )}
                             <div className="flex justify-end gap-2 pt-2">
-                                <Button variant="secondary" onClick={closeRuleForm}>Bekor</Button>
+                                <Button variant="secondary" onClick={closeRuleForm}>{t('ui.bekor')}</Button>
                                 <Button onClick={handleSaveRule} disabled={ruleSaving || !ruleForm.name.trim() || !ruleForm.templateId}>
-                                    {ruleSaving ? 'Saqlanmoqda...' : 'Saqlash'}
+                                    {ruleSaving ? t('ui.saqlanmoqda_2') : t('ui.saqlash')}
                                 </Button>
                             </div>
                         </Card>
@@ -1066,9 +1070,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                 : ''}
                                             {' · '}{rule.channel === 'sms' ? 'SMS'
                                                 : rule.channel === 'telegram' ? 'Telegram'
-                                                    : rule.channel === 'telegram_first' ? 'Avval Telegram, keyin SMS'
+                                                    : rule.channel === 'telegram_first' ? t('messagesmanagement.avval_telegram_keyin_sms')
                                                         : 'SMS + Telegram'}
-                                            {tpl ? ` · Shablon: ${tpl.name}` : ''}
+                                            {tpl ? fill(t('messagesmanagement.shablon_x'), tpl.name) : ''}
                                             {doctor ? ` · ${formatFullName(doctor)}` : ''}
                                         </p>
                                     </div>
@@ -1076,14 +1080,14 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         <button
                                             onClick={() => handleToggleRule(rule)}
                                             className={`relative w-11 h-6 rounded-full transition-colors ${rule.active ? 'bg-emerald-500' : 'bg-elevated'}`}
-                                            title={rule.active ? "O'chirish" : 'Yoqish'}
+                                            title={rule.active ? t('ui.ochirish_2') : t('net.turnOn')}
                                         >
                                             <span className={`absolute top-0.5 w-5 h-5 bg-surface rounded-full shadow transition-all ${rule.active ? 'left-[22px]' : 'left-0.5'}`} />
                                         </button>
-                                        <button onClick={() => openRuleForm(rule)} className="p-2 text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title="Tahrirlash">
+                                        <button onClick={() => openRuleForm(rule)} className="p-2 text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors" title={t('ui.tahrirlash')}>
                                             <Pencil className="w-4 h-4" />
                                         </button>
-                                        <button onClick={() => handleDeleteRule(rule)} className="p-2 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="O'chirish">
+                                        <button onClick={() => handleDeleteRule(rule)} className="p-2 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title={t('ui.ochirish')}>
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
@@ -1092,7 +1096,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         })}
                         {rules.length === 0 && !isRuleFormOpen && (
                             <Card className="p-10 text-center text-muted">
-                                Avtomatik qoidalar yo'q. "Yangi qoida" tugmasi bilan yarating — masalan, qabuldan 2 soat oldin eslatma.
+                                {t('messagesmanagement.avtomatik_qoidalar_yoq_yangi')}
                             </Card>
                         )}
                     </div>
@@ -1110,7 +1114,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 ? 'bg-primary-600 text-white border-primary-600'
                                 : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                         >
-                            ✈️→📱 Avval Telegram
+                            {t('messagesmanagement.avval_telegram')}
                         </button>
                         <button
                             onClick={() => setManualChannel('telegram')}
@@ -1126,32 +1130,32 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 ? 'bg-primary-600 text-white border-primary-600'
                                 : 'bg-surface text-muted border-line hover:border-primary-400'}`}
                         >
-                            <Smartphone className="w-4 h-4" /> Faqat SMS {!smsConnected && <AlertTriangle className="w-4 h-4 text-amber-400" />}
+                            <Smartphone className="w-4 h-4" /> {t('messagesmanagement.faqat_sms')} {!smsConnected && <AlertTriangle className="w-4 h-4 text-amber-400" />}
                         </button>
                     </div>
                     {manualChannel === 'telegram_first' && (
                         <p className="text-xs text-faint px-1">
-                            Botga ulangan bemorga bepul Telegram, qolganiga SMS ketadi — eng tejamli variant.
+                            {t('messagesmanagement.botga_ulangan_bemorga_bepul')}
                         </p>
                     )}
 
                     {(manualChannel === 'sms' || manualChannel === 'telegram_first') && !smsConnected && (
                         <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-sm text-amber-700 dark:text-amber-400">
                             <AlertTriangle className="w-4 h-4 shrink-0" />
-                            <span>Eskiz SMS ulanmagan. <strong>Sozlamalar → SMS va Telegram</strong> bo'limida login va parolni kiriting.</span>
+                            <span>{t('messagesmanagement.eskiz_sms_ulanmagan')} <strong>{t('messagesmanagement.sozlamalar_sms_va_telegram')}</strong> {t('messagesmanagement.bolimida_login_va_parolni')}</span>
                         </div>
                     )}
                     {manualChannel === 'telegram' && !telegramConnected && (
                         <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-sm text-amber-700 dark:text-amber-400">
                             <AlertTriangle className="w-4 h-4 shrink-0" />
-                            <span>Telegram bot ulanmagan. <strong>Sozlamalar → SMS va Telegram</strong> bo'limida bot tokenini kiriting.</span>
+                            <span>{t('messagesmanagement.telegram_bot_ulanmagan')} <strong>{t('messagesmanagement.sozlamalar_sms_va_telegram')}</strong> {t('messagesmanagement.bolimida_bot_tokenini_kiriting')}</span>
                         </div>
                     )}
 
                     {/* Auditoriya */}
                     <Card className="p-6 space-y-4">
                         <h2 className="font-bold text-ink flex items-center gap-2">
-                            <Users className="w-5 h-5 text-faint" /> Kimga yuborish?
+                            <Users className="w-5 h-5 text-faint" /> {t('messagesmanagement.kimga_yuborish')}
                         </h2>
                         {/* Saqlangan segmentlar — bir marta yig'ilib qayta ishlatiladi */}
                         {savedSegments.length > 0 && (
@@ -1167,7 +1171,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         </button>
                                         <button
                                             onClick={() => handleDeleteSegment(s)}
-                                            title="O'chirish"
+                                            title={t('ui.ochirish')}
                                             className="px-1.5 py-1 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                                         >
                                             <X className="w-3 h-3" />
@@ -1189,25 +1193,25 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 onClick={handleSaveSegment}
                                 className="self-start text-xs font-bold text-muted hover:text-primary-600"
                             >
-                                💾 Shu segmentni saqlab qo'yish
+                                {t('messagesmanagement.shu_segmentni_saqlab_qoyish')}
                             </button>
                         )}
 
                         {/* Hisob-kitob: son qayerdan kelgani bosqichma-bosqich ko'rinadi */}
                         {audienceLoading ? (
                             <div className="px-4 py-3 bg-elevated rounded-xl text-sm text-muted">
-                                Hisoblanmoqda...
+                                {t('ui.hisoblanmoqda')}
                             </div>
                         ) : audience ? (
                             <div className="border border-line rounded-xl overflow-hidden">
                                 <div className="divide-y divide-line text-sm">
-                                    <FunnelRow label="Klinikada bemorlar" value={audience.clinicTotal} />
+                                    <FunnelRow label={t('messagesmanagement.klinikada_bemorlar')} value={audience.clinicTotal} />
                                     {audience.matched !== audience.clinicTotal && (
                                         <FunnelRow
                                             label={
                                                 (segment.conditions?.length || 0) === 0
                                                     ? 'Filtrsiz'
-                                                    : (segment.match === 'any' ? 'Shartlardan biriga mos' : 'Barcha shartlarga mos')
+                                                    : (segment.match === 'any' ? t('messagesmanagement.shartlardan_biriga_mos') : t('messagesmanagement.barcha_shartlarga_mos'))
                                             }
                                             value={audience.matched}
                                             diff={audience.matched - audience.clinicTotal}
@@ -1215,24 +1219,24 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     )}
                                     {unreachableCount > 0 && (
                                         <FunnelRow
-                                            label="Tanlangan kanal bilan yetib bo'lmaydi"
+                                            label={t('messagesmanagement.tanlangan_kanal_bilan_yetib')}
                                             value={-unreachableCount}
                                             isDeduction
                                         />
                                     )}
                                     {excludedIds.size > 0 && (
                                         <FunnelRow
-                                            label="Ro'yxatdan qo'lda chiqarildi"
+                                            label={t('messagesmanagement.royxatdan_qolda_chiqarildi')}
                                             value={-excludedIds.size}
                                             isDeduction
                                         />
                                     )}
                                     <div className="flex items-center justify-between px-4 py-3 bg-primary-50 dark:bg-primary-900/20">
                                         <span className="flex items-center gap-2 font-bold text-primary-700 dark:text-primary-400">
-                                            <Eye className="w-4 h-4" /> Xabar yetib boradi
+                                            <Eye className="w-4 h-4" /> {t('messagesmanagement.xabar_yetib_boradi')}
                                         </span>
                                         <span className="font-black text-lg text-primary-700 dark:text-primary-400">
-                                            {recipientCount} ta
+                                            {recipientCount} {t('ui.ta')}
                                         </span>
                                     </div>
                                 </div>
@@ -1242,19 +1246,19 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 bg-elevated border-t border-line text-sm">
                                         {viaTelegram > 0 && (
                                             <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                                                ✈️ {viaTelegram} ta — bepul
+                                                ✈️ {viaTelegram} {t('messagesmanagement.ta_bepul')}
                                             </span>
                                         )}
                                         {viaSms > 0 && (
                                             <span className="text-amber-600 dark:text-amber-400 font-bold">
-                                                📱 {viaSms} ta — pullik
+                                                📱 {viaSms} {t('messagesmanagement.ta_pullik')}
                                                 {smsInfo.parts > 1 && ` × ${smsInfo.parts} qism`}
                                                 {totalSmsParts > 0 && ` = ${totalSmsParts} SMS`}
                                             </span>
                                         )}
                                         {smsBalance !== null && (
                                             <span className={`text-xs ${totalSmsParts > smsBalance ? 'text-red-600 font-bold' : 'text-muted'}`}>
-                                                Eskiz balansi: {formatMoney(smsBalance)} SMS
+                                                {t('messagesmanagement.eskiz_balansi')}: {formatMoney(smsBalance)} SMS
                                                 {totalSmsParts > smsBalance && ' — yetmaydi!'}
                                             </span>
                                         )}
@@ -1270,10 +1274,10 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         >
                                             <span>
                                                 {recipientSample.map(r => `${formatFullName(r)}`).join(', ')}
-                                                {recipientCount > recipientSample.length ? ` va yana ${recipientCount - recipientSample.length} ta` : ''}
+                                                {recipientCount > recipientSample.length ? fill(t('messagesmanagement.va_yana_x_ta'), recipientCount - recipientSample.length) : ''}
                                             </span>
                                             <span className="font-bold shrink-0">
-                                                {showRecipients ? 'Yashirish' : "To'liq ro'yxat"}
+                                                {showRecipients ? t('ui.yashirish') : t('messagesmanagement.toliq_royxat')}
                                             </span>
                                         </button>
 
@@ -1284,7 +1288,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                         type="text"
                                                         value={recipientSearch}
                                                         onChange={e => setRecipientSearch(e.target.value)}
-                                                        placeholder="Ism yoki raqam bo'yicha qidirish"
+                                                        placeholder={t('messagesmanagement.ism_yoki_raqam_boyicha')}
                                                         className="flex-1 min-w-[180px] px-3 py-1.5 bg-surface border border-line rounded-lg text-xs outline-none"
                                                     />
                                                     {excludedIds.size > 0 && (
@@ -1292,7 +1296,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                             onClick={() => setExcludedIds(new Set())}
                                                             className="text-xs font-bold text-primary-600 hover:text-primary-700"
                                                         >
-                                                            {excludedIds.size} tasini qaytarish
+                                                            {excludedIds.size} {t('messagesmanagement.tasini_qaytarish')}
                                                         </button>
                                                     )}
                                                 </div>
@@ -1314,21 +1318,21 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                                     {formatFullName(r)}
                                                                 </span>
                                                                 <span className={r.channel === 'telegram' ? 'text-emerald-600' : 'text-amber-600'}>
-                                                                    {r.channel === 'telegram' ? '✈️ bepul' : '📱 SMS'}
+                                                                    {r.channel === 'telegram' ? t('messagesmanagement.bepul') : '📱 SMS'}
                                                                 </span>
                                                                 {r.debt > 0 && (
-                                                                    <span className="text-faint tabular-nums">{formatNumber(r.debt)} so'm</span>
+                                                                    <span className="text-faint tabular-nums">{formatNumber(r.debt)} {t('ui.som')}</span>
                                                                 )}
                                                             </label>
                                                         );
                                                     })}
                                                     {visibleRecipients.length === 0 && (
-                                                        <div className="px-4 py-6 text-center text-xs text-faint">Topilmadi</div>
+                                                        <div className="px-4 py-6 text-center text-xs text-faint">{t('ui.topilmadi')}</div>
                                                     )}
                                                 </div>
                                                 {audience.recipientsTruncated && (
                                                     <div className="px-4 py-2 text-xs text-faint border-t border-line-soft">
-                                                        Birinchi 500 tasi ko'rsatilgan — yuborish baribir hammasiga ketadi.
+                                                        {t('messagesmanagement.birinchi_500_tasi_korsatilgan')}
                                                     </div>
                                                 )}
                                             </div>
@@ -1347,9 +1351,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 >
                                     <span className="flex items-center gap-2">
                                         <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                                        <strong>{unreachableCount} ta bemorga</strong> yetib bo'lmaydi
+                                        <strong>{unreachableCount} {t('messagesmanagement.ta_bemorga')}</strong> {t('messagesmanagement.yetib_bolmaydi')}
                                     </span>
-                                    <span className="font-bold">{showUnreachable ? 'Yashirish' : "Kimlar? Ko'rsatish"}</span>
+                                    <span className="font-bold">{showUnreachable ? t('ui.yashirish') : t('messagesmanagement.kimlar_korsatish')}</span>
                                 </button>
                                 {showUnreachable && (
                                     <div className="divide-y divide-amber-100 dark:divide-amber-900/40 max-h-56 overflow-y-auto">
@@ -1361,7 +1365,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         ))}
                                         {unreachableCount > (audience?.unreachableList?.length || 0) && (
                                             <div className="px-4 py-2 text-xs text-faint">
-                                                ...va yana {unreachableCount - (audience?.unreachableList?.length || 0)} ta
+                                                ...va yana {unreachableCount - (audience?.unreachableList?.length || 0)} {t('ui.ta')}
                                             </div>
                                         )}
                                     </div>
@@ -1373,11 +1377,11 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     {/* Xabar matni */}
                     <Card className="p-6 space-y-4">
                         <h2 className="font-bold text-ink flex items-center gap-2">
-                            <MessageSquare className="w-5 h-5 text-faint" /> Xabar matni
+                            <MessageSquare className="w-5 h-5 text-faint" /> {t('messagesmanagement.xabar_matni')}
                         </h2>
                         {templates.length > 0 && (
                             <div>
-                                <p className="text-xs text-muted mb-2">Shablondan foydalanish:</p>
+                                <p className="text-xs text-muted mb-2">{t('messagesmanagement.shablondan_foydalanish')}</p>
                                 <div className="flex flex-wrap gap-2">
                                     {templates.map(tpl => (
                                         <button
@@ -1392,7 +1396,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             </div>
                         )}
                         <textarea
-                            placeholder="Xabar matni..."
+                            placeholder={t('messagesmanagement.xabar_matni_2')}
                             value={manualMessage}
                             onChange={e => setManualMessage(e.target.value)}
                             rows={5}
@@ -1403,25 +1407,25 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             <div className="space-y-2">
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                                     <span className="text-muted">
-                                        {smsInfo.length} belgi · <strong className={smsInfo.parts > 1 ? 'text-amber-600' : 'text-muted'}>{smsInfo.parts} qism</strong>
-                                        {' '}({smsInfo.encoding}, qismiga {smsInfo.perPart} belgi)
+                                        {smsInfo.length} {t('messagesmanagement.belgi')} · <strong className={smsInfo.parts > 1 ? 'text-amber-600' : 'text-muted'}>{smsInfo.parts} qism</strong>
+                                        {' '}({smsInfo.encoding}, qismiga {smsInfo.perPart} {t('messagesmanagement.belgi')})
                                     </span>
-                                    <span className="text-faint">Keyingi qismgacha: {smsInfo.remaining}</span>
+                                    <span className="text-faint">{t('messagesmanagement.keyingi_qismgacha')}: {smsInfo.remaining}</span>
                                 </div>
                                 {smsInfo.encoding === 'UCS-2' && (
                                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
                                         <span className="flex items-center gap-1.5">
                                             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                             {messageHasBadApostrophe
-                                                ? <>Tipografik apostrof (<span className="font-mono">’</span>) ishlatilgan — shu sabab bitta SMS 160 emas, 70 belgi.</>
-                                                : <>Lotin alifbosidan tashqari belgi bor ({smsInfo.nonGsmChars.slice(0, 6).join(' ')}) — bitta SMS 70 belgi.</>}
+                                                ? <>Tipografik apostrof (<span className="font-mono">’</span>{t('messagesmanagement.ishlatilgan_shu_sabab_bitta')}</>
+                                                : <>{t('messagesmanagement.lotin_alifbosidan_tashqari_belgi')}{smsInfo.nonGsmChars.slice(0, 6).join(' ')}{t('messagesmanagement.bitta_sms_70_belgi')}</>}
                                         </span>
                                         {messageHasBadApostrophe && (
                                             <button
                                                 onClick={() => setManualMessage(m => fixApostrophes(m))}
                                                 className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-md shrink-0"
                                             >
-                                                Apostrofni to'g'rilash
+                                                {t('messagesmanagement.apostrofni_togrilash')}
                                             </button>
                                         )}
                                     </div>
@@ -1430,15 +1434,14 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         )}
                         <VarButtons onInsert={token => setManualMessage(m => m + token)} />
                         <p className="text-xs text-faint">
-                            <strong>{'{sana}'}</strong>, <strong>{'{vaqt}'}</strong> va <strong>{"{shifokor_ismi}"}</strong> bemorning eng yaqin kelgusi qabuli bo'yicha to'ldiriladi.
-                            Qabuli bo'lmasa {'{sana}'} bugungi sana bo'ladi, qolganlari bo'sh qoladi.
+                            <strong>{'{sana}'}</strong>, <strong>{'{vaqt}'}</strong> {t('ui.va')} <strong>{"{shifokor_ismi}"}</strong> {t('messagesmanagement.bemorning_eng_yaqin_kelgusi')} {'{sana}'} {t('messagesmanagement.bugungi_sana_boladi_qolganlari')}
                         </p>
                         {/* Bemor aynan nimani ko'radi */}
                         {manualMessage.trim() && previewPatient && (
                             <div className="border border-line rounded-xl overflow-hidden">
                                 <div className="flex items-center justify-between px-4 py-2 bg-elevated border-b border-line">
                                     <span className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-                                        <Eye className="w-3.5 h-3.5" /> Bemor ko'radigan matn
+                                        <Eye className="w-3.5 h-3.5" /> {t('messagesmanagement.bemor_koradigan_matn')}
                                     </span>
                                     <div className="flex items-center gap-2 text-xs">
                                         <span className="text-faint">{formatFullName(previewPatient)}</span>
@@ -1447,7 +1450,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                 onClick={() => setPreviewIndex(i => i + 1)}
                                                 className="px-2 py-0.5 font-bold text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded"
                                             >
-                                                Boshqasi →
+                                                {t('messagesmanagement.boshqasi')}
                                             </button>
                                         )}
                                     </div>
@@ -1466,14 +1469,14 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                         onClick={() => setTestOpen(true)}
                                         className="flex items-center gap-2 text-sm font-bold text-primary-600 hover:text-primary-700"
                                     >
-                                        <Send className="w-4 h-4" /> Avval o'zimga test yuborish
+                                        <Send className="w-4 h-4" /> {t('messagesmanagement.avval_ozimga_test_yuborish')}
                                     </button>
                                 ) : (
                                     <div className="space-y-2">
                                         <p className="text-xs text-muted">
                                             {manualChannel === 'telegram'
-                                                ? "Test xabar klinikaning Telegram chatiga yuboriladi."
-                                                : "Test SMS shu raqamga yuboriladi (bemorlarga tegmaydi, chastota chegarasidan ozod)."}
+                                                ? t('messagesmanagement.test_xabar_klinikaning_telegram')
+                                                : t('messagesmanagement.test_sms_shu_raqamga')}
                                         </p>
                                         <div className="flex flex-wrap gap-2">
                                             {manualChannel !== 'telegram' && (
@@ -1486,9 +1489,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                 />
                                             )}
                                             <Button onClick={handleTestSend} disabled={testSending}>
-                                                {testSending ? 'Yuborilmoqda...' : 'Test yuborish'}
+                                                {testSending ? t('messagesmanagement.yuborilmoqda') : t('messagesmanagement.test_yuborish')}
                                             </Button>
-                                            <Button variant="secondary" onClick={() => setTestOpen(false)}>Yopish</Button>
+                                            <Button variant="secondary" onClick={() => setTestOpen(false)}>{t('common.close')}</Button>
                                         </div>
                                     </div>
                                 )}
@@ -1503,7 +1506,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     onChange={e => setIgnoreCooldown(e.target.checked)}
                                     className="w-3.5 h-3.5 rounded border-line text-amber-600 focus:ring-amber-500"
                                 />
-                                Chastota chegarasini ({cooldownDays} kun) e'tiborsiz qoldirish — yaqinda xabar olganlarga ham yuborilsin
+                                Chastota chegarasini ({cooldownDays} {t('messagesmanagement.kun_etiborsiz_qoldirish_yaqinda')}
                             </label>
                         )}
 
@@ -1518,8 +1521,8 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 <Send className="w-4 h-4" />
                             )}
                             {bulkRunning
-                                ? 'Oldingi yuborish davom etmoqda...'
-                                : `${recipientCount} ta bemorga yuborish${viaSms > 0 ? ` (${totalSmsParts} SMS)` : ' (bepul)'}`}
+                                ? t('messagesmanagement.oldingi_yuborish_davom_etmoqda')
+                                : fill(t('messagesmanagement.x_ta_bemorga_yuborishx'), recipientCount, viaSms > 0 ? ` (${totalSmsParts} SMS)` : t('messagesmanagement.bepul_2'))}
                         </button>
                     </Card>
                 </div>
@@ -1541,15 +1544,15 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     <div className="grid grid-cols-3 gap-4">
                         <Card className="p-5 text-center">
                             <h2 className="text-3xl font-black text-ink">{logStats.total}</h2>
-                            <p className="text-sm text-muted mt-1">Jami yuborilgan</p>
+                            <p className="text-sm text-muted mt-1">{t('messagesmanagement.jami_yuborilgan')}</p>
                         </Card>
                         <Card className="p-5 text-center border border-emerald-100 dark:border-emerald-900/40">
                             <h2 className="text-3xl font-black text-emerald-600">{logStats.sent}</h2>
-                            <p className="text-sm text-muted mt-1">Muvaffaqiyatli</p>
+                            <p className="text-sm text-muted mt-1">{t('messagesmanagement.muvaffaqiyatli')}</p>
                         </Card>
                         <Card className="p-5 text-center border border-red-100 dark:border-red-900/40">
                             <h2 className="text-3xl font-black text-red-600">{logStats.failed}</h2>
-                            <p className="text-sm text-muted mt-1">Xato</p>
+                            <p className="text-sm text-muted mt-1">{t('messagesmanagement.xato')}</p>
                         </Card>
                     </div>
 
@@ -1559,13 +1562,13 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             <div className="flex items-center justify-between gap-3 text-sm">
                                 <span className="flex items-center gap-2 font-bold text-primary-700 dark:text-primary-400">
                                     {!bulkJob.done && <span className="w-3.5 h-3.5 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin" />}
-                                    {bulkJob.done ? 'Yuborish tugadi' : 'Yuborilmoqda...'}
+                                    {bulkJob.done ? t('messagesmanagement.yuborish_tugadi') : t('messagesmanagement.yuborilmoqda')}
                                 </span>
                                 <span className="flex items-center gap-2 text-xs text-primary-600 dark:text-primary-400">
                                     {(bulkJob.sent || 0) + (bulkJob.failed || 0)} / {bulkJob.total || 0}
-                                    {(bulkJob.failed || 0) > 0 ? ` · ${bulkJob.failed} ta xato` : ''}
+                                    {(bulkJob.failed || 0) > 0 ? fill(t('messagesmanagement.x_ta_xato'), bulkJob.failed) : ''}
                                     {bulkJob.done && (
-                                        <button onClick={() => setBulkJob(null)} className="text-primary-400 hover:text-primary-700" title="Yopish">
+                                        <button onClick={() => setBulkJob(null)} className="text-primary-400 hover:text-primary-700" title={t('common.close')}>
                                             <X className="w-4 h-4" />
                                         </button>
                                     )}
@@ -1587,8 +1590,8 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             <div className="flex items-center gap-2 text-sm">
                                 <XCircle className="w-5 h-5 text-red-500 shrink-0" />
                                 <div>
-                                    <p className="font-bold text-red-700 dark:text-red-400">{logStats.failed} ta xato xabar</p>
-                                    <p className="text-red-600/80 dark:text-red-400/80 text-xs">Qayta yuborish uchun tanlang yoki hammasini qayta yuboring</p>
+                                    <p className="font-bold text-red-700 dark:text-red-400">{logStats.failed} {t('messagesmanagement.ta_xato_xabar')}</p>
+                                    <p className="text-red-600/80 dark:text-red-400/80 text-xs">{t('messagesmanagement.qayta_yuborish_uchun_tanlang')}</p>
                                 </div>
                             </div>
                             <button
@@ -1596,7 +1599,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 disabled={logsLoading}
                                 className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-xs font-bold rounded-xl transition-all"
                             >
-                                <RefreshCw className={`w-3.5 h-3.5 ${logsLoading ? 'animate-spin' : ''}`} /> Hammasini tanlash
+                                <RefreshCw className={`w-3.5 h-3.5 ${logsLoading ? 'animate-spin' : ''}`} /> {t('messagesmanagement.hammasini_tanlash')}
                             </button>
                         </div>
                     )}
@@ -1613,7 +1616,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             ) : (
                                 <RefreshCw className="w-4 h-4" />
                             )}
-                            Tanlanganlarni qayta yuborish ({selectedLogIds.size})
+                            {t('messagesmanagement.tanlanganlarni_qayta_yuborish')}{selectedLogIds.size})
                         </button>
                     )}
 
@@ -1622,9 +1625,9 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                         <div className="p-4 border-b border-line flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-1">
                                 {([
-                                    ['all', 'Barchasi'],
-                                    ['sent', `Yuborildi (${logStats.sent})`],
-                                    ['failed', `Xato (${logStats.failed})`],
+                                    ['all', t('ui.barchasi')],
+                                    ['sent', fill(t('messagesmanagement.yuborildi_x'), logStats.sent)],
+                                    ['failed', fill(t('messagesmanagement.xato_x'), logStats.failed)],
                                 ] as const).map(([key, lbl]) => (
                                     <button
                                         key={key}
@@ -1638,7 +1641,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                 ))}
                             </div>
                             <button onClick={() => loadLogs()} disabled={logsLoading} className="flex items-center gap-1.5 text-xs font-bold text-primary-600 hover:text-primary-700 disabled:opacity-50">
-                                <RefreshCw className={`w-3.5 h-3.5 ${logsLoading ? 'animate-spin' : ''}`} /> Yangilash
+                                <RefreshCw className={`w-3.5 h-3.5 ${logsLoading ? 'animate-spin' : ''}`} /> {t('ui.yangilash')}
                             </button>
                         </div>
                         <div className="divide-y divide-line max-h-[60vh] overflow-y-auto">
@@ -1669,19 +1672,19 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                                 </span>
                                                 {isFailed ? (
                                                     <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-red-50 dark:bg-red-900/20 text-red-600 rounded-md">
-                                                        <XCircle className="w-3 h-3" /> Xato
+                                                        <XCircle className="w-3 h-3" /> {t('messagesmanagement.xato')}
                                                     </span>
                                                 ) : isRetried ? (
                                                     <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-elevated text-muted rounded-md">
-                                                        <RefreshCw className="w-3 h-3" /> Qayta yuborilgan
+                                                        <RefreshCw className="w-3 h-3" /> {t('messagesmanagement.qayta_yuborilgan')}
                                                     </span>
                                                 ) : isSkipped ? (
                                                     <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-elevated text-muted rounded-md">
-                                                        <Clock className="w-3 h-3" /> O'tkazib yuborildi
+                                                        <Clock className="w-3 h-3" /> {t('messagesmanagement.otkazib_yuborildi')}
                                                     </span>
                                                 ) : (
                                                     <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-md">
-                                                        <CheckCircle2 className="w-3 h-3" /> Yuborildi
+                                                        <CheckCircle2 className="w-3 h-3" /> {t('messagesmanagement.yuborildi')}
                                                     </span>
                                                 )}
                                             </div>
@@ -1694,7 +1697,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                             })}
                             {logs.length === 0 && (
                                 <div className="px-4 py-10 text-center text-muted text-sm">
-                                    {logsLoading ? 'Yuklanmoqda...' : historyFilter === 'all' ? "Xabarlar tarixi bo'sh." : 'Bu filtr bo\'yicha xabar yo\'q.'}
+                                    {logsLoading ? t('ui.yuklanmoqda_2') : historyFilter === 'all' ? t('messagesmanagement.xabarlar_tarixi_bosh') : t('messagesmanagement.bu_filtr_boyicha_xabar')}
                                 </div>
                             )}
                         </div>

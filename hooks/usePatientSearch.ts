@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Patient } from '../types';
 import { api } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Bemor qidiruvi — SERVER tomonda.
@@ -41,6 +42,7 @@ export function usePatientSearch(term: string, opts?: {
     /** O'chirilgan bo'lsa so'rov yuborilmaydi (masalan modal yopiq) */
     enabled?: boolean;
 }): PatientSearchResult {
+    const { t } = useLanguage();
     const delay = opts?.delayMs ?? 250;
     const enabled = opts?.enabled ?? true;
 
@@ -74,7 +76,7 @@ export function usePatientSearch(term: string, opts?: {
             } catch (e: any) {
                 if (seq.current !== mine) return;
                 setResults([]);
-                setError(e?.message || "Qidirib bo'lmadi");
+                setError(e?.message || t('usepatientsearch.qidirib_bolmadi'));
             } finally {
                 if (seq.current === mine) setLoading(false);
             }

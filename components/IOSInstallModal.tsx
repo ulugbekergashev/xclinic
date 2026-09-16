@@ -22,7 +22,7 @@ export const IOSInstallModal: React.FC<IOSInstallModalProps> = ({ isOpen, onClos
                             </div>
                             <h2 className="text-xl font-bold text-ink">{t('app.install')}</h2>
                         </div>
-                        <button aria-label="Yopish"
+                        <button aria-label={t('common.close')}
                             onClick={onClose}
                             className="p-1 hover:bg-elevated rounded-full transition-colors text-muted"
                         >
@@ -32,21 +32,21 @@ export const IOSInstallModal: React.FC<IOSInstallModalProps> = ({ isOpen, onClos
 
                     <div className="space-y-6">
                         <p className="text-muted">
-                            iPhone yoki iPad-ga o'rnatish uchun ushbu amallarni bajaring:
+                            {t('iosinstallmodal.iphone_yoki_ipad_ga')}
                         </p>
 
                         <div className="space-y-4">
                             <div className="flex items-center gap-4">
                                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold">1</div>
                                 <div className="flex items-center gap-2 text-muted">
-                                    Brauzerda <Share size={20} className="text-primary-500" /> tugmasini bosing
+                                    Brauzerda <Share size={20} className="text-primary-500" /> {t('iosinstallmodal.tugmasini_bosing')}
                                 </div>
                             </div>
 
                             <div className="flex items-center gap-4">
                                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold">2</div>
                                 <div className="flex items-center gap-2 text-muted">
-                                    Pastga tushib <PlusSquare size={20} className="text-primary-500" /> <b>"Add to Home Screen"</b> (Ekraniga qo'shish) ni tanlang
+                                    {t('iosinstallmodal.pastga_tushib')} <PlusSquare size={20} className="text-primary-500" /> <b>"Add to Home Screen"</b> {t('iosinstallmodal.ekraniga_qoshish_ni_tanlang')}
                                 </div>
                             </div>
                         </div>

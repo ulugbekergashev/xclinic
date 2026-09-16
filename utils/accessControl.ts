@@ -1,4 +1,5 @@
 import { AccessControl, RoleAccess, Clinic, UserRole } from '../types';
+import { tr } from '../context/LanguageContext';
 
 // Klinika sozlamalaridagi ruxsatlarni o'qish uchun yagona manba.
 // accessControl bo'lmasa (eski klinikalar, backend hali yangilanmagan) — hammasi ochiq.
@@ -24,10 +25,10 @@ export function getRoleAccess(ac: AccessControl, role: UserRole): RoleAccess | u
 
 /** Sozlamalardagi kalit — rol bo'yicha. Ekran ham, o'qish ham shundan. */
 export const ACCESS_ROLE_KEYS: { role: UserRole; key: keyof AccessControl; title: string; desc: string }[] = [
-    { role: UserRole.RECEPTIONIST, key: 'receptionist', title: 'Registrator', desc: 'Qabulxona xodimlari uchun' },
-    { role: UserRole.DOCTOR, key: 'doctor', title: 'Shifokor', desc: 'Shifokorlar uchun' },
-    { role: UserRole.LAB_TECHNICIAN, key: 'labTechnician', title: 'Laborant', desc: 'Tahlil natijalarini kiritadi' },
-    { role: UserRole.NURSE, key: 'nurse', title: 'Hamshira', desc: 'Dori beradi, palatani olib boradi' },
+    { role: UserRole.RECEPTIONIST, key: 'receptionist', title: tr('ui.registrator'), desc: tr('ui.qabulxona_xodimlari_uchun') },
+    { role: UserRole.DOCTOR, key: 'doctor', title: tr('ui.shifokor_2'), desc: tr('ui.shifokorlar_uchun') },
+    { role: UserRole.LAB_TECHNICIAN, key: 'labTechnician', title: tr('ui.laborant'), desc: tr('ui.tahlil_natijalarini_kiritadi') },
+    { role: UserRole.NURSE, key: 'nurse', title: tr('ui.hamshira'), desc: tr('ui.dori_beradi_palatani_olib') },
 ];
 
 export function isModuleHidden(ac: AccessControl, role: UserRole, moduleId: string): boolean {

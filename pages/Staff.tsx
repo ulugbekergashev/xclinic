@@ -10,6 +10,7 @@ import { StaffForm, StaffRow, ROLES, roleMeta, StaffRole } from '../components/S
 import { DoctorShares } from '../components/DoctorShares';
 import { StaffAttendanceReport } from '../components/StaffAttendanceReport';
 import { AccessControlTab } from '../components/AccessControlTab';
+import { useLanguage, fill } from '../context/LanguageContext';
 import {
     Plus, Search, Users, Wallet, Activity, UserCheck, Percent,
 } from 'lucide-react';
@@ -48,6 +49,7 @@ type Tab = 'people' | 'payroll' | 'attendance' | 'access';
 
 /** Yuklama chizig'i — foiz bo'lmasa chiziq ham chizilmaydi. */
 const LoadBar: React.FC<{ percent: number | null }> = ({ percent }) => {
+    const { t } = useLanguage();
     if (percent == null) return <span className="text-faint">—</span>;
     const color = percent >= 90 ? 'bg-red-500' : percent >= 60 ? 'bg-amber-500' : 'bg-emerald-500';
     return (
@@ -84,6 +86,7 @@ export const Staff: React.FC<Props> = ({
     departments = [], services = [], doctors = [], clinicId, addToast, onStaffChanged,
     userRole, currentClinic, onClinicUpdated,
 }) => {
+    const { t } = useLanguage();
     const navigate = useNavigate();
 
     /* Vkladka MANZILDA turadi: xodim kartasidagi «Vedomost →» havolasi
@@ -128,7 +131,7 @@ export const Staff: React.FC<Props> = ({
             for (const r of (wl?.rows || [])) map[r.doctorId] = r;
             setWorkload(map);
         } catch (e: any) {
-            toast.error(e?.data?.error || e?.message || "Xodimlar ro'yxati olinmadi");
+            toast.error(e?.data?.error || e?.message || t('staff.xodimlar_royxati_olinmadi'));
         } finally {
             setLoading(false);
         }
@@ -173,15 +176,15 @@ export const Staff: React.FC<Props> = ({
         <div className="p-4 md:p-6 space-y-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-ink">Xodimlar</h1>
+                    <h1 className="text-2xl md:text-3xl font-bold text-ink">{t('staff.xodimlar')}</h1>
                     <p className="text-sm text-muted mt-1">
-                        Klinikada kim ishlaydi, qancha oladi va qancha yuklangan
+                        {t('staff.klinikada_kim_ishlaydi_qancha')}
                     </p>
                 </div>
                 {tab === 'people' && (
                     <div className="relative">
                         <Button onClick={() => setPickRole(v => !v)}>
-                            <Plus className="w-4 h-4 mr-1" /> Yangi xodim
+                            <Plus className="w-4 h-4 mr-1" /> {t('staff.yangi_xodim')}
                         </Button>
                         {pickRole && (
                             <div className="absolute right-0 mt-2 w-56 bg-surface border border-line rounded-xl shadow-lg z-20 p-1">
@@ -205,15 +208,15 @@ export const Staff: React.FC<Props> = ({
                 hisoblandi. */}
             <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl w-fit">
                 {([
-                    ['people', 'Xodimlar'],
-                    ['payroll', 'Ulush'],
-                    ['attendance', 'Davomat'],
+                    ['people', t('staff.xodimlar_2')],
+                    ['payroll', t('finance.report.share')],
+                    ['attendance', t('staff.davomat')],
                     /* RUXSATLAR — Sozlamalardan shu yerga ham chiqarildi.
                        «Bu xodim nimani ko'radi?» degan savol xodimlar
                        ro'yxatining yonida turishi kerak; Sozlamalarga o'tib
                        izlash kerak emas. Panel — BITTA komponent
                        (`AccessControlTab`), nusxa emas. */
-                    ...(canManageAccess ? [['access', 'Ruxsatlar'] as const] : []),
+                    ...(canManageAccess ? [['access', t('ui.ruxsatlar')] as const] : []),
                 ] as const).map(([k, label]) => (
                     <button key={k} type="button" onClick={() => setTab(k)}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${tab === k
@@ -235,35 +238,35 @@ export const Staff: React.FC<Props> = ({
                     {/* ── To'rtta raqam ─────────────────────────────────── */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                         <StatCard
-                            title="Jami xodim" icon={Users}
+                            title={t('ui.jami_xodim')} icon={Users}
                             value={summary ? summary.total : '—'}
                             hint={summary
-                                ? `${summary.byRole?.DOCTOR || 0} shifokor, ${summary.total - (summary.byRole?.DOCTOR || 0)} boshqa lavozim`
+                                ? fill(t('staff.x_shifokor_x_boshqa'), summary.byRole?.DOCTOR || 0, summary.total - (summary.byRole?.DOCTOR || 0))
                                 : undefined}
                         />
                         <StatCard
-                            title="Bu hafta qabul qilmoqda" icon={UserCheck}
+                            title={t('staff.bu_hafta_qabul_qilmoqda')} icon={UserCheck}
                             value={summary ? summary.working : '—'}
                             hint={summary
                                 ? (summary.working === summary.doctors && summary.doctors > 0
-                                    ? 'Barcha shifokorda qabul bor'
+                                    ? t('staff.barcha_shifokorda_qabul_bor')
                                     : `${summary.doctors} shifokordan`)
                                 : undefined}
                             tone={summary && summary.doctors > summary.working ? 'warn' : 'default'}
                         />
                         <StatCard
-                            title="O'rtacha yuklama" icon={Activity}
+                            title={t('staff.ortacha_yuklama')} icon={Activity}
                             value={summary?.avgLoad != null ? <>{summary.avgLoad}<span className="text-lg text-faint"> %</span></> : '—'}
                             hint={summary?.avgLoad != null
-                                ? `ish grafigi belgilangan ${summary.loadKnownFor} shifokor bo'yicha`
-                                : 'ish grafigi hech kimga belgilanmagan'}
+                                ? fill(t('staff.ish_grafigi_belgilangan_x'), summary.loadKnownFor)
+                                : t('staff.ish_grafigi_hech_kimga')}
                             tone={summary?.avgLoad == null ? 'warn' : 'default'}
                         />
                         <StatCard
-                            title="Oylik fond" icon={Wallet}
+                            title={t('staff.oylik_fond')} icon={Wallet}
                             value={summary ? formatMoney(summary.salaryFund) : '—'}
                             hint={summary?.noSalary
-                                ? `${summary.noSalary} ta xodimning oyligi kiritilmagan`
+                                ? fill(t('staff.x_ta_xodimning_oyligi'), summary.noSalary)
                                 : 'hamma xodimning oyligi kiritilgan'}
                             tone={summary?.noSalary ? 'warn' : 'default'}
                         />
@@ -275,7 +278,7 @@ export const Staff: React.FC<Props> = ({
                             className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${roleFilter === 'all'
                                 ? 'bg-primary-600 text-white border-primary-600'
                                 : 'bg-surface border-line text-muted hover:border-primary-400'}`}>
-                            Barchasi <span className="opacity-70">{counts.all}</span>
+                            {t('ui.barchasi')} <span className="opacity-70">{counts.all}</span>
                         </button>
                         {ROLES.map(r => (
                             <button key={r.key} type="button" onClick={() => setRoleFilter(r.key)}
@@ -290,13 +293,13 @@ export const Staff: React.FC<Props> = ({
                                 className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${roleFilter === 'archive'
                                     ? 'bg-elevated text-white border-line'
                                     : 'bg-surface border-line text-muted hover:border-line'}`}>
-                                Arxiv <span className="opacity-70">{counts.archive}</span>
+                                {t('patients.filter.archived')} <span className="opacity-70">{counts.archive}</span>
                             </button>
                         )}
                         <div className="relative ml-auto">
                             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                             <input value={search} onChange={e => setSearch(e.target.value)}
-                                placeholder="Ism, lavozim yoki telefon"
+                                placeholder={t('staff.ism_lavozim_yoki_telefon')}
                                 className="pl-9 pr-3 py-2 w-64 border border-line rounded-lg bg-surface text-sm focus:ring-2 focus:ring-primary-500 outline-none" />
                         </div>
                     </div>
@@ -304,22 +307,22 @@ export const Staff: React.FC<Props> = ({
                     {/* ── Jadval ────────────────────────────────────────── */}
                     <Card className="overflow-hidden">
                         {loading ? (
-                            <div className="py-16 text-center text-faint">Yuklanmoqda…</div>
+                            <div className="py-16 text-center text-faint">{t('ui.yuklanmoqda')}</div>
                         ) : filtered.length === 0 ? (
                             <div className="py-16 text-center text-muted">
-                                {search || roleFilter !== 'all' ? 'Mos xodim topilmadi' : "Hali xodim qo'shilmagan"}
+                                {search || roleFilter !== 'all' ? t('staff.mos_xodim_topilmadi') : t('staff.hali_xodim_qoshilmagan')}
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="text-left text-xs text-muted border-b border-line">
-                                            <th className="py-3 px-4 font-medium">Xodim</th>
-                                            <th className="py-3 px-4 font-medium">Lavozim</th>
+                                            <th className="py-3 px-4 font-medium">{t('staff.xodim')}</th>
+                                            <th className="py-3 px-4 font-medium">{t('ui.lavozim')}</th>
                                             <th className="py-3 px-4 font-medium">Rol</th>
-                                            <th className="py-3 px-4 font-medium">Bo'lim</th>
-                                            <th className="py-3 px-4 font-medium">Haftalik yuklama</th>
-                                            <th className="py-3 px-4 font-medium text-right">Oylik</th>
+                                            <th className="py-3 px-4 font-medium">{t('ui.bolim')}</th>
+                                            <th className="py-3 px-4 font-medium">{t('staff.haftalik_yuklama')}</th>
+                                            <th className="py-3 px-4 font-medium text-right">{t('ui.oylik')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -382,8 +385,7 @@ export const Staff: React.FC<Props> = ({
                     {!loading && filtered.some(r => r.role === 'DOCTOR' && workload[r.id]?.percent == null) && (
                         <p className="text-xs text-muted flex items-center gap-1.5">
                             <Percent className="w-3.5 h-3.5" />
-                            Yuklama ish grafigidan hisoblanadi: xodim kartasida hafta kunlari va ish
-                            soatlari belgilangach ko'rinadi.
+                            {t('staff.yuklama_ish_grafigidan_hisoblanadi')}
                         </p>
                     )}
                 </>

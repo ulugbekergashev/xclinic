@@ -9,7 +9,7 @@ import {
     Prescription, InventoryItem,
 } from '../types';
 import { api } from '../services/api';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, fill } from '../context/LanguageContext';
 import { EncounterForm } from '../components/EncounterForm';
 import { printReferral, printPrescription } from '../utils/printForms';
 import { formatNumber } from '../utils/format';
@@ -126,7 +126,7 @@ export const VisitPanel: React.FC<Props> = ({
             setMoney(c.summary);
             setError('');
         } catch (e: any) {
-            setError(e?.message || "Qabulni ochib bo'lmadi");
+            setError(e?.message || t('ui.qabulni_ochib_bolmadi'));
         } finally { setLoading(false); }
     }, [visitId]);
 
@@ -190,7 +190,7 @@ export const VisitPanel: React.FC<Props> = ({
     const guard = async (fn: () => Promise<any>, okMsg: string) => {
         setBusy(true);
         try { await fn(); await reload(); onVisitChanged(visitId); addToast('success', okMsg); setPanel(null); }
-        catch (e: any) { addToast('error', e?.message || 'Xatolik'); }
+        catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
         finally { setBusy(false); }
     };
 
@@ -324,7 +324,7 @@ export const VisitPanel: React.FC<Props> = ({
             setConsultForm({ departmentId: '', doctorId: '', reason: '' });
             onVisitChanged(visitId);
         } catch (e: any) {
-            addToast('error', e?.data?.error || e?.message || 'Xatolik');
+            addToast('error', e?.data?.error || e?.message || t('ui.xatolik'));
         } finally { setBusy(false); }
     };
 
@@ -384,9 +384,9 @@ export const VisitPanel: React.FC<Props> = ({
                         await reload(); onVisitChanged(visitId);
                         addToast('success', t('visit.completedOk'));
                         setPanel(null);
-                    } catch (e2: any) { addToast('error', e2?.message || 'Xatolik'); }
+                    } catch (e2: any) { addToast('error', e2?.message || t('ui.xatolik')); }
                 }
-            } else { addToast('error', e?.message || 'Xatolik'); }
+            } else { addToast('error', e?.message || t('ui.xatolik')); }
         } finally { setBusy(false); }
     };
 
@@ -404,7 +404,7 @@ export const VisitPanel: React.FC<Props> = ({
             await api.visits.update(visit!.id, { status: 'Cancelled' });
             await reload(); onVisitChanged(null);
             addToast('success', t('visit.visitCancelled'));
-        } catch (e: any) { addToast('error', e?.message || 'Xatolik'); }
+        } catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
         finally { setBusy(false); }
     };
 
@@ -444,7 +444,7 @@ export const VisitPanel: React.FC<Props> = ({
                mavjudini ochamiz. Ikki marta ro'yxatga tushish xato. */
             const existing = e?.data?.visitId;
             if (existing) { addToast('info', t('visit.alreadyOpen')); onVisitChanged(existing); }
-            else addToast('error', e?.data?.error || e?.message || 'Xatolik');
+            else addToast('error', e?.data?.error || e?.message || t('ui.xatolik'));
         } finally { setOpenBusy(false); }
     };
 
@@ -603,7 +603,7 @@ export const VisitPanel: React.FC<Props> = ({
                 <div className="flex flex-wrap items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                     <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
                     <p className="text-sm text-amber-800 dark:text-amber-200">
-                        <b>{fmt(money.due)} so'm</b> {t('visit.unpaidHint')}
+                        <b>{fmt(money.due)} {t('ui.som')}</b> {t('visit.unpaidHint')}
                         {money.unpaidCount > 1 ? ` (${money.unpaidCount})` : ''}
                     </p>
                     <button onClick={issueReferral} disabled={refBusy}
@@ -667,7 +667,7 @@ export const VisitPanel: React.FC<Props> = ({
                             <div className="flex items-center gap-3 mt-4 pt-3 border-t border-line">
                                 <span className="text-sm text-muted">
                                     {t('common.total')}: <b className="text-ink tabular-nums">
-                                        {fmt(labTests.filter(x => labPick.includes(x.id)).reduce((s, x) => s + x.price, 0))} so'm
+                                        {fmt(labTests.filter(x => labPick.includes(x.id)).reduce((s, x) => s + x.price, 0))} {t('ui.som')}
                                     </b>
                                 </span>
                                 <button onClick={sendToLab} disabled={busy || labPick.length === 0}
@@ -868,11 +868,11 @@ export const VisitPanel: React.FC<Props> = ({
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <Section title={t('visit.tabServices')} icon={Stethoscope} empty={t('visit.noServices')}>
                     {(visit.procedures || []).map(p => (
-                        <Row key={p.id} main={p.procedureName} right={`${fmt(p.finalPrice)} so'm`}
+                        <Row key={p.id} main={p.procedureName} right={fill(t('ui.x_som'), fmt(p.finalPrice))}
                             charge={chargeOf('Service', p.id)}
                             onDelete={isDone ? undefined : async () => {
                                 try { await api.visits.removeProcedure(p.id); reload(); onVisitChanged(visitId); }
-                                catch (e: any) { addToast('error', e?.message || 'Xatolik'); }
+                                catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
                             }} />
                     ))}
                 </Section>
@@ -885,7 +885,7 @@ export const VisitPanel: React.FC<Props> = ({
                                 sub={o.status === 'Completed'
                                     ? (o.seenByDoctorAt ? t('visit.resultSeen') : t('visit.resultReady'))
                                     : t('visit.pending')}
-                                right={`${fmt(o.totalPrice)} so'm`}
+                                right={fill(t('ui.x_som'), fmt(o.totalPrice))}
                                 charge={ch}
                                 tone={o.status === 'Completed' ? 'ok' : 'wait'}
                                 onDelete={isDone || o.status === 'Completed' ? undefined
@@ -908,7 +908,7 @@ export const VisitPanel: React.FC<Props> = ({
                                 sub={s.conclusion || (s.status === 'Completed'
                                     ? (s.seenByDoctorAt ? t('visit.resultSeen') : t('visit.resultReady'))
                                     : t('visit.pending'))}
-                                right={`${fmt(s.price)} so'm`}
+                                right={fill(t('ui.x_som'), fmt(s.price))}
                                 charge={ch}
                                 tone={s.status === 'Completed' ? 'ok' : 'wait'}
                                 onDelete={isDone || s.status === 'Completed' ? undefined
@@ -994,7 +994,9 @@ const Row: React.FC<{
     main: string; sub?: string; right?: string;
     tone?: 'ok' | 'wait'; onDelete?: () => void; charge?: VisitCharge;
     action?: React.ReactNode;
-}> = ({ main, sub, right, tone, onDelete, charge, action }) => (
+}> = ({ main, sub, right, tone, onDelete, charge, action }) => {
+    const { t } = useLanguage();
+    return (
     <div className="flex items-center gap-3 text-sm">
         <div className="min-w-0 flex-1">
             <p className="text-ink truncate">{main}</p>
@@ -1009,9 +1011,10 @@ const Row: React.FC<{
         <PaidBadge charge={charge} />
         {right && <span className="tabular-nums text-muted shrink-0">{right}</span>}
         {onDelete && (
-            <button aria-label="O'chirish" onClick={onDelete} className="p-1 text-faint hover:text-red-500 shrink-0">
+            <button aria-label={t('ui.ochirish')} onClick={onDelete} className="p-1 text-faint hover:text-red-500 shrink-0">
                 <Trash2 className="w-3.5 h-3.5" />
             </button>
         )}
     </div>
-);
+    );
+};

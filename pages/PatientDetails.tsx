@@ -20,7 +20,7 @@ import { SendMessageModal } from '../components/SendMessageModal';
 import { printPrescription } from '../utils/printForms';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription, VisitCharge } from '../types';
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, fill } from '../context/LanguageContext';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
 import type { TranslationKey } from '../i18n/translations';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
@@ -509,7 +509,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             quantity: Number(materialData.quantity),
             reason: 'Manual',
             patientId,
-            note: materialData.note || `Bemor: ${patient?.firstName} ${patient?.lastName}`,
+            note: materialData.note || fill(t('patientdetails.bemor_x_x'), patient?.firstName, patient?.lastName),
             // Ism yuborilmasa server tokendan oladi — «Doctor» degan qotib
             // qolgan matn o'rniga haqiqiy foydalanuvchi yoziladi
             userName: myDoctor ? `${myDoctor.firstName} ${myDoctor.lastName}`.trim() : undefined,
@@ -578,7 +578,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         procedures: pastProcedures,
                      })}
                   >
-                     <Printer className="w-4 h-4 mr-2" /> Karta (vipiska)
+                     <Printer className="w-4 h-4 mr-2" /> {t('patientdetails.karta_vipiska')}
                   </Button>
                </div>
             </div>
@@ -646,7 +646,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                         </div>
                         {patient.secondaryPhone && (
                            <div className="flex items-center gap-2 text-muted">
-                              <Phone className="w-4 h-4 text-faint" /> {showPatientPhone ? patient.secondaryPhone : maskPhone(patient.secondaryPhone)} (Qo'shimcha)
+                              <Phone className="w-4 h-4 text-faint" /> {showPatientPhone ? patient.secondaryPhone : maskPhone(patient.secondaryPhone)} {t('patientdetails.qoshimcha')}
                            </div>
                         )}
                         <div className="flex items-center gap-2 text-muted">
@@ -843,12 +843,12 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                            <p className="font-medium mb-3 text-muted">{t('patients.details.medicalHistory.quickSelect')}</p>
                            <div className="flex flex-wrap gap-2">
                               {[
-                                 "SOG'LOM(SHIKOYATI YO'Q )",
+                                 t('patientdetails.soglom_shikoyati_yoq'),
                                  "HOMILADORLIK-Z 32.1",
                                  "TASDIQLANMAGAN HOMILADORLIK-Z 32.0",
                                  "GIPERTONIYA (DAVLENIYA)-I 11.0",
                                  "MIOKARD INFARKTI-I 21.9",
-                                 "SURUNKALI YURAK ISHEMIK KASALLIGI -I 25.9",
+                                 t('patientdetails.surunkali_yurak_ishemik_kasalligi'),
                                  "OITS -B.20",
                                  "GEPATIT A-B.15",
                                  "GEPATIT B-B.16",
@@ -856,7 +856,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                                  "QANDLI DIABET(SHAKAR)-E 10.9",
                                  "QANDLI DIABET(SHAKAR)-E 11.9",
                                  "RAHIT-E 55.9",
-                                 "SURUNKALI REVMATIZM-I 09.8"
+                                 t('patientdetails.surunkali_revmatizm_i_09')
                               ].map((disease) => (
                                  <button
                                     key={disease}
@@ -1085,7 +1085,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                               return apptDateTime >= now && a.status !== 'Cancelled' && a.status !== 'Completed';
                            }).length === 0 && (
                                  <div className="text-center py-8 text-muted">
-                                    Kutilayotgan qabullar yo'q
+                                    {t('patientdetails.kutilayotgan_qabullar_yoq')}
                                  </div>
                               )}
                         </div>
@@ -1475,11 +1475,11 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                      label={t('patients.details.materials.table.note')}
                      value={materialData.note}
                      onChange={e => setMaterialData({ ...materialData, note: e.target.value })}
-                     placeholder="Qo'shimcha izoh..."
+                     placeholder={t('patientdetails.qoshimcha_izoh')}
                   />
                   <div className="flex justify-end gap-2 pt-4">
-                     <Button type="button" variant="secondary" onClick={() => setIsMaterialModalOpen(false)}>Bekor qilish</Button>
-                     <Button type="submit">Saqlash</Button>
+                     <Button type="button" variant="secondary" onClick={() => setIsMaterialModalOpen(false)}>{t('common.cancel')}</Button>
+                     <Button type="submit">{t('common.save')}</Button>
                   </div>
                </form>
             </Modal>
@@ -1609,19 +1609,19 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          {/* Print Template */}
          < div className="hidden print:block print:p-8 bg-surface text-black" >
             <div className="text-center mb-8 border-b-2 border-line pb-4">
-               <h1 className="text-3xl font-bold uppercase tracking-wider mb-2">DentalFlow Clinic</h1>
-               <p className="text-sm text-muted">Tish davolash va diagnostika markazi</p>
+               <h1 className="text-3xl font-bold uppercase tracking-wider mb-2">{currentClinic?.name || 'XClinic'}</h1>
+               <p className="text-sm text-muted">{t('patientdetails.tish_davolash_va_diagnostika')}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-8 mb-8">
                <div>
-                  <h2 className="text-xs font-bold uppercase text-muted mb-1">Bemor</h2>
+                  <h2 className="text-xs font-bold uppercase text-muted mb-1">{t('common.patient')}</h2>
                   <p className="text-xl font-bold">{formatFullName(patient)}</p>
                   <p className="text-sm">{showPatientPhone ? patient.phone : maskPhone(patient.phone)}</p>
-                  <p className="text-sm">{formatDobDDMMYYYY(patient.dob)} ({calcAge(patient.dob) ?? ''} yosh)</p>
+                  <p className="text-sm">{formatDobDDMMYYYY(patient.dob)} ({calcAge(patient.dob) ?? ''} {t('patients.details.age')})</p>
                </div>
                <div className="text-right">
-                  <h2 className="text-xs font-bold uppercase text-muted mb-1">Sana</h2>
+                  <h2 className="text-xs font-bold uppercase text-muted mb-1">{t('ui.sana')}</h2>
                   <p className="text-xl font-bold">{formatDate(new Date())}</p>
                   <p className="text-sm">{new Date().toLocaleTimeString('uz-UZ')}</p>
                </div>
@@ -1631,7 +1631,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
             {
                diagnoses.length > 0 && (
                   <div className="mb-8">
-                     <h3 className="text-lg font-bold border-b border-line mb-4 pb-1">Tashxislar</h3>
+                     <h3 className="text-lg font-bold border-b border-line mb-4 pb-1">{t('card.secDiagnoses')}</h3>
                      <div className="space-y-4">
                         {diagnoses.map(d => (
                            <div key={d.id} className="mb-4">
@@ -1651,7 +1651,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
             {/* Qabul bayoni */}
             <div className="mb-8 break-inside-avoid">
-               <h3 className="text-lg font-bold border-b border-line mb-4 pb-1">Qabul bayoni</h3>
+               <h3 className="text-lg font-bold border-b border-line mb-4 pb-1">{t('ui.qabul_bayoni')}</h3>
                <EncounterSummary
                   template={panelTemplate}
                   value={JSON.stringify(panelEncounterData)}
@@ -1660,11 +1660,11 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
             <div className="mt-12 pt-8 border-t border-line flex justify-between">
                <div>
-                  <p className="text-sm font-bold">Shifokor:</p>
-                  <p className="mt-8 border-t border-black w-48 pt-1 text-xs text-center">(Imzo)</p>
+                  <p className="text-sm font-bold">{t('ui.shifokor')}</p>
+                  <p className="mt-8 border-t border-black w-48 pt-1 text-xs text-center">{t('patients.details.print.signature')}</p>
                </div>
                <div className="text-right">
-                  <p className="text-sm italic">XClinic orqali chop etildi</p>
+                  <p className="text-sm italic">{t('patientdetails.xclinic_orqali_chop_etildi')}</p>
                </div>
             </div>
          </div >

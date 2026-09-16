@@ -1,4 +1,5 @@
 import { Transaction, Expense, Doctor, PaymentMethod, CashRegisterDay, CashMovement } from '../types';
+import { tr } from '../context/LanguageContext';
 import {
     PAYMENT_METHODS,
     isCashDrawerMethod,
@@ -228,7 +229,7 @@ function toRow(tx: Transaction, doctors: Doctor[]): CashBookRow {
         method,
         amount: tx.amount || 0,
         doctorId: isAdvance ? ADVANCE_COLUMN_ID : (doctor?.id ?? UNASSIGNED_DOCTOR_ID),
-        doctorName: isAdvance ? 'Avans' : (doctor ? doctorLabel(doctor) : (tx.doctorName?.trim() || 'Belgilanmagan')),
+        doctorName: isAdvance ? tr('ui.avans') : (doctor ? doctorLabel(doctor) : (tx.doctorName?.trim() || tr('reception.unassigned'))),
         receivedByName: tx.receivedByName || null,
         isAdvance,
         isMoneyIn: moneyIn,

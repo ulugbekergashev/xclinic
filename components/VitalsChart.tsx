@@ -15,17 +15,19 @@ import React, { useMemo } from 'react';
 import { formatDateShort } from '../utils/format';
 import { Activity } from 'lucide-react';
 
+import { useLanguage, tr } from '../context/LanguageContext';
 interface Props {
     /** VitalSign yozuvlari: kind, value, measuredAt */
     vitals: any[];
 }
 
 const SERIES = [
-    { kind: 'Temp', label: 'Harorat', color: '#DC2626', unit: '°C', min: 35, max: 41 },
-    { kind: 'Pulse', label: 'Puls', color: '#2563EB', unit: 'urish/min', min: 40, max: 140 },
+    { kind: 'Temp', label: tr('ui.harorat'), color: '#DC2626', unit: '°C', min: 35, max: 41 },
+    { kind: 'Pulse', label: tr('inp.pulsePh'), color: '#2563EB', unit: 'urish/min', min: 40, max: 140 },
 ];
 
 export const VitalsChart: React.FC<Props> = ({ vitals }) => {
+    const { t } = useLanguage();
     const data = useMemo(() => {
         const out: Record<string, { t: number; v: number; at: string }[]> = {};
         for (const s of SERIES) out[s.kind] = [];
@@ -61,7 +63,7 @@ export const VitalsChart: React.FC<Props> = ({ vitals }) => {
             <div className="text-center py-6 border border-dashed border-line rounded-lg">
                 <Activity className="w-6 h-6 mx-auto text-faint mb-1" />
                 <p className="text-xs text-faint">
-                    O'lchov yo'q. Obxodda harorat va pulsni kiritsangiz, grafik shu yerda chiziladi.
+                    {t('vitalschart.olchov_yoq_obxodda_harorat')}
                 </p>
             </div>
         );
@@ -114,7 +116,7 @@ export const VitalsChart: React.FC<Props> = ({ vitals }) => {
                         <span key={s.kind} className="flex items-center gap-1.5 text-xs text-muted">
                             <span className="w-3 h-0.5 rounded" style={{ backgroundColor: s.color }} />
                             {s.label}: <b className="tabular-nums">{last.v}</b> {s.unit}
-                            <span className="text-faint">({pts.length} o'lchov)</span>
+                            <span className="text-faint">({pts.length} {t('ui.olchov')})</span>
                         </span>
                     );
                 })}

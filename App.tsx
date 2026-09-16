@@ -62,7 +62,7 @@ import { api } from './services/api';
 import type { CashCloseInput } from './services/api';
 import { parseAccessControl, canSeeFinance, canSeePatientPhone } from './utils/accessControl';
 import { visibleNavigation as buildNavigation, canOpenModule, homeFor } from './utils/navigation';
-import { LanguageProvider, useLanguage } from './context/LanguageContext';
+import { LanguageProvider, useLanguage, tr, fill } from './context/LanguageContext';
 import { Language } from './i18n/translations';
 
 
@@ -71,10 +71,10 @@ import { Language } from './i18n/translations';
    filtrlanadi va mos kelmasa ekran bo'sh chiqadi. */
 const DEMO_ROLE_PROFILES: Record<string, { label: string; name: string; doctorId?: string }> = {
   [UserRole.CLINIC_ADMIN]: { label: 'Ega', name: 'Demo Admin' },
-  [UserRole.DOCTOR]: { label: 'Shifokor', name: 'Dr. Kamola Ahmedova', doctorId: 'demo-doctor-1' },
+  [UserRole.DOCTOR]: { label: tr('ui.shifokor_2'), name: 'Dr. Kamola Ahmedova', doctorId: 'demo-doctor-1' },
   [UserRole.RECEPTIONIST]: { label: 'Registrator', name: 'Registrator' },
   [UserRole.LAB_TECHNICIAN]: { label: 'Laborant', name: 'Laborant' },
-  [UserRole.NURSE]: { label: 'Hamshira', name: 'Hamshira' },
+  [UserRole.NURSE]: { label: tr('ui.hamshira'), name: tr('ui.hamshira') },
 };
 
 /* Manzil → sahifa nomi. Yuqori qatorda klinika nomi ostida turadi va
@@ -196,7 +196,22 @@ const AppContent: React.FC = () => {
     auth.migrateLegacyStorage();
 
     const storedAuth = auth.getSession();
-    if (storedAuth) {
+    /* TOKEN BO'LMASA — AVVAL YANGILASH, KEYIN YUKLASH.
+
+       Sessiya (rol, ism, klinika) `sessionStorage` da yashaydi va sahifa
+       qayta ochilganda saqlanib qoladi; kirish TOKENI esa faqat xotirada
+       (`authStore.accessToken`) va qayta ochilganda YO'QOLADI. Ilgari bu
+       tarmoq faqat sessiyaga qarab darhol `isAuthenticated` qilib, o'n
+       sakkizta ma'lumot so'rovini TOKENSIZ yuborardi: hammasi 401, keyin
+       `fetchJson` tokenni yangilab hammasini QAYTA yuborardi. Ya'ni har
+       ishga tushishda yuklash ikki marta, konsolda 18 ta qizil xato.
+       Bu o'lchab ko'rildi — taxmin emas.
+
+       Endi token bo'lmasa pastdagi `else` tarmog'iga tushamiz: u avval
+       `/auth/refresh` ni kutadi va faqat javobdan keyin holatni qo'yadi.
+       Demo sessiyasida token yo'q va bo'lmaydi ham (server yo'q) — u
+       avvalgidek to'g'ridan-to'g'ri o'tadi. */
+    if (storedAuth && (auth.getToken() || storedAuth.isDemo)) {
       try {
         const { role, name, clinicId: storedClinicId, doctorId: storedDoctorId, receptionistId: storedReceptionistId, technicianId: storedTechnicianId } = storedAuth;
         if (role && name) {
@@ -367,7 +382,7 @@ const sinceDate = (n: number) =>
         if (error.message === 'Session expired') {
           handleLogout();
         } else {
-          setError('Ma\'lumotlarni yuklashda xatolik yuz berdi. Iltimos, qayta urinib ko\'ring.');
+          setError(t('app.malumotlarni_yuklashda_xatolik_yuz'));
         }
       } finally {
         setIsLoading(false);
@@ -414,7 +429,7 @@ const sinceDate = (n: number) =>
        ma'nosi yo'q — ular kirish sahifasining o'zi. */
     const asked = location.pathname;
     if (keepRoute && asked && asked !== '/' && asked !== '/login') {
-      addToast('success', `Xush kelibsiz, ${name}!`);
+      addToast('success', fill(t('app.xush_kelibsiz_x'), name));
       return;
     }
 
@@ -431,7 +446,7 @@ const sinceDate = (n: number) =>
     } else {
       navigate('/');
     }
-    addToast('success', `Xush kelibsiz, ${name}!`);
+    addToast('success', fill(t('app.xush_kelibsiz_x'), name));
   };
 
   const handleLogout = () => {
@@ -485,10 +500,10 @@ const sinceDate = (n: number) =>
         // @ts-ignore
         setReviews(revs || []);
       }
-      addToast('success', 'Ma\'lumotlar muvaffaqiyatli yuklandi!');
+      addToast('success', t('app.malumotlar_muvaffaqiyatli_yuklandi'));
     } catch (error) {
       console.error('Failed to load data:', error);
-      setError('Ma\'lumotlarni yuklashda xatolik yuz berdi. Iltimos, qayta urinib ko\'ring.');
+      setError(t('app.malumotlarni_yuklashda_xatolik_yuz'));
     } finally {
       setIsLoading(false);
     }
@@ -539,7 +554,7 @@ const sinceDate = (n: number) =>
         if (parsed?.clinicId) activeClinicId = parsed.clinicId;
       }
       if (!activeClinicId) {
-        addToast('error', 'Klinika aniqlanmadi. Iltimos sahafani yangilang.');
+        addToast('error', t('app.klinika_aniqlanmadi_iltimos_sahafani'));
         return;
       }
       const newPatient = await api.patients.create({ ...patient, clinicId: activeClinicId });
@@ -547,14 +562,14 @@ const sinceDate = (n: number) =>
         if (prev.find(p => p.id === newPatient.id)) return prev;
         return [newPatient, ...prev];
       });
-      addToast('success', `Bemor ${patient.firstName} muvaffaqiyatli qo'shildi!`);
+      addToast('success', fill(t('app.bemor_x_muvaffaqiyatli_qoshildi'), patient.firstName));
       return newPatient;
     } catch (e: any) {
       console.error('Add patient error:', e);
       /* Takror haqidagi 409 — xato emas, savol. Uni modal o'zi ro'yxat bilan
          ko'rsatadi, shuning uchun bu yerda toast chiqarmaymiz. */
       if (e?.data?.code !== 'DUPLICATE_PATIENT') {
-        addToast('error', e.message || 'Xatolik yuz berdi');
+        addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       }
       throw e;
     }
@@ -564,9 +579,9 @@ const sinceDate = (n: number) =>
     try {
       const updated = await api.patients.update(id, data);
       setPatients(prev => prev.map(p => p.id === id ? updated : p));
-      addToast('success', 'Bemor ma\'lumotlari yangilandi.');
+      addToast('success', t('app.bemor_malumotlari_yangilandi'));
     } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       throw e;
     }
   };
@@ -575,10 +590,10 @@ const sinceDate = (n: number) =>
     try {
       await api.patients.delete(id);
       setPatients(prev => prev.filter(p => p.id !== id));
-      addToast('info', 'Bemor o\'chirildi.');
+      addToast('info', t('app.bemor_ochirildi'));
       navigate('/patients');
     } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       throw e;
     }
   };
@@ -592,9 +607,9 @@ const sinceDate = (n: number) =>
         if (exists) return prev.map(a => a.id === newAppt.id ? newAppt : a);
         return [...prev, newAppt];
       });
-      addToast('success', 'Uchrashuv belgilandi.');
+      addToast('success', t('app.uchrashuv_belgilandi'));
     } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       throw e;
     }
   };
@@ -603,9 +618,9 @@ const sinceDate = (n: number) =>
     try {
       const updated = await api.appointments.update(id, data);
       setAppointments(prev => prev.map(a => a.id === id ? updated : a));
-      addToast('success', 'Uchrashuv yangilandi.');
+      addToast('success', t('app.uchrashuv_yangilandi'));
     } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       throw e;
     }
   };
@@ -614,9 +629,9 @@ const sinceDate = (n: number) =>
     try {
       await api.appointments.delete(id);
       setAppointments(prev => prev.filter(a => a.id !== id));
-      addToast('info', 'Uchrashuv bekor qilindi.');
+      addToast('info', t('app.uchrashuv_bekor_qilindi'));
     } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       throw e;
     }
   };
@@ -637,11 +652,11 @@ const sinceDate = (n: number) =>
         }).catch(err => console.error('Failed to refetch patient after transaction:', err));
       }
 
-      addToast('success', 'To\'lov qabul qilindi.');
+      addToast('success', t('app.tolov_qabul_qilindi'));
       return newTx;
     } catch (e: any) {
       console.error('Add transaction error:', e);
-      addToast('error', e.message || 'To\'lovni saqlashda xatolik yuz berdi');
+      addToast('error', e.message || t('app.tolovni_saqlashda_xatolik_yuz'));
       throw e;
     }
   };
@@ -654,11 +669,11 @@ const sinceDate = (n: number) =>
         const rest = prev.filter(c => !(c.date === closure.date && c.shift === closure.shift));
         return [closure, ...rest];
       });
-      addToast('success', 'Kun yopildi.');
+      addToast('success', t('app.kun_yopildi'));
       return closure;
     } catch (e: any) {
       console.error('Close cash day error:', e);
-      addToast('error', e.message || 'Kunni yopishda xatolik');
+      addToast('error', e.message || t('app.kunni_yopishda_xatolik'));
       throw e;
     }
   };
@@ -667,10 +682,10 @@ const sinceDate = (n: number) =>
     try {
       await api.cashRegister.reopen(date, shift);
       setCashClosures(prev => prev.filter(c => !(c.date === date && (!shift || c.shift === shift))));
-      addToast('success', 'Kun qayta ochildi.');
+      addToast('success', t('app.kun_qayta_ochildi'));
     } catch (e: any) {
       console.error('Reopen cash day error:', e);
-      addToast('error', e.message || 'Kunni qayta ochishda xatolik');
+      addToast('error', e.message || t('app.kunni_qayta_ochishda_xatolik'));
       throw e;
     }
   };
@@ -686,10 +701,10 @@ const sinceDate = (n: number) =>
           setPatients(prev => prev.map(x => x.id === tx.patientId ? p : x));
         }).catch(() => { });
       }
-      addToast('success', "To'lov o'chirildi.");
+      addToast('success', t('app.tolov_ochirildi'));
     } catch (e: any) {
       console.error('Delete transaction error:', e);
-      addToast('error', e.message || "To'lovni o'chirishda xatolik");
+      addToast('error', e.message || t('app.tolovni_ochirishda_xatolik'));
       throw e;
     }
   };
@@ -699,11 +714,11 @@ const sinceDate = (n: number) =>
     try {
       const movement = await api.cashMovements.create({ ...data, clinicId } as any);
       setCashMovements(prev => [movement, ...prev]);
-      addToast('success', 'Kassa harakati saqlandi.');
+      addToast('success', t('app.kassa_harakati_saqlandi'));
       return movement;
     } catch (e: any) {
       console.error('Cash movement error:', e);
-      addToast('error', e.message || 'Saqlashda xatolik');
+      addToast('error', e.message || t('ui.saqlashda_xatolik'));
       throw e;
     }
   };
@@ -712,10 +727,10 @@ const sinceDate = (n: number) =>
     try {
       await api.cashMovements.delete(id);
       setCashMovements(prev => prev.filter(m => m.id !== id));
-      addToast('success', "Kassa harakati o'chirildi.");
+      addToast('success', t('app.kassa_harakati_ochirildi'));
     } catch (e: any) {
       console.error('Cash movement delete error:', e);
-      addToast('error', e.message || "O'chirishda xatolik");
+      addToast('error', e.message || t('app.ochirishda_xatolik'));
       throw e;
     }
   };
@@ -732,10 +747,10 @@ const sinceDate = (n: number) =>
         }).catch(err => console.error('Failed to refetch patient after update:', err));
       }
 
-      addToast('success', 'To\'lov holati yangilandi.');
+      addToast('success', t('app.tolov_holati_yangilandi'));
     } catch (e: any) {
       console.error('Transaction update error:', e);
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
     }
   };
 
@@ -764,11 +779,11 @@ const sinceDate = (n: number) =>
     try {
       const newExpense = await api.expenses.create({ ...expense, clinicId });
       setExpenses(prev => [newExpense, ...prev]);
-      addToast('success', 'Xarajat qo\'shildi.');
+      addToast('success', t('app.xarajat_qoshildi'));
       return newExpense;
     } catch (e: any) {
       console.error('Add expense error:', e);
-      addToast('error', e.message || 'Xarajatni saqlashda xatolik yuz berdi');
+      addToast('error', e.message || t('app.xarajatni_saqlashda_xatolik_yuz'));
       throw e;
     }
   };
@@ -777,10 +792,10 @@ const sinceDate = (n: number) =>
     try {
       const updated = await api.expenses.update(id, data);
       setExpenses(prev => prev.map(e => e.id === id ? updated : e));
-      addToast('success', 'Xarajat yangilandi.');
+      addToast('success', t('app.xarajat_yangilandi'));
     } catch (e: any) {
       console.error('Expense update error:', e);
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
     }
   };
 
@@ -788,9 +803,9 @@ const sinceDate = (n: number) =>
     try {
       await api.expenses.delete(id);
       setExpenses(prev => prev.filter(e => e.id !== id));
-      addToast('info', 'Xarajat o\'chirildi.');
+      addToast('info', t('app.xarajat_ochirildi'));
     } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
     }
   };
 
@@ -802,8 +817,8 @@ const sinceDate = (n: number) =>
         if (prev.find(s => s.id === newService.id)) return prev;
         return [...prev, newService];
       });
-      addToast('success', 'Yangi xizmat qo\'shildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('success', t('app.yangi_xizmat_qoshildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   const updateService = async (index: number, service: Partial<Service>) => {
@@ -812,8 +827,8 @@ const sinceDate = (n: number) =>
       try {
         const updated = await api.services.update(serviceToUpdate.id, { ...service, duration: service.duration || 60 });
         setServices(prev => prev.map(s => s.id === updated.id ? updated : s));
-        addToast('success', 'Xizmat yangilandi.');
-      } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+        addToast('success', t('app.xizmat_yangilandi'));
+      } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
     }
   };
 
@@ -821,8 +836,8 @@ const sinceDate = (n: number) =>
     try {
       await api.services.remove(id);
       setServices(prev => prev.filter(s => s.id !== id));
-      addToast('success', 'Xizmat o\'chirildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('success', t('app.xizmat_ochirildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   const addDoctor = async (doctor: Omit<Doctor, 'id' | 'clinicId'>) => {
@@ -832,41 +847,41 @@ const sinceDate = (n: number) =>
         if (prev.find(d => d.id === newDoc.id)) return prev;
         return [...prev, newDoc];
       });
-      addToast('success', 'Yangi shifokor qo\'shildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('success', t('app.yangi_shifokor_qoshildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   const updateDoctor = async (id: string, data: Partial<Doctor>) => {
     try {
       const updated = await api.doctors.update(id, data);
       setDoctors(prev => prev.map(d => d.id === id ? updated : d));
-      addToast('success', 'Shifokor ma\'lumotlari yangilandi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('success', t('app.shifokor_malumotlari_yangilandi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   const deleteDoctor = async (id: string) => {
     try {
       await api.doctors.delete(id);
       setDoctors(prev => prev.filter(d => d.id !== id));
-      addToast('info', 'Shifokor o\'chirildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('info', t('app.shifokor_ochirildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   const addReceptionist = async (receptionist: Omit<Receptionist, 'id'>) => {
     try {
       const newRec = await api.receptionists.create({ ...receptionist, clinicId });
       setReceptionists(prev => [...prev, newRec]);
-      addToast('success', 'Yangi resepshn qo\'shildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('success', t('app.yangi_resepshn_qoshildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   const updateReceptionist = async (id: string, data: Partial<Receptionist>) => {
     try {
       const updated = await api.receptionists.update(id, data);
       setReceptionists(prev => prev.map(r => r.id === id ? updated : r));
-      addToast('success', 'Resepshn ma\'lumotlari yangilandi.');
+      addToast('success', t('app.resepshn_malumotlari_yangilandi'));
     } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       throw e;
     }
   };
@@ -875,25 +890,25 @@ const sinceDate = (n: number) =>
     try {
       await api.receptionists.delete(id);
       setReceptionists(prev => prev.filter(r => r.id !== id));
-      addToast('info', 'Resepshn o\'chirildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('info', t('app.resepshn_ochirildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   const addLabTechnician = async (tech: Omit<LabTechnician, 'id' | 'status'>) => {
     try {
       const newTech = await api.labTechnicians.create({ ...tech, clinicId });
       setLabTechnicians(prev => [...prev, newTech]);
-      addToast('success', 'Yangi lab texnik qo\'shildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('success', t('app.yangi_lab_texnik_qoshildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   const updateLabTechnician = async (id: string, data: Partial<LabTechnician>) => {
     try {
       const updated = await api.labTechnicians.update(id, data);
       setLabTechnicians(prev => prev.map(t => t.id === id ? updated : t));
-      addToast('success', 'Texnik ma\'lumotlari yangilandi.');
+      addToast('success', t('app.texnik_malumotlari_yangilandi'));
     } catch (e: any) {
-      addToast('error', e.message || 'Xatolik yuz berdi');
+      addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       throw e;
     }
   };
@@ -902,8 +917,8 @@ const sinceDate = (n: number) =>
     try {
       await api.labTechnicians.delete(id);
       setLabTechnicians(prev => prev.filter(t => t.id !== id));
-      addToast('info', 'Texnik o\'chirildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('info', t('app.texnik_ochirildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
 
@@ -915,8 +930,8 @@ const sinceDate = (n: number) =>
       setInventoryItems(prev => [...prev, newItem]);
       // Boshlang'ich narx kiritilgan bo'lsa backend Ombor xarajatini yozadi
       if (item.initialCost && item.initialCost > 0) refreshExpenses();
-      addToast('success', 'Material qo\'shildi!');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('success', t('app.material_qoshildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   /* `updateInventoryStock` OLIB TASHLANDI (0028).
@@ -928,8 +943,8 @@ const sinceDate = (n: number) =>
     try {
       await api.inventory.delete(id);
       setInventoryItems(prev => prev.filter(item => item.id !== id));
-      addToast('info', 'Material o\'chirildi.');
-    } catch (e: any) { addToast('error', e.message || 'Xatolik yuz berdi'); }
+      addToast('info', t('app.material_ochirildi'));
+    } catch (e: any) { addToast('error', e.message || t('ui.xatolik_yuz_berdi')); }
   };
 
   // Category Actions
@@ -937,16 +952,16 @@ const sinceDate = (n: number) =>
     try {
       const newCategory = await api.categories.create({ ...category, clinicId });
       setCategories(prev => [...prev, newCategory]);
-      addToast('success', 'Kategoriya qo\'shildi!');
-    } catch (e) { addToast('error', 'Xatolik yuz berdi'); }
+      addToast('success', t('app.kategoriya_qoshildi'));
+    } catch (e) { addToast('error', t('ui.xatolik_yuz_berdi')); }
   };
 
   const deleteCategory = async (id: string) => {
     try {
       await api.categories.delete(id);
       setCategories(prev => prev.filter(c => c.id !== id));
-      addToast('info', 'Kategoriya o\'chirildi.');
-    } catch (e) { addToast('error', 'Xatolik yuz berdi'); }
+      addToast('info', t('app.kategoriya_ochirildi'));
+    } catch (e) { addToast('error', t('ui.xatolik_yuz_berdi')); }
   };
 
   // --- Navigation ---
@@ -1275,7 +1290,7 @@ const sinceDate = (n: number) =>
             </button>
           </div>
           <p className="text-xs text-muted mt-6">
-            Ma'lumotlaringiz xavfsiz. Bu faqat ulanish muammosi.
+            {t('app.malumotlaringiz_xavfsiz_bu_faqat')}
           </p>
         </div>
       </div>
@@ -1300,7 +1315,7 @@ const sinceDate = (n: number) =>
     userRole === UserRole.CLINIC_ADMIN ? t('roles.admin')
       : userRole === UserRole.RECEPTIONIST ? t('roles.receptionist')
         : userRole === UserRole.LAB_TECHNICIAN ? 'Laborant'
-          : userRole === UserRole.NURSE ? 'Hamshira'
+          : userRole === UserRole.NURSE ? t('ui.hamshira')
             : t('roles.doctor');
 
   return (
@@ -1525,8 +1540,8 @@ const sinceDate = (n: number) =>
                       <div className="w-12 h-12 bg-elevated rounded-full flex items-center justify-center mx-auto mb-3">
                         <Search className="w-5 h-5 text-faint" />
                       </div>
-                      <p className="text-sm font-semibold text-ink">Natija topilmadi</p>
-                      <p className="text-xs text-faint mt-1">Boshqa so'z bilan urinib ko'ring</p>
+                      <p className="text-sm font-semibold text-ink">{t('app.natija_topilmadi')}</p>
+                      <p className="text-xs text-faint mt-1">{t('app.boshqa_soz_bilan_urinib')}</p>
                     </div>
                   ) : (
                     <div className="max-h-[420px] overflow-y-auto py-2">
@@ -1534,7 +1549,7 @@ const sinceDate = (n: number) =>
                         <div className="px-2 mb-1">
                           <div className="px-3 py-2 flex items-center gap-2 text-[10px] font-bold text-faint uppercase tracking-widest">
                             <Users className="w-3 h-3" />
-                            Bemorlar
+                            {t('app.bemorlar')}
                           </div>
                           {searchResults.patients.map(p => (
                             <button
@@ -1564,7 +1579,7 @@ const sinceDate = (n: number) =>
                         <div className="px-2 border-t border-line-soft pt-1">
                           <div className="px-3 py-2 flex items-center gap-2 text-[10px] font-bold text-faint uppercase tracking-widest">
                             <Activity className="w-3 h-3" />
-                            Shifokorlar
+                            {t('ui.shifokorlar')}
                           </div>
                           {searchResults.doctors.map(d => (
                             <button
@@ -1690,7 +1705,7 @@ const sinceDate = (n: number) =>
           <React.Suspense fallback={
             <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
               <div className="w-8 h-8 rounded-full border-2 border-line border-t-primary-600 animate-spin" />
-              <span className="sr-only">Yuklanmoqda…</span>
+              <span className="sr-only">{t('ui.yuklanmoqda')}</span>
             </div>
           }>
           <Routes>
