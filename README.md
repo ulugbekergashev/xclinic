@@ -67,7 +67,7 @@ Ikkita rejim bor:
 | Rejim | Manzil | Nima kerak |
 |---|---|---|
 | **Quick Tunnel** (hozirgi) | `https://xxx.trycloudflare.com` — dastur qayta ishga tushganda **o'zgaradi** | faqat shu fayl |
-| **Doimiy** | `k-<id>.getxclinic.com` — o'zgarmaydi | domen + Vercel'dagi registrator sozlangan bo'lishi |
+| **Doimiy** | `k-<id>.xclinic.org` — o'zgarmaydi | masofaviy kirish yoqilgan bo'lishi |
 
 **Cloudflare tokeni klinika kompyuterida TURMAYDI.** U faqat Vercel'dagi
 registratorda (`api/tunnel-register.ts`). Klinika dasturi o'z `machineId`

@@ -26,7 +26,7 @@
      CLOUDFLARE_API_TOKEN     — zona darajasida token (yo'riqnoma: docs/DOMEN-ULASH.md)
      CLOUDFLARE_ACCOUNT_ID
      CLOUDFLARE_ZONE_ID
-     CLOUDFLARE_TUNNEL_DOMAIN — masalan `getxclinic.com`
+     CLOUDFLARE_TUNNEL_DOMAIN — hozir `xclinic.org`
      XCLINIC_LICENSE_SALT     — `backend/licenseService.ts` dagi SECRET_SALT
 
    Birortasi yo'q bo'lsa javob 503: klinika dasturi buni «hali sozlanmagan»

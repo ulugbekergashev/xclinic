@@ -1,68 +1,52 @@
 # Doimiy manzil — domen ulash
 
-Maqsad: har klinika o'zgarmaydigan manzil olsin — `https://k-a3f9c2b1d0.getxclinic.com`.
-Hozirgi Quick Tunnel manzili (`xxx.trycloudflare.com`) dastur qayta ishga
-tushganda o'zgaradi.
+Har klinika o'zgarmaydigan manzil oladi — `https://k-a3f9c2b1d0.xclinic.org`.
+Quick Tunnel manzili (`xxx.trycloudflare.com`) dastur qayta ishga tushganda
+o'zgarardi; doimiy manzil o'zgarmaydi.
 
-**Kod, registrator va Vercel sozlamasi tayyor.** Sizdan faqat to'lov va bitta
-token kerak.
-
----
-
-## Siz qiladigan ishlar — 3 ta, ~10 daqiqa
-
-### 1. Yangi Cloudflare akkaunt
-
-<https://dash.cloudflare.com/sign-up> — **yangi email bilan**, denta akkauntida emas.
-
-Nega: tunnel yaratish huquqi Cloudflare'da **butun akkauntga** beriladi.
-XClinic tokeni denta akkauntida bo'lsa, u denta klinikalarining tunnellarini
-ham o'chira oladi. Alohida akkaunt bepul va ikkala mahsulotni butunlay ajratadi.
-
-### 2. Domenni sotib oling — to'lov
-
-**Domain Registration → Register Domains** → `getxclinic.com` → karta bilan to'lang.
-
-Tekshirilgan (2026-09-15):
-
-| Domen | Holat |
-|---|---|
-| **getxclinic.com** | bo'sh — tavsiya |
-| myxclinic.com, xclinic.pro | bo'sh |
-| xclinic.io | bo'sh, sezilarli qimmat |
-| xclinic.com / .app / .net | band |
-
-Boshqa domen olsangiz — nomini ayting, bitta sozlamani o'zgartiraman.
-Cloudflare'da sotib olingan domen **o'zi ulanadi**, nameserver shart emas.
-
-### 3. Bitta token yarating va menga yuboring
-
-O'ng yuqorida profil → **My Profile → API Tokens → Create Token →
-Create Custom Token**:
-
-| Maydon | Qiymat |
-|---|---|
-| Token name | `xclinic-tunnel-registrar` |
-| Permissions | `Account` · `Cloudflare Tunnel` · `Edit` |
-| | `Zone` · `DNS` · `Edit` |
-| | `Zone` · `Zone` · `Read` |
-| Account Resources | `Include` · o'z akkauntingiz |
-| Zone Resources | `Include` · `Specific zone` · `getxclinic.com` |
-
-**Continue to summary → Create Token** → tokenni ko'chirib menga yuboring.
-
-`Zone · Read` — Account ID va Zone ID ni o'zim topishim uchun. Ularni
-panelda qidirib ko'chirishingiz shart emas.
+**Holat: ishlayapti (2026-09-16).** Sozlash tugagan, quyidagilar shunchaki
+tarix uchun yozilgan.
 
 ---
 
-## Keyin men qiladigan ishlar
+## Nima qilingan
 
-1. Token orqali Account ID va Zone ID ni topaman
-2. `xclinic-registrar` Vercel loyihasiga uchta sozlama yozaman va qayta joylayman
-3. Registratorni sinab ko'raman: begona kalit — `403`, to'g'ri kalit — manzil
-4. Doimiy tunnelni haqiqiy klinika o'rnatmasida tekshiraman
-5. Yangi `.exe` yig'aman
+| Nima | Qiymat |
+|---|---|
+| Cloudflare akkaunti | denta'dan **alohida**, yangi email (`...workakkaunt@gmail.com`) |
+| Domen | **xclinic.org** — Cloudflare Registrar'da sotib olingan, zona `active` |
+| Zona | `5b669ff7e7982d4664439efbb174c9bf` |
+| Token | `XClinic tunnel registrar`, akkaunt tokeni, muddatsiz |
+| Token huquqlari | 1-siyosat: butun akkaunt → `Cloudflare Tunnel Write` |
+| | 2-siyosat: `All Domains` → `DNS Write`, `Zone Read` |
+| Sozlamalar | Vercel `xclinic-registrar` → `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_TUNNEL_DOMAIN`, `XCLINIC_LICENSE_SALT` |
+
+Nega alohida akkaunt: tunnel yaratish huquqi Cloudflare'da **butun akkauntga**
+beriladi. XClinic tokeni denta akkauntida bo'lsa, u denta tunnellarini ham
+o'chira olardi.
+
+Cloudflare'ning yangi panelida token huquqlari «siyosat» (policy) ko'rinishida
+beriladi: akkaunt darajasidagi va domen darajasidagi huquqlar **alohida
+siyosat** bo'lishi kerak. Domen siyosatida `All Domains` tanlansa, keyin
+qo'shiladigan domenlar ham avtomatik qamrab olinadi. `Cloudflare Tunnel`
+qidiruvda **`Argo Tunnel (Legacy)`** nomi bilan chiqadi — xulosada u
+`Cloudflare Tunnel Write` deb ko'rsatiladi.
+
+## Tekshirildi
+
+| Sinov | Natija |
+|---|---|
+| Soxta litsenziya kaliti | `403 LICENSE_INVALID` |
+| Format buzilgan machineId | `400 BAD_MACHINE` |
+| Haqiqiy kalit | `200`, `https://k-57b1273c46.xclinic.org` + tunnel tokeni |
+| Cloudflare'da DNS | `CNAME k-57b1273c46.xclinic.org → <tunnel>.cfargotunnel.com`, proxied |
+| Cloudflare'da tunnel | `xclinic-k-57b1273c46` — klinika ulanmaguncha `inactive` |
+
+## Domen almashtirilsa
+
+Bitta sozlama: `CLOUDFLARE_TUNNEL_DOMAIN` (va yangi zona uchun
+`CLOUDFLARE_ZONE_ID`) Vercel'da yangilanadi, so'ng
+`node scripts/deploy-registrar.mjs`. Kodda domen yozilmagan.
 
 ---
 
