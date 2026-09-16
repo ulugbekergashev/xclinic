@@ -119,6 +119,7 @@ import { registerPayrollRoutes } from './payroll';
 import { registerHrRoutes, serializeWorkDays } from './hr';
 import { registerAttentionRoutes } from './attention';
 import { requestStableTunnel } from './tunnelClient';
+import { readTunnelAddresses, notifyBackupAddress } from './tunnelAddresses';
 import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
 import { check as checkPermission } from './permissions';
 import { validatePatient, validatePhone } from '../shared/validation';
@@ -368,19 +369,16 @@ app.get('/api/network-info', (_req, res) => {
             if (iface.family === 'IPv4' && !iface.internal) { localIP = iface.address; break; }
         }
     }
-    let tunnelUrl: string | null = process.env.CLOUDFLARE_TUNNEL_URL || null;
-    if (!tunnelUrl) {
-        /* DOIMIY manzil birinchi: ikkala fayl bir vaqtda bo'lishi mumkin
-           (Quick Tunnel doimiysi ko'tarilguncha ishlab turadi), va ekranda
-           o'zgarmaydigan manzil ko'rinishi kerak. */
-        for (const f of ['cf-tunnel.json', 'cf-quick-tunnel.json']) {
-            try {
-                const p = path.join(USER_DATA_PATH, f);
-                if (fs.existsSync(p)) { tunnelUrl = JSON.parse(fs.readFileSync(p, 'utf8')).url; break; }
-            } catch { /* tunnel ixtiyoriy */ }
-        }
-    }
-    res.json({ ip: localIP, port: PORT, url: `http://${localIP}:${PORT}`, tunnelUrl });
+    /* Ikkala manzil ALOHIDA: doimiy va zaxira (`tunnelAddresses.ts`).
+       `tunnelUrl` — eski maydon, doimiysi bo'lsa o'sha, bo'lmasa zaxira. */
+    const { stableUrl, quickUrl } = readTunnelAddresses(USER_DATA_PATH, {
+        remoteEnabled: readRemoteAccess(),
+        envUrl: process.env.CLOUDFLARE_TUNNEL_URL,
+    });
+    res.json({
+        ip: localIP, port: PORT, url: `http://${localIP}:${PORT}`,
+        tunnelUrl: stableUrl || quickUrl, stableUrl, quickUrl,
+    });
 });
 
 
@@ -2170,8 +2168,9 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 /* ═══ MASOFAVIY KIRISH ════════════════════════════════════════════════════
-   Sukut bo'yicha O'CHIQ. Yoqilganda Electron `cloudflared` quick tunnel ni
-   ko'taradi va klinika serveri internetdan ochiladi.
+   Sukut bo'yicha O'CHIQ. Yoqilganda Electron ikkita `cloudflared` tunnel
+   ko'taradi — doimiy va zaxira (`tunnelAddresses.ts`) — va klinika serveri
+   internetdan ochiladi. O'chirilganda ikkalasi ham yopiladi.
 
    Yoqish uchun standart parol almashtirilgan bo'lishi SHART: `admin`/`admin`
    turgan serverni internetga chiqarish — eshikni ochiq qoldirish. */
@@ -2191,7 +2190,7 @@ app.get('/api/admin/remote-access', authenticateToken, requireRole('CLINIC_ADMIN
     res.json({
         enabled: readRemoteAccess(),
         defaultPasswordInUse: await isDefaultPassword(clinic?.password),
-        note: "O'zgarish dastur qayta ishga tushganda kuchga kiradi.",
+        note: "O'zgarish bir daqiqa ichida kuchga kiradi.",
     });
 });
 
@@ -2236,7 +2235,9 @@ app.put('/api/admin/remote-access', authenticateToken, requireRole('CLINIC_ADMIN
         }
 
         console.log(`🌐 Masofaviy kirish: ${enabled ? 'YOQILDI' : "O'CHIRILDI"}`);
-        res.json({ enabled, restartRequired: true });
+        /* Qayta ishga tushirish SHART EMAS: Electron har 30 soniyada
+           shu faylni o'qiydi va tunnellarni o'zi ko'taradi yoki yopadi. */
+        res.json({ enabled, restartRequired: false });
     } catch (e: any) {
         console.error('[PUT /api/admin/remote-access]', e?.message || e);
         res.status(500).json({ error: "Sozlamani saqlab bo'lmadi" });
@@ -7534,6 +7535,22 @@ applySqlitePragmas()
             };
             setTimeout(stableTunnel, 15_000).unref?.();
             setInterval(stableTunnel, 6 * 60 * 60 * 1000).unref?.();
+
+            /* ZAXIRA MANZIL EGASIGA. U har qayta ishga tushishda yangisiga
+               almashadi — doimiy manzil ishlamay qolgan kuni egasi uni
+               faqat Telegramdan bilib oladi. Har daqiqa tekshiriladi, lekin
+               Telegramga faqat manzil O'ZGARGANDA yoziladi. */
+            const backupAddress = () => {
+                void notifyBackupAddress({
+                    prisma, userDataPath: USER_DATA_PATH,
+                    remoteEnabled: readRemoteAccess(),
+                    envUrl: process.env.CLOUDFLARE_TUNNEL_URL,
+                }).then(r => {
+                    if (!r.sent && !r.quiet) console.warn('📤 Zaxira manzil yuborilmadi:', r.reason);
+                }).catch(() => { /* jurnalga yozilgan */ });
+            };
+            setTimeout(backupAddress, 45_000).unref?.();
+            setInterval(backupAddress, 60_000).unref?.();
         });
     })
     .catch((err: any) => {

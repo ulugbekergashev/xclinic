@@ -85,7 +85,7 @@ export async function sendBackupToOwner(input: {
     /* Chegaradan katta bo'lsa — faylni emas, XABARNI yuboramiz. Jimgina
        yiqilish eng yomoni: ega nusxa kelayotgandir deb o'ylab yuradi. */
     if (bytes > MAX_BYTES) {
-        await sendText(clinic.botToken, clinic.telegramChatId,
+        await sendTelegramText(clinic.botToken, clinic.telegramChatId,
             `⚠️ Zaxira nusxa Telegramga sig'madi (${Math.round(bytes / 1024 / 1024)} MB, chegara 45 MB).\n`
             + `Nusxa kompyuterda olingan va joyida. Bulut papkasini sozlash tavsiya etiladi.`)
             .catch(() => { /* xabar ham ketmasa — jurnalga tushadi */ });
@@ -121,10 +121,16 @@ export async function sendBackupToOwner(input: {
     }
 }
 
-async function sendText(token: string, chatId: string, text: string): Promise<void> {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+/** Egasiga matnli xabar. Telegram rad etsa (bot bloklangan, chat id
+ *  eskirgan) — XATO otiladi: chaqiruvchi «yuborildi» deb belgi qo'ymasin. */
+export async function sendTelegramText(token: string, chatId: string, text: string): Promise<void> {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, text }),
     });
+    if (!r.ok) {
+        const body = await r.text().catch(() => '');
+        throw new Error(`Telegram ${r.status}: ${body.slice(0, 160)}`);
+    }
 }

@@ -3143,25 +3143,33 @@ export const api = {
        ekran yo'q edi: manzil faqat Electron oynasining sarlavhasida
        ko'rinardi. */
     network: {
+        /* `stableUrl` — doimiy manzil (`k-<id>.xclinic.org`), `quickUrl` —
+           zaxira (`trycloudflare.com`). Ikkalasi birga ishlaydi. `tunnelUrl`
+           — eski maydon: doimiysi bo'lsa o'sha, bo'lmasa zaxira. */
         info: () => {
+            type NetworkInfo = {
+                ip: string; port: number; url: string;
+                tunnelUrl: string | null; stableUrl: string | null; quickUrl: string | null;
+            };
             if (isDemoMode()) {
-                return demoRead<{ ip: string; port: number; url: string; tunnelUrl: string | null }>({
-                    ip: '192.168.1.42', port: 3101, url: 'http://192.168.1.42:3101', tunnelUrl: null,
+                return demoRead<NetworkInfo>({
+                    ip: '192.168.1.42', port: 3101, url: 'http://192.168.1.42:3101',
+                    tunnelUrl: null, stableUrl: null, quickUrl: null,
                 });
             }
-            return fetchJson<{ ip: string; port: number; url: string; tunnelUrl: string | null }>('/network-info');
+            return fetchJson<NetworkInfo>('/network-info');
         },
         getRemoteAccess: () => {
             if (isDemoMode()) {
                 return demoRead<{ enabled: boolean; defaultPasswordInUse: boolean; note: string }>({
                     enabled: false, defaultPasswordInUse: false,
-                    note: "O'zgarish dastur qayta ishga tushganda kuchga kiradi.",
+                    note: "O'zgarish bir daqiqa ichida kuchga kiradi.",
                 });
             }
             return fetchJson<{ enabled: boolean; defaultPasswordInUse: boolean; note: string }>('/admin/remote-access');
         },
         setRemoteAccess: (enabled: boolean) => {
-            if (isDemoMode()) return demoDone({ enabled, restartRequired: true });
+            if (isDemoMode()) return demoDone({ enabled, restartRequired: false });
             return fetchJson<{ enabled: boolean; restartRequired: boolean }>(
                 '/admin/remote-access', { method: 'PUT', body: JSON.stringify({ enabled }) });
         },

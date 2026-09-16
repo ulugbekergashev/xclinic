@@ -82,9 +82,14 @@ uchun `api/` u yerdan `.vercelignore` bilan chiqarilgan.
 
 ## Nima o'zgarmaydi
 
-- Domen ulanmaguncha klinikalar **Quick Tunnel** bilan ishlayveradi —
-  registrator `503` qaytaradi va bu xato emas.
-- Masofaviy kirish o'chiq bo'lsa, doimiy tunnel ham **ko'tarilmaydi**.
+- Doimiy manzil bilan BIRGA **zaxira manzil** (Quick Tunnel,
+  `trycloudflare.com`) ham ishlaydi — domen, akkaunt yoki registrator
+  ishlamay qolsa klinika tashqaridan yopilib qolmasin. Zaxira manzil
+  o'zgarganda egasining Telegramiga yuboriladi.
+- Registrator javob bermasa (`503` yoki tarmoq xatosi) — zaxira manzil
+  yagona manzil bo'lib qoladi, bu xato emas.
+- Masofaviy kirish o'chiq bo'lsa, ikkala tunnel ham **ko'tarilmaydi**, yoqilgan
+  paytda o'chirilsa — 30 soniya ichida yopiladi.
 - Standart parol turganda yoqish baribir rad etiladi.
 
 ## Ma'lum cheklov

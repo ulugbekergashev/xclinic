@@ -50,9 +50,28 @@ const CopyRow: React.FC<{ value: string; label: string }> = ({ value, label }) =
     );
 };
 
+/** Internet manzili: havola, nusxa tugmasi, izoh va QR */
+const AddressBlock: React.FC<{ title: string; url: string; hint: string; warn?: boolean }> = ({ title, url, hint, warn }) => {
+    const { t } = useLanguage();
+    return (
+        <div className="mt-4 pt-4 border-t border-line flex flex-wrap items-start gap-6">
+            <div className="min-w-0">
+                <p className="text-xs font-medium text-muted mb-1.5">{title}</p>
+                <CopyRow value={url} label={t('net.copy')} />
+                <p className={`mt-2 text-xs max-w-md ${warn ? 'text-amber-600 dark:text-amber-400' : 'text-muted'}`}>
+                    {hint}
+                </p>
+            </div>
+            <div className="p-3 bg-surface rounded-xl border border-line shrink-0">
+                <QRCodeSVG value={url} size={110} level="M" />
+            </div>
+        </div>
+    );
+};
+
 export const NetworkAccessTab: React.FC<Props> = ({ canManageRemote }) => {
     const { t } = useLanguage();
-    const [info, setInfo] = useState<{ ip: string; port: number; url: string; tunnelUrl: string | null } | null>(null);
+    const [info, setInfo] = useState<Awaited<ReturnType<typeof api.network.info>> | null>(null);
     const [remote, setRemote] = useState<{ enabled: boolean; defaultPasswordInUse: boolean } | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -80,7 +99,7 @@ export const NetworkAccessTab: React.FC<Props> = ({ canManageRemote }) => {
         try {
             const r = await api.network.setRemoteAccess(!remote.enabled);
             setRemote(prev => prev ? { ...prev, enabled: r.enabled } : prev);
-            toast.success(t('net.restartNeeded'));
+            toast.success(t('net.appliesSoon'));
             load();
         } catch (e: any) {
             /* Standart parol turganda server 409 qaytaradi — bu ATAYLAB:
@@ -176,33 +195,41 @@ export const NetworkAccessTab: React.FC<Props> = ({ canManageRemote }) => {
                                 </span>
                             </div>
 
-                            {remote.enabled && (
-                                <p className="mt-3 text-xs text-muted">{t('net.restartNeeded')}</p>
+                            <p className="mt-3 text-xs text-muted">{t('net.appliesSoon')}</p>
+
+                            {/* IKKITA MANZIL — doimiy va zaxira. Ikkalasi birga
+                                ishlaydi (`backend/tunnelAddresses.ts`). Doimiysi
+                                domen, Cloudflare akkaunti va registratorga
+                                tayanadi; ulardan biri ishlamay qolsa, zaxira
+                                klinikani tashqaridan ochiq ushlab turadi. */}
+                            {remote.enabled && info?.stableUrl && (
+                                <AddressBlock
+                                    title={t('net.stableAddress')}
+                                    url={info.stableUrl}
+                                    hint={t('net.stableHint')}
+                                />
                             )}
 
-                            {info?.tunnelUrl && (
-                                <div className="mt-4 pt-4 border-t border-line flex flex-wrap items-start gap-6">
-                                    <div className="min-w-0">
-                                        <p className="text-xs font-medium text-muted mb-1.5">{t('net.internetAddress')}</p>
-                                        <CopyRow value={info.tunnelUrl} label={t('net.copy')} />
-                                        {/* VAQTINCHALIK MANZIL haqida ogohlantirish.
+                            {remote.enabled && info?.quickUrl && (
+                                <AddressBlock
+                                    title={info.stableUrl ? t('net.backupAddress') : t('net.internetAddress')}
+                                    url={info.quickUrl}
+                                    /* VAQTINCHALIK MANZIL haqida ogohlantirish.
+                                       U dastur har qayta ishga tushganda YANGISIGA
+                                       almashadi. Buni aytmasak, klinika havolani
+                                       saqlab qo'yadi, ertasiga esa u ishlamaydi va
+                                       sabab tushunarsiz bo'lib qoladi. */
+                                    hint={info.stableUrl ? t('net.backupHint') : t('net.tempAddress')}
+                                    warn
+                                />
+                            )}
 
-                                            `trycloudflare.com` — o'z domeni bo'lmaganda
-                                            ishlatiladigan bepul manzil, va u dastur har
-                                            qayta ishga tushganda YANGISIGA almashadi.
-                                            Buni aytmasak, klinika havolani saqlab qo'yadi
-                                            yoki bemorga yuboradi, ertasiga esa u ishlamaydi
-                                            va sabab tushunarsiz bo'lib qoladi. */}
-                                        {info.tunnelUrl.includes('trycloudflare.com') && (
-                                            <p className="mt-2 text-xs text-amber-600 dark:text-amber-400 max-w-md">
-                                                {t('net.tempAddress')}
-                                            </p>
-                                        )}
-                                    </div>
-                                    <div className="p-3 bg-surface rounded-xl border border-line shrink-0">
-                                        <QRCodeSVG value={info.tunnelUrl} size={110} level="M" />
-                                    </div>
-                                </div>
+                            {/* Zaxira tunnel ko'tarilishiga bir necha soniya
+                                ketadi. Bo'sh joy «ishlamayapti» deb o'qilmasin. */}
+                            {remote.enabled && !info?.quickUrl && (
+                                <p className="mt-4 pt-4 border-t border-line text-xs text-muted">
+                                    {t('net.backupPending')}
+                                </p>
                             )}
                         </div>
                     </div>

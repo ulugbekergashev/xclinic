@@ -62,12 +62,26 @@ oldidan uni rasmiy saytdan olib shu papkaga qo'ying. Usiz dastur
 ishlayveradi — faqat mahalliy tarmoq bilan cheklanadi va jurnalga
 «cloudflared.exe topilmadi» yoziladi.
 
-Ikkita rejim bor:
+Masofaviy kirish yoqilganda **ikkita manzil birga** ishlaydi:
 
-| Rejim | Manzil | Nima kerak |
+| Manzil | Qanday | Nima uchun |
 |---|---|---|
-| **Quick Tunnel** (hozirgi) | `https://xxx.trycloudflare.com` — dastur qayta ishga tushganda **o'zgaradi** | faqat shu fayl |
-| **Doimiy** | `k-<id>.xclinic.org` — o'zgarmaydi | masofaviy kirish yoqilgan bo'lishi |
+| **Doimiy** | `k-<id>.xclinic.org` — o'zgarmaydi | xodimlarga beriladigan asosiy manzil |
+| **Zaxira** | `xxx.trycloudflare.com` — dastur qayta ishga tushganda **o'zgaradi** | doimiysi ochilmay qolgan kun uchun |
+
+Zaxira nima uchun: doimiy manzil domen, Cloudflare akkaunti va Vercel'dagi
+registratorga tayanadi — ulardan biri ishlamay qolsa klinika tashqaridan
+yopilib qolardi. Zaxira hech qanday akkauntsiz ishlaydi. Cheklovlari
+(Cloudflare hujjati): bir vaqtda 200 ta so'rov, SSE yo'q — jonli yangilanish
+o'rniga ekranlar so'rovga o'tadi.
+
+Zaxira manzil o'zgarganda **egasining Telegramiga yuboriladi** (bot ulangan
+bo'lsa): doimiy manzil ishlamay qolgan kuni ega klinikadan tashqarida
+Sozlamalarni ocholmaydi, yangi manzilni faqat shu yerdan bilib oladi.
+
+Yoqish va o'chirish **bir daqiqa ichida** kuchga kiradi — Electron har
+30 soniyada `remote-access.json` ni o'qiydi va ikkala tunnelni ko'taradi
+yoki yopadi. Kod: `electron/main.ts`, `backend/tunnelAddresses.ts`.
 
 **Cloudflare tokeni klinika kompyuterida TURMAYDI.** U faqat Vercel'dagi
 registratorda (`api/tunnel-register.ts`). Klinika dasturi o'z `machineId`
@@ -76,8 +90,8 @@ tushiradigan tokenni oladi. Aks holda istalgan klinika kompyuteridan
 tokenni olib, boshqa hamma klinikalarning tunnelini o'chirish mumkin
 bo'lardi.
 
-Registrator sozlanmagan bo'lsa (domen hali ulanmagan) — klinika Quick
-Tunnel bilan ishlayveradi, hech narsa buzilmaydi. Ulash qadamlari:
+Registrator javob bermasa — klinika zaxira manzil bilan ishlayveradi,
+hech narsa buzilmaydi. Ulash qadamlari:
 `docs/DOMEN-ULASH.md`.
 Vaqtinchalik manzil haqida ekranda ogohlantirish chiqadi — klinika
 havolani saqlab qo'yib, ertasiga «ishlamayapti» demasin.
