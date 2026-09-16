@@ -1,22 +1,21 @@
 import React from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Wallet, BarChart3, CalendarCheck } from 'lucide-react';
+import { useSearchParams, Navigate } from 'react-router-dom';
 import { CashBook } from './CashBook';
-import { FinanceReport } from './FinanceReport';
-import { AttendanceTab } from '../components/AttendanceReport';
 import { UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
     LabOrder, Receptionist, CashRegisterDay, CashMovement, VisitCharge, Department, Service } from '../types';
 import type { CashCloseArgs } from './CashBook';
 import { useLanguage } from '../context/LanguageContext';
-import type { TranslationKey } from '../i18n/translations';
 
-// Moliya bo'limi — bitta menyu punkti, ikkita tab:
-//   Kassa   — kassaga qancha pul kirdi va qancha qoldi (faktik pul harakati)
-//   Hisobot — qancha ishlab topdik: foyda, qarz, shifokor ulushi (tahlil)
-//
-// Shifokor buyurgan xizmatlarning to'lanmagan qatorlari Kassa tabidagi
-// "To'lanmagan" ro'yxatiga qo'shiladi — alohida ekran QURILMAGAN, chunki
-// CashBook allaqachon to'lov qabul qiladi va qarz yopadi.
+/* Moliya — KASSA. Kassaga qancha pul kirdi va qancha qoldi (faktik pul
+   harakati). Shifokor buyurgan xizmatlarning to'lanmagan qatorlari shu
+   yerdagi «To'lanmagan» ro'yxatiga tushadi — alohida ekran QURILMAGAN,
+   chunki CashBook allaqachon to'lov qabul qiladi va qarz yopadi.
+
+   HISOBOT VA DAVOMAT BU YERDA EMAS (2026-09-16). Ular Moliyaning
+   vkladkalari edi — faqat egaga ko'rinadigan, kassaning yonida. Endi ular
+   Bosh panelda (`pages/Dashboard.tsx`): Moliya registratorning ish
+   quroli, Bosh panel eganing savoli. Eski `?tab=hisobot` va
+   `?tab=davomat` havolalari o'sha yerga yo'naltiriladi. */
 
 /* «Ulush» BU YERDA EMAS — u Xodimlar moduliga ko'chdi.
 
@@ -25,44 +24,6 @@ import type { TranslationKey } from '../i18n/translations';
    o'zgartirish uchun esa avval shifokorni RO'YXATDAN tanlash kerak
    edi — ya'ni xodim kartasidan chiqib, boshqa bo'limga borib, o'sha
    odamni qaytadan qidirish. Endi ikkalasi ham /staff da. */
-type TabKey = 'kassa' | 'hisobot' | 'davomat';
-
-/* SARLAVHALAR TARJIMA KALITI BILAN, MATN BILAN EMAS.
-
-   Bu yerda ular qo'lda o'zbekcha yozilgan edi. Ilova rus tiliga
-   o'tkazilganda ekranning yarmi o'zbekcha qolardi: tugmalar
-   («Пополнить аванс», «Расход») tarjima qilinardi, sarlavha va
-   vkladkalar esa yo'q. `checkI18n.mjs` buni ushlay olmaydi — u faqat
-   ikki tilning kalitlarini solishtiradi, kalitsiz matnni ko'rmaydi. */
-const TABS: { key: TabKey; labelKey: TranslationKey; icon: React.ElementType; subtitleKey: TranslationKey }[] = [
-    {
-        key: 'kassa',
-        labelKey: 'finance.hub.kassa',
-        icon: Wallet,
-        subtitleKey: 'finance.hub.kassaHint',
-    },
-    {
-        key: 'hisobot',
-        labelKey: 'finance.hub.report',
-        icon: BarChart3,
-        subtitleKey: 'finance.hub.reportHint',
-    },
-    {
-        /* DAVOMAT KALENDARDAN KO'CHDI.
-
-           U kalendarning uchinchi ko'rinishi edi va kalendar bilan bitta
-           tugmalar qatorida turardi. Kalendar esa ISH ekrani: registrator
-           unda yozadi va «keldi» deb belgilaydi. Uch oylik grafik egaga
-           oyda bir marta kerak — va u kassa, foyda, ulush bilan bir
-           qatorda turgani mantiqiyroq: hammasi «klinika qanday
-           ishlayapti» degan savolning javobi. */
-        key: 'davomat',
-        labelKey: 'finance.hub.attendance',
-        icon: CalendarCheck,
-        subtitleKey: 'finance.hub.attendanceHint',
-    },
-];
-
 interface FinanceHubProps {
     userRole: UserRole;
     transactions: Transaction[];
@@ -105,63 +66,26 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
     const { t } = useLanguage();
     const { userRole, transactions, expenses, doctors, currentClinic, onPatientClick } = props;
 
-    // Hisobot — tahlil va foyda; buni faqat klinika rahbariyati ko'radi.
-    const canSeeReports = userRole === UserRole.CLINIC_ADMIN;
-
-    const [searchParams, setSearchParams] = useSearchParams();
-    const requested = searchParams.get('tab') as TabKey | null;
-    /* Hisobot — faqat egaga. Registrator kassada ishlaydi va manzilga
-       qo'lda `?tab=hisobot` yozib kirib olmasligi kerak. */
-    const activeTab: TabKey = canSeeReports
-        && (requested === 'hisobot' || requested === 'davomat')
-        ? requested
-        : 'kassa';
-
-    const visibleTabs = canSeeReports ? TABS : TABS.filter(t => t.key === 'kassa');
-    const current = TABS.find(t => t.key === activeTab)!;
-
-    const selectTab = (key: TabKey) => {
-        const next = new URLSearchParams(searchParams);
-        if (key === 'kassa') next.delete('tab');
-        else next.set('tab', key);
-        setSearchParams(next, { replace: true });
-    };
+    /* Eski havola: `/finance?tab=hisobot` yoki `?tab=davomat`. Hisobot
+       Bosh panelga ko'chdi — o'sha yerga, o'sha vkladkaga. Egadan boshqa
+       rol uchun bu vkladkalar hech qachon bo'lmagan: ular kassada qoladi. */
+    const [searchParams] = useSearchParams();
+    const requested = searchParams.get('tab');
+    if (userRole === UserRole.CLINIC_ADMIN && (requested === 'hisobot' || requested === 'davomat')) {
+        return <Navigate to={`/dashboard?tab=${requested}`} replace />;
+    }
 
     return (
         <div className="space-y-5 animate-fade-in">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-ink">{t('finance.hub.title')}</h1>
-                    <p className="text-sm text-muted">{t(current.subtitleKey)}</p>
+                    <p className="text-sm text-muted">{t('finance.hub.kassaHint')}</p>
                 </div>
 
-                {visibleTabs.length > 1 && (
-                    <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl">
-                        {visibleTabs.map(tab => {
-                            const Icon = tab.icon;
-                            const active = tab.key === activeTab;
-                            return (
-                                <button
-                                    key={tab.key}
-                                    onClick={() => selectTab(tab.key)}
-                                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${active
-                                        ? 'bg-surface text-primary-600 shadow-sm'
-                                        : 'text-muted hover:text-muted'
-                                        }`}
-                                >
-                                    <Icon className="w-4 h-4" />
-                                    {t(tab.labelKey)}
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
             </div>
 
-            {activeTab === 'davomat' ? (
-                <AttendanceTab />
-            ) : activeTab === 'kassa' ? (
-                <CashBook
+            <CashBook
                     embedded
                     transactions={transactions}
                     expenses={expenses}
@@ -193,9 +117,6 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                     currentUserName={props.currentUserName}
                     addToast={props.addToast}
                 />
-            ) : (
-                <FinanceReport embedded departments={props.departments} />
-            )}
         </div>
     );
 };

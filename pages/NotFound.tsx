@@ -10,6 +10,7 @@
  * bilan bir xil), aks holda u yana 404 ga tushardi.
  */
 import React from 'react';
+import { homeFor } from '../utils/navigation';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FileQuestion, ArrowLeft, Home } from 'lucide-react';
 import { UserRole } from '../types';
@@ -24,11 +25,9 @@ export const NotFound: React.FC<Props> = ({ userRole }) => {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const home = userRole === UserRole.NURSE ? '/inpatient'
-        : userRole === UserRole.LAB_TECHNICIAN ? '/lab'
-            : userRole === UserRole.DOCTOR ? '/today'
-                : userRole === UserRole.RECEPTIONIST ? '/today'
-                    : '/';
+    /* Ro'yxat bitta joyda (`homeFor`): ilgari bu yerda uning nusxasi
+       turardi va «Bugun» Registraturaga qaytganda eskirib qolardi. */
+    const home = homeFor(userRole);
 
     return (
         <div className="flex flex-col items-center justify-center py-24 px-4 text-center">

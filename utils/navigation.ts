@@ -1,5 +1,5 @@
 import {
-    Stethoscope, Users, Calendar as CalendarIcon, Wallet, Package,
+    LayoutDashboard, Stethoscope, Users, Calendar as CalendarIcon, Wallet, Package,
     FlaskConical, Scan, BedDouble, Settings as SettingsIcon, UserCog,
     MessageSquare,
 } from 'lucide-react';
@@ -30,6 +30,11 @@ export interface NavItemDef {
     id: string;
     path: string;
     labelKey: TranslationKey;
+    /* BITTA EKRAN, ROLGA QARAB BOSHQA NOM. Registratura shifokor uchun
+       «Mening navbatim»: u yerda qabul ochmaydi, o'z navbatini ko'radi.
+       Alohida punkt emas — sahifa bitta, nomi ikki xil. Nomni har doim
+       `navLabelKey` orqali oling, `labelKey` ni to'g'ridan-to'g'ri emas. */
+    labelFor?: Partial<Record<UserRole, TranslationKey>>;
     icon: React.ElementType;
     roles: UserRole[];
 }
@@ -37,11 +42,21 @@ export interface NavItemDef {
 const ALL = [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE];
 
 export const NAVIGATION: NavItemDef[] = [
-    /* «Bugun» — kunlik ish. Registrator qabul ochadi, shifokor o'z
-       navbatini ko'radi, hamshira kimga nima buyurilganini biladi. */
-    { id: 'today', path: '/today', labelKey: 'today.title', icon: Stethoscope, roles: ALL },
+    /* BOSH PANEL — faqat egaga. Bugungi raqamlar, «hal qilinsin»
+       ro'yxati, hisobot va davomat. 2026-09-16 gacha bular «Bugun»
+       ekranining tepasidagi yig'iq tasma va Moliyaning vkladkalari edi. */
+    { id: 'dashboard', path: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, roles: [UserRole.CLINIC_ADMIN] },
+    /* REGISTRATURA — kunlik ish. Registrator qabul ochadi va navbatni
+       boshqaradi, shifokor o'z navbatini ko'radi, hamshira kimga nima
+       buyurilganini biladi. Sahifa bitta (`pages/Reception.tsx`). */
+    {
+        id: 'reception', path: '/reception', labelKey: 'reception.title',
+        labelFor: { [UserRole.DOCTOR]: 'today.myQueue', [UserRole.NURSE]: 'nav.queue' },
+        icon: Stethoscope, roles: ALL,
+    },
     { id: 'patients', path: '/patients', labelKey: 'nav.patients', icon: Users, roles: ALL },
     { id: 'calendar', path: '/calendar', labelKey: 'nav.calendar', icon: CalendarIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
+    /* MOLIYA — kassa. Hisobot va davomat bu yerda emas, Bosh panelda. */
     { id: 'finance', path: '/finance', labelKey: 'nav.finance', icon: Wallet, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
     { id: 'inventory', path: '/inventory', labelKey: 'inventory.title', icon: Package, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
     /* Laboratoriya va Diagnostika — BAJARUVCHINING ish o'rni. Shifokor
@@ -74,6 +89,11 @@ export const NAVIGATION: NavItemDef[] = [
     { id: 'staff', path: '/staff', labelKey: 'nav.staff', icon: UserCog, roles: [UserRole.CLINIC_ADMIN] },
     { id: 'settings', path: '/settings', labelKey: 'nav.settings', icon: SettingsIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
 ];
+
+/** Punktning shu rol uchun nomi — menyu, sarlavha va «Ruxsatlar» shundan oladi */
+export function navLabelKey(item: NavItemDef, role: UserRole): TranslationKey {
+    return item.labelFor?.[role] ?? item.labelKey;
+}
 
 /* ─── RUXSAT MODULLARI ──────────────────────────────────────
 
@@ -111,9 +131,10 @@ export function canOpenModule(role: UserRole, ac: AccessControl, moduleId: strin
     return true;
 }
 
-/** Rolning bosh sahifasi — ruxsat bo'lmaganda shu yerga qaytariladi */
+/** Rolning bosh sahifasi — kirganda shu yerga tushadi, ruxsat bo'lmaganda shu yerga qaytariladi */
 export function homeFor(role: UserRole): string {
+    if (role === UserRole.CLINIC_ADMIN) return '/dashboard';
     if (role === UserRole.NURSE) return '/inpatient';
     if (role === UserRole.LAB_TECHNICIAN) return '/lab';
-    return '/today';
+    return '/reception';
 }

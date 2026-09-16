@@ -49,9 +49,9 @@ test('to\'lanmagan bemor «Bugun» da ham, kassada ham ko\'rinadi', async ({ pag
     await page.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();
     await page.waitForTimeout(3000);
 
-    /* ── 3. TESHIK 1: «Bugun» summani ko'rsatadimi? ──────────────────
+    /* ── 3. TESHIK 1: Registratura summani ko'rsatadimi? ─────────────
        Ilgari bu ekranda pul haqida bironta belgi yo'q edi. */
-    await go(page, '/today');
+    await go(page, '/reception');
     await page.waitForTimeout(3500);
     await expect(page.getByText(/To'lovga/).first()).toBeVisible({ timeout: 15_000 });
 

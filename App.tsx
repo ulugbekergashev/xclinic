@@ -25,7 +25,8 @@ const Settings = lazyWithReload(() => import('./pages/Settings').then(m => ({ de
 const Inventory = lazyWithReload(() => import('./pages/Inventory').then(m => ({ default: m.Inventory })));
 const LabOrders = lazyWithReload(() => import('./pages/LabOrders').then(m => ({ default: m.LabOrders })));
 const Diagnostics = lazyWithReload(() => import('./pages/Diagnostics').then(m => ({ default: m.Diagnostics })));
-const Today = lazyWithReload(() => import('./pages/Today').then(m => ({ default: m.Today })));
+const Reception = lazyWithReload(() => import('./pages/Reception').then(m => ({ default: m.Reception })));
+const Dashboard = lazyWithReload(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const VisitWorkspace = lazyWithReload(() => import('./pages/VisitWorkspace').then(m => ({ default: m.VisitWorkspace })));
 const Inpatient = lazyWithReload(() => import('./pages/Inpatient').then(m => ({ default: m.Inpatient })));
 const MessagesManagement = lazyWithReload(() => import('./pages/MessagesManagement').then(m => ({ default: m.MessagesManagement })));
@@ -61,7 +62,7 @@ import { confirmAction } from './services/confirm';
 import { api } from './services/api';
 import type { CashCloseInput } from './services/api';
 import { parseAccessControl, canSeeFinance, canSeePatientPhone } from './utils/accessControl';
-import { visibleNavigation as buildNavigation, canOpenModule, homeFor } from './utils/navigation';
+import { visibleNavigation as buildNavigation, canOpenModule, homeFor, navLabelKey } from './utils/navigation';
 import { LanguageProvider, useLanguage, tr, fill } from './context/LanguageContext';
 import { Language } from './i18n/translations';
 
@@ -84,15 +85,30 @@ const DEMO_ROLE_PROFILES: Record<string, { label: string; name: string; doctorId
    `return 'today.title'` ishlab ketardi — Xodimlar sahifasida yuqorida
    «Bugun» deb turardi. Ilgari bu ko'rinmasdi, chunki sahifa nomi faqat
    brauzer tabida edi; endi ekranda ham chiqadi. */
-const getPageLabelKey = (pathname: string): any => {
-  if (pathname === '/' || pathname === '/dashboard') return 'today.title';
+/* Registratura sahifasining nomi rolga qarab: shifokor uchun «Mening
+   navbatim», hamshira uchun «Navbat» — menyudagi nom bilan bir xil
+   (`utils/navigation.ts`). */
+const receptionLabelKey = (role?: UserRole): any =>
+  role === UserRole.DOCTOR ? 'today.myQueue'
+    : role === UserRole.NURSE ? 'nav.queue' : 'reception.title';
+
+/* Rolning bosh sahifasi qanday nomlanadi — `/` va noma'lum manzil ham
+   shu nomni oladi (`homeFor` bilan bir xil ro'yxat). */
+const homeLabelKey = (role?: UserRole): any =>
+  role === UserRole.CLINIC_ADMIN ? 'nav.dashboard'
+    : role === UserRole.NURSE ? 'nav.inpatient'
+      : role === UserRole.LAB_TECHNICIAN ? 'nav.lab' : receptionLabelKey(role);
+
+const getPageLabelKey = (pathname: string, role?: UserRole): any => {
+  if (pathname === '/') return homeLabelKey(role);
+  if (pathname === '/dashboard') return 'nav.dashboard';
+  if (pathname === '/reception' || pathname === '/today') return receptionLabelKey(role);
   if (pathname.startsWith('/patients/')) return 'nav.patients'; // Will translate as "Patients", detail page handles own title
   if (pathname === '/patients') return 'nav.patients';
   if (pathname.startsWith('/staff')) return 'nav.staff';
   if (pathname === '/calendar') return 'nav.calendar';
   if (pathname === '/finance') return 'nav.finance';
   if (pathname === '/inventory') return 'inventory.title';
-  if (pathname === '/today') return 'today.title';
   if (pathname.startsWith('/visit/')) return 'nav.visit';
   if (pathname === '/board') return 'nav.board';
   if (pathname === '/diagnostics') return 'nav.diagnostics';
@@ -100,7 +116,7 @@ const getPageLabelKey = (pathname: string): any => {
   if (pathname === '/lab') return 'nav.lab';
   if (pathname === '/messages') return 'nav.messages';
   if (pathname === '/settings') return 'nav.settings';
-  return 'today.title';
+  return homeLabelKey(role);
 };
 
 const AppContent: React.FC = () => {
@@ -433,19 +449,10 @@ const sinceDate = (n: number) =>
       return;
     }
 
-    // Navigate based on role
-    // Har kim o'z ish o'rniga tushadi — hamma Dashboard'ga emas
-    if (role === UserRole.RECEPTIONIST) {
-      navigate('/today');
-    } else if (role === UserRole.DOCTOR) {
-      navigate('/today');
-    } else if (role === UserRole.LAB_TECHNICIAN) {
-      navigate('/lab');
-    } else if (role === UserRole.NURSE) {
-      navigate('/inpatient');
-    } else {
-      navigate('/');
-    }
+    /* Har kim o'z ish o'rniga tushadi: ega — Bosh panel, registrator va
+       shifokor — Registratura, laborant — Laboratoriya, hamshira —
+       Statsionar. Ro'yxat bitta joyda (`homeFor`), bu yerda nusxasi yo'q. */
+    navigate(homeFor(role));
     addToast('success', fill(t('app.xush_kelibsiz_x'), name));
   };
 
@@ -1140,9 +1147,9 @@ const sinceDate = (n: number) =>
      ⚠️ Bu hook YUQORIDAGI ogohlantirish ostida: erta `return` lardan
      OLDIN turishi shart. */
   useEffect(() => {
-    const label = t(getPageLabelKey(location.pathname));
+    const label = t(getPageLabelKey(location.pathname, userRole));
     document.title = [label, currentClinic?.name || 'XClinic'].filter(Boolean).join(' · ');
-  }, [location.pathname, currentClinic?.name, t]);
+  }, [location.pathname, currentClinic?.name, userRole, t]);
 
   /* SAHIFA ALMASHGANDA SKROLL TEPAGA (audit B-37).
 
@@ -1161,7 +1168,7 @@ const sinceDate = (n: number) =>
      mavjud. Sahifa ichidagi ish (fokus, modal ochish) esa sahifaning o'zida
      bo'ladi — u yerda `Escape` va `Ctrl+S` ishlatiladi. */
   const hotkeys = React.useMemo(() => ({
-    F2: () => navigate('/today'),
+    F2: () => navigate('/reception'),
     F3: () => navigate('/patients'),
     F4: () => { if (showFinanceForRole) navigate('/finance'); },
   }), [navigate, showFinanceForRole]);
@@ -1305,7 +1312,7 @@ const sinceDate = (n: number) =>
     return <ForcePasswordChange onDone={() => setMustChangePassword(false)} onLogout={handleLogout} addToast={addToast} />;
   }
 
-  const pageLabel = t(getPageLabelKey(location.pathname));
+  const pageLabel = t(getPageLabelKey(location.pathname, userRole));
 
   /* Rol nomi — ilgari bu uch qavatli shartli ifoda IKKI JOYDA (yuqori
      qator va telefon menyusi) nusxalangan edi va ular ajralib ketgandi:
@@ -1365,7 +1372,7 @@ const sinceDate = (n: number) =>
 
           <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
             {visibleNavigation.map((item) => {
-              const to = item.id === 'dashboard' ? '/' : `/${item.id}`;
+              const to = item.path;
               return (
                 <NavLink
                   key={item.id}
@@ -1380,7 +1387,7 @@ const sinceDate = (n: number) =>
                   }
                 >
                   <item.icon className="w-5 h-5 shrink-0" strokeWidth={1.9} />
-                  {t(item.labelKey as any)}
+                  {t(navLabelKey(item, userRole))}
                 </NavLink>
               );
             })}
@@ -1438,13 +1445,13 @@ const sinceDate = (n: number) =>
             Bu eski gorizontal panelning xatosi edi, uni takrorlamaymiz. */}
         <nav className="flex-1 w-full px-2 py-2 space-y-0.5 overflow-y-auto">
           {visibleNavigation.map((item) => {
-            const to = item.id === 'dashboard' ? '/' : `/${item.id}`;
+            const to = item.path;
             return (
               <NavLink
                 key={item.id}
                 to={to}
                 end={item.id === 'dashboard'}
-                title={t(item.labelKey as any)}
+                title={t(navLabelKey(item, userRole))}
                 className={({ isActive }) => {
                   const active = isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'));
                   return `group relative flex flex-col items-center justify-center gap-1 w-full py-2 rounded-2xl transition-colors ${active
@@ -1465,7 +1472,7 @@ const sinceDate = (n: number) =>
                       )}
                       <item.icon className="w-5 h-5" strokeWidth={active ? 2.3 : 1.8} />
                       <span className="text-[10px] font-semibold leading-tight text-center px-0.5">
-                        {t(item.labelKey as any)}
+                        {t(navLabelKey(item, userRole))}
                       </span>
                     </>
                   );
@@ -1697,7 +1704,7 @@ const sinceDate = (n: number) =>
 
       <main className="min-h-screen flex flex-col lg:pl-rail lg:pt-topbar">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-7 flex-1 overflow-x-hidden pb-24 lg:pb-10">
-          <ErrorBoundary key={location.pathname} section={t(getPageLabelKey(location.pathname))}>
+          <ErrorBoundary key={location.pathname} section={t(getPageLabelKey(location.pathname, userRole))}>
           {/* `Suspense` — `React.lazy` bilan bo'lingan sahifalar uchun (S5.5).
               Yuklash indikatori ERROR BOUNDARY ICHIDA: chunk yuklanmasa
               (tarmoq uzildi, eski kesh) xato ushlansin va oq ekran
@@ -1711,18 +1718,21 @@ const sinceDate = (n: number) =>
           <Routes>
 
             <>
-              {/* BOSH SAHIFA — «Bugun».
+              {/* BOSH SAHIFA — rolga qarab (`homeFor`): ega Bosh panelga,
+                  registrator va shifokor Registraturaga, laborant
+                  Laboratoriyaga, hamshira Statsionarga tushadi. */}
+              <Route path="/" element={<Navigate to={homeFor(userRole)} replace />} />
 
-                  Ilgari bu «Boshqaruv paneli» edi: oltita bosilmaydigan
-                  plitka, ikkita diagramma va bugungi qabullar jadvali.
-                  Raqamlar u yerda BRAUZERDA qayta hisoblanardi, Moliya
-                  bo'limidagi hisobot esa serverda — ya'ni bitta savolga
-                  ikkita javob bor edi. Kunlik ish uchun kerak bo'lgani
-                  («bugun kim keldi») «Bugun» ekraniga o'tdi, raqamlar esa
-                  Moliya → Hisobotda qoladi. */}
-              <Route path="/" element={
-                <Navigate to={userRole === UserRole.NURSE ? '/inpatient'
-                  : userRole === UserRole.LAB_TECHNICIAN ? '/lab' : '/today'} replace />
+              {/* ── BOSH PANEL — faqat egaga ─────────────────────────────
+                  Bugungi raqamlar, «hal qilinsin», hisobot va davomat.
+                  Hisobot Moliyadan ko'chdi: Moliya — kassa (registratorning
+                  quroli), Bosh panel — tahlil (eganing savoli). Raqamlar
+                  serverda sanaladi (`/api/reports/dashboard`), brauzerda
+                  emas — aks holda Moliyadagi hisobot bilan ikki xil javob
+                  chiqardi. */}
+              <Route path="/dashboard" element={
+                guard('dashboard',
+                <Dashboard departments={departments} userName={userName} />)
               } />
 
               <Route path="/patients" element={
@@ -1863,9 +1873,9 @@ const sinceDate = (n: number) =>
                   (audit XC-02). */}
               <Route path="/board/:clinicId" element={<QueueBoard />} />
 
-              <Route path="/today" element={
-                guard('today',
-                <Today
+              <Route path="/reception" element={
+                guard('reception',
+                <Reception
                   clinicId={clinicId}
                   patients={patients}
                   doctors={doctors}
@@ -1878,13 +1888,13 @@ const sinceDate = (n: number) =>
                   onCreatePatient={addPatient}
                   onPatientAdded={(p: Patient) => setPatients(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev])}
                   addToast={addToast}
-                  userName={userName}
                 />
               )} />
 
-              {/* Eski manzillar — talonlar, xatcho'plar va odat uchun */}
-              <Route path="/reception" element={<Navigate to="/today" replace />} />
-              <Route path="/myqueue" element={<Navigate to="/today" replace />} />
+              {/* Eski manzillar — talonlar, xatcho'plar va odat uchun.
+                  «Bugun» (`/today`, 2026-09-07 … 09-16) ham endi eski manzil. */}
+              <Route path="/today" element={<Navigate to="/reception" replace />} />
+              <Route path="/myqueue" element={<Navigate to="/reception" replace />} />
 
               {/* Kassa endi Moliya ichida — eski havolalar shu yerga tushadi */}
               <Route path="/cashier" element={<Navigate to="/finance" replace />} />

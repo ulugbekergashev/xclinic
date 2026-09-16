@@ -1447,7 +1447,9 @@ export const translations = {
     'ai.restart': 'Boshidan',
     'ai.send': 'Yuborish',
     // Navigation
-    'nav.dashboard': 'Boshqaruv Paneli',
+    'nav.dashboard': 'Bosh panel',
+    'nav.queue': 'Navbat',
+    'dashboard.tab.overview': 'Umumiy',
     'nav.leads': 'Lidlar',
     'nav.patients': 'Bemorlar',
     'nav.calendar': 'Kalendar',
@@ -4131,7 +4133,9 @@ export const translations = {
     'ai.restart': 'Сначала',
     'ai.send': 'Отправить',
     // Navigation
-    'nav.dashboard': 'Панель управления',
+    'nav.dashboard': 'Главная',
+    'nav.queue': 'Очередь',
+    'dashboard.tab.overview': 'Обзор',
     'nav.leads': 'Лиды',
     'nav.patients': 'Пациенты',
     'nav.calendar': 'Календарь',

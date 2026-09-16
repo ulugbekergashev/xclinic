@@ -31,8 +31,21 @@ export const ACCESS_ROLE_KEYS: { role: UserRole; key: keyof AccessControl; title
     { role: UserRole.NURSE, key: 'nurse', title: tr('ui.hamshira'), desc: tr('ui.dori_beradi_palatani_olib') },
 ];
 
+/* ESKI MODUL ID LARI. «Bugun» (`today`) 2026-09-16 da «Registratura»
+   (`reception`) bo'ldi. Sozlamalarda saqlangan `hiddenModules` ro'yxatida
+   eski id turgan bo'lishi mumkin — u yangi id uchun ham amal qiladi, aks
+   holda yashirilgan modul yangilanishdan keyin jimgina ochilib qolardi. */
+export const LEGACY_MODULE_IDS: Record<string, string[]> = { reception: ['today'] };
+
+/** Ro'yxatda modul (yoki uning eski nomi) bormi */
+export function hiddenListHas(hidden: string[] | undefined, moduleId: string): boolean {
+    if (!hidden?.length) return false;
+    return hidden.includes(moduleId)
+        || (LEGACY_MODULE_IDS[moduleId] || []).some(id => hidden.includes(id));
+}
+
 export function isModuleHidden(ac: AccessControl, role: UserRole, moduleId: string): boolean {
-    return !!getRoleAccess(ac, role)?.hiddenModules?.includes(moduleId);
+    return hiddenListHas(getRoleAccess(ac, role)?.hiddenModules, moduleId);
 }
 
 export function canSeeFinance(ac: AccessControl, role: UserRole): boolean {

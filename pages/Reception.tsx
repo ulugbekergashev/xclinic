@@ -17,25 +17,36 @@ import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
 import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
 import { PatientFormModal } from '../components/PatientFormModal';
-import { OwnerHome } from '../components/OwnerHome';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
 const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   BUGUN — klinikaning kunlik ish ekrani. Rolga qarab boshqacha ko'rinadi.
+   REGISTRATURA — klinikaning kunlik ish ekrani. Rolga qarab boshqacha:
 
-   Ilgari bu UCHTA ekran edi va ular bir xil `Visit` jadvalini ko'rsatardi:
-   «Registratura» (o'ng ustunda bugungi navbat), «Mening navbatim» (o'sha
-   navbat, boshqacha guruhlangan) va «Boshqaruv paneli» (bugungi yozuvlar
-   jadvali). Registrator kelgan bemorni belgilash uchun Registraturaga,
-   shifokor esa o'z navbatini ko'rish uchun boshqa ekranga borardi.
-
-   ENDI BITTA:
      · registrator va ega — yangi qabul ochish mastero + butun klinika
-       navbati + bugunga yozilganlar;
-     · shifokor — natijasi tayyor bo'lganlar, o'z navbati, natija
-       kutayotganlar va bugun yakunlanganlar.
+       navbati + bugunga yozilganlar («Keldi»);
+     · shifokor («Mening navbatim») — natijasi tayyor bo'lganlar, o'z
+       navbati, natija kutayotganlar va bugun yakunlanganlar;
+     · hamshira («Navbat») — navbat va bemor kartasi.
+
+   TARIX. Bu ekran UCH marta shakl o'zgartirdi:
+
+     1. «Registratura» va «Mening navbatim» — ikki alohida sahifa, bir
+        xil `Visit` jadvalini boshqacha guruhlab ko'rsatardi.
+     2. «Bugun» (2026-09-07) — ikkalasi bitta ekranga qo'shildi, tepasiga
+        eganing yig'iladigan tasmasi (raqamlar, «hal qilinsin») qo'yildi.
+     3. Yana «Registratura» (2026-09-16) — tasma alohida «Bosh panel»
+        sahifasiga ketdi (`pages/Dashboard.tsx`). Sabab: bitta ekranda
+        ikki odamning ishi turardi, tasma yig'iq turgani uchun ega uni
+        ochmasdi, registratorga esa u umuman kerak emas edi. Navbat
+        bilan mastero qo'shilib qolgani (2-qadam) esa to'g'ri bo'lgan —
+        u shu yerda qoldi.
+
+   Manzil `/reception` — chop etilgan talonlarda va xatcho'plarda shu
+   turadi; `/today` va `/myqueue` shu yerga yo'naltiriladi. Tarjima
+   kalitlari `today.*` nomi bilan qoldi: ularni qayta nomlash yuz qatorlik
+   bezak o'zgarishi bo'lardi.
 
    Bemor baribir bir marta tanlanadi, qolgan hamma narsa bemor kartasidan
    bajariladi.
@@ -62,8 +73,6 @@ interface Props {
     onCreatePatient: (data: Omit<Patient, 'id' | 'clinicId'>) => Promise<Patient | void>;
     onPatientAdded: (p: Patient) => void;
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
-    /** Salomlashish uchun — eganing tasmasida ko'rinadi */
-    userName?: string;
 }
 
 /* Raqam formati BITTA joydan — `utils/format.ts`. Ilgari bu yerda
@@ -73,10 +82,10 @@ interface Props {
 const fmt = (n: number) => formatNumber(n);
 const today = () => todayISO();
 
-export const Today: React.FC<Props> = ({
+export const Reception: React.FC<Props> = ({
     clinicId, patients, doctors, departments, services, currentClinic,
     userRole, doctorId: myDoctorId, showPatientPhone = true,
-    onCreatePatient, onPatientAdded, addToast, userName,
+    onCreatePatient, onPatientAdded, addToast,
 }) => {
     const showPhone = (v?: string) => showPatientPhone ? formatUzPhone(v || '') : maskPhone(v);
     const navigate = useNavigate();
@@ -532,18 +541,18 @@ ${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
 
     return (
         <>
-        {/* ── EGANING TASMASI ────────────────────────────────────────────────
-            Faqat klinika egasiga. Registrator va shifokorda ekran
-            o'zgarmaydi: ularga oylik fondi ham, vedomost ham kerak emas va
-            server bu marshrutlarga 403 qaytaradi. */}
-        {userRole === UserRole.CLINIC_ADMIN && <OwnerHome userName={userName} />}
-
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             {/* ── Chap: qabul ochish ────────────────────────────────────────── */}
             <div className="xl:col-span-2 space-y-4">
                 <div className="flex flex-wrap items-center gap-3">
                     <Stethoscope className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                    <h2 className="text-xl font-bold text-ink">{t('today.title')}</h2>
+                    {/* Sarlavha rolga qarab: registrator «Registratura» ni,
+                        shifokor «Mening navbatim» ni ko'radi — menyudagi nom
+                        bilan bir xil (`utils/navigation.ts`). */}
+                    <h2 className="text-xl font-bold text-ink">
+                        {canRegister ? t('reception.title')
+                            : userRole === UserRole.DOCTOR ? t('today.myQueue') : t('nav.queue')}
+                    </h2>
                     {/* Sana loyihaning O'Z formatlagichidan. `toLocaleDateString('uz-UZ')`
                         Chrome da «M09 6, Sun» beradi — `uz` lokali to'liq emas. Xuddi
                         shu sabab bilan raqamlar ham `formatNumber` orqali chiqadi. */}

@@ -52,6 +52,11 @@ belgisi tekshirilmagan taxmin edi — kod ko'rilganda tasdiqlanmadi.
 
 Raqamlar serverda sanaladi (`/api/reports/dashboard`).
 
+2026-09-16: «Bugun» ikkiga bo'lindi — **Bosh panel** (`/dashboard`, faqat
+ega: umumiy, hisobot, davomat) va **Registratura** (`/reception`, hamma;
+shifokor uchun «Mening navbatim»). Hisobot va davomat Moliyadan Bosh panelga
+ko'chdi, Moliya faqat kassa.
+
 **Ehtiyot.** Yangi raqam qo'shilsa u ham serverdan kelishi shart. Propdagi
 45 kunlik ro'yxatdan sanalgan har qanday son — jimgina yolg'on.
 

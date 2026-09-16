@@ -171,7 +171,7 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await page.waitForTimeout(1500);
         await expect(page.getByText('Sinov UZI').first()).toBeVisible();
     });
-    test("«Bugun» ekranidan qabul ochiladi, eski havola ham ishlaydi", async ({ page }) => {
+    test("Registraturadan qabul ochiladi, eski havola ham ishlaydi", async ({ page }) => {
         /* Ikkita narsa birga tekshiriladi, chunki ikkinchisi birinchisining
            natijasiga tayanadi: navbatdagi tugma bemor kartasini ochishi va
            eski `/visit/:id` havolasi o'sha kartaga yo'naltirishi kerak.
@@ -187,8 +187,8 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await page.waitForTimeout(2500);
         await expect(page.getByText('Joriy qabul')).toBeVisible();
 
-        /* Endi «Bugun» ekranida o'sha qabul navbatda turishi kerak. */
-        await go(page, '/today');
+        /* Endi Registraturada o'sha qabul navbatda turishi kerak. */
+        await go(page, '/reception');
         await page.waitForTimeout(3000);
 
         const openBtn = page.getByRole('button', { name: /^Ochish$/ }).first();

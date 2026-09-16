@@ -255,7 +255,7 @@ test.describe('Demo: bemor kartasida tashxis', () => {
 
 test.describe("Demo: rol va xizmat ko'rsatish", () => {
     test("rolni almashtirganda menyu o'zgaradi", async ({ page }) => {
-        await go(page, '/today');
+        await go(page, '/reception');
 
         const roleSelect = page.locator('select[aria-label="Demo: rol"]');
         await expect(roleSelect).toBeVisible();
@@ -267,7 +267,8 @@ test.describe("Demo: rol va xizmat ko'rsatish", () => {
         await roleSelect.selectOption('DOCTOR');
         await page.waitForTimeout(2500);
         await expect(page.getByRole('link', { name: 'Moliya' })).toHaveCount(0);
-        await expect(page.getByRole('link', { name: 'Bugun' })).toBeVisible();
+        /* Shifokor uchun Registratura «Mening navbatim» deb nomlanadi. */
+        await expect(page.getByRole('link', { name: 'Mening navbatim' })).toBeVisible();
 
         // Laborantga — faqat Laboratoriya va Bemorlar
         await roleSelect.selectOption('LAB_TECHNICIAN');

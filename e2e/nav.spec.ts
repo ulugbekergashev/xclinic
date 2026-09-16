@@ -18,8 +18,9 @@ test.describe('Menyu va ruxsatlar', () => {
         await page.waitForTimeout(2500);
 
         const nav = page.locator('nav').first();
-        /* Boshqaruv paneli, Lidlar, Shifokorlar analitikasi, Tablo va
-           Xabarlar menyudan chiqdi. */
+        /* Lidlar, Shifokorlar analitikasi va Tablo menyudan chiqdi.
+           «Boshqaruv Paneli» ham yo'q — egaga endi «Bosh panel» bor:
+           eski nomdagi olti plitkali ekran emas, boshqa sahifa. */
         /* «Xabarlar» bu ro'yxatdan CHIQARILDI: u menyuga qaytarildi
            (`utils/navigation.ts`, faqat egaga). Sinov eskirgan qarorni
            yozib turgan edi va shu sababdan yiqilardi. */
@@ -29,7 +30,7 @@ test.describe('Menyu va ruxsatlar', () => {
         void nav;
 
         // Qolganlari joyida
-        for (const stays of ['Bugun', 'Bemorlar', 'Kalendar', 'Moliya', 'Xodimlar', 'Sozlamalar']) {
+        for (const stays of ['Bosh panel', 'Registratura', 'Bemorlar', 'Kalendar', 'Moliya', 'Xodimlar', 'Sozlamalar']) {
             await expect(page.getByRole('link', { name: stays }).first()).toBeVisible();
         }
     });
@@ -46,11 +47,13 @@ test.describe('Menyu va ruxsatlar', () => {
         }
     });
 
-    test('bosh sahifa «Bugun» ga yo\'naltiradi', async ({ page }) => {
+    test("bosh sahifa egani «Bosh panel» ga yo'naltiradi", async ({ page }) => {
+        /* Sinov ega (`admin`) bilan kiradi. Registrator va shifokor
+           Registraturaga tushadi — `homeFor` (`utils/navigation.ts`). */
         await login(page);
         await go(page, '/');
         await page.waitForTimeout(2500);
-        expect(page.url()).toContain('/today');
+        expect(page.url()).toContain('/dashboard');
     });
 
     test('AI yordamchi sahifa USTIDA ochiladi', async ({ page }) => {

@@ -486,16 +486,24 @@ necha kun keldi, foizi qancha) va CSV ga chiqarish.
 
 Tafsilot: `PLAN-HR.md`.
 
-### Eganing tasmasi
+### Bosh panel
 
-Klinika egasi kirganda «Bugun» ekranining tepasida qo'shimcha tasma
-chiqadi — registrator va shifokorda u ko'rinmaydi.
+Klinika egasi kirganda tushadigan ekran (`/dashboard`). Registrator va
+shifokorda u yo'q — ular Registraturaga tushadi.
 
-To'rtta raqam (bugun kassaga tushgan pul, qarz, bugungi qabullar,
-bemorlar) va **«Bugun hal qilinsin»** ro'yxati: yopilmagan kassa smenasi,
-muddati o'tayotgan dori, natijasi kiritilmagan tahlil, tuzilmagan
-vedomost va hokazo. Har qator bosilganda o'sha ish bajariladigan ekran
-ochiladi.
+Uch vkladka:
+
+- **Umumiy** — to'rtta raqam (bugun kassaga tushgan pul, qarz, bugungi
+  qabullar, bemorlar) va **«Bugun hal qilinsin»** ro'yxati: yopilmagan kassa
+  smenasi, muddati o'tayotgan dori, natijasi kiritilmagan tahlil, tuzilmagan
+  vedomost va hokazo. Har qator bosilganda o'sha ish bajariladigan ekran
+  ochiladi.
+- **Hisobot** — foyda, qarz, bo'limlar, chiqimlar.
+- **Davomat** — kim keldi, kim kelmadi, qaysi kunlar gavjum.
+
+Hisobot va Davomat ilgari Moliyaning vkladkalari edi; Moliya endi faqat
+kassa — registratorning ish quroli. Raqamlar serverda sanaladi
+(`/api/reports/dashboard`, `/attention`), brauzerda emas.
 
 **Nol bo'lgan band ro'yxatga tushmaydi.** «0 ta muddati o'tgan dori»
 degan qator bezak bo'lardi va uning orasida haqiqiy muammo ko'rinmay
@@ -545,20 +553,22 @@ kerak emas.
 
 ### Rol bo'yicha bosh sahifa
 
-Registrator, shifokor va ega → **Bugun** · Laborant → Laboratoriya ·
-Hamshira → Statsionar.
+Ega → **Bosh panel** · Registrator, shifokor → **Registratura** · Laborant →
+Laboratoriya · Hamshira → Statsionar (`homeFor`, `utils/navigation.ts`).
 
-«Bugun» ilgari ikkita ekran edi — «Registratura» va «Mening navbatim» —
-va ikkalasi bir xil `Visit` jadvalini ko'rsatardi, faqat boshqacha
-guruhlab. Endi bitta ekran, rolga qarab boshqacha ko'rinadi:
+Registratura bitta ekran (`pages/Reception.tsx`), rolga qarab boshqacha
+ko'rinadi va menyuda boshqacha nomlanadi:
 
-| Rol | Nima ko'radi |
-|---|---|
-| Registrator, ega | qabul ochish mastero · butun klinika navbati (chaqirish, ochish) · bugunga yozilganlar («Keldi») |
-| Shifokor | natijasi tayyor bo'lganlar · o'z navbati · natija kutayotganlar · bugun yakunlanganlar |
-| Hamshira | navbat va bemor kartasi |
+| Rol | Menyudagi nomi | Nima ko'radi |
+|---|---|---|
+| Registrator, ega | Registratura | qabul ochish mastero · butun klinika navbati (chaqirish, ochish) · bugunga yozilganlar («Keldi») |
+| Shifokor | Mening navbatim | natijasi tayyor bo'lganlar · o'z navbati · natija kutayotganlar · bugun yakunlanganlar |
+| Hamshira | Navbat | navbat va bemor kartasi |
 
-`/reception` va `/myqueue` manzillari `Bugun` ga yo'naltiriladi.
+2026-09-07 dan 09-16 gacha bu ekran «Bugun» deb atalgan va tepasida eganing
+yig'iq tasmasi turgan; tasma Bosh panelga ketdi. `/today` va `/myqueue`
+manzillari Registraturaga yo'naltiriladi. Ruxsatlarda saqlangan eski
+`today` moduli id si `reception` uchun ham amal qiladi.
 
 ---
 

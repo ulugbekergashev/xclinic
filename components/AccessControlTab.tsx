@@ -4,8 +4,8 @@ import { Card, Button } from './Common';
 import { api } from '../services/api';
 import { toast } from '../services/toast';
 import { UserRole, AccessControl, RoleAccess, Clinic } from '../types';
-import { parseAccessControl } from '../utils/accessControl';
-import { accessModulesFor } from '../utils/navigation';
+import { parseAccessControl, hiddenListHas, LEGACY_MODULE_IDS } from '../utils/accessControl';
+import { accessModulesFor, navLabelKey } from '../utils/navigation';
 import { SIMPLE_VIEW_HIDDEN_MODULES } from '../constants';
 import { useLanguage, tr, fill } from '../context/LanguageContext';
 
@@ -65,7 +65,12 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
 
    const toggleModule = (roleKey: AccessRoleKey, moduleId: string) => {
       const hidden = accessForm[roleKey]?.hiddenModules || [];
-      const next = hidden.includes(moduleId) ? hidden.filter(m => m !== moduleId) : [...hidden, moduleId];
+      /* Ochishda eski nomi ham chiqadi (`today` → `reception`), aks holda
+         belgi olib tashlansa ham modul yashirin qolaverardi. */
+      const legacy = LEGACY_MODULE_IDS[moduleId] || [];
+      const next = hiddenListHas(hidden, moduleId)
+         ? hidden.filter(m => m !== moduleId && !legacy.includes(m))
+         : [...hidden, moduleId];
       updateRoleAccess(roleKey, { hiddenModules: next });
    };
 
@@ -206,7 +211,7 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                            <p className="text-xs font-bold text-faint uppercase tracking-wider mb-3">{t('accesscontroltab.korinadigan_modullar')}</p>
                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-6">
                               {modules.map(m => {
-                                 const visible = !hidden.includes(m.id);
+                                 const visible = !hiddenListHas(hidden, m.id);
                                  return (
                                     <label key={m.id} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all text-sm font-medium ${visible
                                        ? 'border-primary-200 bg-primary-50/60 text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300'
@@ -217,7 +222,7 @@ export const AccessControlTab: React.FC<Props> = ({ currentClinic, onClinicUpdat
                                           onChange={() => toggleModule(roleKey, m.id)}
                                           className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500"
                                        />
-                                       {t(m.labelKey as any)}
+                                       {t(navLabelKey(m, roleId) as any)}
                                     </label>
                                  );
                               })}

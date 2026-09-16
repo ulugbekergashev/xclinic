@@ -12,13 +12,13 @@ import { Appointment, Doctor, Patient, Transaction, Clinic, SubscriptionPlan } f
 // bosishda yashiradi. Menyu qancha qisqa bo'lsa, yangi xodim shuncha tez
 // o'rganadi. Kalitlar — menyu id lari (`utils/navigation.ts`).
 export const SIMPLE_VIEW_HIDDEN_MODULES: Record<string, string[]> = {
-  // Registratorga kerak: bugun, bemor, kalendar, kassa.
+  // Registratorga kerak: registratura, bemor, kalendar, kassa.
   RECEPTIONIST: ['inventory', 'lab', 'diagnostics', 'inpatient', 'settings'],
-  // Shifokorga kerak: bugun, bemor, kalendar.
+  // Shifokorga kerak: navbat, bemor, kalendar.
   DOCTOR: ['inpatient'],
   // Laborant faqat laboratoriyada ishlaydi.
   LAB_TECHNICIAN: ['patients'],
-  // Hamshira — statsionar va bugungi ro'yxat.
+  // Hamshira — statsionar va navbat.
   NURSE: ['calendar', 'patients'],
 };
 
