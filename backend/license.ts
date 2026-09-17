@@ -94,16 +94,18 @@ export function registerLicenseRoutes(app: express.Express, deps: Deps) {
                Endi interfeys faqat `enforced: true` bo'lganda
                aralashadi. */
             enforced: process.env.LICENSE_ENFORCE === '1',
-            /* TO'LIQ IDENTIFIKATOR INTERNETGA BERILMAYDI (audit 2026-09-17).
+            /* TO'LIQ IDENTIFIKATOR FAQAT FAOLLASHTIRILMAGAN NUSXADA (audit 2026-09-17).
 
-               Bu endpoint loginsiz. Tunnel yoqilgan klinikada ilgari istalgan
-               odam to'liq `machineId` ni olardi — u esa litsenziya kaliti va
-               doimiy manzil registratori uchun kirish ma'lumotining yarmi.
-               To'liq qiymat faqat: (a) hali aktivlashtirilmagan nusxada
-               (sozlash ekrani nusxa olish tugmasi uchun) yoki (b) tunnel
-               orqali kelmagan so'rovda. Cloudflare har tunnel so'roviga
-               `CF-Connecting-IP` qo'shadi va mijoz uni olib tashlay olmaydi. */
-            machineId: (!activated || !req.headers['cf-connecting-ip']) ? machineId : machineId.slice(0, 8) + '…',
+               Bu endpoint loginsiz. Ilgari to'liq `machineId` har doim
+               qaytarilardi — tunnel yoqilgan klinikada internetdagi har
+               kimga, LAN da esa har bir xodimga. U esa litsenziya kaliti
+               va doimiy manzil registratori uchun kirish ma'lumotining yarmi.
+
+               To'liq qiymat faqat birinchi sozlash ekraniga kerak (nusxa
+               olish tugmasi, `FirstRunSetup`). Faollashtirilgandan keyin
+               interfeys uni ishlatmaydi. Faollashtirilmagan nusxa esa
+               registratordan manzil ololmaydi — tunnel yo'q. */
+            machineId: activated ? machineId.slice(0, 8) + '…' : machineId,
             /* Qisqartirilgan ko'rinish — telefon orqali aytish uchun.
                To'lig'i ham qaytariladi: nusxa olish tugmasi uchun kerak. */
             displayId: machineId.slice(0, 8) + '…',

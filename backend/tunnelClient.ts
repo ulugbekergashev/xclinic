@@ -20,7 +20,31 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { getMachineId } from './hwid';
+
+/* O'RNATMA KALITI (audit 2026-09-17). Registrator doimiy manzilni birinchi
+   so'rovda shu kalitga bog'laydi (`api/tunnel-register.ts`, installProof):
+   litsenziya kalitini soxtalashtirgan odam ham manzilni ololmaydi.
+
+   BAZADA saqlanadi, faylda emas: dastur qayta o'rnatilsa yoki baza
+   zaxiradan tiklansa kalit ham qaytadi va klinika manzilini yo'qotmaydi.
+   Ekranga hech qayerda chiqmaydi. */
+const INSTALL_SECRET_KEY = 'tunnel_install_secret';
+
+export async function getInstallSecret(prisma: any): Promise<string> {
+    const row = await prisma.platformSetting.findUnique({ where: { key: INSTALL_SECRET_KEY } });
+    const existing = String(row?.value || '').trim().toLowerCase();
+    if (/^[0-9a-f]{64}$/.test(existing)) return existing;
+
+    const fresh = crypto.randomBytes(32).toString('hex');
+    await prisma.platformSetting.upsert({
+        where: { key: INSTALL_SECRET_KEY },
+        update: { value: fresh, updatedAt: new Date() },
+        create: { key: INSTALL_SECRET_KEY, value: fresh },
+    });
+    return fresh;
+}
 
 /* Registrator manzili — alohida Vercel loyihasi (`scripts/deploy-registrar.mjs`).
    Demo sayt (`xclinic-alpha`) EMAS: u yerda `api/` `.vercelignore` bilan
@@ -50,9 +74,11 @@ export async function requestStableTunnel(input: {
     const doFetch = input.fetchImpl || fetch;
 
     let licenseKey = '';
+    let installSecret = '';
     try {
         const clinic = await input.prisma.clinic.findFirst({ select: { licenseKey: true } });
         licenseKey = String(clinic?.licenseKey || '').trim();
+        installSecret = await getInstallSecret(input.prisma);
     } catch (e: any) {
         return { ok: false, reason: `klinika o'qilmadi: ${e?.message || e}` };
     }
@@ -68,7 +94,7 @@ export async function requestStableTunnel(input: {
         const r = await doFetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ machineId: getMachineId(), licenseKey, port: input.port }),
+            body: JSON.stringify({ machineId: getMachineId(), licenseKey, port: input.port, installSecret }),
             signal: controller.signal,
         });
         status = r.status;
@@ -80,6 +106,13 @@ export async function requestStableTunnel(input: {
     }
 
     if (status === 503) return { ok: false, reason: 'registrator hali sozlanmagan (domen ulanmagan)', quiet: true };
+    if (status === 403 && data?.code === 'INSTALL_MISMATCH') {
+        return {
+            ok: false,
+            reason: "doimiy manzil boshqa o'rnatma kalitiga bog'langan. Tiklash: Cloudflare DNS da "
+                + "`_xca.<subdomen>` TXT yozuvini o'chiring (docs/DOMEN-ULASH.md). Hozircha vaqtinchalik manzil ishlaydi",
+        };
+    }
     if (status !== 200 || typeof data?.token !== 'string' || typeof data?.url !== 'string') {
         return { ok: false, reason: `registrator ${status}: ${data?.error || 'javob noto\'g\'ri'}` };
     }

@@ -92,9 +92,40 @@ uchun `api/` u yerdan `.vercelignore` bilan chiqarilgan.
   paytda o'chirilsa — 30 soniya ichida yopiladi.
 - Standart parol turganda yoqish baribir rad etiladi.
 
+## O'rnatma kaliti (2026-09-17)
+
+Litsenziya siri (`SECRET_SALT`) dastur ichida turibdi — o'rnatuvchini ochib
+olgan odam istalgan `machineId` uchun kalit yasay oladi. Ilgari registrator
+faqat shu kalitga ishonardi, ya'ni boshqa klinikaning `machineId` sini bilgan
+odam uning tunnel tokenini olib, `k-….xclinic.org` ga o'z serverini ulay
+olardi.
+
+Endi har o'rnatma o'zida tasodifiy kalit saqlaydi (bazada, `PlatformSetting`
+→ `tunnel_install_secret`) va registratorga yuboradi. Birinchi so'rovda
+registrator kalitning **xeshini** Cloudflare DNS ga TXT yozuvi qilib qo'yadi:
+`_xca.k-….xclinic.org`. Shundan keyin manzil faqat shu kalit bilan beriladi.
+
+Qo'shimcha: `GET /api/license/status` to'liq `machineId` ni endi faqat
+faollashtirilmagan nusxada qaytaradi.
+
+**Joylash tartibi.** Avval registrator (`node scripts/deploy-registrar.mjs`),
+keyin klinikalarga yangi o'rnatuvchi. Yangi registrator eski dasturni ham
+qabul qiladi (kalitsiz so'rov, TXT yozuvi hali yo'q bo'lsa). Yangilangan
+klinika birinchi marta ulanganda kalit bog'lanadi.
+
+**Klinika kalitini yo'qotsa** (Windows qayta o'rnatildi va baza zaxiradan
+tiklanmadi): jurnalda `INSTALL_MISMATCH`, klinika vaqtinchalik manzil bilan
+ishlayveradi. Tiklash — Cloudflare → `xclinic.org` → DNS da
+`_xca.k-….xclinic.org` TXT yozuvini o'chirish. Keyingi urinishda (1 daqiqa
+ichida) yangi kalit bog'lanadi va doimiy manzil qaytadi.
+
 ## Ma'lum cheklov
 
-Registrator litsenziya kalitini tekshiradi, lekin litsenziya siri
-(`SECRET_SALT`) dastur ichida turibdi — o'rnatuvchini ochib olgan odam kalit
-yasay oladi. Bu registratordan kattaroq muammo (dasturni litsenziyasiz
-ishlatish) va alohida hal qilinishi kerak.
+Litsenziya siri hamon dastur ichida: o'rnatuvchini ochib olgan odam dasturni
+**litsenziyasiz ishlata oladi**. Endi u boshqa klinikaning manzilini
+ololmaydi, lekin nusxa ko'chirishdan himoya shu darajada qoladi. To'liq
+yechim — kalitni sotuvchining yopiq kaliti bilan imzolash; 2026-09-17 da
+ortiqcha ish deb qoldirildi.
+
+Hali yangilanmagan klinika manzili, u birinchi marta yangi dastur bilan
+ulanmaguncha, eski himoyada qoladi.

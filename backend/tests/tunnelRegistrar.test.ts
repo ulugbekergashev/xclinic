@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-    registerTunnel, expectedLicenseKey, subdomainFor, RegistrarEnv,
+    registerTunnel, expectedLicenseKey, subdomainFor, installProof, RegistrarEnv,
 } from '../../api/tunnel-register';
 import { upsertEnvLine } from '../tunnelClient';
 
@@ -30,10 +30,11 @@ const ENV: RegistrarEnv = {
 };
 
 /** Soxta Cloudflare: holatni saqlaydi va har so'rovni yozib boradi. */
-function fakeCloudflare(opts: { tunnelExists?: boolean; dns?: any[]; failOn?: string } = {}) {
+function fakeCloudflare(opts: { tunnelExists?: boolean; dns?: any[]; failOn?: string; txt?: any[] } = {}) {
     const calls: { method: string; url: string; body?: any }[] = [];
     let tunnels = opts.tunnelExists ? [{ id: 'tun-old' }] : [];
     const dns = opts.dns ?? [];
+    const txt: any[] = opts.txt ?? [];
     const fetchImpl = async (url: string, init: any = {}) => {
         const method = init.method || 'GET';
         const body = init.body ? JSON.parse(init.body) : undefined;
@@ -45,12 +46,14 @@ function fakeCloudflare(opts: { tunnelExists?: boolean; dns?: any[]; failOn?: st
         if (method === 'GET' && url.includes('/cfd_tunnel?name=')) return reply(tunnels);
         if (method === 'POST' && url.endsWith('/cfd_tunnel')) { tunnels = [{ id: 'tun-new' }]; return reply({ id: 'tun-new' }); }
         if (method === 'PUT' && url.includes('/configurations')) return reply({});
+        if (method === 'GET' && url.includes('/dns_records?type=TXT')) return reply(txt);
+        if (method === 'POST' && url.includes('/dns_records') && body?.type === 'TXT') { txt.push({ id: 'txt1', ...body }); return reply({ id: 'txt1' }); }
         if (method === 'GET' && url.includes('/dns_records?name=')) return reply(dns);
         if (url.includes('/dns_records')) return reply({ id: 'rec1' });
         if (method === 'GET' && url.endsWith('/token')) return reply('RUN-TOKEN-' + url.split('/cfd_tunnel/')[1].split('/')[0]);
         return { ok: false, status: 404, json: async () => ({ success: false }) };
     };
-    return { calls, fetchImpl };
+    return { calls, fetchImpl, txt };
 }
 
 const ok = { machineId: MACHINE, licenseKey: KEY, port: 3001 };
@@ -134,6 +137,58 @@ describe('tunnel registratori — Cloudflare oqimi', () => {
         const r = await registerTunnel(ok, ENV, cf.fetchImpl);
         expect(r.status).toBe(502);
         expect(JSON.stringify(r.body)).not.toContain('cf-token');
+    });
+});
+
+describe("tunnel registratori — o'rnatma kaliti (manzilni o'g'irlashdan himoya)", () => {
+    const SECRET = 'a'.repeat(64);
+    const OTHER = 'b'.repeat(64);
+    const txtName = () => `_xca.${subdomainFor(MACHINE)}.getxclinic.com`;
+    const bound = (secret: string) => [{ id: 't1', type: 'TXT', name: txtName(), content: `"${installProof(secret)}"` }];
+
+    it("birinchi so'rov kalitni bog'laydi: TXT yozuviga faqat XESH yoziladi", async () => {
+        const cf = fakeCloudflare();
+        const r = await registerTunnel({ ...ok, installSecret: SECRET }, ENV, cf.fetchImpl);
+        expect(r.status).toBe(200);
+        expect(cf.txt).toHaveLength(1);
+        expect(cf.txt[0]).toMatchObject({ type: 'TXT', name: txtName(), content: installProof(SECRET) });
+        expect(JSON.stringify(cf.calls)).not.toContain(SECRET);
+    });
+
+    it("bog'langan kalit bilan qayta so'rov o'tadi va yangi TXT yaratilmaydi", async () => {
+        const cf = fakeCloudflare({ tunnelExists: true, txt: bound(SECRET) });
+        const r = await registerTunnel({ ...ok, installSecret: SECRET }, ENV, cf.fetchImpl);
+        expect(r.status).toBe(200);
+        expect(cf.calls.some(c => c.method === 'POST' && c.body?.type === 'TXT')).toBe(false);
+        expect(cf.txt).toHaveLength(1);
+    });
+
+    it("BOSHQA kalit bilan — 403 va tunnel tokeni BERILMAYDI", async () => {
+        const cf = fakeCloudflare({ tunnelExists: true, txt: bound(SECRET) });
+        const r = await registerTunnel({ ...ok, installSecret: OTHER }, ENV, cf.fetchImpl);
+        expect(r.status).toBe(403);
+        expect(r.body).toMatchObject({ code: 'INSTALL_MISMATCH' });
+        expect(cf.calls.some(c => c.url.endsWith('/token') || c.url.includes('/configurations'))).toBe(false);
+    });
+
+    it("kalitsiz so'rov (kalit to'g'ri litsenziya bilan ham) bog'langan manzilni ololmaydi", async () => {
+        const cf = fakeCloudflare({ tunnelExists: true, txt: bound(SECRET) });
+        const r = await registerTunnel(ok, ENV, cf.fetchImpl);
+        expect(r.status).toBe(403);
+    });
+
+    it("eski dastur (kalitsiz), TXT hali yo'q — ilgarigidek xizmat, TXT yaratilmaydi", async () => {
+        const cf = fakeCloudflare({ tunnelExists: true });
+        const r = await registerTunnel(ok, ENV, cf.fetchImpl);
+        expect(r.status).toBe(200);
+        expect(cf.txt).toHaveLength(0);
+    });
+
+    it("kalit shakli noto'g'ri bo'lsa 400 va Cloudflare'ga so'rov ketmaydi", async () => {
+        const cf = fakeCloudflare();
+        const r = await registerTunnel({ ...ok, installSecret: 'qisqa' }, ENV, cf.fetchImpl);
+        expect(r.status).toBe(400);
+        expect(cf.calls).toHaveLength(0);
     });
 });
 

@@ -147,6 +147,12 @@ async function main() {
                 ELECTRON_RUN: 'true',
                 ELECTRON_USER_DATA_PATH: workDir,
                 ELECTRON_BACKEND_PORT: String(PORT),
+                /* Haqiqiy registrator CHAQIRILMAYDI. `network` sinovi masofaviy
+                   kirishni yoqadi va server doimiy manzil so'raydi — ilgari so'rov
+                   jonli Vercel registratoriga ketardi. O'rnatma kaliti joriy
+                   qilingach bu dev kompyuterning manzilini sinov bazasidagi
+                   kalitga bog'lab qo'yardi. Yopiq port — so'rov darhol yiqiladi. */
+                XCLINIC_TUNNEL_REGISTRAR: 'http://127.0.0.1:9/disabled',
             },
             stdio: 'ignore',
         });

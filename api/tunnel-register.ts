@@ -43,7 +43,31 @@ export type RegistrarEnv = {
     XCLINIC_LICENSE_SALT?: string;
 };
 
-export type RegisterInput = { machineId?: unknown; licenseKey?: unknown; port?: unknown };
+export type RegisterInput = { machineId?: unknown; licenseKey?: unknown; port?: unknown; installSecret?: unknown };
+
+/* ─── O'RNATMA KALITI (audit 2026-09-17) ─────────────────────────────────────
+
+   Litsenziya kaliti `SHA256(machineId + tuz)` dan hisoblanadi, tuz esa
+   dastur paketida turadi. Ya'ni boshqa klinikaning `machineId` sini bilgan
+   odam uning kalitini ham yasay olardi va shu yerdan O'SHA klinikaning
+   tunnel tokenini olib, `k-….xclinic.org` ga o'z konnektorini ulardi.
+
+   Endi har o'rnatma o'zida tasodifiy 32 baytlik kalit saqlaydi va uni har
+   so'rovda yuboradi. Birinchi so'rovda registrator kalitning XESHINI
+   DNS dagi TXT yozuviga (`_xca.<subdomen>`) yozadi — alohida baza kerak
+   emas. Keyin shu manzil faqat o'sha kalit bilan beriladi.
+
+   Eski (yangilanmagan) dastur kalit yubormaydi: TXT yozuvi hali yo'q bo'lsa
+   ilgarigidek xizmat qilinadi, bor bo'lsa — rad etiladi.
+
+   KALIT YO'QOLSA (Windows qayta o'rnatildi, baza nusxadan tiklanmadi):
+   registrator 403 `INSTALL_MISMATCH` qaytaradi va klinika vaqtinchalik
+   manzil bilan ishlayveradi. Tiklash: Cloudflare → DNS da
+   `_xca.k-….xclinic.org` TXT yozuvini o'chirish — keyingi so'rovda yangi
+   kalit bog'lanadi. */
+export function installProof(installSecret: string): string {
+    return 'xca=' + createHash('sha256').update('xclinic-install:' + installSecret).digest('hex');
+}
 
 export type RegisterResult =
     | { status: 200; body: { url: string; token: string } }
@@ -88,6 +112,10 @@ export async function registerTunnel(
     if (!/^HWID-[A-Za-z0-9_-]{6,80}$/.test(machineId)) return fail(400, 'BAD_MACHINE', "machineId noto'g'ri");
     if (!/^[0-9A-F]{24}$/.test(licenseKey)) return fail(400, 'BAD_LICENSE_FORMAT', "Litsenziya kaliti noto'g'ri");
     if (!Number.isInteger(port) || port < 1024 || port > 65535) return fail(400, 'BAD_PORT', "Port noto'g'ri");
+    const installSecret = typeof input.installSecret === 'string' ? input.installSecret.trim().toLowerCase() : '';
+    if (installSecret && !/^[0-9a-f]{64}$/.test(installSecret)) {
+        return fail(400, 'BAD_INSTALL_SECRET', "O'rnatma kaliti noto'g'ri");
+    }
 
     /* Litsenziyasiz o'rnatma zonada yozuv yarata olmaydi. Aks holda istalgan
        odam so'rov yuborib zonani minglab yozuv bilan to'ldirishi mumkin edi. */
@@ -114,6 +142,21 @@ export async function registerTunnel(
     };
 
     try {
+        /* 0. O'RNATMA KALITI — manzil qaysi o'rnatmaga bog'langan (yuqoridagi izoh). */
+        const proofName = `_xca.${fqdn}`;
+        const proofRecords: any[] = await call('GET',
+            `/zones/${zone}/dns_records?type=TXT&name=${encodeURIComponent(proofName)}`) || [];
+        const bound = (Array.isArray(proofRecords) ? proofRecords : []).find((r: any) => r?.type === 'TXT');
+        if (bound) {
+            const stored = String(bound.content || '').replace(/^"+|"+$/g, '');
+            if (!installSecret || stored !== installProof(installSecret)) {
+                return fail(403, 'INSTALL_MISMATCH', "Bu manzil boshqa o'rnatmaga bog'langan");
+            }
+        } else if (installSecret) {
+            await call('POST', `/zones/${zone}/dns_records`,
+                { type: 'TXT', name: proofName, content: installProof(installSecret), ttl: 1 });
+        }
+
         /* 1. TUNNEL — BORINI ISHLATAMIZ, O'CHIRMAYMIZ.
 
            Eski kod har ro'yxatdan o'tishda tunnelni o'chirib qaytadan
