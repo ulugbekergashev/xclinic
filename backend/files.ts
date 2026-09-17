@@ -151,6 +151,11 @@ export function registerFileRoutes(app: express.Express, deps: Deps) {
 
             const ext = path.extname(base).toLowerCase();
             res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+            /* Brauzer turni o'zi «taxmin» qilmasin (audit 2026-09-17): noma'lum
+               fayl HTML sifatida ochilib, skript ishga tushishi mumkin edi.
+               Rasm va PDF dan boshqasi faqat yuklab olinadi. */
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            if (!MIME[ext]) res.setHeader('Content-Disposition', 'attachment');
             // Bemor ma'lumoti — umumiy kesh (proxy) da yotmasligi kerak
             res.setHeader('Cache-Control', 'private, max-age=3600');
             res.sendFile(full);

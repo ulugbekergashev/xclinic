@@ -513,6 +513,9 @@ export const VisitPanel: React.FC<Props> = ({
 
     const deptServices = services.filter(s => !s.departmentId || s.departmentId === visit.departmentId);
     const canCancelVisit = userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST;
+    /* Bayon va tashxis — shifokorniki: server registratorga ularni 403 bilan rad etadi
+       (backend/multiprofile.ts, CLINICAL_FIELDS_DENIED). Shikoyat esa qabulxonada ham yoziladi. */
+    const clinicalReadOnly = isDone || userRole === UserRole.RECEPTIONIST;
 
     return (
         <div className="space-y-4">
@@ -811,7 +814,7 @@ export const VisitPanel: React.FC<Props> = ({
                 departmentId={visit.departmentId || undefined}
                 templateId={visit.templateId || undefined}
                 value={visit.examData || {}}
-                readOnly={isDone}
+                readOnly={clinicalReadOnly}
                 onSave={saveEncounter}
             />
 
@@ -828,7 +831,7 @@ export const VisitPanel: React.FC<Props> = ({
                                         {t('visit.chronic')}
                                     </span>
                                 )}
-                                {!isDone && (
+                                {!clinicalReadOnly && (
                                     <button onClick={() => removeDiagnosis(d.id)} aria-label={t('common.delete')}
                                         className="p-0.5 text-faint hover:text-red-500 rounded">
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -838,7 +841,7 @@ export const VisitPanel: React.FC<Props> = ({
                         ))}
                     </div>
                 )}
-                {!isDone && (
+                {!clinicalReadOnly && (
                     <>
                         <div className="flex flex-wrap items-center gap-3">
                             <input value={icdQuery} onChange={e => searchIcd(e.target.value)} className={`${inputCls} flex-1 min-w-[200px]`}

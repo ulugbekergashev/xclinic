@@ -209,7 +209,77 @@ async function main() {
         ok('«Qabulda» holatiga o\'tish to\'silmadi', inprog.status === 200, `status: ${inprog.status}`);
     }
 
+    await lockedVisit(token, tag);
+
     finish();
+}
+
+/* QULFLANGAN QABUL VA REGISTRATOR CHEGARASI.
+
+   Topilgan holat: `POST /visits/:id/lock` faqat `lockedAt` yozardi, uni
+   hech kim tekshirmasdi — imzolangan bayon, tashxis va xizmatlar ro'yxati
+   jimgina qayta yozilardi. Registrator esa navbat bilan birga tashxisni
+   ham o'zgartira olardi. */
+async function lockedVisit(token: string, tag: string) {
+    console.log('\n═══ 7. REGISTRATOR — FAQAT NAVBAT ══════════════════');
+    const rec = await call('POST', '/receptionists', {
+        firstName: 'Navbat', lastName: `Registrator${tag}`, phone: `+99899${tag}`,
+        username: `lockrec${tag}`, password: 'testpass123',
+    }, token);
+    ok('registrator yaratildi', !!rec.data?.id, `status: ${rec.status}, ${JSON.stringify(rec.data).slice(0, 120)}`);
+    const recToken = (await call('POST', '/auth/login', { username: `lockrec${tag}`, password: 'testpass123' })).data?.token;
+    ok('registrator kirdi', !!recToken);
+
+    const p = (await call('POST', '/patients', {
+        firstName: 'Qulf', lastName: `Sinov${tag}`, gender: 'Male', phone: `+99888${tag}`, force: true,
+    }, token)).data;
+    const v = await call('POST', '/visits', { patientId: p?.id, force: true }, token);
+    const id = v.data?.id;
+    ok('qulf sinovi uchun qabul ochildi', !!id, `status: ${v.status}`);
+    if (!id) return;
+
+    if (recToken) {
+        const q = await call('PUT', `/visits/${id}`, { status: 'Called' }, recToken);
+        ok('registrator navbat holatini o\'zgartira oladi', q.status === 200, `status: ${q.status}`);
+        const dx = await call('PUT', `/visits/${id}`, { diagnosis: 'Registrator tashxisi' }, recToken);
+        ok('registrator tashxis YOZA OLMAYDI (403)', dx.status === 403, `status: ${dx.status}`);
+        ok('sabab CLINICAL_FIELDS_DENIED', dx.data?.code === 'CLINICAL_FIELDS_DENIED', String(dx.data?.code));
+    }
+
+    await call('PUT', `/visits/${id}`, { notes: 'Imzolangan bayon', diagnosis: 'Asl tashxis' }, token);
+    const procBefore = await call('POST', `/visits/${id}/procedures`, { procedureName: 'Qulfdan oldingi xizmat', price: 0 }, token);
+    ok("qulfdan oldin xizmat qo'shildi", procBefore.status === 200, `status: ${procBefore.status}`);
+
+    console.log('\n═══ 8. QULFLANGAN QABUL O\'ZGARMAYDI ═════════════════');
+    const lock = await call('POST', `/visits/${id}/lock`, {}, token);
+    ok('qabul qulflandi', lock.status === 200, `status: ${lock.status}`);
+
+    for (const [label, body] of [
+        ['tashxis', { diagnosis: "O'zgartirilgan tashxis" }],
+        ['bayon izohi', { notes: 'Qayta yozilgan' }],
+        ["ko'rik bayoni", { examData: '{}' }],
+        ['shifokor', { doctorName: 'Boshqa shifokor' }],
+    ] as [string, any][]) {
+        const r = await call('PUT', `/visits/${id}`, body, token);
+        ok(`qulflangan qabulda ${label} RAD ETILDI (409)`, r.status === 409 && r.data?.code === 'VISIT_LOCKED',
+            `status: ${r.status}, ${r.data?.code}`);
+    }
+    const after = (await call('GET', `/visits/${id}`, undefined, token)).data;
+    ok('bayon va tashxis JOYIDA', after?.notes === 'Imzolangan bayon' && after?.diagnosis === 'Asl tashxis',
+        `${after?.notes} / ${after?.diagnosis}`);
+
+    /* `force` — qabulda tashxis yozuvi yo'q, yakunlash nazorati (VISIT_INCOMPLETE)
+       bu sinovning mavzusi emas. Muhimi: holat qulf tufayli to'silmaydi. */
+    const status = await call('PUT', `/visits/${id}`, { status: 'Completed', force: true }, token);
+    ok('holat (navbat) o\'zgarishi qulf bilan to\'silmadi', status.status === 200,
+        `status: ${status.status}, ${status.data?.code}`);
+
+    const addProc = await call('POST', `/visits/${id}/procedures`, { procedureName: 'Qulfdan keyingi xizmat', price: 10000 }, token);
+    ok("qulflangan qabulga xizmat QO'SHILMADI (409)", addProc.status === 409, `status: ${addProc.status}`);
+    if (procBefore.data?.id) {
+        const delProc = await call('DELETE', `/visit-procedures/${procBefore.data.id}`, undefined, token);
+        ok("qulflangan qabuldan xizmat O'CHIRILMADI (409)", delProc.status === 409, `status: ${delProc.status}`);
+    }
 }
 
 function finish() {

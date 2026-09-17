@@ -90,6 +90,8 @@ export interface Patient {
   pinfl?: string;
   /** Registratura aytadigan raqam (UUID emas). Migratsiya 0003 */
   cardNumber?: string | null;
+  /** Kartochka ochilgan vaqt — «Yangi bemorlar» filtri shunga qaraydi */
+  createdAt?: string;
 }
 
 export interface Appointment {

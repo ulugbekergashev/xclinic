@@ -383,8 +383,99 @@ async function main() {
         }
     }
 
+    await auditStockFixes();
+
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);
+}
+
+/* ═══ AUDIT TUZATISHLARI: OMBOR ═════════════════════════════════════════════
+     · partiyasiz qoldiq «yaroqli qoldiq» deb sanalmasdi;
+     · `force` bilan muddati o'tgan partiya BIRINCHI sarflanardi;
+     · inventarizatsiya partiyalarga tegmasdi (qoldiq bilan partiyalar ajralardi);
+     · bir necha partiyadan chiqqan material bekor qilinganda hisob qatori
+       faqat birinchi harakatga bog'langan edi;
+     · muolaja o'chirilganda retsept bo'yicha chiqqan material qaytmasdi. */
+async function auditStockFixes() {
+    const t = Date.now() % 100000;
+    const batchesOf = async (id: string) => (await api('GET', `/inventory/${id}/batches`)).data || [];
+    const byNumber = (list: any[], n: string) => list.find((b: any) => b.batchNumber === n);
+
+    console.log('\n═══ AUDIT 1. PARTIYASIZ QOLDIQ HAM YAROQLI ═════════');
+    /* Boshlang'ich 10 dona partiyasiz, ustiga 5 dona MUDDATI O'TGAN partiya. */
+    const a = (await api('POST', '/inventory', { name: `Partiyasiz ${t}`, unit: 'dona', quantity: 10, price: 0, isConsumable: true })).data;
+    await api('POST', '/stock-movements/in', { itemId: a?.id, quantity: 5, cost: 0, batchNumber: 'ESKI', expiryDate: '2020-01-01' });
+    const outA = await api('POST', '/stock-movements/out', { itemId: a?.id, quantity: 3, reason: 'Manual' });
+    ok('partiyasiz qoldiqdan chiqim O\'TDI (409 emas)', outA.status === 200,
+        `status: ${outA.status}, ${JSON.stringify(outA.data).slice(0, 120)}`);
+    ok("muddati o'tgan partiyaga tegilmadi (5)", Math.round(byNumber(await batchesOf(a?.id), 'ESKI')?.quantity) === 5);
+    const tooMuch = await api('POST', '/stock-movements/out', { itemId: a?.id, quantity: 9, reason: 'Manual' });
+    ok("yaroqli qoldiqdan ko'p so'ralsa hamon 409 (7 bor, 9 kerak)", tooMuch.status === 409, `status: ${tooMuch.status}`);
+
+    console.log("\n═══ AUDIT 2. FORCE: AVVAL YAROQLI, KEYIN MUDDATI O'TGAN ═══");
+    const b = (await api('POST', '/inventory', { name: `Majburiy ${t}`, unit: 'dona', quantity: 0, price: 0, isConsumable: true })).data;
+    await api('POST', '/stock-movements/in', { itemId: b?.id, quantity: 5, cost: 0, batchNumber: 'OTGAN', expiryDate: '2020-01-01' });
+    await api('POST', '/stock-movements/in', { itemId: b?.id, quantity: 5, cost: 0, batchNumber: 'YAROQLI', expiryDate: '2030-01-01' });
+    const forced = await api('POST', '/stock-movements/out', { itemId: b?.id, quantity: 7, reason: 'Manual', force: true });
+    ok('majburiy chiqim o\'tdi', forced.status === 200, `status: ${forced.status}`);
+    const bb = await batchesOf(b?.id);
+    ok('YAROQLI partiya birinchi sarflandi (5 → 0)', Math.round(byNumber(bb, 'YAROQLI')?.quantity) === 0,
+        String(byNumber(bb, 'YAROQLI')?.quantity));
+    ok("muddati o'tgandan faqat qolgani olindi (5 → 3)", Math.round(byNumber(bb, 'OTGAN')?.quantity) === 3,
+        String(byNumber(bb, 'OTGAN')?.quantity));
+
+    console.log('\n═══ AUDIT 3. INVENTARIZATSIYA PARTIYANI HAM KAMAYTIRADI ═══');
+    const c = (await api('POST', '/inventory', { name: `Sanash ${t}`, unit: 'dona', quantity: 0, price: 0, isConsumable: true })).data;
+    await api('POST', '/stock-movements/in', { itemId: c?.id, quantity: 10, cost: 0, batchNumber: 'SANAL', expiryDate: '2030-01-01' });
+    const adj = await api('POST', '/stock-movements/adjust', { itemId: c?.id, actualQuantity: 4, note: 'audit' });
+    ok('inventarizatsiya o\'tdi', adj.status === 200, `status: ${adj.status}`);
+    ok('partiya ham haqiqiy songa tushdi (10 → 4)', Math.round(byNumber(await batchesOf(c?.id), 'SANAL')?.quantity) === 4);
+    ok('INVARIANT: qoldiq = harakatlar yig\'indisi', Math.abs((await movementSum(c?.id)) - 4) < 0.001);
+
+    console.log("\n═══ AUDIT 4. BIR NECHA PARTIYALI CHIQIMNI BEKOR QILISH ═══");
+    const pid = (await api('POST', '/patients', {
+        firstName: 'Partiya', lastName: `Bemor${t}`, gender: 'Male', phone: `+99877${String(1000000 + t).slice(-7)}`, force: true,
+    })).data?.id;
+    const d = (await api('POST', '/inventory', { name: `Ikki partiya ${t}`, unit: 'dona', quantity: 0, price: 10000, isConsumable: true })).data;
+    await api('POST', '/stock-movements/in', { itemId: d?.id, quantity: 2, cost: 0, batchNumber: 'P1', expiryDate: '2029-01-01' });
+    await api('POST', '/stock-movements/in', { itemId: d?.id, quantity: 3, cost: 0, batchNumber: 'P2', expiryDate: '2030-01-01' });
+    const give = await api('POST', '/stock-movements/out', { itemId: d?.id, quantity: 4, reason: 'Manual', patientId: pid });
+    const moves = give.data?.moves || [];
+    ok('material ikki partiyadan chiqdi', moves.length === 2, `harakatlar: ${moves.length}`);
+    ok('qator 4 × 10 000 = 40 000', Math.round(give.data?.charge?.total || 0) === 40000, String(give.data?.charge?.total));
+    const chargeNow = async () => ((await api('GET', `/charges?patientId=${pid}&status=`)).data || [])
+        .concat((await api('GET', `/charges?patientId=${pid}&status=Cancelled`)).data || [])
+        .find((x: any) => x.id === give.data?.charge?.id);
+    if (moves.length === 2) {
+        const r2 = await api('POST', `/stock-movements/${moves[1].id}/reverse`, {});
+        ok('IKKINCHI harakat bekor qilindi', r2.status === 200 && r2.data?.chargesAdjusted === 1,
+            `status: ${r2.status}, ${JSON.stringify(r2.data).slice(0, 120)}`);
+        const half = await chargeNow();
+        ok('qator qaytgan qismga kamaydi (2 dona, 20 000)',
+            half?.status === 'Unpaid' && Math.round(half?.quantity) === 2 && Math.round(half?.total) === 20000,
+            `${half?.status}, ${half?.quantity}, ${half?.total}`);
+        const r1 = await api('POST', `/stock-movements/${moves[0].id}/reverse`, {});
+        ok('birinchi harakat ham bekor qilindi', r1.status === 200 && r1.data?.chargesCancelled === 1,
+            `status: ${r1.status}, ${JSON.stringify(r1.data).slice(0, 120)}`);
+        ok('hammasi qaytgach qator BEKOR', (await chargeNow())?.status === 'Cancelled');
+    }
+
+    console.log("\n═══ AUDIT 5. MUOLAJA O'CHIRILSA MATERIAL QAYTADI ═══════");
+    const e = (await api('POST', '/inventory', { name: `Retsept qaytishi ${t}`, unit: 'dona', quantity: 0, price: 0, isConsumable: true })).data;
+    await api('POST', '/stock-movements/in', { itemId: e?.id, quantity: 10, cost: 0, batchNumber: 'R', expiryDate: '2030-01-01' });
+    const svc = (await api('POST', '/services', { name: `Qaytuvchi xizmat ${t}`, price: 30000, duration: 15 })).data;
+    await api('PUT', `/service-recipes/${svc?.id}`, { lines: [{ itemId: e?.id, quantity: 2 }] });
+    const visit = (await api('POST', '/visits', { patientId: pid, force: true })).data;
+    const proc = await api('POST', `/visits/${visit?.id}/procedures`, { serviceId: svc?.id });
+    ok("retseptli xizmat qo'shildi", proc.status === 200, `status: ${proc.status}`);
+    ok('material chiqdi (10 → 8)', Math.round((await itemById(e?.id))?.quantity) === 8);
+    const del = await api('DELETE', `/visit-procedures/${proc.data?.id}`);
+    ok("muolaja o'chirildi", del.status === 200 && del.data?.stockReversed === 1,
+        `status: ${del.status}, ${JSON.stringify(del.data).slice(0, 100)}`);
+    ok('MATERIAL OMBORGA QAYTDI (8 → 10)', Math.round((await itemById(e?.id))?.quantity) === 10,
+        String((await itemById(e?.id))?.quantity));
+    ok('partiya ham tiklandi', Math.round(byNumber(await batchesOf(e?.id), 'R')?.quantity) === 10);
+    ok('INVARIANT saqlandi', Math.abs((await movementSum(e?.id)) - 10) < 0.001);
 }
 
 main().catch((e) => { console.error('Sinov yiqildi:', e); process.exit(1); });

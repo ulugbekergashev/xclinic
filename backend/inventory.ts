@@ -34,17 +34,17 @@ const today = () => tashkentDateStr();
 /* ─── Vaqtinchalik xatolarda qayta urinish ────────────────────────────────
    SQLite bitta yozuvchiga ruxsat beradi. O'lchov (`_t_locking.ts`, 12 ta
    parallel tranzaksiya) hozirgi sozlamada qulf xatosi bermadi, lekin ombor
-   chiqimi ALOHIDA holat: uning ikki chaqiruvchisi xatoni ATAYLAB yutadi —
-   `inpatient.ts` (dori berish fakti ombor xatosi tufayli yo'qolmasin) va
-   `multiprofile.ts` (xizmat qo'shish to'xtamasin). Ikkalasi ham to'g'ri
-   qaror, lekin natijada rollback bo'lgan chiqim JIMGINA yo'qoladi.
+   chiqimi ALOHIDA holat: `multiprofile.ts` xatoni ATAYLAB yutadi (xizmat
+   qo'shish to'xtamasin), ya'ni rollback bo'lgan chiqim JIMGINA yo'qoladi.
+   (`inpatient.ts` ham yutardi — endi dori yozuvi, chiqim va hisob bitta
+   tranzaksiyada va xato hamshiraga qaytadi.)
 
    Shuning uchun bu yerda qayta urinish shart, ixtiyoriy emas: tranzaksiya
    atomar bo'lgani uchun qayta urinish xavfsiz — yarim bajarilgan holat
    qolmaydi.                                                              */
 const TRANSIENT = /database is locked|SQLITE_BUSY|Timed out fetching|Transaction already closed|P2028|P2034/i;
 
-async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): Promise<T> {
+export async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): Promise<T> {
     let lastErr: any;
     for (let i = 1; i <= attempts; i++) {
         try {
@@ -74,7 +74,7 @@ export type StockClient = any;   // prisma yoki tranzaksiya klienti
  * xizmat allaqachon ko'rsatilgan va uni "material yetmadi" deb bekor qilib
  * bo'lmaydi. Farq inventarizatsiyada ko'rinadi.
  */
-async function writeOffCore(db: StockClient, input: {
+export async function writeOffCore(db: StockClient, input: {
     clinicId: string;
     itemId: string;
     quantity: number;
@@ -106,11 +106,21 @@ async function writeOffCore(db: StockClient, input: {
        Dev bazada 13 ta partiyaning muddati o'tgan va ularning hech biri
        hech narsani to'smasdi. */
     const today = tashkentDateStr();
-    const expired = all.filter((b: any) => b.expiryDate && b.expiryDate < today);
-    const batches = input.allowExpired ? all : all.filter((b: any) => !(b.expiryDate && b.expiryDate < today));
+    const isExpired = (b: any) => !!(b.expiryDate && b.expiryDate < today);
+    const expired = all.filter(isExpired);
+    const valid = all.filter((b: any) => !isExpired(b));
+
+    /* PARTIYASIZ QOLDIQ ham yaroqli qoldiq. Mahsulot qoldig'i partiyalar
+       yig'indisidan katta bo'lishi mumkin: 0028 dan oldingi boshlang'ich
+       qoldiq, partiyasiz chiqimning bekor qilinishi. Ilgari tekshiruv faqat
+       partiyalarni sanardi — omborda 50 dona tursa ham, bitta muddati o'tgan
+       partiya bo'lgani uchun chiqim «qoldiq yetarli emas» deb to'xtardi. */
+    const item = await db.inventoryItem.findUnique({ where: { id: itemId }, select: { quantity: true } });
+    const inBatches = all.reduce((n: number, b: any) => n + b.quantity, 0);
+    const unbatched = Math.max(0, round((item?.quantity || 0) - inBatches));
 
     if (!input.allowExpired && expired.length > 0) {
-        const usable = batches.reduce((n: number, b: any) => n + b.quantity, 0);
+        const usable = round(valid.reduce((n: number, b: any) => n + b.quantity, 0) + unbatched);
         if (usable < quantity) {
             /* Jimgina partiyasiz chiqim qilib qo'ymaymiz: quyidagi
                `left > 0` shoxi aynan shuni qilardi va yaroqsiz dori
@@ -128,53 +138,70 @@ async function writeOffCore(db: StockClient, input: {
     }
 
     // Muddati ko'rsatilmaganlarni oxirga suramiz
-    batches.sort((a: any, b: any) => {
+    const fefo = (a: any, b: any) => {
         if (!a.expiryDate && !b.expiryDate) return 0;
         if (!a.expiryDate) return 1;
         if (!b.expiryDate) return -1;
         return a.expiryDate.localeCompare(b.expiryDate);
-    });
+    };
+    valid.sort(fefo);
+    expired.sort(fefo);
 
     let left = quantity;
     const moves: any[] = [];
 
-    for (const b of batches) {
-        if (left <= 0) break;
-        const take = Math.min(left, b.quantity);
-        await db.inventoryBatch.update({
-            where: { id: b.id },
-            data: { quantity: round(b.quantity - take) },
-        });
-        moves.push(await db.stockMovement.create({
-            data: {
-                clinicId, itemId, batchId: b.id,
-                type: 'Out', quantity: -take,
-                reason: input.reason,
-                visitId: input.visitId || null,
-                serviceId: input.serviceId || null,
-                patientId: input.patientId || null,
-                note: input.note || null,
-                userName: input.userName || null,
-            },
-        }));
-        left = round(left - take);
-    }
-
-    // Partiyalar yetmadi — qolganini partiyasiz chiqim qilamiz
-    if (left > 0) {
+    const takeFrom = async (list: any[]) => {
+        for (const b of list) {
+            if (left <= 0) break;
+            const take = Math.min(left, b.quantity);
+            await db.inventoryBatch.update({
+                where: { id: b.id },
+                data: { quantity: round(b.quantity - take) },
+            });
+            moves.push(await db.stockMovement.create({
+                data: {
+                    clinicId, itemId, batchId: b.id,
+                    type: 'Out', quantity: -take,
+                    reason: input.reason,
+                    visitId: input.visitId || null,
+                    serviceId: input.serviceId || null,
+                    patientId: input.patientId || null,
+                    note: input.note || null,
+                    userName: input.userName || null,
+                },
+            }));
+            left = round(left - take);
+        }
+    };
+    const takeUnbatched = async (amount: number, why: string) => {
+        if (!(amount > 0)) return;
         moves.push(await db.stockMovement.create({
             data: {
                 clinicId, itemId, batchId: null,
-                type: 'Out', quantity: -left,
+                type: 'Out', quantity: -amount,
                 reason: input.reason,
                 visitId: input.visitId || null,
                 serviceId: input.serviceId || null,
                 patientId: input.patientId || null,
-                note: [input.note, 'partiyasiz (qoldiq yetmadi)'].filter(Boolean).join(' · '),
+                note: [input.note, why].filter(Boolean).join(' · '),
                 userName: input.userName || null,
             },
         }));
-    }
+        left = round(left - amount);
+    };
+
+    /* TARTIB: yaroqli partiyalar (FEFO) → partiyasiz qoldiq → muddati
+       o'tganlar (faqat `allowExpired` bilan) → yetmagan qism.
+
+       Ilgari `allowExpired` da hamma partiya bitta FEFO ro'yxatida edi va
+       muddati o'tgan partiya ENG BOSHIDA turardi: «majburan» chiqimda
+       yaroqli dori qutida qolib, yaroqsizi birinchi sarflanardi. Ruxsat
+       yaroqsizni ISHLATISHGA, uni birinchi navbatga qo'yishga emas. */
+    await takeFrom(valid);
+    await takeUnbatched(Math.min(left, unbatched), 'partiyasiz qoldiqdan');
+    if (input.allowExpired) await takeFrom(expired);
+    // Hech narsa yetmadi — qolganini partiyasiz chiqim qilamiz (manfiy qoldiq)
+    await takeUnbatched(left, 'partiyasiz (qoldiq yetmadi)');
 
     await db.inventoryItem.update({
         where: { id: itemId },
@@ -194,6 +221,11 @@ export async function writeOff(prisma: any, input: Parameters<typeof writeOffCor
     );
 }
 
+/** Retsept chiqimi qaysi muolajaga tegishli — izohdagi yorliq. Sxemada
+ *  alohida ustun yo'q; muolaja o'chirilganda aynan uning chiqimi shu
+ *  yorliq bo'yicha topilib, omborga qaytariladi. */
+export const procedureTag = (procedureId: string) => `muolaja:${procedureId}`;
+
 /**
  * Xizmat retsepti bo'yicha materiallarni avtomatik chiqim qiladi.
  * Xizmat qabulga qo'shilganda chaqiriladi. Retsept yo'q bo'lsa hech narsa
@@ -204,6 +236,8 @@ export async function applyServiceRecipe(prisma: any, input: {
     serviceId: number;
     visitId?: string | null;
     userName?: string | null;
+    /** Chiqimni muolajaga bog'lash — o'chirilganda qaytarish uchun */
+    procedureId?: string | null;
 }) {
     const lines = await prisma.serviceRecipe.findMany({
         where: { serviceId: input.serviceId, clinicId: input.clinicId },
@@ -230,7 +264,9 @@ export async function applyServiceRecipe(prisma: any, input: {
                     reason: 'Service',
                     visitId: input.visitId,
                     serviceId: input.serviceId,
-                    note: `Retsept: ${line.item?.name || ''}`,
+                    note: [`Retsept: ${line.item?.name || ''}`,
+                        input.procedureId ? procedureTag(input.procedureId) : null]
+                        .filter(Boolean).join(' · '),
                     userName: input.userName,
                 });
                 cost += (line.item?.price || 0) * line.quantity;
@@ -238,6 +274,93 @@ export async function applyServiceRecipe(prisma: any, input: {
             return { applied: lines.length, cost: round(cost) };
         }, { timeout: 20000, maxWait: 10000 }),
     );
+}
+
+/**
+ * Bitta chiqimni bekor qilish — OCHIQ TRANZAKSIYA ichida (`tx`).
+ *
+ * Ikki chaqiruvchisi bor: `POST /api/stock-movements/:id/reverse` va
+ * muolajani o'chirish (`multiprofile.ts`) — retsept bo'yicha chiqqan
+ * material omborga qaytadi. Mantiq bitta joyda: ikki nusxa birinchi
+ * o'zgarishdayoq ajralib ketardi.
+ *
+ * Xatoni TASHLAMAYDI, kod qaytaradi: chaqiruvchi o'zi hal qiladi.
+ */
+export async function reverseMovementTx(tx: any, clinicId: string, id: string, opts: {
+    note?: string | null; userName?: string | null;
+} = {}): Promise<
+    | { code: 200; move: any; chargesCancelled: number; chargesAdjusted: number }
+    | { code: 400 | 403 | 409; error?: string }
+> {
+    const move = await tx.stockMovement.findUnique({ where: { id } });
+    if (!move || move.clinicId !== clinicId) return { code: 403 };
+    if (move.type !== 'Out') return { code: 400, error: 'Faqat chiqimni bekor qilish mumkin' };
+
+    const already = await tx.stockMovement.findFirst({ where: { reversalOfId: id } });
+    if (already) return { code: 409, error: 'Bu chiqim allaqachon bekor qilingan' };
+
+    const back = -move.quantity;   // chiqim manfiy edi → qaytish musbat
+
+    if (move.batchId) {
+        await tx.inventoryBatch.update({
+            where: { id: move.batchId },
+            data: { quantity: { increment: back } },
+        });
+    }
+    await tx.inventoryItem.update({
+        where: { id: move.itemId },
+        data: { quantity: { increment: back } },
+    });
+
+    const created = await tx.stockMovement.create({
+        data: {
+            clinicId, itemId: move.itemId, batchId: move.batchId,
+            type: 'In', quantity: back, reason: 'Manual',
+            patientId: move.patientId, visitId: move.visitId,
+            reversalOfId: id,
+            note: opts.note || 'Chiqim bekor qilindi',
+            userName: opts.userName || null,
+        },
+    });
+
+    /* HISOB QATORI — QAYTARILGAN MIQDORGA PROPORSIONAL.
+
+       Bemorga berilgan material bir necha partiyadan chiqsa, harakat ham
+       bir nechta bo'ladi, qator esa BITTA (butun miqdorga). Ilgari qator
+       faqat BIRINCHI harakatga bog'lanardi: ikkinchi partiyaning chiqimi
+       bekor qilinsa pul joyida qolardi, birinchisiniki bekor qilinsa esa
+       qator BUTUNLAY bekor bo'lib, qolgan material bepul ketardi.
+
+       Endi qator hamma harakatga bog'langan (`sourceId` — id lar vergul
+       bilan) va har bekor qilishda miqdori qaytgan qismga kamayadi. Nolga
+       tushsa bekor qilinadi.
+
+       PULI OLINGAN qatorga tegilmaydi — uni faqat kassadagi qaytarish
+       yechadi (`billing.ts` dagi qoida bilan bir xil). */
+    let chargesCancelled = 0;
+    let chargesAdjusted = 0;
+    const linked = await tx.visitCharge.findMany({
+        where: {
+            clinicId, source: 'Medication', status: 'Unpaid', paidAmount: { lt: 0.5 },
+            sourceId: { contains: id },
+        },
+    });
+    for (const c of linked) {
+        // `contains` — faqat vergulli ro'yxatdagi ANIQ id (qism-satr emas)
+        if (!String(c.sourceId || '').split(',').includes(id)) continue;
+        const newQty = round((c.quantity || 0) - back);
+        const newTotal = som(Math.max(0, c.unitPrice * newQty - (c.discount || 0)));
+        const r = await tx.visitCharge.updateMany({
+            where: { id: c.id, status: 'Unpaid', paidAmount: c.paidAmount, quantity: c.quantity },
+            data: newQty <= 0.0005 || newTotal <= 0
+                ? { status: 'Cancelled' }
+                : { quantity: newQty, total: newTotal },
+        });
+        if (r.count === 0) continue;
+        if (newQty <= 0.0005 || newTotal <= 0) chargesCancelled++; else chargesAdjusted++;
+    }
+
+    return { code: 200, move: created, chargesCancelled, chargesAdjusted };
 }
 
 export function registerInventoryRoutes(app: express.Express, deps: Deps) {
@@ -443,7 +566,10 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
                 patientName: `${p?.lastName || ''} ${p?.firstName || ''}`.trim(),
                 visitId: visitId || null,
                 source: 'Medication',
-                sourceId: moves[0]?.id || null,
+                /* HAMMA harakat id si — material bir necha partiyadan chiqqan
+                   bo'lishi mumkin va istalgan birining bekor qilinishi
+                   qatorga yetib borishi kerak (`reverseMovementTx`). */
+                sourceId: moves.map((m: any) => m.id).join(',') || null,
                 name: item.name,
                 unitPrice,
                 quantity: qty,
@@ -466,60 +592,30 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
         const { note, userName } = req.body || {};
         const id = req.params.id;
 
+        /* Chiqim bekor qilinsa, u tug'dirgan hisob qatori ham kamayadi yoki
+           bekor bo'ladi — aks holda material qaytarilgan, pul esa kassaning
+           «to'lanmagan» ro'yxatida abadiy qolardi. Mantiq `reverseMovementTx`
+           da: muolajani o'chirish ham shuni ishlatadi. */
         const result = await withRetry<any>('Chiqimni bekor qilish', () =>
-            prisma.$transaction(async (tx: any) => {
-                const move = await tx.stockMovement.findUnique({ where: { id } });
-                if (!move || move.clinicId !== clinicId) return { code: 403 };
-                if (move.type !== 'Out') return { code: 400, error: 'Faqat chiqimni bekor qilish mumkin' };
-
-                const already = await tx.stockMovement.findFirst({ where: { reversalOfId: id } });
-                if (already) return { code: 409, error: 'Bu chiqim allaqachon bekor qilingan' };
-
-                const back = -move.quantity;   // chiqim manfiy edi → qaytish musbat
-
-                if (move.batchId) {
-                    await tx.inventoryBatch.update({
-                        where: { id: move.batchId },
-                        data: { quantity: { increment: back } },
-                    });
-                }
-                await tx.inventoryItem.update({
-                    where: { id: move.itemId },
-                    data: { quantity: { increment: back } },
-                });
-
-                const created = await tx.stockMovement.create({
-                    data: {
-                        clinicId, itemId: move.itemId, batchId: move.batchId,
-                        type: 'In', quantity: back, reason: 'Manual',
-                        patientId: move.patientId, visitId: move.visitId,
-                        reversalOfId: id,
-                        note: note || 'Chiqim bekor qilindi',
-                        userName: userName || req.user?.name || null,
-                    },
-                });
-                /* Chiqim bekor qilinsa, u tug'dirgan hisob qatori ham
-                   bekor bo'ladi — aks holda material qaytarilgan, pul esa
-                   kassaning «to'lanmagan» ro'yxatida abadiy qolardi.
-
-                   TO'LANGAN qatorga tegilmaydi: pul allaqachon olingan va
-                   uni faqat kassadagi qaytarish amali yechadi. */
-                const cancelled = await tx.visitCharge.updateMany({
-                    where: { clinicId, source: 'Medication', sourceId: id, status: 'Unpaid' },
-                    data: { status: 'Cancelled' },
-                });
-
-                return { code: 200, move: created, chargesCancelled: cancelled.count };
-            }, { timeout: 15000, maxWait: 10000 }),
+            prisma.$transaction(
+                (tx: any) => reverseMovementTx(tx, clinicId, id, {
+                    note, userName: userName || req.user?.name || null,
+                }),
+                { timeout: 15000, maxWait: 10000 },
+            ),
         );
 
         if (result.code !== 200) {
             return res.status(result.code).json({ error: result.error || "Ruxsat yo'q" });
         }
-        if (result.chargesCancelled > 0) {
+        if (result.chargesCancelled > 0 || result.chargesAdjusted > 0) {
             emitEvent(clinicId, 'charge.changed', { reason: 'material-reversed' });
         }
-        res.json({ move: result.move, chargesCancelled: result.chargesCancelled });
+        res.json({
+            move: result.move,
+            chargesCancelled: result.chargesCancelled,
+            chargesAdjusted: result.chargesAdjusted,
+        });
     });
 
     /**
@@ -590,15 +686,60 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
                 const diff = round(actual - item.quantity);
                 if (diff === 0) return { changed: false };
 
-                const move = await tx.stockMovement.create({
-                    data: {
-                        clinicId, itemId, type: 'Adjust', quantity: diff, reason: 'Inventory',
-                        note: note || `Inventarizatsiya: ${item.quantity} → ${actual}`,
-                        userName: userName || null,
-                    },
-                });
+                const baseNote = note || `Inventarizatsiya: ${item.quantity} → ${actual}`;
+
+                /* PARTIYALAR HAM KAMAYADI. Ilgari faqat mahsulot qoldig'i
+                   o'zgarardi: sanashda 10 ta kam chiqsa ham partiyalar
+                   eskicha turardi va FEFO keyin YO'Q tovarni «partiyadan»
+                   chiqarardi — qoldiq bilan partiyalar orasidagi farq shu
+                   yerdan boshlanardi.
+
+                   Kamomad avval partiyasiz qoldiqdan, keyin partiyalardan
+                   yechiladi: muddati o'tganlar birinchi (ular odatda
+                   tashlab yuborilgan), keyin muddati yaqinlari. Har partiya
+                   o'z harakatini oladi — «partiya qoldig'i = uning
+                   harakatlari yig'indisi» invarianti buzilmaydi. */
+                const moves: any[] = [];
+                let batchPart = 0;
+                if (diff < 0) {
+                    const batches = await tx.inventoryBatch.findMany({
+                        where: { itemId, quantity: { gt: 0 } },
+                    });
+                    const inBatches = round(batches.reduce((n: number, b: any) => n + b.quantity, 0));
+                    // Partiyalar haqiqiy qoldiqdan qanchaga oshib ketgan
+                    let excess = round(Math.min(-diff, inBatches - Math.max(0, actual)));
+                    const todayStr = tashkentDateStr();
+                    const rank = (b: any) => (b.expiryDate && b.expiryDate < todayStr ? 0 : 1);
+                    batches.sort((a: any, b: any) => rank(a) - rank(b)
+                        || String(a.expiryDate || '9999').localeCompare(String(b.expiryDate || '9999')));
+                    for (const b of batches) {
+                        if (!(excess > 0)) break;
+                        const take = round(Math.min(excess, b.quantity));
+                        await tx.inventoryBatch.update({
+                            where: { id: b.id }, data: { quantity: round(b.quantity - take) },
+                        });
+                        moves.push(await tx.stockMovement.create({
+                            data: {
+                                clinicId, itemId, batchId: b.id, type: 'Adjust', quantity: -take,
+                                reason: 'Inventory', note: baseNote, userName: userName || null,
+                            },
+                        }));
+                        batchPart = round(batchPart + take);
+                        excess = round(excess - take);
+                    }
+                }
+
+                const rest = round(diff + batchPart);   // partiyasiz qism
+                if (rest !== 0) {
+                    moves.push(await tx.stockMovement.create({
+                        data: {
+                            clinicId, itemId, type: 'Adjust', quantity: rest, reason: 'Inventory',
+                            note: baseNote, userName: userName || null,
+                        },
+                    }));
+                }
                 await tx.inventoryItem.update({ where: { id: itemId }, data: { quantity: actual } });
-                return { changed: true, move, diff };
+                return { changed: true, move: moves[moves.length - 1], moves, diff };
             }, { timeout: 15000, maxWait: 10000 }),
         );
         if ((result as any).forbidden) return res.status(403).json({ error: "Ruxsat yo'q" });

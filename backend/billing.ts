@@ -90,16 +90,34 @@ export async function createCharge(prisma: any, input: {
     });
 }
 
+/* «Puli olingan» chegarasi. Pul butun so'mda yuradi (`money.ts`), ya'ni
+   yarim so'mdan kami — nol. Meros kasrli qiymat qatorni abadiy
+   «to'langan» qilib qo'ymasin. */
+const PAID_EPS = 0.5;
+
+/** Bekor qilinmagan, lekin PULI OLINGAN qatorlar sharti (qisman ham). */
+export const paidChargeWhere = (source: ChargeSource, sourceId: string) => ({
+    source, sourceId, status: { not: 'Cancelled' }, paidAmount: { gte: PAID_EPS },
+});
+
 /**
  * Manba yozuvi o'chirilganda uning qatorini bekor qiladi.
- * To'langan qator bekor qilinmaydi — pul allaqachon olingan, uni faqat
- * qaytarish operatsiyasi bilan yechish mumkin.
+ *
+ * PULI OLINGAN qator bekor qilinmaydi — QISMAN to'langani ham. Ilgari shart
+ * faqat `status: 'Unpaid'` edi, qisman to'langan qator esa ham 'Unpaid':
+ * muolaja o'chirilganda u jimgina bekor bo'lardi va olingan pul hech
+ * qayerda «qarz» ham, «qaytarish kerak» ham bo'lib ko'rinmasdi.
+ *
+ * `blocked` — puli olingani uchun qolib ketgan qatorlar soni. Chaqiruvchi
+ * uni ko'rib 409 qaytaradi: avval kassada qaytarish rasmiylashtiriladi.
  */
 export async function cancelChargesBySource(prisma: any, source: ChargeSource, sourceId: string) {
-    return prisma.visitCharge.updateMany({
-        where: { source, sourceId, status: 'Unpaid' },
+    const cancelled = await prisma.visitCharge.updateMany({
+        where: { source, sourceId, status: 'Unpaid', paidAmount: { lt: PAID_EPS } },
         data: { status: 'Cancelled' },
     });
+    const blocked = await prisma.visitCharge.count({ where: paidChargeWhere(source, sourceId) });
+    return { count: cancelled.count, blocked };
 }
 
 /* ─── BUYURTMA TO‘LANDIMI ───────────────────────────────────
@@ -317,6 +335,17 @@ export async function applyChargePayment(tx: any, clinicId: string, input: Charg
             "Bu qatorlar oradan o'zgardi — boshqa kassir to'lov qabul qilgan bo'lishi mumkin. "
             + "Ro'yxatni yangilab, qaytadan urinib ko'ring.",
             { code: 'CHARGES_CHANGED' });
+    }
+
+    /* BITTA TO'LOV — BITTA BEMOR. Ilgari tanlangan qatorlar kimniki ekani
+       tekshirilmasdi: chek BIRINCHI qatorning bemoriga yozilardi, avans ham
+       o'shandan yechilardi, ikkinchi bemorning qatori esa uning puli bilan
+       yopilib ketardi. Bemorsiz qator ismi bo'yicha guruhlanadi. */
+    const owners = new Set(charges.map((c: any) => c.patientId || `noname:${c.patientName}`));
+    if (owners.size > 1) {
+        throw new HttpError(400,
+            "Bitta to'lovda faqat bitta bemorning qatorlari bo'lishi mumkin",
+            { code: 'MIXED_PATIENTS' });
     }
 
     const remainingOf = (c: any) => round(c.total - (c.paidAmount || 0));
@@ -784,17 +813,31 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
         if (charge.status === 'Paid') {
             return res.status(409).json({ error: "To'langan qatorni o'chirib bo'lmaydi" });
         }
+        /* QISMAN TO'LANGAN qator ham o'chirilmaydi: uning holati 'Unpaid',
+           lekin pul olingan. Bekor qilinsa u pul qarzdan ham, qaytarishdan
+           ham tushib qolardi. */
+        if (charge.status !== 'Cancelled' && (charge.paidAmount || 0) >= PAID_EPS) {
+            return res.status(409).json({
+                error: `Qatorga ${Math.round(charge.paidAmount)} so'm to'langan — avval kassada qaytarishni rasmiylashtiring`,
+                code: 'CHARGE_HAS_PAYMENT',
+            });
+        }
 
         /* Shartli yangilash: o'qish bilan yozish orasida kassir qatorni to'lab
-           qo'ygan bo'lishi mumkin — u holda `status` allaqachon 'Paid' va
-           `updateMany` hech narsani o'zgartirmaydi.
+           qo'ygan bo'lishi mumkin — u holda `status` 'Paid' yoki `paidAmount`
+           noldan katta va `updateMany` hech narsani o'zgartirmaydi.
 
-           `status: { not: 'Paid' }` ATAYLAB: allaqachon bekor qilingan qator
-           yana bekor qilinaveradi va javob muvaffaqiyatli bo'ladi. Ikki marta
-           bosish yoki eskirgan ro'yxatdan o'chirish xato ko'rsatmasligi kerak —
-           bu hozirgi xatti-harakat va u saqlanadi. */
+           Bekor qilingan qator ATAYLAB yana bekor qilinaveradi va javob
+           muvaffaqiyatli bo'ladi. Ikki marta bosish yoki eskirgan ro'yxatdan
+           o'chirish xato ko'rsatmasligi kerak — bu hozirgi xatti-harakat. */
         const cancelled = await prisma.visitCharge.updateMany({
-            where: { id: req.params.id, clinicId, status: { not: 'Paid' } },
+            where: {
+                id: req.params.id, clinicId,
+                OR: [
+                    { status: 'Cancelled' },
+                    { status: 'Unpaid', paidAmount: { lt: PAID_EPS } },
+                ],
+            },
             data: { status: 'Cancelled' },
         });
         if (cancelled.count === 0) {
@@ -1033,8 +1076,14 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             where: { id: charge.id },
             data: {
                 paidAmount: newPaid,
-                // To'liq qaytarilsa qator yana to'lanmagan holatga qaytadi
-                status: newPaid >= charge.total - 0.001 ? 'Paid' : 'Unpaid',
+                /* To'liq qaytarilsa qator yana to'lanmagan holatga qaytadi.
+                   BEKOR QILINGAN qator esa bekorligicha qoladi: ilgari u shu
+                   yerda 'Unpaid' ga aylanib, o'chirilgan muolaja kassaning
+                   «to'lanmagan» ro'yxatida qayta tirilardi. Meros holatdagi
+                   (bekor qilingan, lekin puli olingan) qatorning pulini
+                   qaytarish esa mumkin bo'lib qoladi. */
+                status: charge.status === 'Cancelled' ? 'Cancelled'
+                    : newPaid >= charge.total - 0.001 ? 'Paid' : 'Unpaid',
                 ...(newPaid <= 0.001 ? { paidAt: null } : {}),
             },
         });

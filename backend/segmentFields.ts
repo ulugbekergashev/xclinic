@@ -288,7 +288,7 @@ export const SEGMENT_FIELDS: SegmentFieldDef[] = [
         group: 'Moliya',
         operators: OP_BOOL,
         defaultOp: 'is_true',
-        // Qarz = Pending tranzaksiyalar + faol bo'lib to'lash qoldig'i (segments.ts)
+        // Qarz = to'lanmagan hisob qatorlari (VisitCharge), segments.ts → buildDebtMap
         predicate: (p, op, _v, ctx) => {
             const has = (ctx.debtMap.get(p.id) || 0) > 0;
             return op === 'is_true' ? has : !has;

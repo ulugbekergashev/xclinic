@@ -6,6 +6,7 @@ import { formatUzPhone } from '../shared/validation';
 import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
 
 import { useLanguage, tr, fill } from '../context/LanguageContext';
+import { csvRow } from '../utils/csv';
 /* ─────────────────────────────────────────────────────────────────────────────
    DAVOMAT — HAMMA XODIM BO'YICHA.
 
@@ -80,17 +81,15 @@ export const StaffAttendanceReport: React.FC = () => {
         const rows = data?.rows || [];
         if (!rows.length) return;
         const head = [t('staffattendancereport.ism_familiya'), t('ui.lavozim'), 'Rol', t('staffattendancereport.belgilangan_kun'), t('ui.keldi'), 'Kechikdi', t('ui.kelmadi'), t('ui.sababli'), t('staffattendancereport.davomat'), t('ui.telefon')];
-        const esc = (v: any) => {
-            const s = String(v ?? '');
-            return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-        };
-        const lines = [head.join(';')];
+        /* Kataklar `utils/csv.ts` orqali: qo'shtirnoq va formula
+           in'ektsiyasi (`=`, `+`, `-`, `@` bilan boshlangan ism) bir joyda. */
+        const lines = [csvRow(head, ';')];
         for (const r of rows) {
-            lines.push([
+            lines.push(csvRow([
                 r.name, r.position, ROLE_LABEL[r.role] || r.role,
                 r.markedDays, r.present, r.late, r.absent, r.excused,
                 r.percent == null ? '' : r.percent, r.phone || '',
-            ].map(esc).join(';'));
+            ], ';'));
         }
         /* BOM — Excel faylni UTF-8 deb tanishi uchun. Usiz o'zbekcha
            harflar «Ð°Ð±Ð²» bo'lib ochiladi. */

@@ -5,7 +5,6 @@ import {
   Search, ArrowUp, Loader2, AlertTriangle, Database, Inbox,
   CalendarCheck, TrendingUp, Wallet, Users, Package, Sparkles, RotateCcw,
 } from 'lucide-react';
-import { API_URL } from '../services/api';
 import { UserRole } from '../types';
 import { useLanguage, tr, fill } from '../context/LanguageContext';
 
@@ -62,11 +61,7 @@ interface Turn {
 }
 
 // ─── API ─────────────────────────────────────────────────────────────────────
-import { getAuthToken, isDemoMode } from '../services/api';
-
-/* Token XOTIRADA yashaydi, diskda emas (S1.3) — `services/authStore.ts`.
-   Ilgari bu yerda `localStorage` o'qilardi va u endi bo'sh qaytaradi. */
-const authToken = (): string | null => getAuthToken();
+import { authFetch, isDemoMode } from '../services/api';
 
 async function api<T>(path: string, body?: object): Promise<T> {
   /* AI javobi SERVERDA hosil bo'ladi (kalitlar bundle'ga tushmasligi
@@ -74,13 +69,12 @@ async function api<T>(path: string, body?: object): Promise<T> {
      nima uchunligini aytamiz — "tizim xatosi" degan tushunarsiz xabar
      o'rniga. */
   if (isDemoMode()) throw new Error(tr('aiassistant.ai_yordamchisi_namoyish_nusxasida'));
-  const token = authToken();
-  const res = await fetch(`${API_URL}${path}`, {
+  /* `authFetch` — token so'rov paytida o'qiladi va 401 da yangilanadi.
+     Ilgari to'g'ridan-to'g'ri `fetch` edi: 30 daqiqadan keyin token
+     eskirib, AI yordamchi «Xatolik (401)» bilan to'xtab qolardi. */
+  const res = await authFetch(path, {
     method: body ? 'POST' : 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: { 'Content-Type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await res.json().catch(() => ({}));

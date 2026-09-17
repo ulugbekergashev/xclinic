@@ -4,6 +4,7 @@ import { Transaction, Clinic } from '../types';
 import { Modal, Button } from './Common';
 import { getPaymentMethodLabel } from '../utils/paymentMethods';
 import { Printer } from 'lucide-react';
+import { esc } from '../utils/printDocument';
 
 import { useLanguage } from '../context/LanguageContext';
 interface ReceiptModalProps {
@@ -23,11 +24,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, tra
       
       const printWindow = window.open('', '', 'width=350,height=600');
       if (!printWindow) return;
+      /* Chek tanasi React chizgan DOM (u matnni o'zi qochiradi), sarlavha esa
+         satr — klinika nomi `esc()` dan o'tadi. */
 
       printWindow.document.write(`
          <html>
             <head>
-               <title>Chek - ${clinic?.name || t('ui.klinika')}</title>
+               <title>${esc(`${t('finance.cash.receipt')} - ${clinic?.name || t('ui.klinika')}`)}</title>
                <style>
                   @page { margin: 0; }
                   body {

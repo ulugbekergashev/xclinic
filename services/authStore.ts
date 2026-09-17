@@ -93,39 +93,73 @@ export function migrateLegacyStorage() {
 
 /* ─── Yangilash ──────────────────────────────────────────────────────────── */
 
+/** Yangilash natijasi. «Sessiya yo'q» va «server javob bermadi» — BOSHQA
+ *  narsalar: birinchisida foydalanuvchi qayta kirishi kerak, ikkinchisida
+ *  esa sessiya tirik, faqat tarmoq (yoki server) vaqtincha ishlamayapti. */
+export type RefreshOutcome =
+    | { ok: true; session: Session }
+    | { ok: false; reason: 'unauthorized' | 'network' };
+
+/** Vaqtinchalik xatoda qayta urinishlar orasidagi kutish (ms) */
+const REFRESH_BACKOFF = [400, 1200];
+
 /** Bir vaqtda bitta yangilash. Aks holda o'nta parallel so'rov 401 olsa,
  *  o'nta yangilash ketardi va ular bir-birining cookie'sini almashtirardi. */
-let inFlight: Promise<Session | null> | null = null;
+let inFlight: Promise<RefreshOutcome> | null = null;
 
-export function refresh(apiBase: string): Promise<Session | null> {
+/**
+ * Tokenni cookie orqali yangilaydi.
+ *
+ * ILGARI tarmoq xatosi va 5xx ham `null` qaytarardi, chaqiruvchi esa uni
+ * «sessiya tugagan» deb tushunib chiqish so'rovini yuborardi va cookie'ni
+ * o'chirardi. Ya'ni Wi-Fi bir soniya uzilsa yoki server qayta ishga
+ * tushayotgan bo'lsa, xodim tizimdan chiqarib yuborilardi.
+ *
+ * ENDI faqat 401/403 (va tokensiz javob) — «unauthorized». Tarmoq xatosi va
+ * 5xx bir necha marta qisqa kutish bilan qayta uriniladi, keyin «network»
+ * qaytadi va sessiya TEGILMAYDI.
+ */
+export function refreshWithOutcome(apiBase: string): Promise<RefreshOutcome> {
     if (inFlight) return inFlight;
 
-    inFlight = (async () => {
+    inFlight = (async (): Promise<RefreshOutcome> => {
         try {
-            const r = await fetch(`${apiBase}/auth/refresh`, {
-                method: 'POST',
-                // Cookie yuborilishi uchun shart.
-                credentials: 'include',
-            });
-            if (!r.ok) return null;
-            const data = await r.json();
-            if (!data?.token) return null;
+            for (let attempt = 0; ; attempt++) {
+                let r: Response | null = null;
+                try {
+                    r = await fetch(`${apiBase}/auth/refresh`, {
+                        method: 'POST',
+                        // Cookie yuborilishi uchun shart.
+                        credentials: 'include',
+                    });
+                } catch { r = null; /* tarmoq xatosi */ }
 
-            setToken(data.token);
-            const prev = getSession() || {};
-            const next: Session = {
-                ...prev,
-                role: data.role ?? prev.role,
-                name: data.name ?? prev.name,
-                clinicId: data.clinicId ?? prev.clinicId,
-                doctorId: data.doctorId ?? prev.doctorId,
-                receptionistId: data.receptionistId ?? prev.receptionistId,
-                technicianId: data.technicianId ?? prev.technicianId,
-            };
-            setSession(next);
-            return next;
-        } catch {
-            return null;
+                if (r && r.ok) {
+                    const data = await r.json().catch(() => null);
+                    if (!data?.token) return { ok: false, reason: 'unauthorized' };
+
+                    setToken(data.token);
+                    const prev = getSession() || {};
+                    const next: Session = {
+                        ...prev,
+                        role: data.role ?? prev.role,
+                        name: data.name ?? prev.name,
+                        clinicId: data.clinicId ?? prev.clinicId,
+                        doctorId: data.doctorId ?? prev.doctorId,
+                        receptionistId: data.receptionistId ?? prev.receptionistId,
+                        technicianId: data.technicianId ?? prev.technicianId,
+                    };
+                    setSession(next);
+                    return { ok: true, session: next };
+                }
+
+                /* 4xx (401, 403, 400…) — cookie yaroqsiz yoki yo'q. Qayta
+                   urinishdan foyda yo'q. Faqat 5xx va tarmoq — vaqtinchalik. */
+                const transient = !r || r.status >= 500 || r.status === 408 || r.status === 429;
+                if (!transient) return { ok: false, reason: 'unauthorized' };
+                if (attempt >= REFRESH_BACKOFF.length) return { ok: false, reason: 'network' };
+                await new Promise(res => setTimeout(res, REFRESH_BACKOFF[attempt]));
+            }
         } finally {
             inFlight = null;
         }
@@ -134,13 +168,37 @@ export function refresh(apiBase: string): Promise<Session | null> {
     return inFlight;
 }
 
+/** Eski shakl: sessiya yoki `null`. Faqat ishga tushishda ishlatiladi —
+ *  u yerda `null` hech narsani o'chirmaydi, kirish sahifasini ko'rsatadi. */
+export async function refresh(apiBase: string): Promise<Session | null> {
+    const r = await refreshWithOutcome(apiBase);
+    return r.ok ? r.session : null;
+}
+
+/** Chiqish so'rovi bir vaqtda bitta — parallel 401 lar har biri alohida
+ *  `logout` yubormasin. */
+let clearing: Promise<void> | null = null;
+
 /** Chiqish: xotira, sessionStorage va serverdagi cookie — uchalasi ham. */
-export async function clearSession(apiBase: string) {
+export function clearSession(apiBase: string): Promise<void> {
+    if (clearing) return clearing;
+    /* Sessiya allaqachon tozalangan bo'lsa serverga qayta bormaymiz:
+       muddati tugagan so'rov sessiyani tozalaydi, keyin App dagi
+       `auth:unauthorized` ishlovchisi ham shu funksiyani chaqiradi. */
+    let hadSession = !!accessToken;
+    try { hadSession = hadSession || !!sessionStorage.getItem(KEY) || !!localStorage.getItem(KEY); } catch { /* ignore */ }
+
     setToken(null);
     try { sessionStorage.removeItem(KEY); } catch { /* ignore */ }
     try { localStorage.removeItem(KEY); } catch { /* ignore */ }
-    try {
-        // Cookie'ni faqat server o'chira oladi — `httpOnly` shuni anglatadi.
-        await fetch(`${apiBase}/auth/logout`, { method: 'POST', credentials: 'include' });
-    } catch { /* tarmoq yo'q bo'lsa ham lokal tozalash bajarildi */ }
+    if (!hadSession) return Promise.resolve();
+
+    clearing = (async () => {
+        try {
+            // Cookie'ni faqat server o'chira oladi — `httpOnly` shuni anglatadi.
+            await fetch(`${apiBase}/auth/logout`, { method: 'POST', credentials: 'include' });
+        } catch { /* tarmoq yo'q bo'lsa ham lokal tozalash bajarildi */ }
+        finally { clearing = null; }
+    })();
+    return clearing;
 }

@@ -586,7 +586,7 @@ export const CashBook: React.FC<CashBookProps> = ({
 
        Shuning uchun tanlov oyna tashqarisiga chiqsa — server so'raladi. */
     const WINDOW_START = React.useMemo(
-        () => new Date(Date.now() - 45 * 86400000).toISOString().split('T')[0], []);
+        () => formatDateToISO(new Date(Date.now() - 45 * 86400000)), []);
     const [rangeTx, setRangeTx] = React.useState<Transaction[] | null>(null);
 
     React.useEffect(() => {
@@ -602,6 +602,16 @@ export const CashBook: React.FC<CashBookProps> = ({
     }, [date, month, view, currentClinic?.id, WINDOW_START]);
 
     const effectiveTx = rangeTx ?? transactions;
+
+    /* Ochilish qoldig'i uchun — oxirgi yopilishdan beri bo'lgan HAMMA naqd
+       harakati kerak, ya'ni ankeri o'tgan oyda bo'lishi mumkin. Shuning uchun
+       prop ham, oraliq so'rovi ham birga olinadi (id bo'yicha takrorsiz). */
+    const openingTx = useMemo(() => {
+        if (!rangeTx) return transactions;
+        const byId = new Map<string, Transaction>();
+        for (const tx of [...transactions, ...rangeTx]) byId.set(tx.id, tx);
+        return [...byId.values()];
+    }, [transactions, rangeTx]);
 
     const day = useMemo(
         () => buildCashBookDay(date, effectiveTx, expenses, doctors, closures, movements, activeWindow),
@@ -639,11 +649,14 @@ export const CashBook: React.FC<CashBookProps> = ({
         monthData.days.forEach(d => {
             // Oylik jadvalda drawer = kunning o'z oqimi. Yopilish esa ochilish qoldig'i
             // bilan solishtirilgan, shuning uchun to'liq qoldiqni qayta hisoblaymiz.
-            const { opening } = computeOpeningCash(d.date, transactions, expenses, closures, movements);
+            const { opening } = computeOpeningCash(d.date, openingTx, expenses, closures, movements);
             map.set(d.date, getClosureStatus(d.date, opening + d.totals.netCashFlow, closures));
         });
         return map;
-    }, [monthData.days, closures]);
+        /* Bog'liqliklar TO'LIQ: ilgari faqat kunlar va yopilishlar edi —
+           to'lov, xarajat yoki inkassatsiya qo'shilganda oylik jadvaldagi
+           holat eskicha qolardi. */
+    }, [monthData.days, closures, openingTx, expenses, movements]);
 
     const handleExport = () => {
         if (view === 'day') {
@@ -651,7 +664,10 @@ export const CashBook: React.FC<CashBookProps> = ({
         } else {
             const days = monthData.days
                 .filter(d => d.hasActivity)
-                .map(d => buildCashBookDay(d.date, transactions, expenses, doctors, closures, movements));
+                /* Oylik Excel ekrandagi bilan BIR XIL manbadan: `effectiveTx`.
+                   Ilgari 45 kunlik propdan olinardi — eski oy eksport qilinsa
+                   kunlik varaqlar va to'lovlar bo'sh chiqardi. */
+                .map(d => buildCashBookDay(d.date, effectiveTx, expenses, doctors, closures, movements));
             exportCashBookMonth(monthData, days, doctors, clinicName, closures);
         }
     };

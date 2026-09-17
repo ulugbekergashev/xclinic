@@ -7,7 +7,7 @@ import {
 import { doctorColor } from '../utils/chartColors';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
-import { todayISO } from '../utils/dateUtils';
+import { todayISO, formatDateToISO, dayKey } from '../utils/dateUtils';
 import { Card, Button, Modal, Input, Select, Badge, SearchableSelect } from '../components/Common';
 import {
   ChevronLeft, ChevronRight, Plus, Clock, User, FileText,
@@ -46,6 +46,21 @@ interface CalendarProps {
 
 
 
+/** `YYYY-MM-DD` → MAHALLIY yarim tun. `new Date('2026-09-04')` UTC yarim
+ *  tuni sifatida o'qiladi va kun solishtirishda siljib ketishi mumkin. */
+const parseLocalDay = (key: string): Date => {
+  const [y, m, d] = dayKey(key).split('-').map(Number);
+  return y && m && d ? new Date(y, m - 1, d) : new Date(key);
+};
+
+/** Dushanbadan boshlanadigan hafta boshi (mahalliy) */
+const startOfWeekLocal = (date: Date): Date => {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = d.getDay();
+  d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+  return d;
+};
+
 export const Calendar: React.FC<CalendarProps> = ({
   appointments, patients, doctors, services, categories, onAddAppointment, onUpdateAppointment, onDeleteAppointment, onAddPatient, userRole, doctorId, currentClinic, onPatientClick
 }) => {
@@ -59,21 +74,34 @@ export const Calendar: React.FC<CalendarProps> = ({
      UMUMAN yo'q va ekran "hech narsa bo'lmagan" deb ko'rsatardi.
      Jimgina yolg'on — eng yomon xato turi. Shuning uchun serverdan olamiz. */
   const WINDOW_START = useMemo(
-    () => new Date(Date.now() - 45 * 86400000).toISOString().split('T')[0], []);
+    () => formatDateToISO(new Date(Date.now() - 45 * 86400000)), []);
 
   const [rangeAppts, setRangeAppts] = useState<Appointment[] | null>(null);
+  /* KO'RINAYOTGAN ORALIQ — oy VA hafta birga.
+
+     Chegaralar MAHALLIY sana bo'yicha: ilgari `toISOString()` edi va
+     Toshkentda (UTC+5) oy boshi oldingi oyning oxirgi kuniga siljirdi.
+     Hafta ikki oyga tushsa (29-sentabr — 5-oktabr) faqat oy olinganda
+     haftaning boshi so'rovdan tushib qolardi. */
+  const rangeFrom = (() => {
+    const monthStart = formatDateToISO(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
+    const weekStart = formatDateToISO(startOfWeekLocal(currentDate));
+    return weekStart < monthStart ? weekStart : monthStart;
+  })();
+  const rangeTo = (() => {
+    const monthEnd = formatDateToISO(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0));
+    const ws = startOfWeekLocal(currentDate);
+    const weekEnd = formatDateToISO(new Date(ws.getFullYear(), ws.getMonth(), ws.getDate() + 6));
+    return weekEnd > monthEnd ? weekEnd : monthEnd;
+  })();
   useEffect(() => {
-    // Ko'rinayotgan oyning chegaralari
-    const y = currentDate.getFullYear(), m = currentDate.getMonth();
-    const from = new Date(y, m, 1).toISOString().split('T')[0];
-    const to = new Date(y, m + 1, 0).toISOString().split('T')[0];
-    if (from >= WINDOW_START || !currentClinic?.id) { setRangeAppts(null); return; }
+    if (rangeFrom >= WINDOW_START || !currentClinic?.id) { setRangeAppts(null); return; }
     let alive = true;
-    api.appointments.getAll(currentClinic.id, { from, to })
+    api.appointments.getAll(currentClinic.id, { from: rangeFrom, to: rangeTo })
       .then(a => { if (alive) setRangeAppts(a); })
       .catch(() => { if (alive) setRangeAppts(null); });
     return () => { alive = false; };
-  }, [currentDate, currentClinic?.id, WINDOW_START]);
+  }, [rangeFrom, rangeTo, currentClinic?.id, WINDOW_START]);
 
   const effectiveAppointments = rangeAppts ?? appointments;
 
@@ -207,15 +235,6 @@ export const Calendar: React.FC<CalendarProps> = ({
     setSelectedAppointment(null);
   };
 
-  // Helper: Get start of current week (Monday)
-  const getStartOfWeek = (date: Date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-    const monday = new Date(d.setDate(diff));
-    return monday;
-  };
-
   // Helper: Get days to display
   const getDisplayDays = (date: Date, currentView: 'day' | 'week') => {
     if (currentView === 'day') {
@@ -223,7 +242,8 @@ export const Calendar: React.FC<CalendarProps> = ({
     }
 
     const days = [];
-    const start = getStartOfWeek(new Date(date));
+    // Hafta boshi — so'rov oralig'i bilan BIR XIL funksiyadan
+    const start = startOfWeekLocal(date);
     for (let i = 0; i < 7; i++) {
       const day = new Date(start);
       day.setDate(start.getDate() + i);
@@ -683,10 +703,14 @@ export const Calendar: React.FC<CalendarProps> = ({
                 });
 
                 const blocks = filteredAppointments.map(app => {
-                  const appDate = new Date(app.date);
-                  const dayIndex = displayDays.findIndex(d => d.toDateString() === appDate.toDateString());
+                  /* Sana SATR bo'yicha solishtiriladi (mahalliy). Ilgari kunlik
+                     ko'rinish `currentDate.toISOString()` bilan solishtirardi —
+                     Toshkentda 00:00–05:00 oralig'ida bu KECHAGI sana edi va
+                     tanlangan kunning qabullari ko'rinmay qolardi. */
+                  const appKey = dayKey(app.date);
+                  const dayIndex = displayDays.findIndex(d => formatDateToISO(d) === appKey);
                   if (dayIndex === -1 && view === 'week') return null;
-                  if (view === 'day' && app.date !== currentDate.toISOString().split('T')[0]) return null;
+                  if (view === 'day' && appKey !== formatDateToISO(currentDate)) return null;
 
                   const [h, m] = app.time.split(':').map(Number);
                   if (isNaN(h)) return null;
@@ -813,7 +837,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                    hisobga olinadi — ular yo'qolmaydi, yig'iladi.
                    Bosilsa o'sha kun kunlik ko'rinishda ochiladi. */
                 const chips = overflow.map(o => {
-                  const dayIndex = displayDays.findIndex(d => d.toDateString() === new Date(o.date).toDateString());
+                  const dayIndex = displayDays.findIndex(d => formatDateToISO(d) === dayKey(o.date));
                   if (dayIndex === -1) return null;
                   const [h, m] = o.time.split(':').map(Number);
                   if (isNaN(h)) return null;
@@ -823,7 +847,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                   return (
                     <div
                       key={o.id}
-                      onClick={() => { setCurrentDate(new Date(o.date)); setView('day'); }}
+                      onClick={() => { setCurrentDate(parseLocalDay(o.date)); setView('day'); }}
                       title={fill(t('calendar.yana_x_ta_qabul'), o.count, o.names)}
                       className="absolute m-1 rounded-md border border-dashed border-line bg-elevated/80 text-[10px] font-semibold text-muted flex items-center justify-center cursor-pointer hover:bg-elevated transition-colors z-10"
                       style={{

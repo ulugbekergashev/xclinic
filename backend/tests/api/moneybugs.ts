@@ -361,8 +361,185 @@ async function main() {
         }
     }
 
+    await auditMoneyFixes();
+
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);
+}
+
+/* ═══ AUDIT TUZATISHLARI (2026-09) ════════════════════════════════════════
+   Beshta pul xatosi, har biri HTTP orqali:
+     1. qisman to'langan qator bekor qilinardi (muolaja/tekshiruv o'chirilganda);
+     2. bitta to'lov ikki bemorning qatorini yopardi;
+     3. SMS dagi {qarz} va «qarzdorlar» filtri eski modeldan sanalardi;
+     4. bosh sahifa avansdan to'lovni tushumga ikkinchi marta qo'shardi;
+     5. tekshiruv narxi brauzerdan olinardi va tahrirda kassaga yetmasdi. */
+async function auditMoneyFixes() {
+    const chargeById = async (patientId: string, id: string) =>
+        ((await api('GET', `/charges?patientId=${patientId}&status=`)).data || [])
+            .find((c: any) => c.id === id)
+        || ((await api('GET', `/charges?patientId=${patientId}&status=Cancelled`)).data || [])
+            .find((c: any) => c.id === id);
+
+    const tagA = String(Date.now()).slice(-7);
+    const pa = (await api('POST', '/patients', {
+        firstName: 'Qisman', lastName: `Tolov${tagA}`, gender: 'Male', phone: `+99897${tagA}`, force: true,
+    })).data;
+    const pb = (await api('POST', '/patients', {
+        firstName: 'Boshqa', lastName: `Bemor${tagA}`, gender: 'Female', phone: `+99898${tagA}`, force: true,
+    })).data;
+    ok('audit bemorlari yaratildi', !!pa?.id && !!pb?.id, JSON.stringify(pa).slice(0, 100));
+    if (!pa?.id || !pb?.id) return;
+    const nameA = `${pa.lastName} ${pa.firstName}`;
+    const nameB = `${pb.lastName} ${pb.firstName}`;
+
+    console.log('\n═══ AUDIT 1. QISMAN TO\'LANGAN QATOR BEKOR QILINMAYDI ═══');
+    const va = (await api('POST', '/visits', { patientId: pa.id, force: true })).data;
+    const proc = await api('POST', `/visits/${va?.id}/procedures`, { procedureName: 'Audit muolajasi', price: 100000 });
+    ok("muolaja qo'shildi", proc.status === 200, `status: ${proc.status}, ${JSON.stringify(proc.data).slice(0, 100)}`);
+    const procCharge = ((await api('GET', `/visits/${va?.id}/charges`)).data?.charges || [])
+        .find((c: any) => c.source === 'Service' && c.sourceId === proc.data?.id);
+    ok('muolaja qatori yaratildi', !!procCharge);
+
+    if (proc.data?.id && procCharge) {
+        const part = await api('POST', '/payments', { chargeIds: [procCharge.id], amount: 30000, method: 'Cash' });
+        ok("qisman to'landi (30 000 / 100 000)", part.status === 200, `status: ${part.status}`);
+
+        const delProc = await api('DELETE', `/visit-procedures/${proc.data.id}`);
+        ok("qisman to'langan muolaja O'CHIRILMADI (409)", delProc.status === 409,
+            `status: ${delProc.status}, ${JSON.stringify(delProc.data).slice(0, 120)}`);
+        ok('sabab CHARGE_HAS_PAYMENT', delProc.data?.code === 'CHARGE_HAS_PAYMENT', String(delProc.data?.code));
+
+        const kept = await chargeById(pa.id, procCharge.id);
+        ok('QATOR BEKOR QILINMADI (Unpaid, 30 000 to\'langan)',
+            kept?.status === 'Unpaid' && Math.round(kept?.paidAmount) === 30000,
+            `${kept?.status}, ${kept?.paidAmount}`);
+
+        const delCharge = await api('DELETE', `/charges/${procCharge.id}`);
+        ok("qatorni to'g'ridan-to'g'ri o'chirish ham RAD ETILDI (409)", delCharge.status === 409,
+            `status: ${delCharge.status}`);
+
+        const back = await api('POST', `/charges/${procCharge.id}/refund`, { amount: 30000, method: 'Cash', reason: 'audit' });
+        ok('pul qaytarildi', back.status === 200, `status: ${back.status}`);
+        const delAfter = await api('DELETE', `/visit-procedures/${proc.data.id}`);
+        ok("qaytarishdan keyin muolaja o'chdi", delAfter.status === 200, `status: ${delAfter.status}`);
+        const gone = await chargeById(pa.id, procCharge.id);
+        ok('endi qator bekor qilindi', gone?.status === 'Cancelled', String(gone?.status));
+    }
+
+    /* Tekshiruv ham xuddi shunday: qisman to'langan UZI o'chirilmaydi. */
+    const st = await api('POST', '/studies', {
+        patientId: pa.id, patientName: nameA, modality: 'UZI', name: 'Audit UZI', price: 80000,
+    });
+    const stCharge = ((await api('GET', `/charges?patientId=${pa.id}`)).data || [])
+        .find((c: any) => c.source === 'Study' && c.sourceId === st.data?.id);
+    if (st.data?.id && stCharge) {
+        await api('POST', '/payments', { chargeIds: [stCharge.id], amount: 10000, method: 'Cash' });
+        const delSt = await api('DELETE', `/studies/${st.data.id}`);
+        ok("qisman to'langan tekshiruv O'CHIRILMADI (409)", delSt.status === 409, `status: ${delSt.status}`);
+        const stillSt = ((await api('GET', `/studies?patientId=${pa.id}`)).data || []).some((s: any) => s.id === st.data.id);
+        ok('tekshiruv joyida qoldi', stillSt);
+    } else {
+        ok('audit tekshiruvi va qatori yaratildi', false, `status: ${st.status}`);
+    }
+
+    /* Meros holat: bekor qilingan, lekin puli olingan qator (tuzatishdan
+       oldin yaratilgan). Qaytarish uni 'Unpaid' ga TIRILTIRMASLIGI kerak. */
+    const dbPath = process.env.T_DB;
+    if (dbPath) {
+        const legacy = await api('POST', '/charges', { patientId: pa.id, patientName: nameA, name: 'Meros qator', unitPrice: 50000, quantity: 1 });
+        await api('POST', '/payments', { chargeIds: [legacy.data?.id], amount: 20000, method: 'Cash' });
+        const Database = require('better-sqlite3');
+        const db = new Database(dbPath);
+        db.prepare("UPDATE VisitCharge SET status = 'Cancelled' WHERE id = ?").run(legacy.data?.id);
+        db.close();
+        const r2 = await api('POST', `/charges/${legacy.data?.id}/refund`, { amount: 20000, method: 'Cash', reason: 'meros' });
+        ok("bekor qilingan qatorning puli qaytarildi", r2.status === 200, `status: ${r2.status}`);
+        ok("qator BEKORLIGICHA QOLDI ('Unpaid' ga tirilmadi)", r2.data?.charge?.status === 'Cancelled',
+            String(r2.data?.charge?.status));
+    } else {
+        console.log('  ⏭  T_DB berilmagan — meros qator sinovi o\'tkazib yuborildi');
+    }
+
+    console.log('\n═══ AUDIT 2. BITTA TO\'LOV — BITTA BEMOR ═══════════════');
+    const ca = await api('POST', '/charges', { patientId: pa.id, patientName: nameA, name: 'A qatori', unitPrice: 40000, quantity: 1 });
+    const cb = await api('POST', '/charges', { patientId: pb.id, patientName: nameB, name: 'B qatori', unitPrice: 60000, quantity: 1 });
+    ok('ikki bemorga qator yozildi', !!ca.data?.id && !!cb.data?.id);
+    const txBefore = ((await api('GET', `/transactions?patientId=${pa.id}`)).data || []).length;
+    const mixed = await api('POST', '/payments', { chargeIds: [ca.data?.id, cb.data?.id], method: 'Cash' });
+    ok("ikki bemorning qatori bitta to'lovda RAD ETILDI (400)", mixed.status === 400,
+        `status: ${mixed.status}, ${JSON.stringify(mixed.data).slice(0, 120)}`);
+    ok('sabab MIXED_PATIENTS', mixed.data?.code === 'MIXED_PATIENTS', String(mixed.data?.code));
+    const txAfter = ((await api('GET', `/transactions?patientId=${pa.id}`)).data || []).length;
+    ok('chek yozilmadi', txAfter === txBefore, `${txBefore} → ${txAfter}`);
+    ok("B qatori to'lanmagan qoldi",
+        Math.round((await chargeById(pb.id, cb.data?.id))?.paidAmount || 0) === 0);
+
+    console.log('\n═══ AUDIT 3. SMS: {qarz} HISOB QATORLARIDAN ═══════════');
+    await api('POST', '/payments', { chargeIds: [cb.data?.id], amount: 15000, method: 'Cash' });
+    const debtSegment = {
+        match: 'all',
+        conditions: [
+            { field: 'hasDebt', op: 'is_true' },
+            // Ro'yxat 500 bilan cheklangan — faqat bugun yaratilganlar
+            { field: 'registered', op: 'within', value: 1 },
+        ],
+    };
+    const aud = await api('POST', '/messages/audience', { segment: debtSegment, channel: 'sms' });
+    ok('auditoriya hisoblandi', aud.status === 200, `status: ${aud.status}`);
+    const rowB = (aud.data?.recipients || []).find((r: any) => r.id === pb.id);
+    ok("qarzdor QATORLAR bo'yicha topildi", !!rowB, `topildi: ${(aud.data?.recipients || []).length}`);
+    ok('{qarz} = total − paidAmount (60 000 − 15 000 = 45 000)', Math.round(rowB?.debt || 0) === 45000,
+        String(rowB?.debt));
+
+    console.log('\n═══ AUDIT 4. BOSH SAHIFA: AVANSDAN TO\'LOV TUSHUM EMAS ══');
+    const adv = await api('POST', '/payments/advance', { patientId: pa.id, amount: 100000, method: 'Cash' });
+    ok('avans qabul qilindi', adv.status === 200, `status: ${adv.status}`);
+    const revenue = async () => (await api('GET', '/reports/dashboard')).data?.today?.revenue;
+    const rev0 = await revenue();
+    const byBalance = await api('POST', '/payments', { chargeIds: [ca.data?.id], amount: 40000, method: 'Balance' });
+    ok("avansdan to'landi", byBalance.status === 200, `status: ${byBalance.status}`);
+    const rev1 = await revenue();
+    ok("AVANSDAN TO'LOV bugungi tushumga QO'SHILMADI", rev1 === rev0, `${rev0} → ${rev1}`);
+    const byCash = await api('POST', '/payments', { chargeIds: [cb.data?.id], amount: 45000, method: 'Cash' });
+    ok("naqd to'landi", byCash.status === 200, `status: ${byCash.status}`);
+    const rev2 = await revenue();
+    ok("naqd to'lov tushumga qo'shildi (+45 000)", rev2 === rev1 + 45000, `${rev1} → ${rev2}`);
+
+    const aud2 = await api('POST', '/messages/audience', { segment: debtSegment, channel: 'sms' });
+    ok("to'liq to'lagan bemor qarzdorlar ro'yxatidan CHIQDI",
+        !(aud2.data?.recipients || []).some((r: any) => r.id === pb.id));
+
+    console.log('\n═══ AUDIT 5. TEKSHIRUV NARXI KATALOGDAN ══════════════');
+    const svc = (await api('POST', '/services', { name: `Audit UZI xizmati ${tagA}`, price: 150000, duration: 20 })).data;
+    ok('katalog xizmati yaratildi', !!svc?.id, JSON.stringify(svc).slice(0, 100));
+    if (svc?.id) {
+        const st2 = await api('POST', '/studies', {
+            patientId: pb.id, patientName: nameB, modality: 'UZI', name: 'Katalog UZI',
+            serviceId: svc.id, price: 1,
+        });
+        ok('tekshiruv yaratildi', st2.status === 200, `status: ${st2.status}`);
+        ok("narx BRAUZERDAN EMAS, katalogdan (150 000)", Math.round(st2.data?.price) === 150000, String(st2.data?.price));
+        const c2 = () => api('GET', `/charges?patientId=${pb.id}`).then((r) =>
+            (r.data || []).find((c: any) => c.source === 'Study' && c.sourceId === st2.data?.id));
+        ok('kassadagi qator ham 150 000', Math.round((await c2())?.total || 0) === 150000);
+
+        const edit = await api('PUT', `/studies/${st2.data?.id}`, { price: 120000 });
+        ok('narx tahrirlandi', edit.status === 200, `status: ${edit.status}`);
+        ok("KASSADAGI QATOR HAM O'ZGARDI (120 000)", Math.round((await c2())?.total || 0) === 120000,
+            String((await c2())?.total));
+
+        const charge2 = await c2();
+        await api('POST', '/payments', { chargeIds: [charge2?.id], amount: 20000, method: 'Cash' });
+        const edit2 = await api('PUT', `/studies/${st2.data?.id}`, { price: 90000 });
+        ok("puli olingan tekshiruv narxi o'zgarmadi (409)", edit2.status === 409, `status: ${edit2.status}`);
+        ok('qator summasi joyida (120 000)', Math.round((await c2())?.total || 0) === 120000);
+
+        const badSvc = await api('POST', '/studies', {
+            patientId: pb.id, patientName: nameB, modality: 'UZI', name: 'Yoq xizmat', serviceId: 99999999, price: 5,
+        });
+        ok("mavjud bo'lmagan xizmat rad etildi (404)", badSvc.status === 404, `status: ${badSvc.status}`);
+    }
 }
 
 main().catch((e) => { console.error('Sinov yiqildi:', e); process.exit(1); });

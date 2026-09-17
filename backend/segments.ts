@@ -15,6 +15,7 @@ import { prisma } from './db';
 import { getField, SEGMENT_FIELDS, FieldContext, neededAggregates } from './segmentFields';
 import { buildAggregates, AggregateKey } from './segmentAggregates';
 import { normalizeUzPhone } from './smsService';
+import { som } from './money';
 
 /**
  * Shart — yo maydon sharti (field/op/value), yo qavs ichidagi guruh
@@ -82,33 +83,33 @@ export function normalizeSegment(seg?: AudienceSegment | null): { match: 'all' |
 }
 
 /**
- * Klinikaning qarz xaritasi: Pending tranzaksiyalar + faol bo'lib to'lash
- * qoldiqlari. {qarz} o'zgaruvchisi ham, "qarzi bor" filtri ham shu hisobdan.
+ * Klinikaning qarz xaritasi — to'lanmagan hisob qatorlaridan
+ * (`VisitCharge`: `total − paidAmount`, bemor bo'yicha). {qarz} o'zgaruvchisi
+ * ham, "qarzi bor" filtri ham shu hisobdan.
+ *
+ * Ilgari manba `Transaction.status = 'Pending'` + bo'lib to'lash rejalari
+ * edi — ESKI model. Kassa, bosh sahifa va hisobot qarzni qatorlardan sanaydi
+ * (`snapshot.ts`), ya'ni SMS «qarzingiz 0» deb yozardi yoki qarzdorni
+ * umuman topmasdi. Bo'lib to'lash rejasi 0033 dan beri qatorlar USTIGA
+ * quriladi — alohida qo'shilsa qarz ikki marta sanalardi.
  */
 export async function buildDebtMap(clinicId: string, patientIds?: string[]): Promise<Map<string, number>> {
-    const scope = patientIds && patientIds.length > 0 ? { patientId: { in: patientIds } } : {};
-
-    const [pendingTx, activePlans] = await Promise.all([
-        prisma.transaction.findMany({
-            where: { clinicId, status: 'Pending', ...scope },
-            select: { patientId: true, amount: true },
-        }),
-        prisma.installmentPlan.findMany({
-            where: { clinicId, status: 'Active', ...scope },
-            select: { patientId: true, totalAmount: true, totalPaid: true },
-        }),
-    ]);
+    const rows = await prisma.visitCharge.findMany({
+        where: {
+            clinicId, status: 'Unpaid',
+            patientId: patientIds && patientIds.length > 0 ? { in: patientIds } : { not: null },
+        },
+        select: { patientId: true, total: true, paidAmount: true },
+    });
 
     const debtMap = new Map<string, number>();
-    for (const t of pendingTx as any[]) {
-        if (!t.patientId) continue;
-        debtMap.set(t.patientId, (debtMap.get(t.patientId) || 0) + t.amount);
+    for (const c of rows as any[]) {
+        const left = (c.total || 0) - (c.paidAmount || 0);
+        if (!c.patientId || left <= 0) continue;
+        debtMap.set(c.patientId, (debtMap.get(c.patientId) || 0) + left);
     }
-    for (const p of activePlans as any[]) {
-        const remaining = Math.max(0, p.totalAmount - p.totalPaid);
-        if (remaining <= 0) continue;
-        debtMap.set(p.patientId, (debtMap.get(p.patientId) || 0) + remaining);
-    }
+    // Pul — butun so'm (`money.ts`)
+    for (const [k, v] of debtMap) debtMap.set(k, som(v));
     return debtMap;
 }
 

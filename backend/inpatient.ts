@@ -28,7 +28,8 @@ import type express from 'express';
 import { serializeWorkDays } from './hr';
 import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
-import { writeOff } from './inventory';
+import { writeOffCore, withRetry } from './inventory';
+import { randomUUID } from 'crypto';
 import { emitEvent } from './events';
 import { validateVital, VITAL_KINDS as SHARED_VITAL_KINDS } from '../shared/validation';
 import { createCharge } from './billing';
@@ -84,6 +85,26 @@ const VITAL_UNITS: Record<string, string> = {
    Idempotentlik qatorlarning o'zidan kelib chiqadi — bu ishonchliroq. */
 
 export async function chargeBedDays(prisma: any, admissionId: string, userName?: string | null) {
+    /* BITTA TRANZAKSIYA — o'qish ham, yozish ham.
+
+       Ilgari mavjud kunlar tranzaksiyadan TASHQARIDA o'qilib, qatorlar
+       alohida-alohida yozilardi. Ikki chaqiruv ustma-ust kelsa (ekran
+       ochilganda + chiqarishda, yoki ikki kompyuter) ikkalasi ham «bu kun
+       yo'q» deb ko'rib, bitta kunga IKKI qator yozardi. `VisitCharge` da
+       (source, sourceId) bo'yicha unikal indeks yo'q, ya'ni bazaning o'zi
+       buni to'xtatmaydi.
+
+       Endi tekshiruv va yozuv bitta tranzaksiyada. SQLite bir vaqtda bitta
+       yozuvchiga ruxsat beradi: ikkinchi chaqiruv birinchisi tugagach
+       qatorlarni ko'radi yoki qulf xatosi bilan yiqilib, `withRetry` da
+       qaytadan o'qiydi — ikkala holda ham takror qator yozilmaydi. */
+    return withRetry<Awaited<ReturnType<typeof chargeBedDaysTx>>>('Koyka haqi', () => prisma.$transaction(
+        (tx: any) => chargeBedDaysTx(tx, admissionId, userName),
+        { timeout: 20000, maxWait: 10000 },
+    ));
+}
+
+async function chargeBedDaysTx(prisma: any, admissionId: string, userName?: string | null) {
     const adm = await prisma.admission.findUnique({ where: { id: admissionId } });
     if (!adm) return { charged: 0, from: null, to: null, total: 0, skipped: 'yotish topilmadi' };
     if (!(adm.dailyRate > 0)) {
@@ -296,26 +317,42 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
 
         const qty = Number(req.body?.quantity) > 0 ? Number(req.body.quantity) : 1;
 
-        const record = await prisma.medicationAdministration.create({
-            data: {
-                clinicId,
-                orderId: order.id,
-                admissionId: order.admissionId,
-                givenByName: user?.name || null,
-                dose: req.body?.dose ? String(req.body.dose).slice(0, 100) : (order.dosage || null),
-                status,
-                skipReason: req.body?.skipReason ? String(req.body.skipReason).slice(0, 300) : null,
-                note: req.body?.note ? String(req.body.note).slice(0, 300) : null,
-            },
-        });
+        const recordData = {
+            clinicId,
+            orderId: order.id,
+            admissionId: order.admissionId,
+            givenByName: user?.name || null,
+            dose: req.body?.dose ? String(req.body.dose).slice(0, 100) : (order.dosage || null),
+            status,
+            skipReason: req.body?.skipReason ? String(req.body.skipReason).slice(0, 300) : null,
+            note: req.body?.note ? String(req.body.note).slice(0, 300) : null,
+        };
 
         /* Ombor va pul — FAQAT haqiqatda berilganda. Skipped va Refused
-           holatida dori qutida qoladi. */
-        let charge: any = null;
-        let stockMoves = 0;
-        if (status === 'Given' && order.medicationId && order.medication) {
-            try {
-                const moves = await writeOff(prisma, {
+           holatida dori qutida qoladi va faqat yozuvning o'zi saqlanadi. */
+        if (!(status === 'Given' && order.medicationId && order.medication)) {
+            const record = await prisma.medicationAdministration.create({ data: recordData });
+            return res.json({ administration: record, charge: null, stockMoves: 0 });
+        }
+
+        /* YOZUV + CHIQIM + HISOB — BITTA TRANZAKSIYADA.
+
+           Ilgari chiqim xatosi YUTILARDI («berilganlik fakti saqlansin»),
+           hisob qatori esa baribir yozilardi: bemor dori uchun to'lardi,
+           ombor esa uni «bor» deb ko'rsatib turardi. Chiqim eng ko'p bitta
+           sababdan yiqiladi — yaroqli qoldiq yo'q, faqat muddati o'tgan
+           partiya bor — va bu aynan hamshira BILISHI kerak bo'lgan holat.
+
+           Endi uchalasi birga: chiqim o'tmasa hech narsa yozilmaydi va
+           hamshira sababini ko'radi (409). Muddati o'tganini ataylab berish
+           `force: true` bilan — ombordagi qo'lda chiqim bilan bir xil
+           tanlov. Tibbiy fakt yo'qolmaydi: xato ekranda, yozuv qayta
+           yuboriladi. */
+        const recordId = randomUUID();
+        let outcome: { record: any; charge: any; stockMoves: number };
+        try {
+            outcome = await withRetry('MAR chiqimi', () => prisma.$transaction(async (tx: any) => {
+                const moves = await writeOffCore(tx, {
                     clinicId,
                     itemId: order.medicationId,
                     quantity: qty,
@@ -326,46 +363,54 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
                        ko'rsatardi (sahnalar testi ko'rsatdi). Statsionar
                        ekani izohda qoladi. */
                     reason: 'Service',
-                    note: `Statsionar · MAR ${record.id} · ${order.admission.patientName}`,
+                    note: `Statsionar · MAR ${recordId} · ${order.admission.patientName}`,
                     userName: user?.name || null,
+                    allowExpired: req.body?.force === true,
                 });
-                stockMoves = moves.length;
-            } catch (e: any) {
-                // Chiqim o'tmasa ham BERILGANLIK fakti saqlanadi: tibbiy
-                // yozuvni ombor xatosi tufayli yo'qotib bo'lmaydi
-                console.error('MAR chiqimi o\'tmadi:', e?.message || e);
-            }
+                const record = await tx.medicationAdministration.create({
+                    data: { ...recordData, id: recordId },
+                });
 
-            const price = Number(order.medication.price) || 0;
-            if (price > 0) {
-                charge = await createCharge(prisma, {
-                    clinicId,
-                    patientId: order.admission.patientId,
-                    patientName: order.admission.patientName,
-                    source: 'Medication',
-                    sourceId: record.id,
-                    admissionId: order.admissionId,
-                    name: `${order.name}${req.body?.dose ? ` (${req.body.dose})` : ''}`,
-                    unitPrice: price,
-                    quantity: qty,
-                    createdByName: user?.name || null,
-                    doctorId: order.admission.doctorId,
-                    doctorName: order.admission.doctorName,
-                });
-                if (charge) {
-                    await prisma.medicationAdministration.update({
-                        where: { id: record.id },
-                        data: { chargeId: charge.id },
+                let charge: any = null;
+                const price = Number(order.medication.price) || 0;
+                if (price > 0) {
+                    charge = await createCharge(tx, {
+                        clinicId,
+                        patientId: order.admission.patientId,
+                        patientName: order.admission.patientName,
+                        source: 'Medication',
+                        sourceId: record.id,
+                        admissionId: order.admissionId,
+                        name: `${order.name}${req.body?.dose ? ` (${req.body.dose})` : ''}`,
+                        unitPrice: price,
+                        quantity: qty,
+                        createdByName: user?.name || null,
+                        doctorId: order.admission.doctorId,
+                        doctorName: order.admission.doctorName,
                     });
-                    await prisma.admission.update({
-                        where: { id: order.admissionId },
-                        data: { totalCharges: round((order.admission.totalCharges || 0) + charge.total) },
-                    });
+                    if (charge) {
+                        await tx.medicationAdministration.update({
+                            where: { id: record.id },
+                            data: { chargeId: charge.id },
+                        });
+                        await tx.admission.update({
+                            where: { id: order.admissionId },
+                            data: { totalCharges: { increment: charge.total } },
+                        });
+                    }
                 }
+                return { record, charge, stockMoves: moves.length };
+            }, { timeout: 15000, maxWait: 10000 }));
+        } catch (e: any) {
+            if (e?.code === 'EXPIRED_STOCK_BLOCKED') {
+                return res.status(409).json({
+                    error: e.message, code: e.code, expired: e.expired, usable: e.usable,
+                });
             }
+            throw e;
         }
 
-        res.json({ administration: record, charge, stockMoves });
+        res.json({ administration: outcome.record, charge: outcome.charge, stockMoves: outcome.stockMoves });
     });
 
     /** Bitta bemorning kunlik dori varag'i */

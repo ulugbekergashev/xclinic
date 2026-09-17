@@ -268,8 +268,35 @@ export async function computePayroll(prisma: any, clinicId: string, from: string
     };
 }
 
+/** Davr kesib o'tadigan oylar — 'YYYY-MM' ro'yxati. `StaffSalaryPayment`
+ *  oy bo'yicha yoziladi, vedomost esa ixtiyoriy davr uchun. */
+export function monthsBetween(from: string, to: string): string[] {
+    const out: string[] = [];
+    let [y, m] = from.slice(0, 7).split('-').map(Number);
+    const [ty, tm] = to.slice(0, 7).split('-').map(Number);
+    // Cheklov: buzuq sanada cheksiz aylanmasin
+    for (let guard = 0; (y < ty || (y === ty && m <= tm)) && guard < 600; guard++) {
+        out.push(`${y}-${String(m).padStart(2, '0')}`);
+        m++; if (m > 12) { m = 1; y++; }
+    }
+    return out;
+}
+
 export function registerPayrollRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId } = deps;
+
+    /** Davr oylarida kartadan (`StaffSalaryPayment`) to'langan shifokorlar */
+    const salaryPaidConflicts = async (clinicId: string, doctorIds: string[], from: string, to: string, db: any = prisma) => {
+        if (doctorIds.length === 0) return [];
+        return db.staffSalaryPayment.findMany({
+            where: {
+                clinicId, staffRole: 'DOCTOR',
+                staffId: { in: doctorIds },
+                period: { in: monthsBetween(from, to) },
+            },
+            select: { staffId: true, staffName: true, period: true },
+        });
+    };
 
     const route = (
         method: 'get' | 'post' | 'put' | 'delete',
@@ -491,18 +518,41 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
 
         /* Bir davrga ikkinchi vedomost — deyarli har doim xato: raqam ikki
            marta to'lanadi. Qayta hisoblash kerak bo'lsa qoralamani o'chirib,
-           yangisini yaratish kerak. */
+           yangisini yaratish kerak.
+
+           KESISHISH, nafaqat aynan bir xil davr. Ilgari faqat
+           `periodFrom = from AND periodTo = to` tekshirilardi: «1–31 mart»
+           bor bo'lsa ham «15 mart – 15 aprel» bemalol yaratilardi va
+           martning ikkinchi yarmi ikki marta to'lanardi. */
         const dup = await prisma.payrollRun.findFirst({
-            where: { clinicId, periodFrom: from, periodTo: to },
+            where: { clinicId, periodFrom: { lte: to }, periodTo: { gte: from } },
         });
         if (dup) {
             return res.status(409).json({
-                error: `Bu davr uchun vedomost bor (${dup.status === 'Draft' ? 'qoralama' : 'tasdiqlangan'})`,
+                error: `Bu davr mavjud vedomost bilan kesishadi: ${dup.periodFrom} .. ${dup.periodTo} `
+                    + `(${dup.status === 'Draft' ? 'qoralama' : 'tasdiqlangan'})`,
+                code: 'PERIOD_OVERLAP',
                 runId: dup.id,
             });
         }
 
         const { lines } = await computePayroll(prisma, clinicId, from, to);
+
+        /* XODIM KARTASIDAN TO'LANGAN OY. Shifokor ulushi endi kartadan
+           oyma-oy to'lanadi (`hr.ts`). Shu oy vedomostga ham tushsa, bitta
+           pul ikki marta beriladi — kartadagi hisob vedomostda to'langanini
+           ayiradi, vedomost esa kartadagini bilmasdi. */
+        const conflict = await salaryPaidConflicts(clinicId, lines
+            .filter((l: any) => l.accrued > 0 && l.doctorId)
+            .map((l: any) => l.doctorId), from, to);
+        if (conflict.length) {
+            return res.status(409).json({
+                error: "Bu davrdagi oy xodim kartasidan allaqachon to'langan: "
+                    + conflict.map((p: any) => `${p.staffName} (${p.period})`).join(', '),
+                code: 'SALARY_ALREADY_PAID',
+            });
+        }
+
         const user = (req as any).user;
 
         const run = await prisma.payrollRun.create({
@@ -572,32 +622,65 @@ export function registerPayrollRoutes(app: express.Express, deps: Deps) {
         }
 
         const user = (req as any).user;
-        const expense = await prisma.expense.create({
-            data: {
-                clinicId,
-                date: tashkentDateStr(),
-                amount,
-                category: 'DoctorShare',
-                title: `${line.staffName} — ulush (${line.run.periodFrom} .. ${line.run.periodTo})`,
-                method: String(req.body?.method || 'Cash'),
-                doctorId: line.doctorId || null,
-            },
-        });
 
-        const updated = await prisma.payrollLine.update({
-            where: { id: line.id },
-            data: { paid: amount, expenseId: expense.id },
-        });
+        /* ATOMAR VA BIR MARTALIK.
 
-        // Hamma qator to'langan bo'lsa — vedomost ham to'langan
-        const rest = await prisma.payrollLine.count({
-            where: { runId: line.runId, paid: 0, accrued: { gt: 0 } },
-        });
-        if (rest === 0) {
-            await prisma.payrollRun.update({ where: { id: line.runId }, data: { status: 'Paid' } });
-        }
+           Ilgari xarajat va qator alohida yozilardi, «to'langanmi» esa
+           tranzaksiyadan tashqarida o'qilardi: ikki marta bosilsa (yoki ikki
+           kompyuterdan) ikkala so'rov ham `paid = 0` ni ko'rib, IKKI xarajat
+           yozardi. Endi qator avval SHARTLI egallanadi (`paid = 0` bo'lsagina),
+           xarajat shundan keyin — hammasi bitta tranzaksiyada. Egallash
+           o'tmasa (count 0) hech narsa yozilmaydi va 409 qaytadi. */
+        const result = await prisma.$transaction(async (tx: any) => {
+            /* Shu davr oyi kartadan to'langan bo'lsa — vedomost qatori
+               to'lanmaydi (kartadagi to'lov vedomostdan keyin qilingan). */
+            if (line.doctorId) {
+                const paidByCard = await salaryPaidConflicts(
+                    clinicId, [line.doctorId], line.run.periodFrom, line.run.periodTo, tx);
+                if (paidByCard.length) {
+                    return {
+                        code: 409,
+                        error: "Bu davrdagi oy xodim kartasidan allaqachon to'langan: "
+                            + paidByCard.map((p: any) => p.period).join(', '),
+                    };
+                }
+            }
 
-        res.json({ line: updated, expense, runPaid: rest === 0 });
+            const claimed = await tx.payrollLine.updateMany({
+                where: { id: line.id, paid: 0 },
+                data: { paid: amount },
+            });
+            if (claimed.count === 0) return { code: 409, error: "Bu qator allaqachon to'langan" };
+
+            const expense = await tx.expense.create({
+                data: {
+                    clinicId,
+                    date: tashkentDateStr(),
+                    amount,
+                    category: 'DoctorShare',
+                    title: `${line.staffName} — ulush (${line.run.periodFrom} .. ${line.run.periodTo})`,
+                    method: String(req.body?.method || 'Cash'),
+                    doctorId: line.doctorId || null,
+                },
+            });
+
+            const updated = await tx.payrollLine.update({
+                where: { id: line.id },
+                data: { expenseId: expense.id },
+            });
+
+            // Hamma qator to'langan bo'lsa — vedomost ham to'langan
+            const rest = await tx.payrollLine.count({
+                where: { runId: line.runId, paid: 0, accrued: { gt: 0 } },
+            });
+            if (rest === 0) {
+                await tx.payrollRun.update({ where: { id: line.runId }, data: { status: 'Paid' } });
+            }
+            return { code: 200, line: updated, expense, runPaid: rest === 0 };
+        }, { timeout: 15000, maxWait: 10000 });
+
+        if (result.code !== 200) return res.status(result.code).json({ error: result.error });
+        res.json({ line: result.line, expense: result.expense, runPaid: result.runPaid });
     });
 
     /* Qoralamani o'chirish. Tasdiqlangan vedomost o'chirilmaydi: u moliyaviy

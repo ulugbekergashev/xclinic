@@ -1,6 +1,7 @@
 import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
 import { todayISO } from '../utils/dateUtils';
 import * as auth from './authStore';
+import { tr } from '../context/LanguageContext';
 
 /** Yagona hisoblash qatlamining javobi — `backend/snapshot.ts` bilan
  *  bir xil shakl. Bu tur o'zgarsa, ikkala tomon ham o'zgarishi shart. */
@@ -1350,6 +1351,78 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_R
     }
 }
 
+/* ─── SESSIYA TUGASHI ───────────────────────────────────────────────────────
+
+   401 — token yo'q/yaroqsiz. 403 esa ikki xil bo'lishi mumkin: rol yetarli
+   emas (sessiya joyida) yoki eski backend token uchun 403 qaytargan.
+   Ikkinchisida ham sessiyani tugatish kerak, aks holda «Qayta yuklash» o'lik
+   token bilan aylanaveradi. */
+async function isTokenRejected(response: Response): Promise<boolean> {
+    if (response.status === 401) return true;
+    if (response.status !== 403) return false;
+    const data = await response.clone().json().catch(() => ({} as any));
+    return typeof data?.error === 'string' && data.error.includes('Token yaroqsiz');
+}
+
+/** Tarmoq xatosi — sessiya tugagani EMAS. `status: 0` bilan beriladi. */
+function networkError(): Error {
+    const err: any = new Error(tr('auth.networkError'));
+    err.status = 0;
+    err.network = true;
+    return err;
+}
+
+/* Sessiyani BIR MARTA tugatish. Kirishdagi 18 ta parallel so'rov hammasi
+   401 olsa, ilgari har biri alohida `logout` yuborardi va har biri
+   `auth:unauthorized` hodisasini chiqarardi. Endi birinchisi tozalaydi,
+   qolganlari sessiya yo'qligini ko'rib jim o'tadi. */
+function expireSession(): void {
+    const hadSession = !!auth.getToken() || !!auth.getSession();
+    if (!hadSession) return;
+    void auth.clearSession(API_URL);
+    window.dispatchEvent(new Event('auth:unauthorized'));
+}
+
+/**
+ * `fetch` o'rniga — JSON bo'lmagan so'rovlar uchun (fayl yuklash, oqim).
+ *
+ * Ilgari bunday joylar (`AiAssistant`, `Diagnostics`, `PatientPhotos`)
+ * `fetch` ni to'g'ridan-to'g'ri chaqirardi: token RENDER paytida olinardi va
+ * 30 daqiqadan keyin eskirib qolardi, 401 esa yangilanmasdi. Endi token
+ * so'rov paytida o'qiladi va 401 da bir marta yangilanib qayta yuboriladi.
+ * Javob o'zi qaytadi — chaqiruvchi `ok`/`status` ni o'zi tekshiradi.
+ */
+export async function authFetch(path: string, options: RequestInit = {}): Promise<Response> {
+    if (isDemoMode()) throw new Error("Demo rejimida bu ma'lumot mavjud emas");
+
+    const send = async () => {
+        const headers = new Headers(options.headers || {});
+        const token = auth.getToken();
+        if (token) headers.set('Authorization', `Bearer ${token}`);
+        let res: Response;
+        try {
+            res = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: 'include' });
+        } catch {
+            throw networkError();
+        }
+        const refreshedToken = res.headers.get('X-Refreshed-Token');
+        if (refreshedToken) auth.setToken(refreshedToken);
+        return res;
+    };
+
+    let res = await send();
+    if (!(await isTokenRejected(res))) return res;
+
+    const outcome = await auth.refreshWithOutcome(API_URL);
+    if (!outcome.ok && outcome.reason === 'network') throw networkError();
+    if (outcome.ok) {
+        res = await send();
+        if (!(await isTokenRejected(res))) return res;
+    }
+    expireSession();
+    throw new Error('Session expired');
+}
+
 async function fetchJson<T>(url: string, options: RequestInit = {}, isRetry = false): Promise<T> {
     /* DEMO REJIMI. Demo tokeni ('demo-token') server uchun yaroqsiz, ya'ni
        har qanday so'rov 401 qaytaradi, 401 esa sessiyani tozalab, kirish
@@ -1390,16 +1463,7 @@ async function fetchJson<T>(url: string, options: RequestInit = {}, isRetry = fa
     const refreshedToken = response.headers.get('X-Refreshed-Token');
     if (refreshedToken) auth.setToken(refreshedToken);
 
-    // 401 — token yo'q/yaroqsiz. 403 esa ikki xil bo'lishi mumkin: rol yetarli emas
-    // (sessiya joyida) yoki eski backend token uchun 403 qaytargan. Ikkinchisida ham
-    // sessiyani tugatish kerak, aks holda "Qayta yuklash" o'lik token bilan aylanaveradi.
-    let isSessionExpired = response.status === 401;
-    if (response.status === 403) {
-        const data = await response.clone().json().catch(() => ({} as any));
-        isSessionExpired = typeof data?.error === 'string' && data.error.includes('Token yaroqsiz');
-    }
-
-    if (isSessionExpired) {
+    if (await isTokenRejected(response)) {
         /* Kirish tokeni 30 daqiqa yashaydi, ya'ni uning eskirishi ODATIY
            hol — sessiya tugagani emas. Avval `httpOnly` cookie orqali
            yangisini so'raymiz va so'rovni BIR MARTA takrorlaymiz.
@@ -1407,12 +1471,14 @@ async function fetchJson<T>(url: string, options: RequestInit = {}, isRetry = fa
            `isRetry` qo'riqchi: yangilangan token bilan ham 401 kelsa,
            sessiya haqiqatan tugagan va cheksiz aylanish bo'lmasligi kerak. */
         if (!isRetry) {
-            const restored = await auth.refresh(API_URL);
-            if (restored) return fetchJson<T>(url, options, true);
+            const outcome = await auth.refreshWithOutcome(API_URL);
+            if (outcome.ok) return fetchJson<T>(url, options, true);
+            /* Tarmoq yoki server vaqtincha ishlamayapti — sessiya TIRIK.
+               Chiqarib yubormaymiz, faqat xato beramiz. */
+            if (outcome.reason === 'network') throw networkError();
         }
 
-        await auth.clearSession(API_URL);
-        window.dispatchEvent(new Event('auth:unauthorized'));
+        expireSession();
         // We throw an error to stop execution, but the event listener in App.tsx will handle the redirect/UI update
         throw new Error('Session expired');
     }

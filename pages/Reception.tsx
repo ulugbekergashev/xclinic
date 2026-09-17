@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { formatUzPhone } from '../shared/validation';
 import { formatFullName, formatNumber, formatDateLong } from '../utils/format';
 import { todayISO } from '../utils/dateUtils';
+import { esc } from '../utils/printDocument';
 import { useNavigate } from 'react-router-dom';
 import {
     UserPlus, Search, ArrowRight, Printer, Clock, Stethoscope,
@@ -512,21 +513,23 @@ export const Reception: React.FC<Props> = ({
         // Kabinet raqami — bemor qaysi xonaga borishini bilishi kerak
         const room = doctors.find(d => d.id === v.doctorId)?.room || '';
         const w = window.open('', '_blank', 'width=380,height=520');
-        if (!w) return;
-        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${t('reception.ticket')}</title>
+        if (!w) { addToast('error', t('print.popupBlocked')); return; }
+        /* Ism, bo'lim, shifokor — foydalanuvchi kiritgan matn. Hammasi `esc()`
+           dan o'tadi, aks holda bemor ismidagi `<script>` talonda ishga tushadi. */
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(t('reception.ticket'))}</title>
 <style>@page{size:80mm auto;margin:4mm}body{font-family:'Segoe UI',Arial,sans-serif;text-align:center;margin:0;padding:8px}
 .n{font-size:64px;font-weight:800;line-height:1;margin:10px 0}
 .c{font-size:15px;font-weight:700}.d{font-size:13px;margin:3px 0}.s{border-top:1px dashed #000;margin:10px 0}
 </style></head><body>
-<div class="c">${currentClinic?.name || t('ui.klinika')}</div>
+<div class="c">${esc(currentClinic?.name || t('ui.klinika'))}</div>
 <div class="s"></div>
-<div class="d">${dept?.name || ''}</div>
-<div class="n">${v.queueNumber ?? '—'}</div>
-<div class="d"><b>${v.patient?.lastName || ''} ${v.patient?.firstName || ''}</b></div>
-${v.doctorName ? `<div class="d">${v.doctorName}</div>` : ''}
-${room ? `<div class="d"><b>Kabinet: ${room}</b></div>` : ''}
+<div class="d">${esc(dept?.name || '')}</div>
+<div class="n">${esc(v.queueNumber ?? '—')}</div>
+<div class="d"><b>${esc(v.patient?.lastName || '')} ${esc(v.patient?.firstName || '')}</b></div>
+${v.doctorName ? `<div class="d">${esc(v.doctorName)}</div>` : ''}
+${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></div>` : ''}
 <div class="s"></div>
-<div class="d">${new Date().toLocaleString('uz-UZ')}</div>
+<div class="d">${esc(new Date().toLocaleString('uz-UZ'))}</div>
 <script>window.onload=()=>window.print()</script>
 </body></html>`);
         w.document.close();

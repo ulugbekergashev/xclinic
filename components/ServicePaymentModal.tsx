@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Wallet, Loader2, Search, X, Plus, Trash2 } from 'lucide-react';
 import { Modal, Button } from './Common';
 import { Patient } from '../types';
@@ -69,10 +69,30 @@ export const ServicePaymentModal: React.FC<Props> = ({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 
+    /* SERVERDA YARATILGAN QATORLAR: satr kaliti → qator id.
+
+       Qatorlar birma-bir yaratiladi, keyin to'lanadi. Ilgari to'lov (yoki
+       uchinchi qatorni yaratish) yiqilsa va kassir «Qabul qilish» ni yana
+       bossa, HAMMA qator QAYTADAN yaratilardi — bemorning qarziga ikki
+       nusxa tushardi. Endi yaratilgani eslab qolinadi va qayta urinishda
+       faqat yetishmagani yaratiladi, keyin mavjudlari to'lanadi.
+
+       `useRef` — sikl ichida darhol o'qiladi (holat keyingi renderda
+       yangilanadi). Son esa ekran uchun holatda ham turadi. */
+    const createdRef = useRef<Record<string, string>>({});
+    const [createdCount, setCreatedCount] = useState(0);
+    /* Qator yaratilgach bemor va ro'yxat QULFLANADI: aks holda yaratilgan,
+       lekin ro'yxatdan olib tashlangan qator to'lanmay qolib ketardi. */
+    const locked = createdCount > 0;
+
     /* Oyna yopilganda hammasi tozalanadi: keyingi safar oldingi bemorning
-       tanlovi qolib ketmasin. */
+       tanlovi qolib ketmasin. To'lanmay qolgan qatorlar serverda turadi va
+       kassaning «to'lanmagan» ro'yxatida ko'rinadi. */
     useEffect(() => {
-        if (!isOpen) { setPicked(null); setSearch(''); setLines([]); setServiceQuery(''); setError(''); }
+        if (!isOpen) {
+            setPicked(null); setSearch(''); setLines([]); setServiceQuery(''); setError('');
+            createdRef.current = {}; setCreatedCount(0);
+        }
     }, [isOpen]);
 
     const matches = useMemo(() => {
@@ -117,16 +137,23 @@ export const ServicePaymentModal: React.FC<Props> = ({
                   xizmat bo'yicha hisobot ishlaydi. */
             const ids: string[] = [];
             for (const l of lines) {
-                const created: any = await api.charges.create({
-                    patientId: target.id,
-                    patientName: `${target.lastName} ${target.firstName}`.trim(),
-                    name: l.name,
-                    unitPrice: l.price,
-                    quantity: l.qty,
-                    source: 'Service',
-                    ...(l.serviceId ? { serviceId: l.serviceId } : {}),
-                } as any);
-                if (created?.id) ids.push(created.id);
+                let id = createdRef.current[l.key];
+                if (!id) {
+                    const created: any = await api.charges.create({
+                        patientId: target.id,
+                        patientName: `${target.lastName} ${target.firstName}`.trim(),
+                        name: l.name,
+                        unitPrice: l.price,
+                        quantity: l.qty,
+                        source: 'Service',
+                        ...(l.serviceId ? { serviceId: l.serviceId } : {}),
+                    } as any);
+                    if (!created?.id) throw new Error(t('payment.chargeFailed'));
+                    id = String(created.id);
+                    createdRef.current[l.key] = id;
+                    setCreatedCount(Object.keys(createdRef.current).length);
+                }
+                ids.push(id);
             }
             if (ids.length === 0) throw new Error(t('payment.chargeFailed'));
 
@@ -159,8 +186,8 @@ export const ServicePaymentModal: React.FC<Props> = ({
                                 </p>
                                 <p className="text-xs text-faint">{formatUzPhone(target.phone || '')}</p>
                             </div>
-                            <button onClick={() => setPicked(null)}
-                                className="p-1.5 text-faint hover:text-ink rounded-lg hover:bg-surface">
+                            <button onClick={() => setPicked(null)} disabled={locked}
+                                className="p-1.5 text-faint hover:text-ink rounded-lg hover:bg-surface disabled:opacity-40">
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
@@ -199,12 +226,13 @@ export const ServicePaymentModal: React.FC<Props> = ({
                         <Plus className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-faint" />
                         <input
                             value={serviceQuery}
+                            disabled={locked}
                             onChange={e => setServiceQuery(e.target.value)}
                             placeholder={t('payment.searchService')}
                             className="w-full h-11 pl-10 pr-3 rounded-xl border border-line bg-elevated text-sm text-ink placeholder:text-faint outline-none focus:border-primary-500/50"
                         />
                     </div>
-                    {matches.length > 0 && (
+                    {matches.length > 0 && !locked && (
                         <div className="mt-2 border border-line rounded-xl divide-y divide-line max-h-44 overflow-y-auto">
                             {matches.map(s => (
                                 <button key={`${s.id ?? s.name}`} onClick={() => addLine(s)}
@@ -226,7 +254,8 @@ export const ServicePaymentModal: React.FC<Props> = ({
                                 {l.qty > 1 && <span className="text-xs text-faint">×{l.qty}</span>}
                                 <span className="text-sm font-semibold tabular-nums text-ink">{formatMoney(l.price * l.qty)}</span>
                                 <button onClick={() => setLines(prev => prev.filter(x => x.key !== l.key))}
-                                    className="p-1 text-faint hover:text-danger rounded-lg">
+                                    disabled={locked}
+                                    className="p-1 text-faint hover:text-danger rounded-lg disabled:opacity-40">
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
@@ -255,6 +284,9 @@ export const ServicePaymentModal: React.FC<Props> = ({
                 </div>
 
                 {error && <p className="text-sm font-medium text-danger">{error}</p>}
+                {locked && error && (
+                    <p className="text-xs text-muted">{t('payment.retryPaysOnly')}</p>
+                )}
 
                 <div className="flex items-center gap-3 pt-1">
                     <Button onClick={submit} disabled={saving || !target || lines.length === 0}>

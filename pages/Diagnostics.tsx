@@ -6,7 +6,7 @@ import {
     Clock, Printer, Image as ImageIcon, Upload,
 } from 'lucide-react';
 import { DiagnosticStudy, Modality, MODALITY_LABELS, Patient, Department, Service, Clinic } from '../types';
-import { api, getFileUrl, API_URL, isDemoMode } from '../services/api';
+import { api, getFileUrl, authFetch, isDemoMode } from '../services/api';
 import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { EmptyState } from '../components/Common';
 import { printStudyConclusion } from '../utils/printForms';
@@ -35,7 +35,6 @@ interface Props {
     services?: Service[];
     doctors?: any[];
     currentUserName?: string;
-    token?: string;
     /** Bosma blank shapkasi uchun */
     currentClinic?: Clinic | null;
 }
@@ -48,7 +47,7 @@ const fmt = (n: number) => formatNumber(n);
 const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
 export const Diagnostics: React.FC<Props> = ({
-    clinicId, patients = [], departments = [], services = [], doctors = [], currentUserName, token,
+    clinicId, patients = [], departments = [], services = [], doctors = [], currentUserName,
     currentClinic,
 }) => {
     const { t } = useLanguage();
@@ -179,16 +178,17 @@ export const Diagnostics: React.FC<Props> = ({
         try {
             const fd = new FormData();
             fd.append('photo', file);
-            const res = await fetch(`${API_URL}/studies/${editing.id}/files`, {
+            /* Token RENDER paytidagi propdan emas, so'rov paytida olinadi
+               (`authFetch`) — uzoq ochiq turgan sahifada u eskirib qolardi. */
+            const res = await authFetch(`/studies/${editing.id}/files`, {
                 method: 'POST',
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 body: fd,
             });
-            if (!res.ok) throw new Error('Fayl yuklanmadi');
+            if (!res.ok) throw new Error(t('diagnostics.faylYuklanmadi'));
             await reload();
             const fresh = (await api.studies.getAll()).find(x => x.id === editing.id);
             if (fresh) setEditing(fresh);
-        } catch (e: any) { setError(e.message || 'Fayl yuklanmadi'); }
+        } catch (e: any) { setError(e.message || t('diagnostics.faylYuklanmadi')); }
         finally { setUploading(false); }
     };
 

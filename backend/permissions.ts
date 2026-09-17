@@ -66,10 +66,7 @@ export const PUBLIC_PATHS: { method: string; path: string }[] = [
        uni JavaScript o'qiy ham, yubora ham olmaydi. */
     { method: 'POST', path: '/api/auth/refresh' },
     { method: 'POST', path: '/api/auth/logout' },
-    { method: 'POST', path: '/api/public/demo-request' },
     { method: 'POST', path: '/api/public/leads' },
-    // AI maslahatchi demo sahifasida ishlatiladi.
-    { method: 'POST', path: '/api/ai/dental-advisor' },
 ];
 
 export const RULES: Rule[] = [
@@ -329,6 +326,10 @@ export const RULES: Rule[] = [
     { method: 'POST', path: '/api/ai/chat', roles: [A, D, R, L, N] },
     { method: 'POST', path: '/api/ai/report', roles: owner() },
     { method: 'POST', path: '/api/ai/insights', roles: owner() },
+    /* AI sozlamalari. Ilgari jadvalda YO'Q edi — ya'ni egaga ham 403
+       `PERMISSION_UNLISTED` qaytardi va sozlamani saqlab bo'lmasdi. */
+    { method: 'PUT', path: '/api/ai/settings', roles: owner() },
+    { method: 'POST', path: '/api/ai/settings/test', roles: owner() },
 ];
 
 /* ─── Moslashtirish ──────────────────────────────────────────────────────── */
@@ -376,4 +377,40 @@ export function check(method: string, path: string, role: string | undefined): D
     // Jadvalda yo'q. O'qish o'tadi, yozuv o'tmaydi.
     if (!WRITE_METHODS.has(m)) return { allow: true };
     return { allow: false, reason: 'unlisted' };
+}
+
+/* ─── MOLIYANI O'QISH (audit 2026-09-17) ────────────────────────────────────
+
+   Yuqoridagi jadval faqat YOZUVNI boshqaradi, o'qish esa hammaga ochiq edi.
+   Egasining «Kirish nazorati» dagi «Moliyani ko'rsatish» bayrog'i faqat
+   ekranda ishlardi: laborant `GET /api/reports/summary` bilan sof foydani,
+   hamshira xarajatlar va kassa jurnalini to'g'ridan-to'g'ri olardi.
+
+   Qoida interfeysdagi `canSeeFinance` (utils/accessControl.ts) bilan bir xil:
+     · hamshira va laborant — hech qachon;
+     · shifokor va registrator — ega `showFinance: false` qo'ygan bo'lsa;
+     · ega — har doim.
+   To'lovlar ro'yxati (`/api/transactions`) shifokor va registratorga
+   bayroqdan qat'i nazar ochiq: bemor kartasi to'lov tarixini ko'rsatadi. */
+const FINANCE_READ: RegExp[] = [
+    /^\/api\/expenses(\/|$)/,
+    /^\/api\/cash-register(\/|$)/,
+    /^\/api\/cash-movements(\/|$)/,
+    /^\/api\/cash-audit(\/|$)/,
+    /^\/api\/reports\/summary(\/|$)/,
+];
+const TRANSACTIONS_READ = /^\/api\/transactions(\/|$)/;
+
+export function isFinanceRead(method: string, path: string): boolean {
+    const m = method.toUpperCase();
+    if (m !== 'GET' && m !== 'HEAD') return false;
+    return FINANCE_READ.some(re => re.test(path)) || TRANSACTIONS_READ.test(path);
+}
+
+/** Moliyaviy o'qishga ruxsat. `showFinance` — klinika sozlamasidagi shu rol bayrog'i. */
+export function canReadFinance(path: string, role: string | undefined, showFinance: boolean | undefined): boolean {
+    if (role === 'CLINIC_ADMIN') return true;
+    if (role === 'NURSE' || role === 'LAB_TECHNICIAN') return false;
+    if (TRANSACTIONS_READ.test(path)) return true;
+    return showFinance !== false;
 }

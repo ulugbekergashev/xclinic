@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatNumber } from '../utils/format';
-import { todayISO } from '../utils/dateUtils';
+import { todayISO, getCurrentMonthRange } from '../utils/dateUtils';
 import { SkeletonList } from '../components/Common';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -74,7 +74,10 @@ interface Props {
    emas va u vergul qo'yadi («160,000»), Moliya bo'limi esa bo'shliq
    qo'yardi («160 000») — bitta ilovada ikki xil ko'rinish. */
 const fmt = (n: number) => formatNumber(n);
-const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]; };
+/* Oy boshi MAHALLIY sana bo'yicha. `toISOString()` UTC beradi: Toshkentda
+   (UTC+5) mahalliy 1-sananing yarim tuni UTC da oldingi oyning oxirgi kuni —
+   hisobot jimgina o'tgan oyning oxirgi kunini ham qo'shib olardi. */
+const monthStart = () => getCurrentMonthRange().startDate;
 const today = () => todayISO();
 
 // Bo'limlar diagrammasi uchun ranglar — bo'limning o'z rangi bo'lmasa shulardan

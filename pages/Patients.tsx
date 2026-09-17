@@ -11,7 +11,8 @@ import type { Snapshot } from '../services/api';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { PatientFormModal } from '../components/PatientFormModal';
 import { useLanguage } from '../context/LanguageContext';
-import { calcAge, formatDay } from '../utils/dateUtils';
+import { calcAge, formatDay, formatDateToISO, todayISO } from '../utils/dateUtils';
+import { csvRow } from '../utils/csv';
 import { maskPhone } from '../utils/accessControl';
 import { DoctorPicker } from '../components/DoctorPicker';
 
@@ -84,68 +85,6 @@ export const Patients: React.FC<PatientsProps> = ({
   const { results: searchResults, loading: searching, active: searchActive } =
     usePatientSearch(searchTerm);
 
-  const filteredPatients = useMemo(() => {
-    const base = searchActive ? searchResults : patients;
-    return base.filter((p) => {
-      // Qidiruv serverda bajarilgan bo'lsa, bu yerda qayta filtrlash shart emas
-      const matchesSearch = searchActive || !searchTerm ||
-        p.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.phone.includes(searchTerm);
-
-      const matchesStatus =
-        filterStatus === 'all' ||
-        (filterStatus === 'active' && p.status === 'Active') ||
-        (filterStatus === 'archived' && p.status === 'Archived') ||
-        (filterStatus === 'unassigned' && !p.doctorId);
-
-      const matchesGender =
-        filterGender === 'all' ||
-        (filterGender === 'male' && p.gender === 'Male') ||
-        (filterGender === 'female' && p.gender === 'Female');
-
-      const matchesDoctor =
-        filterDoctor === 'all' ||
-        (filterDoctor === 'none' && !p.doctorId) ||
-        p.doctorId === filterDoctor;
-
-      const matchesDateFrom = !filterDateFrom || p.dob >= filterDateFrom;
-      const matchesDateTo = !filterDateTo || p.dob <= filterDateTo;
-
-      // Stats filters
-      let matchesStat = true;
-      if (activeStatFilter === 'new') {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        // We don't have createdAt, but assuming lastVisit 'Never' or recent lastVisit as proxy if needed,
-        // but wait, types.ts doesn't have createdAt. Let's check patients for any date field.
-        // If not available, we might need to skip 'New' or use a different logic.
-        // Actually, looking at the screenshot, "Yangi Bemorlar" exists.
-        // Let's assume patients added in the system have some date.
-        // Since I can't see createdAt, I'll use a placeholder logic or check if I can add it.
-        // Actually, let's use lastVisit as a proxy for "New" if it's within 7 days and they are new.
-        const lastVisitDate = p.lastVisit === 'Never' ? null : new Date(p.lastVisit);
-        matchesStat = lastVisitDate ? lastVisitDate >= sevenDaysAgo : true;
-      } else if (activeStatFilter === 'debtor' || activeStatFilter === 'waiting') {
-        /* QARZ SERVERDAN. Ilgari bu yerda ikkita mustaqil hisob turardi va
-           ikkalasi ham noto'g'ri edi:
-
-             · «qarzdor» — `Transaction.status === 'Pending'` cheklari
-               bo'yicha. Bunday chek faqat bemor kartasidagi to'lov oynasi
-               yaratardi va u olib tashlandi;
-             · «to'lov kutmoqda» — yakunlangan yozuvga o'sha SANADA chek
-               yo'qligi bo'yicha. Yozuvning `Completed` holatini esa kod
-               hech qayerda qo'ymaydi, ya'ni filtr hech qachon ishlamagan.
-
-           Endi ikkalasi ham bitta manbadan: to'lanmagan hisob qatorlari
-           (`GET /api/reports/debtors`). */
-        matchesStat = debtorIds.has(p.id);
-      }
-
-      return matchesSearch && matchesStatus && matchesGender && matchesDoctor && matchesDateFrom && matchesDateTo && matchesStat;
-    });
-  }, [patients, searchResults, searchActive, searchTerm, filterStatus, filterGender, filterDoctor, filterDateFrom, filterDateTo, activeStatFilter, appointments, transactions]);
-
   /* KPI RAQAMLARI SERVERDAN (S2.1).
 
      Ilgari uchalasi ham shu yerda, BRAUZERDAGI ro'yxatdan sanalardi va
@@ -177,6 +116,77 @@ export const Patients: React.FC<PatientsProps> = ({
     return () => { alive = false; };
   }, []);
 
+  /* «Yangi» chegarasi — server bilan bir xil: 7 kun oldingi sananing
+     00:00 (UTC) dan keyin yaratilganlar. Sahifa ochilganda bir marta.
+
+     ⚠️ Bu va yuqoridagi holatlar `filteredPatients` dan OLDIN e'lon
+     qilinadi: `useMemo` funksiyasi render paytida darhol chaqiriladi va
+     keyinroq e'lon qilingan `const` ga murojaat «Cannot access before
+     initialization» bilan yiqilardi (Qarzdorlar kartasi bosilganda). */
+  const newSince = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return new Date(`${formatDateToISO(d)}T00:00:00.000Z`).getTime();
+  }, []);
+
+  const filteredPatients = useMemo(() => {
+    const base = searchActive ? searchResults : patients;
+    return base.filter((p) => {
+      // Qidiruv serverda bajarilgan bo'lsa, bu yerda qayta filtrlash shart emas
+      const matchesSearch = searchActive || !searchTerm ||
+        p.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.phone.includes(searchTerm);
+
+      const matchesStatus =
+        filterStatus === 'all' ||
+        (filterStatus === 'active' && p.status === 'Active') ||
+        (filterStatus === 'archived' && p.status === 'Archived') ||
+        (filterStatus === 'unassigned' && !p.doctorId);
+
+      const matchesGender =
+        filterGender === 'all' ||
+        (filterGender === 'male' && p.gender === 'Male') ||
+        (filterGender === 'female' && p.gender === 'Female');
+
+      const matchesDoctor =
+        filterDoctor === 'all' ||
+        (filterDoctor === 'none' && !p.doctorId) ||
+        p.doctorId === filterDoctor;
+
+      const matchesDateFrom = !filterDateFrom || p.dob >= filterDateFrom;
+      const matchesDateTo = !filterDateTo || p.dob <= filterDateTo;
+
+      // Stats filters
+      let matchesStat = true;
+      if (activeStatFilter === 'new') {
+        /* «YANGI» — kartadagi son bilan BIR XIL ta'rif: oxirgi 7 kunda
+           YARATILGAN bemor (`backend/snapshot.ts`, `newLast7Days`).
+           Ilgari filtr oxirgi tashrifga qarardi va hech qachon kelmagan
+           bemorni ham o'tkazardi — kartada 3, ro'yxatda 400 chiqardi. */
+        matchesStat = !!p.createdAt && new Date(p.createdAt).getTime() >= newSince;
+      } else if (activeStatFilter === 'debtor' || activeStatFilter === 'waiting') {
+        /* QARZ SERVERDAN. Ilgari bu yerda ikkita mustaqil hisob turardi va
+           ikkalasi ham noto'g'ri edi:
+
+             · «qarzdor» — `Transaction.status === 'Pending'` cheklari
+               bo'yicha. Bunday chek faqat bemor kartasidagi to'lov oynasi
+               yaratardi va u olib tashlandi;
+             · «to'lov kutmoqda» — yakunlangan yozuvga o'sha SANADA chek
+               yo'qligi bo'yicha. Yozuvning `Completed` holatini esa kod
+               hech qayerda qo'ymaydi, ya'ni filtr hech qachon ishlamagan.
+
+           Endi ikkalasi ham bitta manbadan: to'lanmagan hisob qatorlari
+           (`GET /api/reports/debtors`). */
+        matchesStat = debtorIds.has(p.id);
+      }
+
+      return matchesSearch && matchesStatus && matchesGender && matchesDoctor && matchesDateFrom && matchesDateTo && matchesStat;
+    });
+    /* `debtorIds` bog'liqliklarda SHART: u serverdan keyin keladi va usiz
+       «Qarzdorlar» bosilganda ro'yxat bo'sh to'plam bilan qotib qolardi. */
+  }, [patients, searchResults, searchActive, searchTerm, filterStatus, filterGender, filterDoctor, filterDateFrom, filterDateTo, activeStatFilter, debtorIds, newSince]);
+
   // Stats
   const stats = useMemo(() => {
     /* Server javobi kelmaguncha yuklangan ro'yxatdan ko'rsatiladi — kartalar
@@ -185,17 +195,14 @@ export const Patients: React.FC<PatientsProps> = ({
     const newPatients = snapshot?.patients.newLast7Days ?? 0;
     const debtors = snapshot?.debt.patients ?? 0;
 
-    const waiting = patients.filter(p => {
-      const pAppts = appointments.filter(a => a.patientId === p.id || a.patientName === `${formatFullName(p)}`);
-      const pTxs = transactions.filter(t => t.patientId === p.id || t.patientName === `${formatFullName(p)}`);
-      return pAppts.some(app => {
-        const hasTransaction = pTxs.some(t => t.date === app.date);
-        return (app.status === 'Completed' || app.status === 'Checked-In') && !hasTransaction;
-      });
-    }).length;
+    /* «To'lov kutmoqda» — bosilganda ochiladigan ro'yxat bilan BITTA manba:
+       serverdagi qarzdorlar ro'yxati. Ilgari son brauzerda, 45 kunlik
+       yozuvlardan va ISM bo'yicha sanalardi, bosilganda esa server ro'yxati
+       chiqardi — karta bilan ro'yxat hech qachon mos kelmasdi. */
+    const waiting = debtorIds.size;
 
     return { total, newPatients, debtors, waiting };
-  }, [patients, appointments, transactions, snapshot]);
+  }, [patients, snapshot, debtorIds]);
 
   const unassignedCount = patients.filter((p) => !p.doctorId).length;
 
@@ -222,12 +229,15 @@ export const Patients: React.FC<PatientsProps> = ({
       getPatientDoctorName(p) || t('patients.filter.unassigned'),
       p.lastVisit,
     ]);
-    const csvContent = [headers, ...rows].map((r) => r.join(',')).join('\n');
+    /* Har katak qo'shtirnoqda va formula in'ektsiyasidan tozalangan
+       (`utils/csv.ts`). Ilgari `join(',')` edi: manzildagi vergul qatorni
+       buzardi, `=...` bilan boshlangan ism esa Excel da formula bo'lardi. */
+    const csvContent = [headers, ...rows].map((r) => csvRow(r)).join('\r\n');
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `bemorlar_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `bemorlar_${todayISO()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };

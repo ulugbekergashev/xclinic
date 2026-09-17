@@ -51,7 +51,10 @@ export function isModuleHidden(ac: AccessControl, role: UserRole, moduleId: stri
 export function canSeeFinance(ac: AccessControl, role: UserRole): boolean {
     // Hamshira moliyani ko'rmaydi. Sozlamalarda bunday bayroq yo'q, ya'ni
     // sukut bo'yicha "ochiq" bo'lib qolardi — shuning uchun aniq yozilgan.
-    if (role === UserRole.NURSE) return false;
+    // Laborant ham — server (`backend/permissions.ts`, `canReadFinance`)
+    // ikkalasiga moliyaviy o'qishni doim 403 bilan yopadi; ekran undan
+    // keng bo'lsa, bo'sh sahifa va xato so'rovlar chiqardi.
+    if (role === UserRole.NURSE || role === UserRole.LAB_TECHNICIAN) return false;
     return getRoleAccess(ac, role)?.showFinance !== false;
 }
 

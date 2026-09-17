@@ -201,6 +201,8 @@ async function main() {
         ok('shifokor jadvalda bor', !!myRow, String((sh.data?.rows || []).length));
         ok('to\'langan oy YOPIQ ko\'rinadi', myRow?.closed === true, JSON.stringify(myRow));
         ok('yopilgan oyda to\'lanadigan summa nol', myRow?.payable === 0, String(myRow?.payable));
+
+        await shareAndRunGuards(token, docId);
     }
 
     /* ═══ 6. DAVOMAT ══════════════════════════════════════════════════ */
@@ -343,6 +345,79 @@ async function main() {
     }
 
     finish();
+}
+
+/* ═══ 5b–5d. ULUSH VA VEDOMOST: PUL IKKI MARTA CHIQMAYDI ═══════════════════
+
+   Uchta topilgan teshik:
+     · joriy oy ulushi oy o'rtasida to'lansa, qolgan kunlar ulushi abadiy
+       yo'qolardi (oyiga bitta to'lov);
+     · vedomost faqat AYNAN bir xil davrni tekshirardi — kesishgan davr va
+       kartadan to'langan oy ikkinchi marta to'lanardi;
+     · vedomost qatorini ikki marta bosish ikki xarajat yozardi.
+
+   Davrlar ATAYLAB uzoq o'tmishda (2003): sinov bazasidagi haqiqiy
+   vedomostlar bilan to'qnashmasin. Fix maoshli shifokor har qanday o'tgan
+   oy uchun to'liq oylik oladi, ya'ni qator summasi aniq. */
+async function shareAndRunGuards(token: string, docId: string) {
+    console.log("\n═══ 5b. JORIY OY ULUSHI TO'LANMAYDI ═══════════════");
+    const tk = new Date(Date.now() + 5 * 3600e3);
+    const nowMonth = tk.toISOString().slice(0, 7);
+    const next = new Date(Date.UTC(tk.getUTCFullYear(), tk.getUTCMonth() + 1, 1)).toISOString().slice(0, 7);
+
+    const cur = await call('POST', `/hr/staff/DOCTOR/${docId}/pay`, { period: nowMonth }, token);
+    ok("JORIY oy ulushi to'lanmadi (400)", cur.status === 400 && cur.data?.code === 'PERIOD_NOT_CLOSED',
+        `status: ${cur.status}, ${JSON.stringify(cur.data).slice(0, 120)}`);
+    const fut = await call('POST', `/hr/staff/DOCTOR/${docId}/pay`, { period: next }, token);
+    ok("KELAJAK oy ulushi to'lanmadi (400)", fut.status === 400, `status: ${fut.status}`);
+    const noPeriod = await call('POST', `/hr/staff/DOCTOR/${docId}/pay`, {}, token);
+    ok("davrsiz so'rov (= joriy oy) ham rad etildi", noPeriod.status === 400, `status: ${noPeriod.status}`);
+
+    console.log('\n═══ 5c. KESISHGAN VEDOMOST YARATILMAYDI ═══════════');
+    const runA = await call('POST', '/payroll/runs', { periodFrom: '2003-02-01', periodTo: '2003-02-28' }, token);
+    ok('vedomost yaratildi (2003-02)', runA.status === 200, `status: ${runA.status}, ${JSON.stringify(runA.data).slice(0, 120)}`);
+    const overlap = await call('POST', '/payroll/runs', { periodFrom: '2003-02-15', periodTo: '2003-03-10' }, token);
+    ok('KESISHGAN davr rad etildi (409)', overlap.status === 409 && overlap.data?.code === 'PERIOD_OVERLAP',
+        `status: ${overlap.status}, ${overlap.data?.code}`);
+
+    const cardPaid = await call('POST', `/hr/staff/DOCTOR/${docId}/pay`, { period: '2003-05' }, token);
+    ok("kartadan 2003-05 to'landi", cardPaid.status === 201, `status: ${cardPaid.status}, ${JSON.stringify(cardPaid.data).slice(0, 120)}`);
+    const runPaidMonth = await call('POST', '/payroll/runs', { periodFrom: '2003-05-01', periodTo: '2003-05-31' }, token);
+    ok("kartadan to'langan oyga vedomost RAD ETILDI (409)",
+        runPaidMonth.status === 409 && runPaidMonth.data?.code === 'SALARY_ALREADY_PAID',
+        `status: ${runPaidMonth.status}, ${JSON.stringify(runPaidMonth.data).slice(0, 140)}`);
+
+    console.log("\n═══ 5d. VEDOMOST QATORI BIR MARTA TO'LANADI ════════");
+    const runId = runA.data?.id;
+    const lineA = (runA.data?.lines || []).find((l: any) => l.doctorId === docId);
+    ok('vedomostda shifokor qatori bor', !!lineA && lineA.accrued > 0, JSON.stringify(lineA).slice(0, 100));
+    if (runId && lineA) {
+        await call('POST', `/payroll/runs/${runId}/approve`, {}, token);
+        const [p1, p2] = await Promise.all([
+            call('POST', `/payroll/lines/${lineA.id}/pay`, {}, token),
+            call('POST', `/payroll/lines/${lineA.id}/pay`, {}, token),
+        ]);
+        const codes = [p1.status, p2.status].sort().join(',');
+        ok("ikki marta bosish: bittasi o'tdi, ikkinchisi 409", codes === '200,409', codes);
+        const expenses = ((await call('GET', '/expenses', undefined, token)).data || [])
+            .filter((e: any) => e.doctorId === docId && String(e.title || '').includes('2003-02-01'));
+        ok('XARAJAT BITTA yozildi', expenses.length === 1, `topildi: ${expenses.length}`);
+    }
+
+    /* Teskari tartib: vedomost oldin tasdiqlangan, keyin oy kartadan
+       to'langan — vedomost qatori endi to'lanmaydi. */
+    const runB = await call('POST', '/payroll/runs', { periodFrom: '2003-08-01', periodTo: '2003-08-31' }, token);
+    const lineB = (runB.data?.lines || []).find((l: any) => l.doctorId === docId);
+    if (runB.data?.id && lineB) {
+        await call('POST', `/payroll/runs/${runB.data.id}/approve`, {}, token);
+        const card = await call('POST', `/hr/staff/DOCTOR/${docId}/pay`, { period: '2003-08' }, token);
+        ok("kartadan 2003-08 to'landi", card.status === 201, `status: ${card.status}`);
+        const payB = await call('POST', `/payroll/lines/${lineB.id}/pay`, {}, token);
+        ok("kartadan to'langan oy vedomostdan QAYTA TO'LANMADI (409)", payB.status === 409,
+            `status: ${payB.status}, ${JSON.stringify(payB.data).slice(0, 120)}`);
+    } else {
+        ok('2003-08 vedomosti yaratildi', false, `status: ${runB.status}, ${JSON.stringify(runB.data).slice(0, 120)}`);
+    }
 }
 
 function finish() {

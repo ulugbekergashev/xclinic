@@ -369,6 +369,41 @@ const schedulerState: {
  * `backupInProgress` bayrog'ini CHAQIRUVCHI qo'yadi: endpoint band bo'lsa 409
  * qaytarishi kerak, jadval esa shunchaki o'tkazib yuboradi.
  */
+/** Arxivlangan `uploads/` holatining izi saqlanadigan fayl (nusxalar papkasida). */
+const UPLOADS_MARK = '.uploads-mark.json';
+
+/** `uploads/` papkasining izi: fayllar soni, jami hajm, eng oxirgi o'zgarish. */
+export function uploadsFingerprint(dir: string): { key: string; count: number } {
+    let count = 0, size = 0, mtime = 0;
+    const walk = (d: string) => {
+        for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+            const p = path.join(d, e.name);
+            if (e.isDirectory()) { walk(p); continue; }
+            const st = fs.statSync(p);
+            count++; size += st.size; mtime = Math.max(mtime, st.mtimeMs);
+        }
+    };
+    walk(dir);
+    return { key: `${count}:${size}:${Math.round(mtime)}`, count };
+}
+
+/**
+ * Nusxaga tegishli fayllar arxivi: o'ziniki bo'lmasa, undan OLDINGI eng yaqini
+ * (papka o'zgarmagani uchun o'tkazib yuborilgan). Nomlar vaqt bo'yicha tartiblanadi.
+ */
+export function uploadsZipFor(backupDir: string, dbFile: string): string | null {
+    const own = dbFile.replace(/\.db$/, '-uploads.zip');
+    if (fs.existsSync(path.join(backupDir, own))) return own;
+    try {
+        const earlier = fs.readdirSync(backupDir)
+            .filter((f) => /^xclinic-\d{8}-\d{6}-uploads\.zip$/.test(f) && f < own)
+            .sort();
+        return earlier.length ? earlier[earlier.length - 1] : null;
+    } catch {
+        return null;
+    }
+}
+
 export async function performBackup(input: {
     prisma: any;
     backupDir: string;
@@ -394,15 +429,35 @@ export async function performBackup(input: {
     }
     await prisma.$executeRawUnsafe(`VACUUM INTO '${sqlPath}'`);
 
-    // uploads/ — arxivga. Bo'sh bo'lsa arxiv yaratilmaydi.
+    /* uploads/ — arxivga. Bo'sh bo'lsa arxiv yaratilmaydi.
+
+       O'ZGARMAGAN BO'LSA HAM YARATILMAYDI (audit 2026-09-17). Nusxalar
+       o'chirilmaydi va kuniga ikki marta olinadi, ilgari esa HAR safar butun
+       papka qayta arxivlanardi: 500 MB surat yiliga ~365 GB bo'lardi va disk
+       to'lgach `VACUUM INTO` ham yiqilardi. Endi papkaning izi (fayllar
+       soni, hajmi, oxirgi o'zgarish) oxirgi arxivnikiga teng bo'lsa arxiv
+       olinmaydi — tiklashda shu nusxadan OLDINGI eng yaqin arxiv ishlatiladi
+       (`uploadsZipFor`, electron/restore.ts). */
     let uploadsCount = 0;
     try {
         if (fs.existsSync(uploadsDir) && fs.readdirSync(uploadsDir).length > 0) {
-            const AdmZip = require('adm-zip');
-            const zip = new AdmZip();
-            zip.addLocalFolder(uploadsDir);
-            zip.writeZip(path.join(backupDir, `${stamp}-uploads.zip`));
-            uploadsCount = fs.readdirSync(uploadsDir).length;
+            const fp = uploadsFingerprint(uploadsDir);
+            const markPath = path.join(backupDir, UPLOADS_MARK);
+            let last: { fingerprint?: string; zip?: string } = {};
+            try { last = JSON.parse(fs.readFileSync(markPath, 'utf8')); } catch { /* birinchi marta */ }
+            const lastZipExists = !!last.zip && fs.existsSync(path.join(backupDir, last.zip));
+
+            uploadsCount = fp.count;
+            if (!(last.fingerprint === fp.key && lastZipExists)) {
+                const AdmZip = require('adm-zip');
+                const zip = new AdmZip();
+                zip.addLocalFolder(uploadsDir);
+                const zipName = `${stamp}-uploads.zip`;
+                zip.writeZip(path.join(backupDir, zipName));
+                try {
+                    fs.writeFileSync(markPath, JSON.stringify({ fingerprint: fp.key, zip: zipName }), 'utf8');
+                } catch { /* iz yozilmasa keyingi safar yana arxivlanadi — xavfsiz */ }
+            }
         }
     } catch (e: any) {
         // Baza nusxasi olingan — bu asosiysi. Fayllar arxivi yiqilsa
@@ -703,7 +758,7 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
                     file: f,
                     sizeBytes: st.size,
                     createdAt: st.mtime.toISOString(),
-                    hasUploads: fs.existsSync(path.join(backupDir, zip)),
+                    hasUploads: !!uploadsZipFor(backupDir, f),
                     note,
                 };
             })
@@ -1024,11 +1079,11 @@ export function registerMaintenanceRoutes(app: express.Express, deps: Deps) {
             });
 
             /* ── (b2) Bekor qilingan, lekin puli olingan ──────────────────
-               `warn`, `error` EMAS. Sababi: `cancelChargesBySource`
-               (billing.ts) qisman to'langan qatorni ham bekor qiladi —
-               shifokor muolajani o'chirsa shunday bo'ladi va bu KO'ZDA
-               TUTILGAN amal. Pul esa qaytarilishi kerak, shuning uchun
-               ko'rsatamiz, lekin "buzilish" demaymiz. */
+               `warn`, `error` EMAS. 2026-09-17 gacha `cancelChargesBySource`
+               (billing.ts) qisman to'langan qatorni ham bekor qilardi —
+               endi rad etadi (409, avval qaytarish). Ya'ni bu tekshiruv
+               faqat o'sha davrdan qolgan qatorlarni topadi: pul qaytarilishi
+               kerak, shuning uchun ko'rsatamiz, lekin "buzilish" demaymiz. */
             const cancelledPaid = charges.filter(
                 (c: any) => c.status === 'Cancelled' && (c.paidAmount || 0) > 0.001,
             );

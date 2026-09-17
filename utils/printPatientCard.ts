@@ -1,5 +1,6 @@
 import { Patient, Clinic, Doctor, PatientDiagnosis, EncounterTemplate } from '../types';
 import { todayISO } from './dateUtils';
+import { tr } from '../context/LanguageContext';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Bemor kartasi (vipiska) — chop etish uchun A4 blank.
@@ -150,7 +151,7 @@ export function printPatientCard({
 
     const win = window.open('', '_blank', 'width=900,height=1100');
     if (!win) {
-        alert("Chop etish oynasi ochilmadi. Brauzerda pop-up bloklangan bo'lishi mumkin.");
+        alert(tr('print.popupBlocked'));
         return;
     }
     win.document.open();

@@ -614,6 +614,27 @@ export function registerHrRoutes(app: express.Express, deps: Deps) {
         if (!staff) return res.status(404).json({ error: 'Xodim topilmadi' });
 
         const period = normalizePeriod(req.body?.period);
+
+        /* SHIFOKOR ULUSHI — FAQAT YOPILGAN OY UCHUN.
+
+           Ulush shu oyda KIRGAN puldan hisoblanadi, to'lov esa oyiga bitta
+           (`StaffSalaryPayment` dagi unikal indeks). Oy o'rtasida to'lansa,
+           o'sha kundan keyin kirgan pulning ulushi hech qachon to'lanmasdi:
+           oy «yopiq», ikkinchi to'lov 409. Shuning uchun joriy va kelajak
+           oy rad etiladi — Toshkent vaqti bo'yicha.
+
+           Fix oylik (registrator, laborant, hamshira) bunga tegishli emas:
+           u oy ichida o'zgarmaydi va avvalgidek to'lanadi. */
+        const currentMonth = tashkentDateStr().slice(0, 7);
+        if (role === 'DOCTOR' && period >= currentMonth) {
+            return res.status(400).json({
+                error: period === currentMonth
+                    ? `${period} oyi hali tugamagan — shifokor ulushi oy yopilgach to'lanadi (keyingi oyning 1-kunidan)`
+                    : `${period} — kelajakdagi oy, uning ulushini to'lab bo'lmaydi`,
+                code: 'PERIOD_NOT_CLOSED',
+            });
+        }
+
         const already = await prisma.staffSalaryPayment.findFirst({
             where: { staffRole: role, staffId: staff.id, period },
         });

@@ -118,6 +118,17 @@ async function main() {
     });
     await api('POST', '/charges', { patientId: src, patientName: 'Odam Boshqa', name: 'Sinov', unitPrice: 40000, quantity: 1 });
 
+    /* Bemorga berilgan material ham ko'chishi kerak. Ro'yxatda `stockMovement`
+       yo'q edi — material arxivlangan kartada qolib ketardi. */
+    const mat = (await api('POST', '/inventory', {
+        name: `Birlashtirish materiali ${uniq}`, unit: 'dona', quantity: 5, price: 0, isConsumable: true,
+    })).data;
+    const matOut = await api('POST', '/stock-movements/out', {
+        itemId: mat?.id, quantity: 1, reason: 'Manual', patientId: src, skipCharge: true,
+    });
+    const matMoveId = matOut.data?.moves?.[0]?.id;
+    ok('manba bemorga material berildi', !!matMoveId, `status: ${matOut.status}`);
+
     const dry = await api('POST', '/patient-merge', { targetId: tgt, sourceId: src });
     ok('quruq yuritish sukut bo\'yicha', dry.data?.dryRun === true, `${JSON.stringify(dry.data).slice(0, 120)}`);
     ok('ko\'chadigan yozuvlar sanaldi', (dry.data?.totalRows || 0) >= 2,
@@ -152,6 +163,12 @@ async function main() {
 
     const srcCharges = (await api('GET', `/charges?patientId=${src}`)).data || [];
     ok('manbada qator qolmadi', srcCharges.length === 0, `qolgan: ${srcCharges.length}`);
+
+    if (matMoveId) {
+        const tgtMoves = (await api('GET', `/stock-movements?patientId=${tgt}`)).data || [];
+        ok('MATERIAL HARAKATI HAM KO\'CHDI', tgtMoves.some((m: any) => m.id === matMoveId),
+            `asosiy kartada: ${tgtMoves.length}`);
+    }
 
     // Yaxlitlik buzilmadimi
     const integ = await api('GET', '/admin/integrity');

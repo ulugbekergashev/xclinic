@@ -12,7 +12,7 @@
       `confirm: true` bilan. Xuddi balanslarni qayta hisoblashdagi kabi.
 
    2. `CashMovement` QO'LDA SANALGAN. Prisma sxemasida `Patient` ning 18 ta
-      relationi bor, lekin `patientId` maydoni 19 ta modelda uchraydi:
+      relationi bor, lekin `patientId` maydoni 20 ta modelda uchraydi:
       `CashMovement` da relation E'LON QILINMAGAN. Ya'ni relationlar bo'yicha
       avtomatik yurgan birlashtirish PUL HARAKATLARINI o'tkazib yuborardi.
       Ro'yxat shuning uchun qo'lda yozilgan va sxema o'zgarsa yangilanishi kerak.
@@ -35,6 +35,10 @@ const PATIENT_TABLES = [
     'patientDiagnosis', 'inventoryLog', 'telegramLog', 'installmentPlan',
     'labOrder', 'diagnosticStudy', 'admission', 'prescription', 'visitCharge',
     'patientAllergy', 'referral', 'vitalSign', 'patientDocument', 'accessLog',
+    /* Bemorga berilgan material (0028). Ro'yxatda YO'Q edi: birlashtirishdan
+       keyin materiallar arxivlangan kartada qolib, asosiy kartaning «sarflangan
+       material» ro'yxatidan yo'qolardi. */
+    'stockMovement',
 ] as const;
 
 /* Bemorning ismi NUSXA qilib saqlanadigan jadvallar — birlashtirishdan keyin

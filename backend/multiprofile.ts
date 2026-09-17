@@ -12,8 +12,10 @@
 import type express from 'express';
 import { emitEvent } from './events';
 import { validateEncounterField } from '../shared/validation';
-import { createCharge, cancelChargesBySource, payStateBySource, unpaidGate } from './billing';
-import { applyServiceRecipe } from './inventory';
+import { createCharge, cancelChargesBySource, payStateBySource, unpaidGate, paidChargeWhere, HttpError } from './billing';
+import { applyServiceRecipe, procedureTag, reverseMovementTx, withRetry } from './inventory';
+import { chargeBedDays } from './inpatient';
+import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
 import { logAccess } from './compliance';
 import path from 'path';
@@ -121,6 +123,26 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         res.status(403).json({ error: "Hamshirada bunga ruxsat yo'q" });
         return true;
     };
+
+    /* QULFLANGAN QABUL (`POST /api/visits/:id/lock`, clinical.ts).
+       Qulf ilgari faqat `lockedAt` yozardi va HECH QAYERDA tekshirilmasdi —
+       imzolangan bayonni ham, xizmatlar ro'yxatini ham jimgina o'zgartirish
+       mumkin edi. 409 — tushunarli sabab bilan. */
+    const lockedVisit = (visit: any, res: any) => {
+        if (!visit?.lockedAt) return false;
+        res.status(409).json({
+            error: `Qabul qulflangan${visit.lockedByName ? ` (${visit.lockedByName})` : ''} — bayon va xizmatlarni o'zgartirib bo'lmaydi`,
+            code: 'VISIT_LOCKED',
+        });
+        return true;
+    };
+
+    /* Puli olingan qator bor — manba o'chirilmaydi, avval qaytarish. */
+    const paidConflict = (rows: any[]) => ({
+        error: `Bu buyurtma bo'yicha ${Math.round(rows.reduce((s, c) => s + (c.paidAmount || 0), 0))} so'm to'langan — `
+            + "avval kassada qaytarishni rasmiylashtiring",
+        code: 'CHARGE_HAS_PAYMENT',
+    });
 
     // ═══ BO'LIMLAR ═══════════════════════════════════════════════════════════
 
@@ -386,6 +408,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     route('post', '/api/visits/:id/procedures', async (req, res, clinicId) => {
         const visit = await owns('visit', req.params.id, clinicId);
         if (!visit) return res.status(403).json({ error: "Ruxsat yo'q" });
+        if (lockedVisit(visit, res)) return;
 
         const { serviceId, procedureName, price, discount, notes, doctorId, doctorName } = req.body;
 
@@ -424,6 +447,8 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                     clinicId, serviceId: Number(serviceId),
                     visitId: visit.id,
                     userName: doctorName || visit.doctorName || null,
+                    // O'chirilganda aynan shu chiqim omborga qaytadi
+                    procedureId: proc.id,
                 });
             } catch (e: any) {
                 // Ombor xatosi xizmat qo'shishni to'xtatmasligi kerak
@@ -454,15 +479,127 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             where: { id: req.params.id }, include: { visit: true },
         });
         if (!proc || proc.visit.clinicId !== clinicId) return res.status(403).json({ error: "Ruxsat yo'q" });
-        await cancelChargesBySource(prisma, 'Service', proc.id);
-        await prisma.treatmentProcedure.delete({ where: { id: req.params.id } });
-        res.json({ success: true });
+        if (lockedVisit(proc.visit, res)) return;
+
+        /* Puli olingan xizmat o'chirilmaydi — qisman to'langani ham. Ilgari
+           qator jimgina bekor bo'lardi va olingan pul hech qayerda
+           «qaytarish kerak» bo'lib ko'rinmasdi. */
+        const paid = await prisma.visitCharge.findMany({
+            where: { clinicId, ...paidChargeWhere('Service', proc.id) },
+            select: { paidAmount: true },
+        });
+        if (paid.length) return res.status(409).json(paidConflict(paid));
+
+        /* RETSEPT BO'YICHA CHIQQAN MATERIAL OMBORGA QAYTADI.
+
+           Xizmat qo'shilganda retsept materiallarni ombordan yechadi, lekin
+           o'chirilganda ular qaytmasdi: xato qo'shilgan xizmat har safar
+           omborda «yo'qolgan» material qoldirardi.
+
+           Qaysi chiqim shu muolajaniki — izohdagi yorliq (`procedureTag`).
+           Yorliqsiz eski chiqimlar faqat bitta holatda qaytariladi: qabulda
+           shu xizmatdan BOSHQA muolaja yo'q — aks holda qaysi chiqim
+           qaysinikiligini aniqlab bo'lmaydi va ular joyida qoladi.
+
+           Qator bekor qilish, material qaytarish va o'chirish — BITTA
+           tranzaksiyada: yarmi bajarilgan o'chirish bo'lmaydi. */
+        let reversed = 0;
+        try {
+            reversed = await withRetry('Muolajani o\'chirish', () => prisma.$transaction(async (tx: any) => {
+                const cancelled = await cancelChargesBySource(tx, 'Service', proc.id);
+                // O'qish bilan shu yer orasida to'lov o'tgan bo'lsa — hammasi qaytadi
+                if (cancelled.blocked > 0) {
+                    const rows = await tx.visitCharge.findMany({
+                        where: { clinicId, ...paidChargeWhere('Service', proc.id) },
+                        select: { paidAmount: true },
+                    });
+                    const c = paidConflict(rows);
+                    throw new HttpError(409, c.error, { code: c.code });
+                }
+
+                let count = 0;
+                if (proc.serviceId != null) {
+                    const outs = await tx.stockMovement.findMany({
+                        where: {
+                            clinicId, visitId: proc.visitId, serviceId: proc.serviceId,
+                            type: 'Out', reason: 'Service',
+                        },
+                        select: { id: true, note: true },
+                    });
+                    const tag = procedureTag(proc.id);
+                    let mine = outs.filter((m: any) => String(m.note || '').includes(tag));
+                    if (mine.length === 0) {
+                        const siblings = await tx.treatmentProcedure.count({
+                            where: { visitId: proc.visitId, serviceId: proc.serviceId, id: { not: proc.id } },
+                        });
+                        if (siblings === 0) {
+                            mine = outs.filter((m: any) => !String(m.note || '').includes('muolaja:'));
+                        }
+                    }
+                    for (const m of mine) {
+                        const r = await reverseMovementTx(tx, clinicId, m.id, {
+                            note: `Muolaja o'chirildi: ${proc.procedureName}`,
+                            userName: req.user?.name || null,
+                        });
+                        if (r.code === 200) count++;
+                        // 409 — allaqachon qo'lda bekor qilingan: o'tkazib yuboriladi
+                    }
+                }
+
+                await tx.treatmentProcedure.delete({ where: { id: proc.id } });
+                return count;
+            }, { timeout: 20000, maxWait: 10000 }));
+        } catch (e: any) {
+            if (e instanceof HttpError) return res.status(e.status).json({ error: e.message, ...(e.payload || {}) });
+            throw e;
+        }
+
+        emitEvent(clinicId, 'charge.changed', { reason: 'procedure-deleted', visitId: proc.visitId });
+        res.json({ success: true, stockReversed: reversed });
     });
 
     route('put', '/api/visits/:id', async (req, res, clinicId) => {
-        if (!(await owns('visit', req.params.id, clinicId))) return res.status(403).json({ error: "Ruxsat yo'q" });
+        const current = await owns('visit', req.params.id, clinicId);
+        if (!current) return res.status(403).json({ error: "Ruxsat yo'q" });
         const { departmentId, doctorId, doctorName, templateId, examData, complaints,
                 vitalSigns, notes, diagnosis, treatmentPlan, status } = req.body;
+
+        /* TIBBIY MAYDONLAR va NAVBAT MAYDONLARI.
+
+           Bitta marshrut ikki xil ishni qiladi: registratura navbatni
+           yuritadi (holat, shifokor, bo'lim), shifokor esa bayon yozadi.
+           Ilgari ular ajratilmagan edi — registrator tashxisni ham, qulflangan
+           bayonni ham qayta yoza olardi. */
+        const body = req.body || {};
+        const CLINICAL = ['templateId', 'examData', 'complaints', 'vitalSigns', 'notes', 'diagnosis', 'treatmentPlan'];
+        const clinicalSent = CLINICAL.filter((k) => body[k] !== undefined);
+        /* Shikoyat va vital ko'rsatkichlar — qabulxonada ham yoziladi
+           (bemor kelganda «nima bezovta qilyapti», bosim). Bayon, izoh,
+           tashxis va reja — faqat shifokor. Qulf esa hammasiga amal qiladi. */
+        const RECEPTION_OK = ['complaints', 'vitalSigns'];
+        const doctorOnlySent = clinicalSent.filter((k) => !RECEPTION_OK.includes(k));
+
+        if (req.user?.role === 'RECEPTIONIST' && doctorOnlySent.length) {
+            return res.status(403).json({
+                error: "Registrator faqat navbatni yuritadi (holat, shifokor, bo'lim) — bayon va tashxis shifokorniki",
+                code: 'CLINICAL_FIELDS_DENIED',
+                fields: clinicalSent,
+            });
+        }
+
+        /* Qulflangan qabulda bayon ham, uning MUALLIFI (shifokor, bo'lim) ham
+           o'zgarmaydi — imzolangan hujjat shu. Holat (navbat) o'zgarishi
+           mumkin: u hujjat emas. */
+        if (current.lockedAt) {
+            const authorSent = ['departmentId', 'doctorId', 'doctorName'].filter((k) => body[k] !== undefined);
+            if (clinicalSent.length || authorSent.length) {
+                return res.status(409).json({
+                    error: `Qabul qulflangan${current.lockedByName ? ` (${current.lockedByName})` : ''} — bayonni o'zgartirib bo'lmaydi`,
+                    code: 'VISIT_LOCKED',
+                    fields: [...clinicalSent, ...authorSent],
+                });
+            }
+        }
 
         /* KO'RIK BAYONIDAGI KO'RSATKICHLAR (S3.2, audit B-10).
 
@@ -565,7 +702,8 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
            turardi va u qabulning BUTUN izohini o'chirib yuborardi —
            shifokor yozgan matn yakunlash sababi bilan almashib ketardi. */
         let closeNote: string | null = null;
-        if (status === 'Completed' && req.body?.force === true && req.body?.closeReason) {
+        // Qulflangan qabul allaqachon yopilgan — izohga hech narsa qo'shilmaydi
+        if (status === 'Completed' && req.body?.force === true && req.body?.closeReason && !current.lockedAt) {
             const reason = String(req.body.closeReason).slice(0, 200);
             const cur = await prisma.visit.findUnique({
                 where: { id: req.params.id }, select: { notes: true },
@@ -971,12 +1109,24 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     route('post', '/api/studies', async (req, res, clinicId) => {
         const { patientId, patientName, visitId, departmentId, serviceId, modality, name, price, orderedById, orderedByName } = req.body;
         if (!patientId || !modality || !name) return res.status(400).json({ error: 'Bemor, tur va nom majburiy' });
+
+        /* NARX KATALOGDAN. Xizmat ko'rsatilgan bo'lsa narx mijozdan emas,
+           xizmatlar ro'yxatidan olinadi — muolaja qo'shishdagi qoida bilan
+           bir xil. Ilgari brauzer yuborgan `price` to'g'ridan-to'g'ri kassaga
+           tushardi. Katalogsiz (qo'lda) tekshiruvda narx hamon qo'lda. */
+        let unitPrice = Number(price) || 0;
+        if (serviceId != null && serviceId !== '') {
+            const svc = await prisma.service.findUnique({ where: { id: Number(serviceId) } });
+            if (!svc || svc.clinicId !== clinicId) return res.status(404).json({ error: 'Xizmat topilmadi' });
+            unitPrice = Number(svc.price) || 0;
+        }
+
         const study = await prisma.diagnosticStudy.create({
             data: {
                 clinicId, patientId, patientName: patientName || '',
                 visitId: visitId || null, departmentId: departmentId || null,
-                serviceId: serviceId ? Number(serviceId) : null,
-                modality, name, price: Number(price) || 0,
+                serviceId: serviceId != null && serviceId !== '' ? Number(serviceId) : null,
+                modality, name, price: unitPrice,
                 orderedById: orderedById || null, orderedByName: orderedByName || null,
             },
             include: { files: true },
@@ -1030,30 +1180,114 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 });
             }
         }
-        const study = await prisma.diagnosticStudy.update({
-            where: { id: req.params.id },
-            data: {
-                ...(status !== undefined && { status }),
-                ...(findings !== undefined && { findings }),
-                ...(conclusion !== undefined && { conclusion }),
-                ...(performedById !== undefined && { performedById }),
-                ...(performedByName !== undefined && { performedByName }),
-                ...(price !== undefined && { price: Number(price) }),
-                ...(status === 'Completed' && { performedAt: new Date() }),
-            },
-            include: { files: true },
-        });
+        /* NARX O'ZGARSA — KASSADAGI QATOR HAM. Ilgari faqat tekshiruvning
+           o'zidagi raqam o'zgarardi, kassa esa eski summani undirardi.
+           Puli olingan qatorga tegilmaydi: narxni tuzatish endi qaytarish
+           orqali bo'ladi (409). Tekshiruv va qator bitta tranzaksiyada. */
+        const newPrice = price !== undefined ? Math.max(0, som(Number(price) || 0)) : undefined;
+        let result: any;
+        try {
+            result = await prisma.$transaction(async (tx: any) => {
+                const before = await tx.diagnosticStudy.findUnique({ where: { id: req.params.id } });
+                let chargeChanged = false;
+                if (newPrice !== undefined && newPrice !== som(before.price || 0)) {
+                    const paid = await tx.visitCharge.findMany({
+                        where: { clinicId, ...paidChargeWhere('Study', before.id) },
+                        select: { paidAmount: true },
+                    });
+                    if (paid.length) {
+                        const c = paidConflict(paid);
+                        throw new HttpError(409, c.error, { code: c.code });
+                    }
+                    const open = await tx.visitCharge.findMany({
+                        where: { clinicId, source: 'Study', sourceId: before.id, status: 'Unpaid' },
+                    });
+                    for (const c of open) {
+                        const total = som(Math.max(0, newPrice * (c.quantity || 1) - (c.discount || 0)));
+                        const r = await tx.visitCharge.updateMany({
+                            where: { id: c.id, status: 'Unpaid', paidAmount: { lt: 0.5 } },
+                            data: total > 0
+                                ? { unitPrice: newPrice, total }
+                                : { unitPrice: newPrice, total: 0, status: 'Cancelled' },
+                        });
+                        if (r.count === 0) throw new HttpError(409, "Qator oradan to'landi — ro'yxatni yangilang", { code: 'CHARGE_CHANGED' });
+                        chargeChanged = true;
+                    }
+                    /* Narx 0 bo'lgani uchun qator umuman ochilmagan tekshiruv —
+                       endi narx paydo bo'ldi, kassaga ham tushadi. */
+                    const anyActive = await tx.visitCharge.count({
+                        where: { clinicId, source: 'Study', sourceId: before.id, status: { not: 'Cancelled' } },
+                    });
+                    if (anyActive === 0 && newPrice > 0) {
+                        await createCharge(tx, {
+                            clinicId, visitId: before.visitId, patientId: before.patientId,
+                            patientName: before.patientName,
+                            source: 'Study', sourceId: before.id,
+                            serviceId: before.serviceId ?? null,
+                            name: before.name, unitPrice: newPrice,
+                            createdByName: before.orderedByName,
+                            doctorId: before.orderedById || null,
+                            doctorName: before.orderedByName || null,
+                        });
+                        chargeChanged = true;
+                    }
+                }
+                const study = await tx.diagnosticStudy.update({
+                    where: { id: req.params.id },
+                    data: {
+                        ...(status !== undefined && { status }),
+                        ...(findings !== undefined && { findings }),
+                        ...(conclusion !== undefined && { conclusion }),
+                        ...(performedById !== undefined && { performedById }),
+                        ...(performedByName !== undefined && { performedByName }),
+                        ...(newPrice !== undefined && { price: newPrice }),
+                        ...(status === 'Completed' && { performedAt: new Date() }),
+                    },
+                    include: { files: true },
+                });
+                return { study, chargeChanged };
+            }, { timeout: 15000, maxWait: 10000 });
+        } catch (e: any) {
+            if (e instanceof HttpError) return res.status(e.status).json({ error: e.message, ...(e.payload || {}) });
+            throw e;
+        }
+        const study = result.study;
+        if (result.chargeChanged) emitEvent(clinicId, 'charge.changed', { reason: 'study-price', studyId: study.id });
         emitEvent(clinicId, 'study.result', { studyId: study.id, patientId: study.patientId || null });
         res.json(study);
     });
 
     route('delete', '/api/studies/:id', async (req, res, clinicId) => {
         if (!(await owns('diagnosticStudy', req.params.id, clinicId))) return res.status(403).json({ error: "Ruxsat yo'q" });
-        // Fayllar diskda ham qolib ketmasin
+
+        /* Puli olingan tekshiruv o'chirilmaydi (qisman to'langani ham) —
+           avval kassada qaytarish. Tekshiruv FAYLLARDAN OLDIN: 409 bo'lsa
+           rasmlar diskda joyida qolishi kerak. */
+        const paid = await prisma.visitCharge.findMany({
+            where: { clinicId, ...paidChargeWhere('Study', req.params.id) },
+            select: { paidAmount: true },
+        });
+        if (paid.length) return res.status(409).json(paidConflict(paid));
+
         const files = await prisma.diagnosticFile.findMany({ where: { studyId: req.params.id } });
+        try {
+            await prisma.$transaction(async (tx: any) => {
+                const cancelled = await cancelChargesBySource(tx, 'Study', req.params.id);
+                if (cancelled.blocked > 0) {
+                    const c = paidConflict(await tx.visitCharge.findMany({
+                        where: { clinicId, ...paidChargeWhere('Study', req.params.id) },
+                        select: { paidAmount: true },
+                    }));
+                    throw new HttpError(409, c.error, { code: c.code });
+                }
+                await tx.diagnosticStudy.delete({ where: { id: req.params.id } });
+            }, { timeout: 15000, maxWait: 10000 });
+        } catch (e: any) {
+            if (e instanceof HttpError) return res.status(e.status).json({ error: e.message, ...(e.payload || {}) });
+            throw e;
+        }
+        // Fayllar diskda ham qolib ketmasin — o'chirish muvaffaqiyatli bo'lgach
         for (const f of files) removeUploadedFile(f.url, uploadsDir);
-        await cancelChargesBySource(prisma, 'Study', req.params.id);
-        await prisma.diagnosticStudy.delete({ where: { id: req.params.id } });
         res.json({ success: true });
     });
 
@@ -1252,6 +1486,19 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         if (!existing) return res.status(403).json({ error: "Ruxsat yo'q" });
         if (existing.status === 'Discharged') return res.status(400).json({ error: 'Allaqachon chiqarilgan' });
 
+        /* KOYKA HAQI — CHIQARISHNING O'ZIDA, ROLDAN QAT'I NAZAR.
+
+           Ilgari buni ekran qilardi: avval `charge-bed-days`, keyin
+           `discharge`. Lekin `charge-bed-days` shifokorga YOPIQ (403), va
+           ekran xatoni yutardi — shifokor chiqargan bemorning oxirgi kunlari
+           hisobga tushmay qolardi. Chiqarish esa shifokorga ochiq.
+
+           Hisob qarz tekshiruvidan OLDIN: «qancha qarz» degan savol
+           yozilmagan kunlarsiz yolg'on bo'lardi. Qayta chaqirish xavfsiz —
+           `chargeBedDays` idempotent (yozilgan kun qayta yozilmaydi). */
+        const userName = (req as any).user?.name || null;
+        await chargeBedDays(prisma, existing.id, userName);
+
         /* QARZ BILAN CHIQARISH.
            Taqiqlamaymiz: bemorni pul uchun ushlab turish — tibbiy ham,
            huquqiy ham to'g'ri emas. Lekin JIMGINA ham o'tkazmaymiz: qarz
@@ -1291,6 +1538,11 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             },
         });
         if (existing.bedId) await prisma.bed.update({ where: { id: existing.bedId }, data: { status: 'Cleaning' } });
+
+        /* Yarim tun chegarasi: hisob 23:59 da, chiqarish 00:00 dan keyin
+           bo'lsa, chiqarilgan kun yozilmay qolardi. Endi hisob
+           `dischargedAt` gacha — yozilgan kunlar takrorlanmaydi. */
+        await chargeBedDays(prisma, existing.id, userName);
         res.json(admission);
     });
 

@@ -90,8 +90,19 @@ export function applyPendingRestore(userData: string, dbPath: string) {
         }
         console.log('[Restore] baza tiklandi:', file);
 
-        const zip = path.join(backupDir, file.replace(/\.db$/, '-uploads.zip'));
-        if (fs.existsSync(zip)) {
+        /* Fayllar arxivi: nusxaning o'ziniki yoki undan OLDINGI eng yaqini.
+           Papka o'zgarmagan kunlari arxiv olinmaydi (backend/maintenance.ts,
+           uploadsZipFor) — nomlar vaqt bo'yicha tartiblanadi. */
+        const ownZip = file.replace(/\.db$/, '-uploads.zip');
+        let zipName: string | null = fs.existsSync(path.join(backupDir, ownZip)) ? ownZip : null;
+        if (!zipName) {
+            const earlier = fs.readdirSync(backupDir)
+                .filter((f) => /^xclinic-\d{8}-\d{6}-uploads\.zip$/.test(f) && f < ownZip)
+                .sort();
+            zipName = earlier.length ? earlier[earlier.length - 1] : null;
+        }
+        const zip = zipName ? path.join(backupDir, zipName) : '';
+        if (zip && fs.existsSync(zip)) {
             try {
                 const AdmZip = require('adm-zip');
                 const uploadsDir = path.join(userData, 'uploads');

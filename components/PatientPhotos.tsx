@@ -5,7 +5,7 @@ import { toast } from '../services/toast';
 import { Camera, Upload, Trash2, X, ZoomIn } from 'lucide-react';
 import { Button, Card, Modal, Input, Select, Badge } from './Common';
 import { PatientPhoto } from '../types';
-import { API_URL, getFileUrl, isDemoMode } from '../services/api';
+import { authFetch, getFileUrl, isDemoMode } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 
 // Fayl manzilini yig'ish endi BITTA joyda — services/api.ts dagi getFileUrl.
@@ -19,10 +19,12 @@ const DEMO_PHOTOS: PatientPhoto[] = [];
 interface PatientPhotosProps {
     patientId: string;
     clinicId: string;
-    token: string;
+    /** ESKIRGAN — ishlatilmaydi. Token so'rov paytida `authFetch` ichida
+     *  o'qiladi: render paytida olingan token 30 daqiqadan keyin eskirardi. */
+    token?: string;
 }
 
-export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicId, token }) => {
+export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId }) => {
     const { t } = useLanguage();
     const [photos, setPhotos] = useState<PatientPhoto[]>([]);
     const [loading, setLoading] = useState(true);
@@ -44,9 +46,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
            yangilanguncha yashaydi — namoyish uchun aynan shu kerak. */
         if (isDemoMode()) { setPhotos(DEMO_PHOTOS.filter(p => p.patientId === patientId)); setLoading(false); return; }
         try {
-            const response = await fetch(`${API_URL}/patients/${patientId}/photos`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await authFetch(`/patients/${patientId}/photos`);
             if (response.ok) {
                 const data = await response.json();
                 setPhotos(data);
@@ -97,9 +97,8 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
         formData.append('category', category);
 
         try {
-            const response = await fetch(`${API_URL}/patients/${patientId}/photos`, {
+            const response = await authFetch(`/patients/${patientId}/photos`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
                 body: formData
             });
 
@@ -111,15 +110,15 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
                 try {
                     const errorData = JSON.parse(text);
                     console.error('Server error details:', errorData);
-                    toast.error(`Failed to upload photo: ${errorData.details || errorData.error || 'Unknown error'}`);
+                    toast.error(`${t('patients.details.photos.uploadFailed')}: ${errorData.details || errorData.error || response.status}`);
                 } catch (e) {
                     console.error('Server non-JSON error:', text);
-                    toast.error(`Failed to upload photo: Server returned non-JSON response. Check console for details.`);
+                    toast.error(`${t('patients.details.photos.uploadFailed')} (${response.status})`);
                 }
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Upload error:', error);
-            toast.error('Error uploading photo');
+            toast.error(error?.message || t('patients.details.photos.uploadFailed'));
         } finally {
             setUploading(false);
         }
@@ -137,19 +136,17 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId, clinicI
         }
 
         try {
-            const response = await fetch(`${API_URL}/photos/${photoId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await authFetch(`/photos/${photoId}`, { method: 'DELETE' });
 
             if (response.ok) {
                 setPhotos(photos.filter(p => p.id !== photoId));
                 if (viewPhoto?.id === photoId) setViewPhoto(null);
             } else {
-                toast.error('Failed to delete photo');
+                toast.error(t('patients.details.photos.deleteFailed'));
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Delete error:', error);
+            toast.error(error?.message || t('patients.details.photos.deleteFailed'));
         }
     };
 

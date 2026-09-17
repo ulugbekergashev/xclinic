@@ -64,6 +64,7 @@ export const DoctorShares: React.FC<Props> = ({ doctors = [], clinicId, addToast
     const { t } = useLanguage();
     const navigate = useNavigate();
     const [period, setPeriod] = useState(thisPeriod());
+    const periodOpen = period >= thisPeriod();
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState('');
@@ -181,7 +182,12 @@ export const DoctorShares: React.FC<Props> = ({ doctors = [], clinicId, addToast
                                 {formatMoney(data.totals.payable)}
                             </p>
                         </div>
-                        {data.totals.payable > 0 && (
+                        {/* Ochiq oy to'lanmaydi: server 400 PERIOD_NOT_CLOSED qaytaradi —
+                            aks holda oyning qolgan kunlaridagi ulush yo'qolardi. */}
+                        {data.totals.payable > 0 && periodOpen && (
+                            <p className="text-xs text-muted max-w-[14rem] text-right">{t('doctorshares.periodOpen')}</p>
+                        )}
+                        {data.totals.payable > 0 && !periodOpen && (
                             <Button size="sm" onClick={payAll} disabled={!!busy}>
                                 {busy === 'all' ? <Loader2 className="w-4 h-4 animate-spin" /> : t('doctorshares.hammasiga')}
                             </Button>
@@ -242,7 +248,7 @@ export const DoctorShares: React.FC<Props> = ({ doctors = [], clinicId, addToast
                                                 <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
                                                     <Check className="w-3.5 h-3.5" /> {t('ui.yopilgan')}
                                                 </span>
-                                            ) : r.payable > 0 ? (
+                                            ) : r.payable > 0 && !periodOpen ? (
                                                 <Button size="sm" variant="secondary"
                                                     onClick={() => payOne(r)} disabled={!!busy}>
                                                     {busy === r.id

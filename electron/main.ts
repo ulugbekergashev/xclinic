@@ -565,6 +565,87 @@ function getLocalIP(): string {
     return 'localhost';
 }
 
+/* ── TASHQI MANZILLAR VA BOSMA OYNALAR ───────────────────────────────────
+
+   Ilgari `setWindowOpenHandler` HAR QANDAY manzilni `shell.openExternal`
+   ga berib, oynani rad etardi. Ikki oqibat:
+
+     1. Bosib chiqarish ishlamasdi. Talon, chek, yo'llanma, bemor kartasi —
+        hammasi `window.open('', '_blank')` bilan bo'sh oyna ochib, unga
+        HTML yozadi. Rad etilgan oyna `null` qaytaradi — hech narsa chiqmasdi.
+     2. Xavfli. `file:`, `smb:` yoki begona protokol manzili tizimning
+        o'ziga (Explorer, boshqa dastur) uzatilardi.
+
+   Endi:
+     · bo'sh oyna (`about:blank`) va ilovaning O'Z manbasi — ilova ichida,
+       alohida oynada ochiladi (fayl va tekshiruv suratlari ham: manzilida
+       token bor, tizim brauzeriga chiqmasligi kerak);
+     · https, mahalliy bo'lmagan http, mailto, tel — tizim brauzeri/dasturi;
+     · qolgan hammasi rad etiladi. */
+
+/** Ilova yuklanadigan manbalar: dev da vite, paketda backend */
+function appOrigins(): Set<string> {
+    const origins = new Set<string>([`http://localhost:${BACKEND_PORT}`, `http://127.0.0.1:${BACKEND_PORT}`]);
+    if (isDev) {
+        origins.add(`http://localhost:${FRONTEND_PORT}`);
+        origins.add(`http://127.0.0.1:${FRONTEND_PORT}`);
+    }
+    return origins;
+}
+
+function isAppUrl(raw: string): boolean {
+    try { return appOrigins().has(new URL(raw).origin); } catch { return false; }
+}
+
+function isLocalHost(hostname: string): boolean {
+    const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    return h === 'localhost' || h.endsWith('.localhost') || h === '::1'
+        || h === '0.0.0.0' || /^127\./.test(h);
+}
+
+/** Faqat ruxsat etilgan protokollar tizimga uzatiladi */
+function openExternalSafe(raw: string): void {
+    let u: URL;
+    try { u = new URL(raw); } catch { return; }
+    const ok = u.protocol === 'https:' || u.protocol === 'mailto:' || u.protocol === 'tel:'
+        || (u.protocol === 'http:' && !isLocalHost(u.hostname));
+    if (!ok) {
+        console.warn('[nav] rad etildi:', u.protocol, u.host);
+        return;
+    }
+    shell.openExternal(u.toString()).catch(e => console.warn('[nav] openExternal:', e?.message));
+}
+
+app.on('web-contents-created', (_event, contents) => {
+    contents.setWindowOpenHandler(({ url }) => {
+        if (!url || url === 'about:blank' || isAppUrl(url)) {
+            return {
+                action: 'allow',
+                overrideBrowserWindowOptions: {
+                    autoHideMenuBar: true,
+                    /* Ichki oyna — node yo'q, preload yo'q, sandbox */
+                    webPreferences: {
+                        nodeIntegration: false,
+                        contextIsolation: true,
+                        sandbox: true,
+                    },
+                },
+            };
+        }
+        openExternalSafe(url);
+        return { action: 'deny' };
+    });
+
+    /* Asosiy oyna ilovadan boshqa joyga o'tib ketmasin: havola bosilsa
+       yoki skript `location` ni o'zgartirsa — tashqi manzil tizim
+       brauzerida ochiladi, oyna esa ilovada qoladi. */
+    contents.on('will-navigate', (event, url) => {
+        if (isAppUrl(url)) return;
+        event.preventDefault();
+        openExternalSafe(url);
+    });
+});
+
 function createWindow() {
     const localIP = getLocalIP();
     const networkInfo = `Tarmoq: http://${localIP}:${BACKEND_PORT}`;
@@ -607,10 +688,9 @@ webPreferences: {
         });
     }
 
-    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        shell.openExternal(url);
-        return { action: 'deny' };
-    });
+    /* Oyna ochish va sahifadan chiqish qoidalari `web-contents-created`
+       ishlovchisida (pastda) — asosiy oynaga ham, undan ochilgan bosma
+       oynalarga ham bir xil qo'llanadi. */
 
     mainWindow.on('closed', () => {
         mainWindow = null;

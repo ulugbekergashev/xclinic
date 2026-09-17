@@ -60,6 +60,8 @@ interface PatientDetailsProps {
    onUpdatePatient: (id: string, data: Partial<Patient>) => void;
    onAddAppointment: (appt: Omit<Appointment, 'id' | 'clinicId'>) => Promise<void>;
    onUpdateAppointment: (id: string, data: Partial<Appointment>) => Promise<void>;
+   /** Ro'yxatda yo'q bemor serverdan olindi — App uni o'z ro'yxatiga qo'shadi */
+   onPatientLoaded?: (p: Patient) => void;
 }
 
 /* TARIX BO'LIMLARI — BITTA RO'YXAT.
@@ -99,7 +101,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    userRole,
    doctorId: loggedDoctorId,
    showPatientPhone = true,
-   onBack, onUpdatePatient, onAddAppointment, onUpdateAppointment
+   onBack, onUpdatePatient, onAddAppointment, onUpdateAppointment,
+   onPatientLoaded,
 }) => {
    const { patientId: patientIdParam } = useParams<{ patientId: string }>();
    const patientId = patientIdProp || patientIdParam || null;
@@ -157,7 +160,44 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
 
-   const patient = patients.find(p => String(p.id).trim() === String(patientId).trim());
+   /* BEMOR — AVVAL RO'YXATDAN, BO'LMASA SERVERDAN.
+
+      App kirishda faqat oxirgi 500 bemorni yuklaydi (`INITIAL_PATIENTS`).
+      Ilgari karta faqat shu ro'yxatga qarardi: eski bemorning kartasi
+      (qidiruvdan, navbatdan yoki havoladan ochilganda) «Bemor topilmadi»
+      bilan chiqardi, holbuki bemor bazada bor. Endi ro'yxatda bo'lmasa
+      `getById` so'raladi va «topilmadi» FAQAT server 404 desa chiqadi. */
+   const listPatient = patients.find(p => String(p.id).trim() === String(patientId).trim());
+   const [fetchedPatient, setFetchedPatient] = useState<Patient | null>(null);
+   /* Holat QAYSI id uchun ekani ham saqlanadi: bir bemordan boshqasiga
+      o'tganda eski «topilmadi» bir lahza ham ko'rinmasin. */
+   const [lookup, setLookup] = useState<{ id: string | null; state: 'done' | 'notFound' | 'error' }>({ id: null, state: 'done' });
+   const [lookupAttempt, setLookupAttempt] = useState(0);
+   const hasListPatient = !!listPatient;
+   useEffect(() => {
+      if (hasListPatient || !patientId) return;
+      let alive = true;
+      setLookup({ id: null, state: 'done' });
+      api.patients.getById(patientId)
+         .then(p => {
+            if (!alive) return;
+            if (!p?.id) { setLookup({ id: patientId, state: 'notFound' }); return; }
+            setFetchedPatient(p);
+            setLookup({ id: patientId, state: 'done' });
+            onPatientLoaded?.(p);
+         })
+         .catch((e: any) => {
+            if (!alive) return;
+            setLookup({ id: patientId, state: e?.status === 404 || e === 'Patient not found' ? 'notFound' : 'error' });
+         });
+      return () => { alive = false; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [patientId, hasListPatient, lookupAttempt]);
+   /* Shu id uchun javob hali kelmagan bo'lsa — yuklanmoqda */
+   const patientLookup: 'loading' | 'done' | 'notFound' | 'error' =
+      lookup.id === patientId ? lookup.state : 'loading';
+   const patient = listPatient
+      || (fetchedPatient && String(fetchedPatient.id) === String(patientId) ? fetchedPatient : undefined);
 
    // DOCTOR roli bilan kirilgan bo'lsa — shifokor tanlovlarida o'zi defolt tanlanadi
    const myDoctor = userRole === UserRole.DOCTOR && loggedDoctorId ? doctors.find(d => d.id === loggedDoctorId) : undefined;
@@ -249,7 +289,10 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       let alive = true;
       Promise.all([
          api.appointments.getAll(clinicIdForHistory, { patientId }),
-         api.transactions.getAll(clinicIdForHistory, { patientId }),
+         /* To'lovlar hamshira va laborantga yopiq (server 403). Ular uchun
+            to'lov tarixi bo'sh qoladi, qabullar tarixi esa yo'qolmasin. */
+         api.transactions.getAll(clinicIdForHistory, { patientId })
+            .catch((e: any) => { if (e?.status === 403) return [] as Transaction[]; throw e; }),
       ]).then(([appts, tx]) => { if (alive) setHistory({ appts, tx }); })
         .catch(() => { if (alive) setHistory(null); });
       return () => { alive = false; };
@@ -370,7 +413,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          reloadClinical();
          /* `patient.id` uzatiladi — server bemorga mos kelmaydigan
             shablonlarni chiqarib tashlaydi (jins va yosh, B-09). */
-         api.encounterTemplates.getAll(undefined, patient?.id).then(setTemplates).catch(console.error);
+         api.encounterTemplates.getAll(undefined, patientId).then(setTemplates).catch(console.error);
 
          // Fetch inventory data
          if (currentClinic) {
@@ -532,6 +575,26 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
 
    if (!patient) {
+      /* Serverdan kutilmoqda — «topilmadi» deb erta aytmaymiz */
+      if (patientId && patientLookup === 'loading') {
+         return (
+            <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
+               <div className="w-8 h-8 rounded-full border-2 border-line border-t-primary-600 animate-spin" />
+               <span className="ml-3 text-sm text-muted">{t('common.loading')}</span>
+            </div>
+         );
+      }
+      if (patientLookup === 'error') {
+         return (
+            <div className="p-8 text-center space-y-3">
+               <p className="text-ink">{t('patients.details.loadFailed')}</p>
+               <div className="flex justify-center gap-2">
+                  <Button onClick={() => setLookupAttempt(n => n + 1)}>{t('common.retry')}</Button>
+                  <Button variant="secondary" onClick={onBack}>{t('common.cancel')}</Button>
+               </div>
+            </div>
+         );
+      }
       return <div className="p-8 text-center">{t('patients.details.notFound')} <Button onClick={onBack}>{t('common.cancel')}</Button></div>;
    }
 

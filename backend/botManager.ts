@@ -78,6 +78,16 @@ class BotManager {
                             include: { clinic: true }
                         });
 
+                        /* Bog'langan bemorni QAYTA bog'lab bo'lmaydi (audit 2026-09-17).
+                           Ilgari bemor id sini bilgan har kim uning xabarlarini
+                           o'z chatiga burib olardi. Ilova bunday havola
+                           yasamaydi — bu eski yo'l faqat hali ulanmagan bemor
+                           uchun qoldi. */
+                        if (patient && patient.telegramChatId && patient.telegramChatId !== chatId) {
+                            ctx.reply("❌ Bu profil boshqa Telegram hisobiga ulangan. Klinikaga murojaat qiling.");
+                            return;
+                        }
+
                         if (patient) {
                             await prisma.patient.update({
                                 where: { id: payload },
@@ -208,6 +218,21 @@ class BotManager {
                 const contact = ctx.message.contact;
                 const chatId = String(ctx.chat.id);
                 if (!contact || !contact.phone_number) return;
+
+                /* KONTAKT YUBORUVCHINING O'ZINIKI BO'LISHI SHART (audit 2026-09-17).
+
+                   Telegram'da telefon kitobidagi ISTALGAN kontaktni ulashish
+                   mumkin. Tekshiruv yo'q edi: egasining raqamini bilgan odam
+                   o'z chatini ega sifatida ulab, hisobotlar, to'lov cheklari
+                   (bemor ismi va telefoni) va «Tasdiqlash» tugmalarini olardi.
+                   Shifokor va bemor raqami bilan ham xuddi shunday.
+
+                   «Raqamni yuborish» tugmasi orqali yuborilgan kontaktda
+                   `user_id` yuboruvchining o'zi bo'ladi. */
+                if (!contact.user_id || contact.user_id !== ctx.from?.id) {
+                    ctx.reply("❌ Iltimos, o'z raqamingizni «📱 Telefon raqamni yuborish» tugmasi orqali yuboring.");
+                    return;
+                }
 
                 let phone = contact.phone_number.replace(/\s/g, '').replace('+', '');
 
@@ -698,8 +723,27 @@ class BotManager {
             });
 
             // 8. Admin: Confirm or Reject Payment
+            /* To'lov tugmalari FAQAT klinika egasining chatidan (audit 2026-09-17).
+               Ilgari kim bosgani tekshirilmasdi: callback ma'lumotini
+               Telegram mijoz API si orqali istalgan chatdan yuborish mumkin,
+               tasdiq esa bemor avansiga pul yozadi. */
+            const fromOwnerChat = async (ctx: any, appointmentId: string): Promise<boolean> => {
+                const appt = await prisma.appointment.findUnique({
+                    where: { id: appointmentId },
+                    select: { clinic: { select: { telegramChatId: true } } },
+                });
+                const ownerChat = appt?.clinic?.telegramChatId;
+                const ok = !!ownerChat && String(ctx.chat?.id) === String(ownerChat);
+                if (!ok) {
+                    console.warn(`[bot] to'lov tugmasi egadan boshqa chatdan bosildi: ${ctx.chat?.id}`);
+                    await ctx.answerCbQuery("⛔ Ruxsat yo'q").catch(() => {});
+                }
+                return ok;
+            };
+
             bot.action(/^confirm_pay_([\w-]+)$/, async (ctx) => {
                 const appointmentId = ctx.match[1];
+                if (!(await fromOwnerChat(ctx, appointmentId))) return;
                 try {
                     /* ─── TASDIQ = PUL YOZILADI ──────────────────────────────
 
@@ -782,10 +826,20 @@ class BotManager {
 
             bot.action(/^reject_pay_([\w-]+)$/, async (ctx) => {
                 const appointmentId = ctx.match[1];
+                if (!(await fromOwnerChat(ctx, appointmentId))) return;
                 try {
-                    const appointment = await prisma.appointment.update({
-                        where: { id: appointmentId },
+                    /* Faqat kutayotgan qabul rad etiladi — tasdiqlangan (avansi
+                       yozilgan) qabul eski tugma bilan bekor bo'lib qolmasin. */
+                    const changed = await prisma.appointment.updateMany({
+                        where: { id: appointmentId, status: 'Pending' },
                         data: { status: 'Cancelled', notes: 'To\'lov rad etildi' },
+                    });
+                    if (changed.count === 0) {
+                        await ctx.answerCbQuery("Bu qabul allaqachon ko'rib chiqilgan");
+                        return;
+                    }
+                    const appointment: any = await prisma.appointment.findUnique({
+                        where: { id: appointmentId },
                         include: { patient: true, doctor: true }
                     });
                     await ctx.editMessageCaption(

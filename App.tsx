@@ -32,7 +32,7 @@ const Inpatient = lazyWithReload(() => import('./pages/Inpatient').then(m => ({ 
 const MessagesManagement = lazyWithReload(() => import('./pages/MessagesManagement').then(m => ({ default: m.MessagesManagement })));
 const Staff = lazyWithReload(() => import('./pages/Staff').then(m => ({ default: m.Staff })));
 const StaffCard = lazyWithReload(() => import('./pages/StaffCard').then(m => ({ default: m.StaffCard })));
-import { todayISO } from './utils/dateUtils';
+import { todayISO, formatDateToISO, dayKey } from './utils/dateUtils';
 import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Calendar as CalendarIcon,
@@ -53,7 +53,7 @@ import { Logo, LogoWordmark } from './components/Logo';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { useHotkeys } from './hooks/useHotkeys';
 import { startLiveUpdates, stopLiveUpdates } from './hooks/useLiveUpdates';
-import { API_URL, API_BASE_URL, getAuthToken } from './services/api';
+import { API_URL, API_BASE_URL } from './services/api';
 import * as auth from './services/authStore';
 import { connectToast, disconnectToast } from './services/toast';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -289,9 +289,155 @@ const AppContent: React.FC = () => {
 const INITIAL_DAYS = 45;
 const INITIAL_PATIENTS = 500;
 
-/** `n` kun oldingi sana, YYYY-MM-DD */
-const sinceDate = (n: number) =>
-  new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+/** `n` kun oldingi sana, YYYY-MM-DD — MAHALLIY kun bo'yicha.
+ *  `toISOString()` UTC beradi va Toshkentda tunda bir kun orqaga siljirdi;
+ *  Kassa va Kalendardagi oyna chegarasi ham mahalliy — ikkalasi mos bo'lsin. */
+const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400000));
+
+  /* ─── MA'LUMOT YUKLASH — YAGONA YO'L ────────────────────────────────────
+
+     Ilgari ikki nusxa bor edi: kirishdagi yuklash va xato ekranidagi
+     «Qayta yuklash». Ular ajralib ketgan edi: qayta yuklash oynasiz (butun
+     tarix) so'rardi va kassa, bo'lim, laboratoriya, hisob qatorlari
+     ro'yxatlarini umuman yuklamasdi. Endi ikkalasi shu funksiyani chaqiradi.
+
+     MOLIYA — FAQAT RUXSATI BORGA. Server moliyaviy o'qishni (xarajatlar,
+     kassa yopilishlari va harakatlari, hisobot) hamshira va laborantga
+     doim, shifokor va registratorga esa ega «Moliyani ko'rsatish» ni
+     o'chirgan bo'lsa 403 bilan yopadi (`canReadFinance`). Ruxsat klinika
+     sozlamasida turadi, ya'ni klinika yozuvi kelmaguncha noma'lum —
+     shuning uchun moliya so'rovlari klinika javobidan KEYIN ketadi, qolgan
+     ro'yxatlar esa parallel. 403 kelsa ham butun yuklash yiqilmaydi —
+     o'sha ro'yxat bo'sh qoladi. */
+  const loadAppData = useCallback(async (): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const isDemo = auth.getSession()?.isDemo === true;
+
+      if (isDemo && clinicId === 'demo-clinic-1') {
+        const { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_SERVICES, DEMO_DOCTORS, DEMO_CLINIC, DEMO_CATEGORIES, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_RECEPTIONISTS, DEMO_LEADS, DEMO_INVENTORY } = await import('./services/demoData');
+        setCurrentClinic(DEMO_CLINIC);
+        setPatients(DEMO_PATIENTS);
+        setAppointments(DEMO_APPOINTMENTS);
+        setTransactions(DEMO_TRANSACTIONS);
+        setExpenses(DEMO_EXPENSES);
+        setServices(DEMO_SERVICES);
+        setCategories(DEMO_CATEGORIES);
+        setDoctors(DEMO_DOCTORS);
+        setInventoryItems(DEMO_INVENTORY || []);
+        setLabTechnicians(DEMO_LAB_TECHNICIANS || []);
+        setLabOrders(DEMO_LAB_ORDERS || []);
+        setReceptionists(DEMO_RECEPTIONISTS || []);
+        /* HISOB QATORLARI VA BO'LIMLAR — demo tarmog'ida TUSHIB QOLGAN edi.
+           Pastdagi haqiqiy tarmoqda ular yuklanadi, bu yerda esa yo'q edi,
+           ya'ni `charges` bo'sh massiv bo'lib qolardi.
+
+           Ko'rinishi: kassada «Hozir klinikada» ro'yxati bemorning 90 000
+           qarzini ko'rsatadi (u boshqa manbadan — `charges.pending()` dan
+           keladi), lekin «To'lash» bosilganda oyna «To'lanmagan qator yo'q»
+           deydi va «qabul qilish» tugmasi o'chiq turadi. Ya'ni kassaning
+           asosiy tugmasi ishlamaydi. Bo'limlarsiz esa registratura va
+           kalendar filtrlari bo'sh qolardi. */
+        const [demoCharges, demoDepts] = await Promise.all([
+          api.charges.getAll({ status: 'Unpaid' }).catch(() => []),
+          api.departments.getAll().catch(() => []),
+        ]);
+        setCharges(demoCharges || []);
+        setDepartments(demoDepts || []);
+      } else if (clinicId) {
+        /** 403 — ruxsat yo'q: bo'sh ro'yxat. Boshqa xato (tarmoq) yuqoriga ketadi. */
+        const deniedAs = <T,>(fallback: T) => (e: any): T => {
+          if (e?.status === 403) return fallback;
+          throw e;
+        };
+        const canReadTransactions = userRole !== UserRole.NURSE && userRole !== UserRole.LAB_TECHNICIAN;
+
+        const clinicP = api.clinics.getById(clinicId);
+        const financeP = clinicP.then(async (clinic) => {
+          if (!canSeeFinance(parseAccessControl(clinic), userRole)) {
+            return { exps: [] as Expense[], closures: [] as CashRegisterDay[], movements: [] as CashMovement[] };
+          }
+          const [exps, closures, movements] = await Promise.all([
+            /* Xarajatlar SANASIZ: server `GET /api/expenses` da oraliq yo'q,
+               kassa esa ochilish qoldig'ini oxirgi yopilishdan beri hisoblaydi. */
+            api.expenses.getAll(clinicId).catch(deniedAs([] as Expense[])),
+            // Kassa ma'lumotlari — yuklanmasa sahifa baribir ishlashi kerak
+            api.cashRegister.getAll(clinicId).catch(() => [] as CashRegisterDay[]),
+            api.cashMovements.getAll(clinicId).catch(() => [] as CashMovement[]),
+          ]);
+          return { exps, closures, movements };
+        });
+
+        const [pts, appts, txs, svcs, docs, recs, invItems, cats, revs, clinicData, labTechs, labOrds, depts, chrgs, fin] = await Promise.all([
+          // Butun klinika bo'yicha: shifokor boshqa bo'lim ko'rgan bemorning
+          // kartasini ocha olishi kerak (ko'p profilli klinikaning asosi).
+          /* ─── KIRISHDA CHEKLANGAN OYNA (FIX-PLAN 10.3) ───────────────
+             Ilgari bu uch chaqiruv BUTUN jadvalni tortardi. O'lchov
+             (`backend/tests/bench/scale.ts`, 3 yillik ma'lumot): 110 510
+             qator, 41 MB. Localhost'da 1.3 s, LAN orqali 7-16 soniya — va
+             bu har kirishda va har yangilashda takrorlanardi.
+
+             Endi kirishda faqat KERAKLI oyna olinadi:
+               - bemorlar: oxirgi 500 ta (qidiruv allaqachon serverda, 8.1);
+               - tranzaksiya va qabullar: oxirgi 90 kun.
+
+             Uzoqroq davr kerak bo'lgan ekranlar (Kassa, Kalendar, Hisobot)
+             o'z oralig'ini o'zi so'raydi. Bosh sahifadagi UMUMIY raqamlar
+             esa serverdan keladi (`api.reports.dashboard`) — aks holda
+             qisqargan ro'yxatdan sanalgan son yolg'on bo'lardi. */
+          api.patients.getAllForClinic(clinicId, INITIAL_PATIENTS),
+          api.appointments.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }),
+          canReadTransactions
+            ? api.transactions.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }).catch(deniedAs([] as Transaction[]))
+            : Promise.resolve([] as Transaction[]),
+          api.services.getAll(clinicId),
+          api.doctors.getAll(clinicId),
+          api.receptionists.getAll(clinicId),
+          api.inventory.getAll(clinicId),
+          api.categories.getAll(clinicId),
+          api.reviews.getAll(clinicId),
+          clinicP,
+          api.labTechnicians.getAll(clinicId),
+          api.labOrders.getAll(clinicId),
+          // Bo'limlar — yuklanmasa qolgan sahifalar baribir ishlashi kerak
+          api.departments.getAll().catch(() => []),
+          api.charges.getAll({ status: 'Unpaid' }).catch(() => []),
+          financeP,
+        ]);
+        setCurrentClinic(clinicData);
+        setPatients(pts);
+        setAppointments(appts);
+        setTransactions(txs);
+        setExpenses(fin.exps || []);
+        setServices(svcs);
+        setDoctors(docs);
+        setReceptionists(recs);
+        setInventoryItems(invItems);
+        // @ts-ignore
+        setCategories(cats);
+        setReviews(revs || []);
+        setLabTechnicians(labTechs || []);
+        setLabOrders(labOrds || []);
+        setCashClosures(fin.closures || []);
+        setCashMovements(fin.movements || []);
+        setDepartments(depts || []);
+        setCharges(chrgs || []);
+      }
+      return true;
+    } catch (error: any) {
+      console.error('Failed to load data:', error);
+      if (error.message === 'Session expired') {
+        handleLogout();
+      } else {
+        setError(error?.network ? error.message : t('app.malumotlarni_yuklashda_xatolik_yuz'));
+      }
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinicId, userRole]);
 
   // Load Data
   useEffect(() => {
@@ -299,113 +445,8 @@ const sinceDate = (n: number) =>
        ishlaydi: faqat ekranni yashirish yetarli emas edi — yuklash zanjiri
        baribir ishga tushib, cheklangan token bilan 403 lar yog'ilardi. */
     if (!isAuthenticated || mustChangePassword) return;
-
-    const loadData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const isDemo = auth.getSession()?.isDemo === true;
-
-        if (isDemo && clinicId === 'demo-clinic-1') {
-          const { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_SERVICES, DEMO_DOCTORS, DEMO_CLINIC, DEMO_CATEGORIES, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_RECEPTIONISTS, DEMO_LEADS, DEMO_INVENTORY } = await import('./services/demoData');
-          setCurrentClinic(DEMO_CLINIC);
-          setPatients(DEMO_PATIENTS);
-          setAppointments(DEMO_APPOINTMENTS);
-          setTransactions(DEMO_TRANSACTIONS);
-          setExpenses(DEMO_EXPENSES);
-          setServices(DEMO_SERVICES);
-          setCategories(DEMO_CATEGORIES);
-          setDoctors(DEMO_DOCTORS);
-          setInventoryItems(DEMO_INVENTORY || []);
-          setLabTechnicians(DEMO_LAB_TECHNICIANS || []);
-          setLabOrders(DEMO_LAB_ORDERS || []);
-          setReceptionists(DEMO_RECEPTIONISTS || []);
-          /* HISOB QATORLARI VA BO'LIMLAR — demo tarmog'ida TUSHIB QOLGAN edi.
-             Pastdagi haqiqiy tarmoqda ular yuklanadi, bu yerda esa yo'q edi,
-             ya'ni `charges` bo'sh massiv bo'lib qolardi.
-
-             Ko'rinishi: kassada «Hozir klinikada» ro'yxati bemorning 90 000
-             qarzini ko'rsatadi (u boshqa manbadan — `charges.pending()` dan
-             keladi), lekin «To'lash» bosilganda oyna «To'lanmagan qator yo'q»
-             deydi va «qabul qilish» tugmasi o'chiq turadi. Ya'ni kassaning
-             asosiy tugmasi ishlamaydi. Bo'limlarsiz esa registratura va
-             kalendar filtrlari bo'sh qolardi. */
-          const [demoCharges, demoDepts] = await Promise.all([
-            api.charges.getAll({ status: 'Unpaid' }).catch(() => []),
-            api.departments.getAll().catch(() => []),
-          ]);
-          setCharges(demoCharges || []);
-          setDepartments(demoDepts || []);
-        } else if (clinicId) {
-          const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs, clinicData, labTechs, labOrds, closures, movements, depts, chrgs] = await Promise.all([
-            // Butun klinika bo'yicha: shifokor boshqa bo'lim ko'rgan bemorning
-            // kartasini ocha olishi kerak (ko'p profilli klinikaning asosi).
-            /* ─── KIRISHDA CHEKLANGAN OYNA (FIX-PLAN 10.3) ───────────────
-               Ilgari bu uch chaqiruv BUTUN jadvalni tortardi. O'lchov
-               (`backend/tests/bench/scale.ts`, 3 yillik ma'lumot): 110 510
-               qator, 41 MB. Localhost'da 1.3 s, LAN orqali 7-16 soniya — va
-               bu har kirishda va har yangilashda takrorlanardi.
-
-               Endi kirishda faqat KERAKLI oyna olinadi:
-                 - bemorlar: oxirgi 500 ta (qidiruv allaqachon serverda, 8.1);
-                 - tranzaksiya va qabullar: oxirgi 90 kun.
-
-               Uzoqroq davr kerak bo'lgan ekranlar (Kassa, Kalendar, Hisobot)
-               o'z oralig'ini o'zi so'raydi. Bosh sahifadagi UMUMIY raqamlar
-               esa serverdan keladi (`api.reports.dashboard`) — aks holda
-               qisqargan ro'yxatdan sanalgan son yolg'on bo'lardi. */
-            api.patients.getAllForClinic(clinicId, INITIAL_PATIENTS),
-            api.appointments.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }),
-            api.transactions.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }),
-            api.expenses.getAll(clinicId),
-            api.services.getAll(clinicId),
-            api.doctors.getAll(clinicId),
-            api.receptionists.getAll(clinicId),
-            api.inventory.getAll(clinicId),
-            api.categories.getAll(clinicId),
-            api.reviews.getAll(clinicId),
-            api.clinics.getById(clinicId),
-            api.labTechnicians.getAll(clinicId),
-            api.labOrders.getAll(clinicId),
-            // Kassa ma'lumotlari — yuklanmasa sahifa baribir ishlashi kerak
-            api.cashRegister.getAll(clinicId).catch(() => []),
-            api.cashMovements.getAll(clinicId).catch(() => []),
-            // Bo'limlar — yuklanmasa qolgan sahifalar baribir ishlashi kerak
-            api.departments.getAll().catch(() => []),
-            api.charges.getAll({ status: 'Unpaid' }).catch(() => [])
-          ]);
-          setCurrentClinic(clinicData);
-          setPatients(pts);
-          setAppointments(appts);
-          setTransactions(txs);
-          setExpenses(exps || []);
-          setServices(svcs);
-          setDoctors(docs);
-          setReceptionists(recs);
-          setInventoryItems(invItems);
-          // @ts-ignore
-          setCategories(cats);
-          setReviews(revs || []);
-          setLabTechnicians(labTechs || []);
-          setLabOrders(labOrds || []);
-          setCashClosures(closures || []);
-          setCashMovements(movements || []);
-          setDepartments(depts || []);
-          setCharges(chrgs || []);
-        }
-      } catch (error: any) {
-        console.error('Failed to load data:', error);
-        if (error.message === 'Session expired') {
-          handleLogout();
-        } else {
-          setError(t('app.malumotlarni_yuklashda_xatolik_yuz'));
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadData();
-  }, [isAuthenticated, clinicId, userRole, mustChangePassword]);
+    void loadAppData();
+  }, [isAuthenticated, mustChangePassword, loadAppData]);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -479,41 +520,10 @@ const sinceDate = (n: number) =>
       handleLogout();
       return;
     }
-    setIsLoading(true);
-    setError(null);
-    try {
-      if (clinicId) {
-        const [pts, appts, txs, exps, svcs, docs, recs, invItems, cats, revs] = await Promise.all([
-          api.patients.getAllForClinic(clinicId),
-          api.appointments.getAll(clinicId),
-          api.transactions.getAll(clinicId),
-          api.expenses.getAll(clinicId),
-          api.services.getAll(clinicId),
-          api.doctors.getAll(clinicId),
-          api.receptionists.getAll(clinicId),
-          api.inventory.getAll(clinicId),
-          api.categories.getAll(clinicId),
-          api.reviews.getAll(clinicId),
-        ]);
-        setPatients(pts);
-        setAppointments(appts);
-        setTransactions(txs);
-        setExpenses(exps || []);
-        setServices(svcs);
-        setDoctors(docs);
-        setReceptionists(recs);
-        setInventoryItems(invItems);
-        setCategories(cats);
-        // @ts-ignore
-        setReviews(revs || []);
-      }
-      addToast('success', t('app.malumotlar_muvaffaqiyatli_yuklandi'));
-    } catch (error) {
-      console.error('Failed to load data:', error);
-      setError(t('app.malumotlarni_yuklashda_xatolik_yuz'));
-    } finally {
-      setIsLoading(false);
-    }
+    /* Kirishdagi bilan BIR XIL yuklovchi: o'sha oynalar, o'sha ro'yxatlar,
+       o'sha moliya ruxsati. */
+    const ok = await loadAppData();
+    if (ok) addToast('success', t('app.malumotlar_muvaffaqiyatli_yuklandi'));
   };
 
   // --- UI Actions ---
@@ -581,6 +591,12 @@ const sinceDate = (n: number) =>
       throw e;
     }
   };
+
+  /* Serverdan alohida olingan bemor (ro'yxatdagi 500 tadan tashqari) —
+     ro'yxatga qo'shiladi: karta tahriri va boshqa ekranlar uni topsin. */
+  const rememberPatient = useCallback((p: Patient) => {
+    setPatients(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev]);
+  }, []);
 
   const updatePatient = async (id: string, data: Partial<Patient>) => {
     try {
@@ -666,6 +682,33 @@ const sinceDate = (n: number) =>
       addToast('error', e.message || t('app.tolovni_saqlashda_xatolik_yuz'));
       throw e;
     }
+  };
+
+  /* TO'LOVDAN KEYIN CHEKLAR — KIRISHDAGI OYNA BILAN.
+
+     Ilgari bu yerda oynasiz `transactions.getAll(clinicId)` turardi: har
+     to'lovdan keyin BUTUN tarix (yillar, o'nlab MB) qayta tortilardi.
+     Endi faqat oxirgi `INITIAL_DAYS` kun so'raladi va ro'yxat BIRLASHTIRILADI:
+       · oyna ichidagi qatorlar — serverdagisi bilan almashadi (o'chirilgani
+         ketadi, o'zgargani yangilanadi);
+       · so'rov ketgandan keyin qo'shilgan qatorlar (parallel to'lov) qoladi;
+       · oynadan eski qatorlar qoladi. */
+  const refreshRecentTransactions = () => {
+    if (!clinicId) return;
+    if (userRole === UserRole.NURSE || userRole === UserRole.LAB_TECHNICIAN) return;
+    const from = sinceDate(INITIAL_DAYS);
+    const idsAtStart = new Set(transactions.map(x => x.id));
+    api.transactions.getAll(clinicId, { from })
+      .then(fresh => {
+        setTransactions(prev => {
+          const freshIds = new Set(fresh.map(x => x.id));
+          const rest = prev.filter(x => !freshIds.has(x.id));
+          const newer = rest.filter(x => !idsAtStart.has(x.id));
+          const older = rest.filter(x => idsAtStart.has(x.id) && dayKey(x.date) < from);
+          return [...newer, ...fresh, ...older];
+        });
+      })
+      .catch(console.error);
   };
 
   // Kassa kunini yopish / qayta ochish
@@ -763,6 +806,10 @@ const sinceDate = (n: number) =>
 
   // Expense Actions (Xarajatlar)
   const refreshExpenses = async () => {
+    /* Moliyani ko'rmaydigan rol (laborant, hamshira) uchun so'ramaymiz —
+       server baribir 403 beradi. Laboratoriya reaktiv sarfidan keyin shu
+       funksiyani chaqiradi. */
+    if (!canSeeFinance(parseAccessControl(currentClinic), userRole)) return;
     try {
       const exps = await api.expenses.getAll(clinicId);
       setExpenses(exps || []);
@@ -978,7 +1025,6 @@ const sinceDate = (n: number) =>
 
   // Ruxsatlar (Sozlamalar в†’ Ruxsatlar): rol bo'yicha modul/moliya/telefon ko'rinishi
   const accessControl = parseAccessControl(currentClinic);
-  const showFinanceForRole = canSeeFinance(accessControl, userRole);
   /* Menyu `utils/navigation.ts` dan. Ilgari ro'yxat shu yerda va
      `BottomNav.tsx` da ALOHIDA yozilgan edi va ular ajralib ketgan. */
   const visibleNavigation = buildNavigation(userRole, accessControl);
@@ -1016,10 +1062,24 @@ const sinceDate = (n: number) =>
     } catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
   }, [clinicId]);
 
-  const guard = (moduleId: string, element: React.ReactNode) =>
-    canOpenModule(userRole, accessControl, moduleId)
+  /* Klinika sozlamasi (ruxsatlar) hali kelmagan. Bu paytda `accessControl`
+     bo'sh obyekt, ya'ni «hammasi ochiq» — qo'riqchi yashirilgan sahifani
+     ham O'TKAZIB yuborardi va sahifa bir lahza ochilib, ma'lumot so'rardi.
+     Sozlama kelguncha sahifa o'rniga yuklash belgisi turadi. */
+  const clinicSettingsReady = !!currentClinic || !clinicId;
+  const guard = (moduleId: string, element: React.ReactNode) => {
+    if (!clinicSettingsReady) {
+      return (
+        <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
+          <div className="w-8 h-8 rounded-full border-2 border-line border-t-primary-600 animate-spin" />
+          <span className="sr-only">{t('ui.yuklanmoqda')}</span>
+        </div>
+      );
+    }
+    return canOpenModule(userRole, accessControl, moduleId)
       ? element
       : <Navigate to={homeFor(userRole)} replace />;
+  };
   const showPatientPhoneForRole = canSeePatientPhone(accessControl, userRole);
 
   /* ⚠️ QUYIDAGI HOOKLAR HAR RENDERDA CHAQIRILISHI SHART.
@@ -1167,11 +1227,14 @@ const sinceDate = (n: number) =>
      Marshrutga o'tish shu yerda, chunki `navigate` faqat shu daraja uchun
      mavjud. Sahifa ichidagi ish (fokus, modal ochish) esa sahifaning o'zida
      bo'ladi — u yerda `Escape` va `Ctrl+S` ishlatiladi. */
+  const canOpenFinance = clinicSettingsReady && canOpenModule(userRole, accessControl, 'finance');
   const hotkeys = React.useMemo(() => ({
     F2: () => navigate('/reception'),
     F3: () => navigate('/patients'),
-    F4: () => { if (showFinanceForRole) navigate('/finance'); },
-  }), [navigate, showFinanceForRole]);
+    /* Moliya marshruti bilan BIR XIL tekshiruv: rol, yashirilgan modul va
+       «Moliyani ko'rsatish». Sozlama kelmaguncha F4 hech narsa qilmaydi. */
+    F4: () => { if (canOpenFinance) navigate('/finance'); },
+  }), [navigate, canOpenFinance]);
   useHotkeys(hotkeys, isAuthenticated && !mustChangePassword);
 
   /* Hodisalar oqimi — kirgandan keyin ochiladi, chiqishda yopiladi.
@@ -1769,6 +1832,7 @@ const sinceDate = (n: number) =>
                   onUpdatePatient={updatePatient}
                   onAddAppointment={addAppointment}
                   onUpdateAppointment={updateAppointment}
+                  onPatientLoaded={rememberPatient}
                 />
               )} />
 
@@ -1792,48 +1856,51 @@ const sinceDate = (n: number) =>
               )} />
 
               {/* Eski manzil — zakladkalar buzilmasligi uchun yo'naltiriladi */}
-              <Route path="/cashbook" element={<Navigate to="/finance" replace />} />
+              <Route path="/cashbook" element={guard('finance', <Navigate to="/finance" replace />)} />
 
-              {(userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST) && showFinanceForRole && (
-                <Route path="/finance" element={
-                  <FinanceHub
-                    userRole={userRole}
-                    transactions={transactions}
-                    expenses={expenses}
-                    appointments={appointments}
-                    services={services}
-                    patients={patients}
-                    onPatientClick={handlePatientClick}
-                    doctorId={doctorId}
-                    clinicId={clinicId}
-                    doctors={doctors}
-                    receptionists={receptionists}
-                    currentClinic={currentClinic}
-                    labOrders={labOrders}
-                    onAddTransaction={addTransaction}
-                    onAddExpense={addExpense}
-                    onUpdateExpense={updateExpense}
-                    onDeleteExpense={deleteExpense}
-                    closures={cashClosures}
-                    movements={cashMovements}
-                    onCloseDay={closeCashDay}
-                    onReopenDay={reopenCashDay}
-                    onAddCashMovement={addCashMovement}
-                    onDeleteCashMovement={deleteCashMovement}
-                    onUpdateTransaction={updateTransaction}
-                    onDeleteTransaction={deleteTransaction}
-                    currentUserName={userName}
-                    addToast={addToast}
-                    departments={departments}
-                    charges={charges}
-                    onChargesChanged={() => {
-                      // To'lovdan keyin ikkalasi ham yangilanadi: qatorlar va kassa
-                      api.charges.getAll({ status: 'Unpaid' }).then(setCharges).catch(console.error);
-                      if (clinicId) api.transactions.getAll(clinicId).then(setTransactions).catch(console.error);
-                    }}
-                  />
-                } />
-              )}
+              {/* MOLIYA — boshqa modullar kabi `guard` orqali. Ilgari marshrut
+                  shartli e'lon qilinardi: ruxsati yo'q odam «Sahifa topilmadi»
+                  ko'rardi, sozlama yuklanmasdan oldin esa shart `accessControl`
+                  bo'sh obyekti bilan tekshirilardi. */}
+              <Route path="/finance" element={
+                guard('finance',
+                <FinanceHub
+                  userRole={userRole}
+                  transactions={transactions}
+                  expenses={expenses}
+                  appointments={appointments}
+                  services={services}
+                  patients={patients}
+                  onPatientClick={handlePatientClick}
+                  doctorId={doctorId}
+                  clinicId={clinicId}
+                  doctors={doctors}
+                  receptionists={receptionists}
+                  currentClinic={currentClinic}
+                  labOrders={labOrders}
+                  onAddTransaction={addTransaction}
+                  onAddExpense={addExpense}
+                  onUpdateExpense={updateExpense}
+                  onDeleteExpense={deleteExpense}
+                  closures={cashClosures}
+                  movements={cashMovements}
+                  onCloseDay={closeCashDay}
+                  onReopenDay={reopenCashDay}
+                  onAddCashMovement={addCashMovement}
+                  onDeleteCashMovement={deleteCashMovement}
+                  onUpdateTransaction={updateTransaction}
+                  onDeleteTransaction={deleteTransaction}
+                  currentUserName={userName}
+                  addToast={addToast}
+                  departments={departments}
+                  charges={charges}
+                  onChargesChanged={() => {
+                    // To'lovdan keyin ikkalasi ham yangilanadi: qatorlar va kassa
+                    api.charges.getAll({ status: 'Unpaid' }).then(setCharges).catch(console.error);
+                    refreshRecentTransactions();
+                  }}
+                />)
+              } />
 
               {/* ── XODIMLAR ────────────────────────────────────────────
                   Ro'yxat va xodim kartasi. Ulush va vedomost ham shu
@@ -1886,7 +1953,7 @@ const sinceDate = (n: number) =>
                   doctorId={doctorId}
                   showPatientPhone={showPatientPhoneForRole}
                   onCreatePatient={addPatient}
-                  onPatientAdded={(p: Patient) => setPatients(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev])}
+                  onPatientAdded={rememberPatient}
                   addToast={addToast}
                 />
               )} />
@@ -1897,7 +1964,7 @@ const sinceDate = (n: number) =>
               <Route path="/myqueue" element={<Navigate to="/reception" replace />} />
 
               {/* Kassa endi Moliya ichida — eski havolalar shu yerga tushadi */}
-              <Route path="/cashier" element={<Navigate to="/finance" replace />} />
+              <Route path="/cashier" element={guard('finance', <Navigate to="/finance" replace />)} />
 
               {/* Qabul ish stoli bemor kartasiga ko'chdi. Marshrut kartaga
                   yo'naltiradi — eski havolalar va talonlar ishlayveradi. */}
@@ -1913,7 +1980,6 @@ const sinceDate = (n: number) =>
                   doctors={doctors}
                   currentUserName={userName}
                   currentClinic={currentClinic}
-                  token={getAuthToken() ?? undefined}
                 />
               )} />
 

@@ -84,6 +84,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
     const [refundFor, setRefundFor] = useState<VisitCharge | null>(null);
     const [refundVal, setRefundVal] = useState('');
     const [refundReason, setRefundReason] = useState('');
+    const [refundError, setRefundError] = useState('');
 
     /* Oyna ochilganda — hamma to'lanmagan qator belgilangan, to'liq summa
        bilan: kassadagi eng ko'p uchraydigan holat shu.
@@ -187,10 +188,21 @@ export const ChargePaymentModal: React.FC<Props> = ({
 
     const applyRefund = async () => {
         if (!refundFor) return;
+        setRefundError('');
+        /* SUMMA HAR DOIM ANIQ YUBORILADI. Ilgari `Number(refundVal) || undefined`
+           edi: maydon bo'sh yoki «0» bo'lsa summa umuman ketmasdi, server esa
+           summasiz so'rovda TO'LANGAN SUMMANING HAMMASINI qaytaradi. Ya'ni
+           kassir «0» yozsa, yashikdan butun pul chiqib ketardi. */
+        const amount = Math.round((Number(refundVal) || 0) * 100) / 100;
+        const paidAmount = refundFor.paidAmount || 0;
+        if (!Number.isFinite(amount) || amount <= 0 || amount > paidAmount + 0.001) {
+            setRefundError(fill(t('chargepaymentmodal.refundInvalid'), num(paidAmount)));
+            return;
+        }
         setBusyId(refundFor.id);
         try {
             await api.payments.refund(refundFor.id, {
-                amount: Number(refundVal) || undefined,
+                amount,
                 method: 'Cash',
                 reason: refundReason.trim() || undefined,
             });
@@ -338,7 +350,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                                         <p className="text-sm text-ink truncate">{c.name}</p>
                                         <p className="text-[11px] text-faint">{t('visit.paidShort')} {num(c.paidAmount)}</p>
                                     </div>
-                                    <button onClick={() => { setRefundFor(c); setRefundVal(String(c.paidAmount || 0)); }}
+                                    <button onClick={() => { setRefundFor(c); setRefundVal(String(c.paidAmount || 0)); setRefundError(''); }}
                                         className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100">
                                         <Undo2 className="w-3.5 h-3.5" /> {t('finance.cash.refund')}
                                     </button>
@@ -388,7 +400,9 @@ export const ChargePaymentModal: React.FC<Props> = ({
                             </p>
                         </div>
                         <Input type="number" label={t('chargepaymentmodal.qaytariladigan_summa')} value={refundVal}
-                            onChange={(e) => setRefundVal(e.target.value)} autoFocus
+                            onChange={(e) => { setRefundVal(e.target.value); setRefundError(''); }} autoFocus
+                            min={0} max={refundFor.paidAmount || 0}
+                            error={refundError || undefined}
                             helperText={fill(t('chargepaymentmodal.tolangan_x_2'), num(refundFor.paidAmount))} />
                         <Input label={t('chargepaymentmodal.sabab')} value={refundReason} onChange={(e) => setRefundReason(e.target.value)}
                             placeholder={t('chargepaymentmodal.masalan_xizmat_korsatilmadi')} />

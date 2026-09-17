@@ -62,39 +62,9 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 // kirgan shifokor sahifa o'rniga shu matnni ko'rardi. '/' quyida, express.static
 // bilan birga frontendni beradi.
 
-// Google Edge TTS Proxy Endpoint
-app.get('/api/tts', async (req: any, res: any) => {
-    try {
-        const { text, lang } = req.query;
-        if (!text) {
-            return res.status(400).send('Text is required');
-        }
-        
-        let voice = 'uz-UZ-MadinaNeural'; // Default
-        const cleanLang = String(lang || 'uz').toLowerCase();
-        if (cleanLang === 'ru') {
-            voice = 'ru-RU-SvetlanaNeural';
-        } else if (cleanLang === 'en') {
-            voice = 'en-US-AriaNeural';
-        }
-        
-        console.log(`[TTS] Synthesizing "${text.substring(0, 30)}..." using voice=${voice}`);
-        
-        const { EdgeTTS } = require('@andresaya/edge-tts');
-        const tts = new EdgeTTS();
-        await tts.synthesize(text, voice);
-        const buffer = tts.toBuffer();
-        
-        res.set({
-            'Content-Type': 'audio/mpeg',
-            'Content-Length': buffer.length
-        });
-        res.send(buffer);
-    } catch (err: any) {
-        console.error('[TTS] proxy error:', err.message);
-        res.status(500).send('TTS failed');
-    }
-});
+/* `/api/tts` OLIB TASHLANDI (audit 2026-09-17): loginsiz va litsenziya
+   tekshiruvidan oldin turardi, paketi (`@andresaya/edge-tts`) esa o'rnatilmagan
+   edi — har doim 500. Frontend uni chaqirmasdi. */
 
 // Load everything else
 import { registerMultiprofileRoutes } from './multiprofile';
@@ -121,7 +91,7 @@ import { registerAttentionRoutes } from './attention';
 import { requestStableTunnel } from './tunnelClient';
 import { readTunnelAddresses, notifyBackupAddress } from './tunnelAddresses';
 import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
-import { check as checkPermission } from './permissions';
+import { check as checkPermission, isFinanceRead, canReadFinance } from './permissions';
 import { validatePatient, validatePhone } from '../shared/validation';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
@@ -150,7 +120,24 @@ const storage = multer.diskStorage({
     },
 });
 
-const upload = multer({ storage: storage });
+/* CHEKLOV (audit 2026-09-17). Ilgari hajm ham, tur ham tekshirilmasdi:
+   istalgan fayl (html, exe) istalgan hajmda diskka yozilardi — disk to'lib
+   bazaga yozish ham to'xtashi mumkin edi. Interfeys faqat rasm yuboradi;
+   PDF (tekshiruv xulosasi) ham qabul qilinadi. */
+const UPLOAD_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.heic', '.pdf']);
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 20 },
+    fileFilter: (_req: any, file: any, cb: any) => {
+        const ext = path.extname(String(file.originalname || '')).toLowerCase();
+        const mime = String(file.mimetype || '');
+        const okMime = mime.startsWith('image/') || mime === 'application/pdf';
+        if (UPLOAD_EXT.has(ext) && okMime) return cb(null, true);
+        const err: any = new Error("Faqat rasm yoki PDF yuklash mumkin");
+        err.status = 400;
+        cb(err);
+    },
+});
 
 /* JWT kaliti. Bulutda u .env orqali beriladi va yo'q bo'lsa server ishga
    tushmasligi to'g'ri edi. Offline'da esa dasturni klinika o'zi o'rnatadi —
@@ -226,9 +213,9 @@ const PUBLIC_API_BASE_URL = (process.env.PUBLIC_API_BASE_URL || `http://localhos
    Fayl har so'rovda o'qilmaydi — 10 soniyalik kesh yetarli: manzil
    faqat dastur qayta ishga tushganda o'zgaradi. */
 let tunnelOriginsCache: { at: number; list: string[] } = { at: 0, list: [] };
-function activeTunnelOrigins(): string[] {
+function activeTunnelOrigins(fresh = false): string[] {
     const now = Date.now();
-    if (now - tunnelOriginsCache.at < 10_000) return tunnelOriginsCache.list;
+    if (!fresh && now - tunnelOriginsCache.at < 10_000) return tunnelOriginsCache.list;
 
     const list: string[] = [];
     const fromEnv = process.env.CLOUDFLARE_TUNNEL_URL;
@@ -254,11 +241,17 @@ const corsOptions = {
 
         const isLoopback = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
         // Xususiy tarmoqlar: 192.168.x.x, 10.x.x.x, 172.16-31.x.x
-        const isLocalNetwork = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(origin);
+        /* Manzil TO'LIQ IP bo'lishi shart. Ilgari faqat boshi tekshirilardi va
+           `http://10.evil.com`, `http://192.168.attacker.net` ham o'tardi. */
+        const isLocalNetwork = /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(origin);
         /* Masofadan kirish uchun ochilgan tunnel (Sozlamalarda yoqiladi).
            Taqqoslash TO'LIQ manzil bo'yicha: `startsWith` ishlatilsa
            `https://xyz.trycloudflare.com.evil.com` ham o'tib ketardi. */
-        const isConfiguredTunnel = activeTunnelOrigins().includes(origin.replace(/\/+$/, ''));
+        /* Keshda yo'q bo'lsa fayl QAYTA o'qiladi: Quick Tunnel hozirgina
+           ko'tarilgan bo'lsa, eski kesh yangi manzilni 10 soniya bloklardi. */
+        const cleanOrigin = origin.replace(/\/+$/, '');
+        const isConfiguredTunnel = !isLoopback && !isLocalNetwork
+            && (activeTunnelOrigins().includes(cleanOrigin) || activeTunnelOrigins(true).includes(cleanOrigin));
 
         if (isLoopback || isLocalNetwork || isConfiguredTunnel) {
             callback(null, true);
@@ -282,6 +275,21 @@ app.use(express.json());
 // Tashqi lid manbalari ko'pincha oddiy forma (x-www-form-urlencoded) yuboradi —
 // JSON'dan tashqari uni ham qabul qilamiz.
 app.use(express.urlencoded({ extended: true }));
+
+/* Akkaunt holati keshini tozalash (sessiyani bekor qilish, `loadAccountState`).
+   Xodim yoki klinika yozuvi muvaffaqiyatli o'zgarsa — parol, holat, o'chirish —
+   kesh darhol tashlanadi: aks holda paroli almashtirilgan xodimning ESKI
+   tokeni yana 10 soniya ishlardi. Bunday yozuvlar kam, butun keshni
+   tozalash arzon. */
+const ACCOUNT_WRITE_RE = /^\/api\/(doctors|receptionists|lab-technicians|nurses|clinics|auth|license)(\/|$)/;
+app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && ACCOUNT_WRITE_RE.test(req.path)) {
+        res.on('finish', () => {
+            if (res.statusCode < 400) accountCache.clear();
+        });
+    }
+    next();
+});
 
 /* ── AKTIVATSIYA TEKSHIRUVI ───────────────────────────────────────────────
    Aktivlashtirilmagan nusxa faqat sozlash va kirish marshrutlariga
@@ -396,64 +404,14 @@ if (process.env.XCLINIC_TRACE === '1') {
     });
 }
 
-/**
- * Shu bazadagi LOGINLAR ro'yxati — kirish sahifasidagi eslatma uchun.
- *
- * Nima uchun kerak. Klinika o'z loginini unutadi, va dasturda uni
- * ko'rsatadigan joy yo'q: parolni tiklash uchun ham avval login kerak.
- *
- * PAROL QAYTARILMAYDI va hech qachon qaytarilmaydi. Faqat foydalanuvchi
- * nomlari va rollar.
- *
- * FAQAT SHU KOMPYUTERDAN: `127.0.0.1` yoki `::1`. Tarmoqdagi boshqa
- * kompyuter (shifokor noutbugi) bu ro'yxatni ololmaydi — u yerda login
- * ro'yxatini ko'rsatishning sababi yo'q.
- */
-app.get('/api/local-logins', async (req: any, res: any) => {
-    const ip = String(req.ip || req.socket?.remoteAddress || '');
-    const isLoopback = ip.includes('127.0.0.1') || ip === '::1' || ip === '::ffff:127.0.0.1';
-    if (!isLoopback) return res.status(403).json({ error: "Faqat shu kompyuterdan" });
+/* `GET /api/local-logins` OLIB TASHLANDI (audit 2026-09-17).
 
-    try {
-        const [clinics, doctors, receptionists, nurses, techs] = await Promise.all([
-            prisma.clinic.findMany({
-                where: { status: { not: 'Deleted' } },
-                select: { username: true, name: true },
-            }),
-            prisma.doctor.findMany({
-                where: { username: { not: null }, status: { not: 'Deleted' } },
-                select: { username: true, firstName: true, lastName: true },
-            }),
-            /* Registratorda `username` MAJBURIY (String, null emas), shuning
-               uchun `not: null` filtri Prisma da xato beradi. Doctor, Nurse
-               va LabTechnician da esa u ixtiyoriy. */
-            prisma.receptionist.findMany({
-                where: { status: { not: 'Deleted' } },
-                select: { username: true, firstName: true, lastName: true },
-            }),
-            (prisma as any).nurse.findMany({
-                where: { username: { not: null }, status: { not: 'Deleted' } },
-                select: { username: true, firstName: true, lastName: true },
-            }),
-            (prisma as any).labTechnician.findMany({
-                where: { username: { not: null }, status: { not: 'Deleted' } },
-                select: { username: true, firstName: true, lastName: true },
-            }),
-        ]);
-
-        const nameOf = (x: any) => `${x.lastName || ''} ${x.firstName || ''}`.trim();
-        res.json([
-            ...clinics.map((c: any) => ({ username: c.username, role: 'Klinika', name: c.name })),
-            ...doctors.map((d: any) => ({ username: d.username, role: 'Shifokor', name: nameOf(d) })),
-            ...receptionists.map((r: any) => ({ username: r.username, role: 'Registrator', name: nameOf(r) })),
-            ...nurses.map((x: any) => ({ username: x.username, role: 'Hamshira', name: nameOf(x) })),
-            ...techs.map((x: any) => ({ username: x.username, role: 'Laborant', name: nameOf(x) })),
-        ].filter((x: any) => x.username));
-    } catch (e: any) {
-        console.error('local-logins error:', e?.message || e);
-        res.json([]);
-    }
-});
+   U barcha loginlar va rollarni qaytarardi va «faqat shu kompyuterdan»
+   deb `127.0.0.1` ni tekshirardi. Lekin ikkala tunnel ham serverga
+   `http://localhost:<port>` orqali ulanadi — internetdan kelgan har so'rov
+   ham `127.0.0.1` bo'lib ko'rinadi. Ya'ni ro'yxat ko'chadagi har kimga
+   ochiq edi. Frontend uni chaqirmasdi. Manzil bo'yicha «mahalliy» deb
+   ishonadigan yangi endpoint QO'SHMANG. */
 
 /* ─── Cookie yordamchilari ────────────────────────────────────────────────────
    `cookie-parser` qo'shilmadi: bitta cookie o'qish uchun yangi bog'liqlik
@@ -498,6 +456,94 @@ const issueTokens = (payload: any, accessTtl: string = TOKEN_TTL) => ({
     refresh: jwt.sign({ ...payload, typ: 'refresh' }, JWT_SECRET, { expiresIn: REFRESH_TTL }),
 });
 
+/* ─── SESSIYANI BEKOR QILISH (audit 2026-09-17) ──────────────────────────────
+
+   Ilgari token bazaga UMUMAN qaramasdi: ishdan bo'shatilgan yoki bloklangan
+   xodim, paroli almashtirilgan akkaunt ham sessiyasini saqlab qolardi —
+   refresh har safar yangi 30 kunlik cookie berar, ya'ni bu cheksiz edi.
+
+   Endi har so'rovda akkaunt holati tekshiriladi:
+     · akkaunt bor va `Active`;
+     · tokendagi `pv` (parol muhri) joriy parol hashiga mos — parol
+       almashtirilsa eski hamma tokenlar kuchini yo'qotadi.
+
+   Muhr — hashning o'zi emas, JWT kaliti bilan HMAC: tokenni o'qigan odam
+   undan hech narsa ololmaydi.
+
+   Natija 10 soniya keshlanadi (har so'rovda baza so'rovi bo'lmasin).
+   Muhr mos kelmasa kesh chetlab o'tiladi — aks holda parolni almashtirgan
+   egasining YANGI tokeni 10 soniya rad etilardi.
+
+   `pv` siz token — bu o'zgarishdan oldin berilgan sessiya. U holat
+   tekshiruvidan o'tsa qabul qilinadi va birinchi refresh da muhr oladi:
+   yangilanish kuni hamma xodim tizimdan chiqib ketmasin. */
+const ACCOUNT_MODEL: Record<string, { model: string; idKey: string }> = {
+    CLINIC_ADMIN: { model: 'clinic', idKey: 'clinicId' },
+    DOCTOR: { model: 'doctor', idKey: 'doctorId' },
+    RECEPTIONIST: { model: 'receptionist', idKey: 'receptionistId' },
+    LAB_TECHNICIAN: { model: 'labTechnician', idKey: 'technicianId' },
+    NURSE: { model: 'nurse', idKey: 'nurseId' },
+};
+
+const passwordStamp = (hash?: string | null): string =>
+    crypto.createHmac('sha256', JWT_SECRET).update(String(hash || '')).digest('hex').slice(0, 16);
+
+type AccountState = { ok: boolean; stamp?: string };
+const accountCache = new Map<string, { at: number; state: AccountState }>();
+const ACCOUNT_CACHE_MS = 10_000;
+
+async function loadAccountState(payload: any, fresh = false): Promise<AccountState> {
+    const spec = ACCOUNT_MODEL[payload?.role];
+    const id = spec ? payload?.[spec.idKey] : null;
+    if (!spec || !id) return { ok: false };
+
+    const key = `${payload.role}:${id}`;
+    const hit = accountCache.get(key);
+    if (!fresh && hit && Date.now() - hit.at < ACCOUNT_CACHE_MS) return hit.state;
+
+    const row = await (prisma as any)[spec.model].findUnique({
+        where: { id }, select: { status: true, password: true },
+    });
+    const state: AccountState = {
+        ok: !!row && row.status === 'Active',
+        stamp: row ? passwordStamp(row.password) : undefined,
+    };
+    if (accountCache.size > 1000) accountCache.clear();
+    accountCache.set(key, { at: Date.now(), state });
+    return state;
+}
+
+/* Egasining «Kirish nazorati» dagi `showFinance` bayrog'i — rol bo'yicha.
+   Sozlama kamdan-kam o'zgaradi, shuning uchun 10 soniya keshlanadi. */
+const ACCESS_ROLE_KEY: Record<string, string> = {
+    DOCTOR: 'doctor', RECEPTIONIST: 'receptionist', LAB_TECHNICIAN: 'labTechnician', NURSE: 'nurse',
+};
+const accessControlCache = new Map<string, { at: number; value: any }>();
+
+async function financeFlagFor(user: any): Promise<boolean | undefined> {
+    const key = ACCESS_ROLE_KEY[user?.role];
+    if (!key || !user?.clinicId) return undefined;
+    let hit = accessControlCache.get(user.clinicId);
+    if (!hit || Date.now() - hit.at > ACCOUNT_CACHE_MS) {
+        const row: any = await prisma.clinic.findUnique({
+            where: { id: user.clinicId }, select: { accessControl: true } as any,
+        });
+        let value: any = {};
+        try { value = row?.accessControl ? JSON.parse(row.accessControl) : {}; } catch { value = {}; }
+        hit = { at: Date.now(), value };
+        accessControlCache.set(user.clinicId, hit);
+    }
+    return hit.value?.[key]?.showFinance;
+}
+
+/** Token hali kuchdami: akkaunt bor, faol va paroli almashtirilmagan. */
+async function sessionStillValid(payload: any): Promise<boolean> {
+    let st = await loadAccountState(payload);
+    if (st.ok && payload?.pv && payload.pv !== st.stamp) st = await loadAccountState(payload, true);
+    if (!st.ok) return false;
+    return !payload?.pv || payload.pv === st.stamp;
+}
+
 const authenticateToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -507,7 +553,7 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
         return res.status(401).json({ error: 'Token topilmadi (Unauthorized)' });
     }
 
-    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    jwt.verify(token, JWT_SECRET, async (err: any, user: any) => {
         if (err) {
             if (isDev) console.log('❌ Token verification failed:', err.message);
             // 401 (403 emas): token muddati tugagan yoki yaroqsiz — bu autentifikatsiya
@@ -527,6 +573,15 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
            Eski tokenlar 30 kun ichida o'z-o'zidan tugaydi. */
         if (user?.typ === 'refresh') {
             return res.status(401).json({ error: 'Token yaroqsiz yoki muddati tugagan' });
+        }
+
+        try {
+            if (!(await sessionStillValid(user))) {
+                return res.status(401).json({ error: 'Sessiya bekor qilingan', code: 'SESSION_REVOKED' });
+            }
+        } catch (e: any) {
+            console.error('Sessiya tekshiruvi:', e?.message || e);
+            return res.status(500).json({ error: 'Sessiyani tekshirib bo\'lmadi' });
         }
 
         (req as any).user = user;
@@ -595,6 +650,20 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
             return res.status(403).json({ error: "Bu amal uchun ruxsatingiz yo'q", code: 'FORBIDDEN' });
         }
 
+        /* Moliyani o'qish — rol va egasining «Kirish nazorati» bayrog'i
+           bo'yicha (`permissions.ts`, canReadFinance). */
+        if (isFinanceRead(req.method, req.path)) {
+            try {
+                const showFinance = await financeFlagFor(user);
+                if (!canReadFinance(req.path, user?.role, showFinance)) {
+                    return res.status(403).json({ error: "Moliya ma'lumotlarini ko'rishga ruxsatingiz yo'q", code: 'FINANCE_HIDDEN' });
+                }
+            } catch (e: any) {
+                console.error('Moliya ruxsati tekshiruvi:', e?.message || e);
+                return res.status(500).json({ error: "Ruxsatni tekshirib bo'lmadi" });
+            }
+        }
+
         /* O'chirish jurnali. Ruxsat tekshiruvidan KEYIN: rad etilgan
            urinish o'chirish emas. Yozuvning o'zi javob yuborilgach,
            status ma'lum bo'lganda amalga oshadi. */
@@ -616,6 +685,44 @@ const getScopedClinicId = (req: any): string | null => {
        manbani (token) mijoz yuborgan qiymat bilan almashtiradigan yo'l
        ochib turardi. Rol olib tashlandi, istisno ham. */
     return ((req as any).user?.clinicId || null) as string | null;
+};
+
+/* ─── JAVOBDAN SIRLARNI OLIB TASHLASH (audit 2026-09-17) ───────────────────
+
+   Klinika yozuvi integratsiya kalitlarini ham saqlaydi. Ilgari javobdan
+   faqat `password` olib tashlanardi — bot tokeni, Eskiz paroli, DMED
+   kalitlari hamshira va laborantga ham ketardi. Bot tokeni bilan botni
+   butunlay o'g'irlash mumkin.
+
+   Ega (CLINIC_ADMIN) ularni ko'radi: Sozlamalar formasi shu qiymatlarni
+   to'ldiradi. Qolgan rollarga qiymat o'rniga `********` boradi — ekran
+   faqat «ulanganmi» ni tekshiradi (`!!clinic.botToken`) va u buzilmaydi. */
+const CLINIC_SECRET_FIELDS = [
+    'botToken', 'eskizPassword', 'eskizToken', 'dmedApiKey', 'dmedApiSecret', 'dmedToken',
+    'facebookUserAccessToken', 'facebookPageAccessToken', 'leadApiKey', 'licenseKey',
+];
+
+const clinicForRole = (clinic: any, role: string | undefined) => {
+    const { password, ...safe } = clinic || {};
+    if (role === 'CLINIC_ADMIN') return safe;
+    for (const f of CLINIC_SECRET_FIELDS) {
+        if (safe[f]) safe[f] = '********';
+    }
+    return safe;
+};
+
+/* Xodim qatori: parol hashi HECH KIMGA ketmaydi, maosh esa faqat egaga.
+   Ilgari `/api/doctors` va boshqalar `select` siz qaytarardi — hamshira
+   ham barcha hashlarni olardi (bcrypt ga o'tmagan akkaunt esa ochiq
+   matnli parolni). */
+const STAFF_SALARY_FIELDS = ['percentage', 'salaryType', 'fixedSalary'];
+
+const staffForRole = (row: any, role: string | undefined) => {
+    const { password, ...safe } = row || {};
+    if (role !== 'CLINIC_ADMIN') {
+        for (const f of STAFF_SALARY_FIELDS) delete safe[f];
+    }
+    return safe;
 };
 
 // Faqat ko'rsatilgan rollar uchun ruxsat beruvchi middleware.
@@ -917,7 +1024,8 @@ async function sendNotification(
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Bot Logs
-app.get('/api/clinics/:id/bot-logs', authenticateToken, async (req, res) => {
+// Bemor yozuvlari bilan birga — faqat ega (Sozlamalar ekrani)
+app.get('/api/clinics/:id/bot-logs', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
         if (!canAccessClinic(req, req.params.id)) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         const logs = await prisma.telegramLog.findMany({
@@ -1295,8 +1403,8 @@ async function runBulkSend(clinicId: string, clinic: any, patients: any[], messa
         const patientIds = patients.map(p => p.id);
         const todayStr = new Date().toISOString().split('T')[0];
 
-        // {qarz} — segments.ts dagi yagona ta'rif bo'yicha (Pending tranzaksiyalar
-        // + faol bo'lib to'lash qoldiqlari). "Qarzdorlar" filtri ham shu hisobdan.
+        // {qarz} — segments.ts dagi yagona ta'rif bo'yicha: to'lanmagan xizmat
+        // qatorlari (`VisitCharge`, total − paidAmount). "Qarzdorlar" filtri ham shu hisobdan.
         const debtMap: Map<string, number> = await buildDebtMap(clinicId, patientIds);
 
         // {sana}/{vaqt}/{shifokor_ismi} — bemorning eng yaqin kelgusi qabuli bo'yicha
@@ -1741,90 +1849,10 @@ setInterval(() => {
     }
 }, 10 * 60 * 1000).unref?.();
 
-/* ─── AI MASLAHATCHI PROMPTLARI ────────────────────────────────────────────
-   Bu promptlar denta7 dan o'zgarmasdan ko'chgan edi va "Sen tajribali
-   STOMATOLOG-maslahatchisan" deb boshlanardi. Ko'p profilli klinikada bu
-   shunday ko'rinardi: kardiolog AI yordamchini ochsa, unga tish davolash
-   rejasi tuzib berilardi.
-
-   Endi mutaxassislik SO'ROVDA keladi (`specialty`) — u bo'lim yoki
-   shifokorning yo'nalishidan olinadi. Berilmasa umumiy amaliyot. */
-const advisorSpecialty = (raw: unknown): string => {
-    const s = String(raw || '').trim().slice(0, 60);
-    return s || 'umumiy amaliyot';
-};
-
-const ADVISOR_PROMPTS: Record<string, (spec: string) => string> = {
-    treatment_plan: (spec) =>
-        `Sen ${spec} sohasidagi tajribali maslahatchisan. Berilgan klinik holat ` +
-        'asosida bosqichma-bosqich davolash rejasini tuz: tashxis taxmini, ' +
-        'bosqichlar, taxminiy muddat va profilaktika. Qisqa va aniq yoz. ' +
-        'Aniq bolmagan joyda taxmin qilma, qoshimcha tekshiruv taklif qil.',
-    sms_generator: () =>
-        'Sen klinikaning marketing mutaxassisisan. Bemorga yuboriladigan qisqa, ' +
-        'samimiy va bosim otkazmaydigan SMS matnini yoz. 160 belgidan ' +
-        'oshmasin, spam ohangidan qoch.',
-    staff_optimization: () =>
-        'Sen klinika boshqaruvi boyicha maslahatchisan. Berilgan muammo uchun ' +
-        'amaliy, bugundan qollasa boladigan 3-5 ta yechim taklif qil.',
-};
-
-// Landing sahifasidagi demo. Autentifikatsiyasiz — shuning uchun IP bo'yicha
-// qattiq cheklangan va javob uzunligi kichik.
-app.post('/api/ai/dental-advisor', async (req: any, res: any) => {
-    try {
-        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-            || req.socket?.remoteAddress || 'unknown';
-
-        if (!aiRateLimit(`advisor:${ip}`, 5, 60 * 60 * 1000)) {
-            return res.status(429).json({
-                success: false,
-                message: 'So\'rovlar chegarasiga yetdingiz. Bir soatdan keyin qayta urinib ko\'ring.',
-            });
-        }
-
-        const { topic, inputData, specialty } = req.body || {};
-        const build = ADVISOR_PROMPTS[topic];
-        const systemPrompt = build ? build(advisorSpecialty(specialty)) : undefined;
-        if (!systemPrompt) {
-            return res.status(400).json({ success: false, message: 'Noto\'g\'ri mavzu tanlandi.' });
-        }
-        if (!inputData || typeof inputData !== 'string' || inputData.trim().length < 10) {
-            return res.status(400).json({ success: false, message: 'Iltimos, holatni batafsilroq yozing.' });
-        }
-
-        if (!aiService.isAiConfigured()) {
-            return res.status(503).json({
-                success: false,
-                message: 'AI xizmati hozircha sozlanmagan. Administratorga murojaat qiling.',
-            });
-        }
-
-        // Widget javobni oddiy matn sifatida chiqaradi (whitespace-pre-wrap),
-        // markdown parse qilinmaydi — shuning uchun uni aniq taqiqlaymiz,
-        // aks holda foydalanuvchi ** va | belgilarini xom holda ko'radi.
-        const formatRule =
-            ' Javobni o\'zbek tilida yoz. Faqat oddiy matn ishlat: markdown ' +
-            'jadval, ** qalin belgi, ## sarlavha va emoji ISHLATMA. Raqamlangan ' +
-            'ro\'yxat va oddiy qatorlar yetarli. 200 so\'zdan oshirma.';
-
-        const response = await aiService.chat(
-            [
-                { role: 'system', content: systemPrompt + formatRule },
-                { role: 'user', content: inputData.slice(0, 2000) },
-            ],
-            { task: 'chat', maxTokens: 1000, label: `advisor:${topic}` }
-        );
-
-        res.json({ success: true, response });
-    } catch (error: any) {
-        console.error('[AI] dental-advisor xatolik:', error.message);
-        res.status(502).json({
-            success: false,
-            message: 'AI javob bera olmadi. Biroz kutib, qayta urinib ko\'ring.',
-        });
-    }
-});
+/* `POST /api/ai/dental-advisor` OLIB TASHLANDI (audit 2026-09-17).
+   denta7 landing sahifasining loginsiz demosi edi: klinikaning AI kalitini
+   istalgan odam sarflardi, cheklov esa mijoz o'zi yozadigan
+   `X-Forwarded-For` bo'yicha edi. XClinic da landing yo'q. */
 
 /* ═══ LOGIN URINISHLARINI CHEKLASH ════════════════════════════════════════
 
@@ -1850,8 +1878,25 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_PER_USER = 5;
 const LOGIN_MAX_PER_IP = 30;
 
-const socketIp = (req: any): string =>
-    String(req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown');
+/* TUNNEL ORTIDAGI SO'ROV. cloudflared `localhost` ga ulanadi, ya'ni
+   internetdan kelgan hamma so'rov `127.0.0.1` bo'lib ko'rinadi — klinika
+   kompyuteridagi Electron oynasi bilan BIR XIL. Ilgari tunnel orqali 30 ta
+   noto'g'ri urinish qabulxonadagi kompyuterni ham 15 daqiqaga bloklardi.
+
+   Cloudflare har so'rovga `CF-Connecting-IP` qo'shadi va mijoz uni
+   o'chira olmaydi. Shuning uchun loopback + shu sarlavha = tunnel, va
+   kalit haqiqiy tashqi IP bo'ladi. Tarmoqdagi kompyuter bu sarlavhani
+   soxtalashtirsa ham faqat o'zi uchun alohida hisoblagich oladi:
+   sarlavha faqat loopback so'rovda hisobga olinadi. */
+const isLoopbackAddr = (ip: string) =>
+    ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+
+const socketIp = (req: any): string => {
+    const raw = String(req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown');
+    const cf = String(req.headers?.['cf-connecting-ip'] || '').trim();
+    if (cf && isLoopbackAddr(raw)) return `tunnel:${cf.slice(0, 64)}`;
+    return raw;
+};
 
 const bump = (map: Map<string, Bucket>, key: string): number => {
     const now = Date.now();
@@ -2096,6 +2141,10 @@ app.post('/api/auth/login', async (req, res) => {
         }
 
         if (userPayload && responseData) {
+            // Parol muhri — parol almashtirilsa shu tokenlar kuchini yo'qotadi.
+            // `fresh`: parol hozirgina ochiq matndan hashga o'tgan bo'lishi mumkin.
+            (userPayload as any).pv = (await loadAccountState(userPayload, true)).stamp;
+
             // Muvaffaqiyat — login bo'yicha hisoblagich tozalanadi.
             // IP hisoblagichi ATAYLAB tozalanmaydi: aks holda bitta ishlaydigan
             // hisobni bilgan odam IP cheklovini xohlagancha nolga tushirib,
@@ -2270,13 +2319,27 @@ app.post('/api/auth/refresh', (req, res) => {
     const token = readCookie(req, REFRESH_COOKIE);
     if (!token) return res.status(401).json({ error: 'Sessiya topilmadi' });
 
-    jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
+    jwt.verify(token, JWT_SECRET, async (err: any, decoded: any) => {
         if (err || decoded?.typ !== 'refresh') {
             clearRefreshCookie(req, res);
             return res.status(401).json({ error: 'Sessiya muddati tugagan' });
         }
 
+        /* Bekor qilingan sessiya yangilanmaydi: akkaunt o'chirilgan,
+           bloklangan yoki paroli almashtirilgan. */
+        try {
+            if (!(await sessionStillValid(decoded))) {
+                clearRefreshCookie(req, res);
+                return res.status(401).json({ error: 'Sessiya bekor qilingan', code: 'SESSION_REVOKED' });
+            }
+        } catch (e: any) {
+            console.error('Refresh sessiya tekshiruvi:', e?.message || e);
+            return res.status(500).json({ error: 'Sessiyani tekshirib bo\'lmadi' });
+        }
+
         const { iat, exp, nbf, typ, ...payload } = decoded;
+        // Eski (muhrsiz) sessiya shu yerda muhr oladi
+        if (!payload.pv) payload.pv = (await loadAccountState(payload)).stamp;
         const { access, refresh } = issueTokens(payload);
         // Cookie ham yangilanadi — faol foydalanuvchining sessiyasi surilib boradi.
         setRefreshCookie(req, res, refresh);
@@ -2335,6 +2398,8 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
         /* Yangi TO'LIQ token darhol beriladi: aks holda foydalanuvchi parolni
            almashtirgach yana login qilishga majbur bo'lardi. */
         const { scope, iat, exp, typ, ...payload } = user;
+        // Yangi parolning muhri — eski parol bilan berilgan tokenlar endi yaroqsiz
+        payload.pv = (await loadAccountState(payload, true)).stamp;
         const { access, refresh } = issueTokens(payload);
         // Endi sessiya to'liq — yangilash cookie'si ham shu yerda beriladi
         // (login paytida standart parol tufayli berilmagan edi).
@@ -3201,53 +3266,87 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
             }
         }
 
+        /* SUMMA VA TUR QAT'IY (audit 2026-09-17).
+
+           Ilgari `amount: Number(b.amount) || 0` edi va `type`/`status`
+           istalgan matn bo'lardi. Registrator shu bilan:
+             · manfiy naqd chek yozib serverning «kutilgan kassa» sini
+               kamaytirar va kamomadni yashirardi;
+             · `service:'Avans'` + `type:'Balance'` bilan PULSIZ avans
+               yozardi — kassa o'zgarmas, balans o'sar, yaxlitlik tekshiruvi
+               esa buni ko'rmasdi.
+           Qaytarish — faqat `/api/charges/:id/refund` orqali. */
+        const amount = som(Number(b.amount));
+        if (!(amount > 0)) {
+            return res.status(400).json({ error: "Summa musbat bo'lishi shart" });
+        }
+        const TX_TYPES = ['Cash', 'Card', 'Click', 'Transfer', 'Insurance', 'Balance'];
+        const type = String(b.type);
+        if (!TX_TYPES.includes(type)) {
+            return res.status(400).json({ error: `To'lov usuli noto'g'ri: ${type}` });
+        }
+        const status = String(b.status);
+        if (!['Paid', 'Pending', 'Overdue'].includes(status)) {
+            return res.status(400).json({ error: `Holat noto'g'ri: ${status}` });
+        }
+        const service = String(b.service);
+        if (service === 'Avans' && type === 'Balance') {
+            return res.status(400).json({ error: "Avansni avansdan to'ldirib bo'lmaydi" });
+        }
+        const discountAmount = b.discountAmount !== undefined ? som(Number(b.discountAmount)) : 0;
+        const discountPercent = b.discountPercent !== undefined ? Number(b.discountPercent) || 0 : 0;
+        if (discountAmount < 0 || discountPercent < 0 || discountPercent > 100) {
+            return res.status(400).json({ error: "Chegirma noto'g'ri" });
+        }
+
         // Bog'lanishlar o'z klinikamizga tegishli bo'lishi shart
         if (b.patientId && !(await assertPatientOwnership(req, res, b.patientId))) return;
         if (b.visitId && !(await assertOwnership(req, res, 'visit', b.visitId))) return;
 
-        const transaction = await prisma.transaction.create({
-            data: {
-                // Server hal qiladi — mijoz o'zgartira olmaydi
-                clinicId,
-                receivedById: actor?.clinicId ? (actor?.id || actor?.receptionistId || null) : null,
-                receivedByName: actor?.name || null,
-                // Mijozdan keladigan ro'yxat
-                patientName: String(b.patientName),
-                date: String(b.date),
-                amount: Number(b.amount) || 0,
-                type: String(b.type),
-                service: String(b.service),
-                status: String(b.status),
-                doctorId: b.doctorId || null,
-                doctorName: b.doctorName || null,
-                patientId: b.patientId || null,
-                visitId: b.visitId || null,
-                discountAmount: b.discountAmount !== undefined ? Number(b.discountAmount) || 0 : 0,
-                discountPercent: b.discountPercent !== undefined ? Number(b.discountPercent) || 0 : 0,
+        /* Chek va balans BITTA tranzaksiyada. Ilgari balans alohida yozilardi
+           va xatosi `.catch` bilan yutilardi — chek bor, balans yo'q. */
+        const transaction = await prisma.$transaction(async (tx: any) => {
+            const created = await tx.transaction.create({
+                data: {
+                    // Server hal qiladi — mijoz o'zgartira olmaydi
+                    clinicId,
+                    receivedById: actor?.clinicId ? (actor?.id || actor?.receptionistId || null) : null,
+                    receivedByName: actor?.name || null,
+                    // Mijozdan keladigan ro'yxat
+                    patientName: String(b.patientName),
+                    date: String(b.date),
+                    amount,
+                    type,
+                    service,
+                    status,
+                    doctorId: b.doctorId || null,
+                    doctorName: b.doctorName || null,
+                    patientId: b.patientId || null,
+                    visitId: b.visitId || null,
+                    discountAmount,
+                    discountPercent,
+                }
+            });
+
+            // Faqat 'Avans' kirimi va 'Balance' turidagi to'lov avans hisobiga tegadi
+            if (created.patientId && status === 'Paid') {
+                const balanceChange = service === 'Avans' ? amount : (type === 'Balance' ? -amount : 0);
+                if (balanceChange !== 0) {
+                    await tx.patient.update({
+                        where: { id: created.patientId },
+                        data: { balance: { increment: balanceChange } },
+                    });
+                }
             }
+            return created;
         });
 
-        // Only Avans deposits and Balance-type payments affect the advance balance
-        if (transaction.patientId) {
-            const amount = transaction.amount || 0;
-            let balanceChange = 0;
-
-            if (transaction.service === 'Avans' && transaction.status === 'Paid') {
-                // Avans deposit: increase balance
-                balanceChange = amount;
-            } else if (transaction.type === 'Balance' && transaction.status === 'Paid') {
-                // Payment from balance: decrease balance
-                balanceChange = -amount;
-            }
-            // Regular Cash/Card payments do NOT affect the advance balance
-
-            if (balanceChange !== 0) {
-                await prisma.patient.update({
-                    where: { id: transaction.patientId },
-                    data: { balance: { increment: balanceChange } }
-                }).catch((err: any) => console.error('Failed to update patient balance:', err));
-            }
-        }
+        await writeCashAudit({
+            clinicId, date: transaction.date, action: 'Create', entityType: 'Transaction',
+            entityId: transaction.id,
+            summary: `Chek: ${transaction.patientName} · ${service} · ${type} · ${amount}`,
+            user: actor,
+        });
 
         res.json(transaction);
     } catch (error: any) {
@@ -3264,8 +3363,26 @@ app.put('/api/transactions/:id', authenticateToken, async (req, res) => {
         const oldTx = await prisma.transaction.findUnique({ where: { id: req.params.id } });
         if (!oldTx) return res.status(404).json({ error: 'Transaction not found' });
 
-        // createdAt va "kim qabul qildi" — tashqaridan o'zgartirilmaydi.
-        const { createdAt: _ignored, receivedById: _rid, receivedByName: _rn, ...updateData } = req.body || {};
+        /* Faqat ro'yxatdagi maydonlar (audit 2026-09-17). Ilgari tana
+           (`...req.body`) Prisma ga to'g'ridan-to'g'ri borardi: `clinicId`,
+           `id`, ichma-ich yozuvlar ham. createdAt va «kim qabul qildi» —
+           tashqaridan o'zgartirilmaydi. */
+        const body = req.body || {};
+        const updateData: any = {};
+        for (const k of ['patientName', 'date', 'amount', 'type', 'service', 'status',
+            'doctorId', 'doctorName', 'patientId', 'visitId', 'discountAmount', 'discountPercent']) {
+            if (body[k] !== undefined) updateData[k] = body[k];
+        }
+        if (updateData.amount !== undefined) {
+            updateData.amount = som(Number(updateData.amount));
+            if (!(updateData.amount > 0)) return res.status(400).json({ error: "Summa musbat bo'lishi shart" });
+        }
+        if (updateData.type !== undefined
+            && !['Cash', 'Card', 'Click', 'Transfer', 'Insurance', 'Balance', 'Refund'].includes(String(updateData.type))) {
+            return res.status(400).json({ error: "To'lov usuli noto'g'ri" });
+        }
+        if (updateData.patientId && !(await assertPatientOwnership(req, res, updateData.patientId))) return;
+        if (updateData.visitId && !(await assertOwnership(req, res, 'visit', updateData.visitId))) return;
 
         /* HISOB QATORLARIGA BOG'LANGAN CHEK — cheklangan tahrir (FIX-PLAN 7.7-A).
 
@@ -3278,7 +3395,9 @@ app.put('/api/transactions/:id', authenticateToken, async (req, res) => {
             where: { transactionId: oldTx.id },
         });
         if (linkedCharges > 0) {
-            const money = ['amount', 'type', 'status', 'patientId'] as const;
+            /* `service` va `visitId` ham: bog'langan naqd chekni «Avans» ga
+               o'zgartirish uning summasini balansga IKKINCHI marta qo'shardi. */
+            const money = ['amount', 'type', 'status', 'patientId', 'service', 'visitId'] as const;
             const blocked = money.filter(
                 (k) => updateData[k] !== undefined && String(updateData[k]) !== String((oldTx as any)[k]),
             );
@@ -3450,7 +3569,8 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
         if (category === 'DoctorShare' && !doctorId) {
             return res.status(400).json({ error: 'Shifokor ulushi uchun shifokor tanlanishi shart' });
         }
-        const parsedAmount = parseFloat(amount);
+        // Pul — butun so'm, yozishda (money.ts)
+        const parsedAmount = som(parseFloat(amount));
         if (!parsedAmount || parsedAmount <= 0) {
             return res.status(400).json({ error: 'Summa noto\'g\'ri' });
         }
@@ -3467,7 +3587,9 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
 
         const expense = await prisma.expense.create({
             data: {
-                date: date || new Date().toISOString().split('T')[0],
+                /* Toshkent kuni (audit 2026-09-17): UTC bo'yicha 00:00-05:00 da
+                   kiritilgan xarajat kechagi kassa kuniga tushib qolardi. */
+                date: date || tashkentDateStr(),
                 amount: parsedAmount,
                 category,
                 title: title || 'Xarajat',
@@ -3499,7 +3621,7 @@ app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
             where: { id: req.params.id },
             data: {
                 ...(date !== undefined && { date }),
-                ...(amount !== undefined && { amount: parseFloat(amount) || 0 }),
+                ...(amount !== undefined && { amount: som(parseFloat(amount)) }),
                 ...(category !== undefined && { category }),
                 ...(title !== undefined && { title }),
                 ...(method !== undefined && { method: method || null }),
@@ -3578,66 +3700,104 @@ const writeCashAudit = async (input: {
 
 /** Kun/smena bo'yicha kutilayotgan summalar. Manba: Transaction + CashMovement. */
 async function computeExpectedCash(prisma: any, clinicId: string, date: string) {
-    const [txs, movements, expenses, prevClosure] = await Promise.all([
+    // Oldingi YOPILGAN smenadan ko'chib keladigan naqd qoldiq.
+    // Ochilgan, lekin yopilmagan smenada countedCash = 0 — uni anker
+    // qilib olsak qoldiq nolga tushib ketardi.
+    const prevClosure = await prisma.cashRegisterDay.findFirst({
+        where: { clinicId, date: { lt: date }, isClosed: true },
+        orderBy: [{ date: 'desc' }, { shift: 'desc' }],
+        select: { countedCash: true, date: true },
+    });
+
+    /* YOPILMAGAN KUNLAR HAM (audit 2026-09-17).
+
+       Ilgari faqat SHU kunning harakati olinardi. Shanba yopilib, yakshanba
+       yopilmasa, yakshanbaning naqd tushumi dushanba hisobidan yo'qolardi:
+       yashikda 3.3 mln, server esa 2.5 mln kutib, doimiy «+800 000 ortiqcha»
+       yozib qo'yardi (yoki inkassatsiya bo'lsa — soxta kamomad va noto'g'ri
+       kassir ayblanardi). Interfeys (`utils/cashbook.ts`, computeOpeningCash)
+       buni allaqachon to'g'ri qilardi — endi server ham bir xil: ankerdan
+       KEYINGI va so'ralgan kundan OLDINGI kunlarning naqd harakati
+       ochilish qoldig'iga qo'shiladi. */
+    const anchorDate: string | null = prevClosure?.date ? String(prevClosure.date).slice(0, 10) : null;
+    const dateRange = anchorDate ? { gt: anchorDate, lte: date } : date;
+
+    const [txs, movements, expenses] = await Promise.all([
         prisma.transaction.findMany({
-            where: { clinicId, date, status: 'Paid' },
-            select: { amount: true, type: true, service: true },
+            where: { clinicId, date: dateRange, status: 'Paid' },
+            select: { amount: true, type: true, service: true, date: true },
         }),
         prisma.cashMovement.findMany({
-            where: { clinicId, date },
-            select: { type: true, amount: true, method: true },
+            where: { clinicId, date: dateRange },
+            select: { type: true, amount: true, method: true, date: true },
         }),
         // Naqd xarajat ham yashikdan chiqadi. Buni qo'shmaganda server hisobi
         // interfeysdagi hisobdan (utils/cashbook.ts, finalizeCash) farq qilardi
         // va kassir ikki xil "kutilayotgan summa" ko'rardi.
         prisma.expense.findMany({
-            where: { clinicId, date },
-            select: { amount: true, method: true },
-        }),
-        // Oldingi YOPILGAN smenadan ko'chib keladigan naqd qoldiq.
-        // Ochilgan, lekin yopilmagan smenada countedCash = 0 — uni anker
-        // qilib olsak qoldiq nolga tushib ketardi.
-        prisma.cashRegisterDay.findFirst({
-            where: { clinicId, date: { lt: date }, isClosed: true },
-            orderBy: [{ date: 'desc' }, { shift: 'desc' }],
-            select: { countedCash: true, date: true },
+            where: { clinicId, date: dateRange },
+            select: { amount: true, method: true, date: true },
         }),
     ]);
 
-    /* Kassa hisobida ham pul BUTUN so'm. Bu `round()` ning YETTINCHI nusxasi
-       edi va aynan shu yerda farq "kassa 1 so'm mos kelmadi" bo'lib chiqardi. */
-    const r = som;
+    const isToday = (d: any) => String(d || '').slice(0, 10) === date;
+
+    /* Yig'indi XOM qo'shiladi va OXIRIDA bir marta yaxlitlanadi. Ilgari har
+       qo'shishda `som()` chaqirilardi: uchta 1000.5 lik xarajat 3001.5
+       o'rniga 3003 bo'lardi. */
     let cash = 0, card = 0, click = 0, fromBalance = 0;
+    let carried = 0;   // yopilmagan oldingi kunlarning naqd harakati
 
     for (const t of txs) {
         const amt = t.amount || 0;
         const m = String(t.type || '');
+        if (!isToday(t.date)) {
+            if (m === 'Cash') carried += amt;
+            continue;
+        }
         // 'Balance' — bemor avansidan yechilgan: kassaga YANGI pul kirmaydi
-        if (m === 'Balance') { fromBalance = r(fromBalance + amt); continue; }
-        if (m === 'Cash') cash = r(cash + amt);
-        else if (m === 'Card' || m === 'Terminal') card = r(card + amt);
-        else if (m === 'Click' || m === 'Payme' || m === 'Uzum') click = r(click + amt);
+        if (m === 'Balance') { fromBalance += amt; continue; }
+        if (m === 'Cash') cash += amt;
+        else if (m === 'Card' || m === 'Terminal') card += amt;
+        else if (m === 'Click' || m === 'Payme' || m === 'Uzum') click += amt;
     }
 
     // Naqd yashikka ta'sir qiladigan harakatlar
     let encashment = 0, refundCash = 0, cashIn = 0;
     for (const mv of movements) {
-        if (String(mv.method || 'Cash') !== 'Cash') continue;
-        if (mv.type === 'Encashment') encashment = r(encashment + mv.amount);
-        else if (mv.type === 'Refund') refundCash = r(refundCash + mv.amount);
-        else if (mv.type === 'CashIn') cashIn = r(cashIn + mv.amount);
+        const method = String(mv.method || 'Cash');
+        const amt = mv.amount || 0;
+        if (!isToday(mv.date)) {
+            if (method !== 'Cash') continue;
+            if (mv.type === 'Encashment' || mv.type === 'Refund') carried -= amt;
+            else if (mv.type === 'CashIn') carried += amt;
+            continue;
+        }
+        /* Karta yoki Click orqali qaytarilgan pul terminal/Click kutilgan
+           summasidan ayiriladi — ilgari u umuman hisobga olinmasdi. */
+        if (mv.type === 'Refund' && (method === 'Card' || method === 'Terminal')) { card -= amt; continue; }
+        if (mv.type === 'Refund' && (method === 'Click' || method === 'Payme' || method === 'Uzum')) { click -= amt; continue; }
+        if (method !== 'Cash') continue;
+        if (mv.type === 'Encashment') encashment += amt;
+        else if (mv.type === 'Refund') refundCash += amt;
+        else if (mv.type === 'CashIn') cashIn += amt;
     }
 
     // Naqd xarajatlar (usuli ko'rsatilmagani ham naqd deb hisoblanadi —
     // interfeysdagi isCashDrawerMethod bilan bir xil qoida)
     let cashExpense = 0;
     for (const ex of expenses) {
-        const m = String(ex.method || 'Cash');
-        if (m === 'Cash') cashExpense = r(cashExpense + (ex.amount || 0));
+        if (String(ex.method || 'Cash') !== 'Cash') continue;
+        if (isToday(ex.date)) cashExpense += ex.amount || 0;
+        else carried -= ex.amount || 0;
     }
 
-    const openingCash = r(prevClosure?.countedCash || 0);
+    const r = som;
+    const openingCash = r((prevClosure?.countedCash || 0) + carried);
     const expectedCash = r(openingCash + cash + cashIn - cashExpense - encashment - refundCash);
+    card = r(card); click = r(click); fromBalance = r(fromBalance);
+    cash = r(cash); cashIn = r(cashIn); cashExpense = r(cashExpense);
+    encashment = r(encashment); refundCash = r(refundCash);
 
     /* YOPILMAGAN QATORLAR.
        Smena kassa bo'yicha sog' bo'lishi mumkin, lekin kunning xizmatlari
@@ -3831,11 +3991,26 @@ app.post('/api/cash-register/close', authenticateToken, async (req, res) => {
         if (!date || typeof date !== 'string') {
             return res.status(400).json({ error: 'Sana ko\'rsatilmagan' });
         }
-        const counted = Number(countedCash);
-        if (!isFinite(counted)) {
+        const counted = som(Number(countedCash));
+        if (!isFinite(Number(countedCash)) || counted < 0) {
             return res.status(400).json({ error: 'Summa noto\'g\'ri' });
         }
         const shiftNo = Number(shift) > 0 ? Math.floor(Number(shift)) : 1;
+
+        /* YOPILGAN SMENA QAYTA YOPILMAYDI — egadan boshqa hech kim (audit 2026-09-17).
+           Qayta ochish faqat egada («registrator o'z xatosini yashira
+           olmasin»), lekin qayta YOPISH ochiq edi: registrator kechagi
+           yopilgan kunni sanagan summasini kutilganga teng qilib qayta
+           yuborar va kamomad izsiz yo'qolardi. */
+        const existing = await prisma.cashRegisterDay.findUnique({
+            where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
+        });
+        if (existing?.isClosed && user?.role !== 'CLINIC_ADMIN') {
+            return res.status(409).json({
+                error: "Bu smena allaqachon yopilgan. O'zgartirish uchun klinika egasi uni qayta ochishi kerak.",
+                code: 'ALREADY_CLOSED',
+            });
+        }
 
         /* KUTILAYOTGAN summani SERVER hisoblaydi. `expectedCash` tanada hamon
            qabul qilinadi (eski mijoz buzilmasin), lekin E'TIBORGA OLINMAYDI:
@@ -3868,6 +4043,15 @@ app.post('/api/cash-register/close', authenticateToken, async (req, res) => {
             where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
             update: data,
             create: { clinicId, date, shift: shiftNo, ...data },
+        });
+
+        await writeCashAudit({
+            clinicId, date, action: existing?.isClosed ? 'Reclose' : 'Close', entityType: 'CashRegisterDay',
+            entityId: closure.id,
+            summary: `Smena ${shiftNo}: sanaldi ${data.countedCash}, kutilgan ${data.expectedCash}, farq ${data.difference}`
+                + (existing?.isClosed ? ` (oldin: sanaldi ${existing.countedCash}, farq ${existing.difference})` : ''),
+            afterClose: !!existing?.isClosed,
+            user,
         });
 
         res.json(closure);
@@ -3933,9 +4117,28 @@ app.post('/api/cash-movements', authenticateToken, async (req, res) => {
         if (!date || !CASH_MOVEMENT_TYPES.includes(type)) {
             return res.status(400).json({ error: 'Harakat turi noto\'g\'ri' });
         }
-        const amt = Number(amount);
-        if (!isFinite(amt) || amt <= 0) {
+        const amt = som(Number(amount));
+        if (!isFinite(Number(amount)) || amt <= 0) {
             return res.status(400).json({ error: 'Summa noto\'g\'ri' });
+        }
+
+        /* Bog'langan chek o'z klinikamizniki va bemori mos bo'lishi shart
+           (audit 2026-09-17). Ilgari istalgan `transactionId` qabul qilinardi:
+           qo'lda kiritilgan «qaytarish» begona chekka bog'lanib, balans
+           formulasini chalg'itardi. */
+        if (transactionId) {
+            const linked = await prisma.transaction.findUnique({
+                where: { id: String(transactionId) }, select: { clinicId: true, patientId: true },
+            });
+            if (!linked || linked.clinicId !== clinicId) {
+                return res.status(404).json({ error: 'Bog\'langan chek topilmadi' });
+            }
+            if (patientId && linked.patientId && linked.patientId !== patientId) {
+                return res.status(400).json({ error: 'Chek boshqa bemorga tegishli' });
+            }
+        }
+        if (method && !['Cash', 'Card', 'Click', 'Transfer'].includes(String(method))) {
+            return res.status(400).json({ error: 'Usul noto\'g\'ri' });
         }
 
         const movement = await prisma.cashMovement.create({
@@ -4079,6 +4282,7 @@ app.post('/api/installments', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Oylar soni 1 dan 60 gacha bo\'lishi kerak' });
         }
         const start = String(startDate || tashkentDateStr());
+        if (!/^\d{4}-\d{2}-\d{2}/.test(start)) return res.status(400).json({ error: "Boshlanish sanasi noto'g'ri" });
 
         const charges = await prisma.visitCharge.findMany({
             where: {
@@ -4108,12 +4312,21 @@ app.post('/api/installments', authenticateToken, async (req, res) => {
            jadval yig'indisi AYNAN qarzga teng bo'ladi. */
         const per = som(total / monthCount);
         const items: { expectedDate: string; amount: number; status: string }[] = [];
-        const startDt = new Date(start);
+        /* Oy qo'shishda kun QISQARTIRILADI (audit 2026-09-17): `setMonth` 31-yanvarni
+           «31-fevral» → 3-mart qilardi va jadval 3-mart, 31-mart, 1-may...
+           bo'lib siljirdi. Endi 31-yanvar → 28/29-fevral → 31-mart. */
+        const [sy, sm, sd] = String(start).slice(0, 10).split('-').map(Number);
+        const addMonthsClamped = (k: number): string => {
+            const total0 = (sm - 1) + k;
+            const y = sy + Math.floor(total0 / 12);
+            const m = ((total0 % 12) + 12) % 12;
+            const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+            const day = Math.min(sd, lastDay);
+            return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        };
         for (let i = 0; i < monthCount; i++) {
-            const d = new Date(startDt);
-            d.setMonth(startDt.getMonth() + i + 1);
             items.push({
-                expectedDate: d.toISOString().split('T')[0],
+                expectedDate: addMonthsClamped(i + 1),
                 amount: i === monthCount - 1 ? som(total - per * (monthCount - 1)) : per,
                 status: 'Pending',
             });
@@ -4194,6 +4407,21 @@ app.post('/api/installments/:id/pay', authenticateToken, async (req, res) => {
         const amount = Math.min(som(item.amount), dueLeft);
 
         const outcome = await prisma.$transaction(async (tx: any) => {
+            /* OYNI «EGALLASH» — birinchi amal (audit 2026-09-17).
+               Holat tranzaksiyadan TASHQARIDA tekshirilardi: ikki qurilmadan
+               bir vaqtda bosilsa ikkala so'rov ham `Pending` ni ko'rib, ikki
+               chek va ikki barobar `totalPaid` yozardi. Shartli yangilash
+               faqat bittasiga o'tadi. */
+            const claimed = await tx.installmentItem.updateMany({
+                where: { id: itemId, status: { not: 'Paid' } },
+                data: { status: 'Paid', paidDate: tashkentDateStr() },
+            });
+            if (claimed.count === 0) {
+                const e: any = new Error("Bu oy allaqachon to'langan");
+                e.name = 'HttpError'; e.status = 409;
+                throw e;
+            }
+
             const paid = await applyChargePayment(tx, clinicId as string, {
                 chargeIds: unpaid.map((c: any) => c.id),
                 amount,
@@ -4206,7 +4434,7 @@ app.post('/api/installments/:id/pay', authenticateToken, async (req, res) => {
             const lastTx = paid.payload.transactions[paid.payload.transactions.length - 1];
             await tx.installmentItem.update({
                 where: { id: itemId },
-                data: { status: 'Paid', paidDate: tashkentDateStr(), transactionId: lastTx?.id || null },
+                data: { transactionId: lastTx?.id || null },
             });
             await tx.installmentPlan.update({
                 where: { id: item.planId },
@@ -4330,7 +4558,8 @@ app.get('/api/doctors', authenticateToken, async (req, res) => {
                 status: { not: 'Deleted' }
             }
         });
-        res.json(doctors);
+        const role = (req as any).user?.role;
+        res.json(doctors.map((d: any) => staffForRole(d, role)));
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch doctors' });
     }
@@ -4612,7 +4841,8 @@ app.get('/api/staff', authenticateToken, async (req, res) => {
             ...withRole(nurses, 'NURSE'),
         ].sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`));
 
-        res.json(all);
+        const viewerRole = (req as any).user?.role;
+        res.json(all.map((r: any) => staffForRole(r, viewerRole)));
     } catch (error: any) {
         console.error('Staff list error:', error?.message || error);
         res.status(500).json({ error: "Xodimlar ro'yxatini olib bo'lmadi" });
@@ -4632,7 +4862,8 @@ app.get('/api/receptionists', authenticateToken, async (req, res) => {
                 status: { not: 'Deleted' }
             }
         });
-        res.json(receptionists);
+        const viewerRole = (req as any).user?.role;
+        res.json(receptionists.map((r: any) => staffForRole(r, viewerRole)));
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch receptionists' });
     }
@@ -4747,7 +4978,8 @@ app.get('/api/lab-technicians', authenticateToken, async (req: any, res: any) =>
             where: { clinicId: clinicId as string, status: { not: 'Deleted' } },
             orderBy: { lastName: 'asc' }
         });
-        res.json(technicians);
+        const viewerRole = (req as any).user?.role;
+        res.json(technicians.map((r: any) => staffForRole(r, viewerRole)));
     } catch (error: any) {
         res.status(500).json({ error: 'Failed to fetch lab technicians' });
     }
@@ -5021,6 +5253,33 @@ app.post('/api/lab-orders', authenticateToken, async (req: any, res: any) => {
 // Eski yozib qo'yilgan 'Lab' xarajatlari hisobotda alohida ko'rsatiladi.
 const syncLabOrderExpense = async (_order: any) => { /* ataylab bo'sh */ };
 
+/* TAHLIL BEKOR QILINSA YOKI O'CHIRILSA — UNING TO'LOVI HAM (audit 2026-09-17).
+
+   Ilgari yo'llanma o'chirilganda yoki `Cancelled` qilinganda uning
+   `VisitCharge` qatori `Unpaid` bo'lib qolardi (`sourceId` tashqi kalit
+   emas, kaskad yo'q): kassada yo'q tahlil uchun pul olinar, qarzdorlar
+   ro'yxati va chiqarishdagi qarz tekshiruvida turardi. Tadqiqot va
+   muolajada bu allaqachon to'g'ri edi.
+
+   Pul olingan bo'lsa — rad etiladi: avval «Qaytarish». */
+class LabChargePaidError extends Error {}
+
+async function cancelLabCharges(tx: any, orderId: string) {
+    const rows = await tx.visitCharge.findMany({
+        where: { source: 'Lab', sourceId: orderId, status: { not: 'Cancelled' } },
+        select: { id: true, status: true, paidAmount: true },
+    });
+    if (rows.some((r: any) => r.status === 'Paid' || (r.paidAmount || 0) > 0)) {
+        throw new LabChargePaidError("Tahlil uchun to'lov olingan — avval kassada pulni qaytaring");
+    }
+    if (rows.length) {
+        await tx.visitCharge.updateMany({
+            where: { id: { in: rows.map((r: any) => r.id) }, status: 'Unpaid', paidAmount: 0 },
+            data: { status: 'Cancelled' },
+        });
+    }
+}
+
 app.put('/api/lab-orders/:id', authenticateToken, async (req: any, res: any) => {
     try {
         if (!(await assertOwnership(req, res, 'labOrder', req.params.id))) return;
@@ -5038,13 +5297,17 @@ app.put('/api/lab-orders/:id', authenticateToken, async (req: any, res: any) => 
             ...(sampleCollectedAt !== undefined && { sampleCollectedAt: sampleCollectedAt ? new Date(sampleCollectedAt) : null }),
         };
         if (updateData.status === 'Completed') updateData.completedAt = new Date();
-        const order = await (prisma as any).labOrder.update({
-            where: { id: req.params.id },
-            data: updateData
+        const order = await prisma.$transaction(async (tx: any) => {
+            if (updateData.status === 'Cancelled') await cancelLabCharges(tx, req.params.id);
+            return tx.labOrder.update({
+                where: { id: req.params.id },
+                data: updateData
+            });
         });
         await syncLabOrderExpense(order);
         res.json(order);
     } catch (error: any) {
+        if (error instanceof LabChargePaidError) return res.status(409).json({ error: error.message, code: 'LAB_PAID' });
         res.status(500).json({ error: error.message || 'Failed to update lab order' });
     }
 });
@@ -5052,11 +5315,15 @@ app.put('/api/lab-orders/:id', authenticateToken, async (req: any, res: any) => 
 app.delete('/api/lab-orders/:id', authenticateToken, async (req: any, res: any) => {
     try {
         if (!(await assertOwnership(req, res, 'labOrder', req.params.id))) return;
-        await prisma.expense.deleteMany({ where: { labOrderId: req.params.id } });
-        // Natijalar va qatorlar onDelete: Cascade bilan o'chadi
-        await (prisma as any).labOrder.delete({ where: { id: req.params.id } });
+        await prisma.$transaction(async (tx: any) => {
+            await cancelLabCharges(tx, req.params.id);
+            await tx.expense.deleteMany({ where: { labOrderId: req.params.id } });
+            // Natijalar va qatorlar onDelete: Cascade bilan o'chadi
+            await tx.labOrder.delete({ where: { id: req.params.id } });
+        });
         res.json({ success: true });
     } catch (error: any) {
+        if (error instanceof LabChargePaidError) return res.status(409).json({ error: error.message, code: 'LAB_PAID' });
         res.status(500).json({ error: error.message || 'Failed to delete lab order' });
     }
 });
@@ -5088,10 +5355,26 @@ app.get('/api/categories', authenticateToken, async (req, res) => {
     }
 });
 
+/* KATEGORIYA — FAQAT `name`.
+
+   Ilgari tana (`req.body`) Prisma ga to'g'ridan-to'g'ri berilardi. Prisma
+   ichma-ich yozuvni ham qabul qiladi: registrator
+   `{"clinic":{"update":{"password":"..."}}}` yuborib EGA parolini
+   almashtirar va `admin` bo'lib kirardi (audit 2026-09-17, bazaning
+   nusxasida amalda tasdiqlangan). Klinika tokendan olinadi. */
+const categoryName = (b: any): string | null => {
+    const name = typeof b?.name === 'string' ? b.name.trim() : '';
+    return name ? name.slice(0, 120) : null;
+};
+
 app.post('/api/categories', authenticateToken, async (req, res) => {
     try {
+        const clinicId = getScopedClinicId(req);
+        const name = categoryName(req.body);
+        if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
+        if (!name) return res.status(400).json({ error: 'Nomi majburiy' });
         const category = await prisma.serviceCategory.create({
-            data: req.body
+            data: { name, clinicId }
         });
         res.json(category);
     } catch (error) {
@@ -5102,9 +5385,11 @@ app.post('/api/categories', authenticateToken, async (req, res) => {
 app.put('/api/categories/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'serviceCategory', req.params.id))) return;
+        const name = categoryName(req.body);
+        if (!name) return res.status(400).json({ error: 'Nomi majburiy' });
         const category = await prisma.serviceCategory.update({
             where: { id: req.params.id },
-            data: req.body
+            data: { name }
         });
         res.json(category);
     } catch (error) {
@@ -5254,30 +5539,9 @@ app.delete('/api/services/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// --- Super Admin: Clinics & Plans ---
+/* `POST /api/public/demo-request` OLIB TASHLANDI (audit 2026-09-17): SaaS
+   sotuv voronkasidan qolgan loginsiz, cheklovsiz bazaga yozuvchi endpoint. */
 
-// --- Public demo request (landing page, no auth) ---
-app.post('/api/public/demo-request', async (req, res) => {
-    try {
-        const { name, clinicName, phone, city, doctorsCount, source } = req.body;
-        const id = require('crypto').randomUUID();
-        await prisma.$executeRawUnsafe(
-            `INSERT INTO "DemoRequest" ("id","name","clinicName","phone","city","doctorsCount","source","status","createdAt","updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'New',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
-            id, name || 'Noma\'lum', clinicName || null, phone || '', city || null,
-            doctorsCount ? parseInt(doctorsCount) : null, source || 'landing'
-        );
-        res.json({ success: true, id });
-    } catch (error) {
-        console.error('Demo request error:', error);
-        res.status(500).json({ error: 'Failed to save demo request' });
-    }
-});
-
-// --- Platforma (SuperAdmin) uchun lid qabul qilish kaliti ---
-// Bu kalit bilan kelgan lidlar klinikaning doskasiga emas, XClinic sotuv
-// voronkasiga (DemoRequest -> SuperAdmin > Lidlar) tushadi.
-// Klinika kalitlaridan ajratish uchun boshqa prefiks ishlatiladi: dk_plat_
 // --- Leads ---
 app.get('/api/leads', authenticateToken, async (req, res) => {
     try {
@@ -5505,25 +5769,6 @@ const LEAD_FIELD_ALIASES: Record<string, string> = {
 // so'rov hajmi baribir express.json() chegarasi bilan cheklangan.
 const MAX_EXTRA_LEAD_FIELDS = 200;
 
-// Platforma (SuperAdmin) lidlari DemoRequest jadvaliga tushadi — u yerda boshqa
-// ustunlar bor: klinika nomi, shahar, shifokorlar soni. Lead'ga xos maydonlar
-// (xizmat, manzil, tug'ilgan sana) bu yerda ustunga ega emas, shuning uchun ularni
-// ataylab tanimaymiz — ular notes ichida "Savol: Javob" bo'lib saqlanadi.
-const PLATFORM_LEAD_FIELD_ALIASES: Record<string, string> = {
-    ...Object.fromEntries(
-        Object.entries(LEAD_FIELD_ALIASES).filter(([, target]) => ['name', 'phone', 'source', 'notes'].includes(target))
-    ),
-
-    'clinic name': 'clinicName', 'clinicname': 'clinicName', 'klinika': 'clinicName',
-    'klinika nomi': 'clinicName', 'клиника': 'clinicName', 'название клиники': 'clinicName',
-
-    'city': 'city', 'shahar': 'city', 'viloyat': 'city', 'город': 'city',
-
-    'doctors count': 'doctorsCount', 'doctorscount': 'doctorsCount',
-    'shifokorlar soni': 'doctorsCount', 'vrachlar soni': 'doctorsCount',
-    'количество врачей': 'doctorsCount',
-};
-
 // O'zbek raqamlarini yagona formatga keltiradi, aks holda dublikat tekshiruvi ishlamaydi
 // ("+998 90 123-45-67" va "901234567" bir xil raqam).
 const normalizeLeadPhone = (value: string): string => {
@@ -5636,59 +5881,6 @@ const extractLeadApiKey = (req: any): { apiKey: string; payload: any } => {
     return { apiKey, payload };
 };
 
-// Platforma kaliti bilan kelgan lid: bu XClinic sotib olmoqchi bo'lgan klinika,
-// oddiy bemor emas. Shuning uchun u Lead emas, DemoRequest bo'lib saqlanadi va
-// SuperAdmin > Lidlar ro'yxatida ko'rinadi.
-const handlePlatformLead = async (payload: any, res: any) => {
-    const { fields, notes } = buildLeadFromPayload(payload, PLATFORM_LEAD_FIELD_ALIASES);
-
-    const phone = normalizeLeadPhone(fields.phone || '');
-    if (!phone) {
-        return res.status(400).json({ error: 'phone (telefon raqami) majburiy' });
-    }
-
-    const since = new Date(Date.now() - PUBLIC_LEAD_DEDUP_MINUTES * 60 * 1000);
-    const duplicate = await prisma.demoRequest.findFirst({
-        where: { phone, createdAt: { gte: since } },
-        select: { id: true }
-    });
-    if (duplicate) {
-        return res.status(200).json({ success: true, duplicate: true, id: duplicate.id });
-    }
-
-    const parsedDoctors = parseInt(String(fields.doctorsCount || ''), 10);
-
-    const created = await prisma.demoRequest.create({
-        data: {
-            name: fields.name || 'Noma\'lum',
-            phone,
-            clinicName: fields.clinicName || null,
-            city: fields.city || null,
-            doctorsCount: Number.isFinite(parsedDoctors) ? parsedDoctors : null,
-            source: fields.source || 'yuboraman',
-            notes,
-            status: 'New'
-        }
-    });
-
-    return res.status(201).json({ success: true, id: created.id });
-};
-
-/* Platforma sozlamasi — `PlatformSetting` jadvalidan bitta qiymat.
-   Ilgari bu yordamchi Facebook bloki ichida e'lon qilingan edi, lekin
-   ishlatilishi undan tashqarida: pastdagi ochiq lid endpointi klinika
-   kalitiga mos kelmagan so'rovni platformaning o'z kaliti bilan
-   solishtiradi. Facebook olib tashlanganda u ham yo'qolib, `server.ts`
-   kompilyatsiya bo'lmay qolgan edi. */
-const getPlatformSetting = async (key: string): Promise<string | null> => {
-    try {
-        const rows: any[] = await prisma.$queryRawUnsafe(`SELECT "value" FROM "PlatformSetting" WHERE "key"=$1`, key);
-        return rows.length ? rows[0].value : null;
-    } catch {
-        return null;
-    }
-};
-
 app.post('/api/public/leads', async (req, res) => {
     // Kalit uch joydan qabul qilinadi: X-API-Key sarlavhasi (tavsiya etiladi),
     // ?api_key= parametri yoki body ichidagi "api_key" maydoni.
@@ -5707,11 +5899,8 @@ app.post('/api/public/leads', async (req, res) => {
             select: { id: true, name: true, status: true, botToken: true, telegramChatId: true }
         });
         if (!clinic) {
-            // Klinika kaliti mos kelmadi — bu platformaning o'z kaliti bo'lishi mumkin.
-            const platformKey = await getPlatformSetting('lead_api_key');
-            if (platformKey && platformKey === apiKey) {
-                return await handlePlatformLead(payload, res);
-            }
+            /* Platforma kaliti (`lead_api_key`, SaaS sotuv voronkasi) yo'li
+               olib tashlandi — XClinic bitta klinika. */
             return res.status(401).json({ error: 'API kalit yaroqsiz' });
         }
         if (clinic.status === 'Deleted' || clinic.status === 'Blocked') {
@@ -5776,9 +5965,8 @@ app.get('/api/clinics', authenticateToken, async (req, res) => {
         if (!clinicId) return res.json([]);
         const clinic = await prisma.clinic.findUnique({ where: { id: clinicId } });
         if (!clinic || clinic.status === 'Deleted') return res.json([]);
-        // Parol hashi javobga tushmaydi
-        const { password, ...safe } = clinic as any;
-        res.json([safe]);
+        // Parol hashi va integratsiya sirlari javobga tushmaydi (egadan boshqaga)
+        res.json([clinicForRole(clinic, (req as any).user?.role)]);
     } catch (error: any) {
         console.error('Failed to fetch clinics:', error);
         res.status(500).json({ error: 'Failed to fetch clinics', details: error.message });
@@ -5798,9 +5986,8 @@ app.get('/api/clinics/:id', authenticateToken, async (req, res) => {
         if (!clinic) {
             return res.status(404).json({ error: 'Klinika topilmadi' });
         }
-        // Parol hashini javobdan olib tashlaymiz (UI'ga kerak emas)
-        const { password, ...clinicSafe } = clinic as any;
-        res.json(clinicSafe);
+        // Parol hashi va integratsiya sirlari javobga tushmaydi (egadan boshqaga)
+        res.json(clinicForRole(clinic, (req as any).user?.role));
     } catch (error: any) {
         console.error('Failed to fetch clinic by ID:', error);
         res.status(500).json({ error: 'Failed to fetch clinic details', details: error.message });
@@ -5816,7 +6003,7 @@ app.post('/api/clinics/:id/dmed-settings', authenticateToken, async (req, res) =
             where: { id: req.params.id },
             data: { dmedEnabled, dmedApiKey, dmedApiSecret, dmedClinicId }
         });
-        res.json(clinic);
+        res.json(clinicForRole(clinic, (req as any).user?.role));
     } catch (error) {
         res.status(500).json({ error: 'DMED sozlamalarini saqlashda xatolik' });
     }
@@ -5902,7 +6089,7 @@ app.put('/api/clinics/:id/general', authenticateToken, async (req, res) => {
                 letterheadNote: letterheadNote !== undefined ? (String(letterheadNote).trim() || null) : undefined,
             }
         });
-        res.json(clinic);
+        res.json(clinicForRole(clinic, (req as any).user?.role));
     } catch (error: any) {
         console.error('General settings update error:', error);
         res.status(500).json({ error: 'Umumiy sozlamalarni saqlashda xatolik' });
@@ -5921,7 +6108,7 @@ app.put('/api/clinics/:id/cash-settings', authenticateToken, requireRole('CLINIC
             where: { id: req.params.id },
             data: { cashShiftsPerDay: shifts } as any,
         });
-        res.json({ success: true, clinic });
+        res.json({ success: true, clinic: clinicForRole(clinic, (req as any).user?.role) });
     } catch (error: any) {
         console.error('Cash settings update error:', error);
         res.status(500).json({ error: 'Kassa sozlamalarini saqlashda xatolik' });
@@ -5936,7 +6123,9 @@ app.put('/api/clinics/:id/access-control', authenticateToken, requireRole('CLINI
             where: { id: req.params.id },
             data: { accessControl: accessControl ? JSON.stringify(accessControl) : null } as any
         });
-        res.json({ success: true, clinic });
+        // Yangi sozlama darhol kuchga kirsin (moliya ruxsati keshi)
+        accessControlCache.clear();
+        res.json({ success: true, clinic: clinicForRole(clinic, (req as any).user?.role) });
     } catch (error: any) {
         console.error('Access control update error:', error);
         res.status(500).json({ error: 'Ruxsat sozlamalarini saqlashda xatolik' });
@@ -5968,7 +6157,7 @@ app.put('/api/clinics/:id/settings', authenticateToken, async (req, res) => {
             }
         }
 
-        res.json({ success: true, clinic });
+        res.json({ success: true, clinic: clinicForRole(clinic, (req as any).user?.role) });
     } catch (error: any) {
         console.error('Bot settings update error:', error);
         res.status(500).json({ error: error.message || 'Failed to update bot settings' });
@@ -6003,7 +6192,7 @@ app.put('/api/clinics/:id/prepayment-settings', authenticateToken, async (req, r
                 prepaymentAmount: prepaymentAmount ? Number(prepaymentAmount) : null,
             } as any
         });
-        res.json({ success: true, clinic });
+        res.json({ success: true, clinic: clinicForRole(clinic, (req as any).user?.role) });
     } catch (error: any) {
         res.status(500).json({ error: error.message || 'Oldindan to\'lov sozlamalarini saqlashda xatolik' });
     }
@@ -6125,6 +6314,17 @@ app.post('/api/diagnoses', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'clinicId is required' });
         }
 
+        /* Qulflangan (imzolangan) qabulga tashxis qo'shilmaydi (audit 2026-09-17). */
+        if (visitId) {
+            const v = await prisma.visit.findUnique({
+                where: { id: String(visitId) }, select: { clinicId: true, lockedAt: true },
+            });
+            if (!v || v.clinicId !== clinicId) return res.status(404).json({ error: 'Qabul topilmadi' });
+            if (v.lockedAt) {
+                return res.status(409).json({ error: "Qabul qulflangan — tashxisni o'zgartirib bo'lmaydi", code: 'VISIT_LOCKED' });
+            }
+        }
+
         /* QAYSI QABULDA QO'YILGANI SAQLANADI.
 
            `PatientDiagnosis.visitId` sxemada bor va front uni yuboradi,
@@ -6187,6 +6387,13 @@ app.get('/api/diagnoses', authenticateToken, async (req, res) => {
 app.delete('/api/diagnoses/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'patientDiagnosis', req.params.id))) return;
+        /* Qulflangan qabulning tashxisi o'chirilmaydi (audit 2026-09-17). */
+        const dx = await prisma.patientDiagnosis.findUnique({
+            where: { id: req.params.id }, select: { visit: { select: { lockedAt: true } } },
+        });
+        if (dx?.visit?.lockedAt) {
+            return res.status(409).json({ error: "Qabul qulflangan — tashxisni o'zgartirib bo'lmaydi", code: 'VISIT_LOCKED' });
+        }
         await prisma.patientDiagnosis.delete({
             where: { id: req.params.id }
         });
@@ -6537,21 +6744,39 @@ app.post('/api/inventory', authenticateToken, async (req, res) => {
         });
 
         // Boshlang'ich zaxira narxi kiritilgan bo'lsa — Ombor xarajati yoziladi
-        const cost = parseFloat(initialCost) || 0;
+        const cost = som(parseFloat(initialCost) || 0);
         if (cost > 0) {
+            /* USUL (audit 2026-09-17). Ilgari xarajat usulsiz yozilardi, kassa
+               hisobi esa usulsizni NAQD deb oladi — ya'ni registrator mahsulot
+               qo'shib «boshlang'ich narx» kiritsa, bugungi kutilgan naqd
+               kamayardi va kassadagi kamomad shu bilan yopilardi.
+               Boshlang'ich qoldiq — oldin sotib olingan tovar, bugungi
+               yashikdan chiqqan pul emas: sukut bo'yicha `Transfer`. Naqd
+               ko'rsatilsa kassa jurnaliga iz yoziladi. */
+            const rawMethod = String((req.body || {}).initialCostMethod || '');
+            const method = ['Cash', 'Card', 'Click', 'Transfer'].includes(rawMethod) ? rawMethod : 'Transfer';
+            const date = tashkentDateStr();
             await prisma.expense.create({
                 data: {
                     /* Toshkent kuni. `toISOString()` UTC beradi: soat 19:00 dan
                        keyingi xarid kechagi kunga tushib, kunlik hisobotdan
                        chiqib ketardi. */
-                    date: tashkentDateStr(),
+                    date,
                     amount: cost,
                     category: 'Inventory',
                     title: `Ombor: ${item.name}`,
+                    method,
                     clinicId,
                     inventoryItemId: item.id,
                 }
             }).catch((err: any) => console.error('Inventory initial expense error:', err));
+            if (method === 'Cash') {
+                await writeCashAudit({
+                    clinicId, date, action: 'Create', entityType: 'Expense',
+                    summary: `Ombor (boshlang'ich): ${item.name} — ${cost} (Cash)`,
+                    user: (req as any).user,
+                });
+            }
         }
 
         res.json(item);
@@ -6733,6 +6958,16 @@ app.get(/^(?!\/api\/|\/uploads\/|\/health$).*/, (req: express.Request, res: expr
 
 // Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    /* Yuklash cheklovi (multer) va tur filtri — foydalanuvchi xatosi, 500 emas. */
+    if (err?.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: "Fayl juda katta (ko'pi bilan 25 MB)" });
+    }
+    if (typeof err?.code === 'string' && err.code.startsWith('LIMIT_')) {
+        return res.status(400).json({ error: 'Yuklash cheklovidan oshdi' });
+    }
+    if (err?.status === 400) {
+        return res.status(400).json({ error: err.message || "So'rov noto'g'ri" });
+    }
     console.error('Unhandled error:', err);
     res.status(500).json({
         error: 'Internal Server Error',
@@ -7085,49 +7320,8 @@ app.post('/api/batch/remind-debts', authenticateToken, requireRole('CLINIC_ADMIN
     }
 });
 
-// ============================================
-// DEBUG ENDPOINT
-// ============================================
-
-app.get('/api/debug/transactions', authenticateToken, async (req, res) => {
-    try {
-        const clinicId = getScopedClinicId(req);
-
-        const allTransactions = await prisma.transaction.findMany({
-            where: clinicId ? { clinicId: clinicId as string } : {},
-            select: {
-                id: true,
-                patientName: true,
-                status: true,
-                amount: true,
-                date: true
-            }
-        });
-
-        const byStatus: Record<string, number> = {};
-        allTransactions.forEach((t: any) => {
-            byStatus[t.status] = (byStatus[t.status] || 0) + 1;
-        });
-
-        const pendingOrOverdue = allTransactions.filter((t: any) =>
-            t.status === 'Pending' || t.status === 'Overdue'
-        );
-
-        res.json({
-            total: allTransactions.length,
-            byStatus,
-            pendingOrOverdueCount: pendingOrOverdue.length,
-            pendingOrOverdue: pendingOrOverdue.map((t: any) => ({
-                name: t.patientName,
-                amount: t.amount,
-                status: t.status,
-                date: t.date
-            }))
-        });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
+/* `GET /api/debug/transactions` OLIB TASHLANDI (audit 2026-09-17): har qanday rolga
+   klinikaning butun to'lovlar ro'yxatini berardi va hech qayerda ishlatilmasdi. */
 
 /* ─── OLIB TASHLANDI: qo'lda yuborish tugmalari va sotuv konturi ──────────
 

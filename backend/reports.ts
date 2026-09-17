@@ -840,16 +840,22 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
            sanalmaydi. Faqat BUGUNGI kassa harakati shu yerda qoladi: u
            `Transaction` dan o'qiladi (haqiqiy pul kirimi), snapshot esa
            `VisitCharge` dan (buyurilgan xizmat). Ikkisi turli savolga
-           javob beradi va ataylab ajratilgan. */
+           javob beradi va ataylab ajratilgan.
+
+           `Balance` ham CHIQARILADI. Avansdan to'lov — yangi pul emas: u
+           avans qabul qilingan kuni ('Avans' cheki) allaqachon tushum bo'lib
+           sanalgan. Ilgari u ikkinchi marta qo'shilardi va avans bilan
+           ishlaydigan klinikada «bugungi tushum» shishib ko'rinardi. */
+        const notNewCash = { notIn: ['Refund', 'Balance'] };
         const [todayAppointments, todayVisits, todayPaid, monthPaid, snap, unpaid] = await Promise.all([
             prisma.appointment.count({ where: { clinicId, date: today } }),
             prisma.visit.count({ where: { clinicId, date: today } }),
             prisma.transaction.aggregate({
-                where: { clinicId, status: 'Paid', date: today, type: { not: 'Refund' } },
+                where: { clinicId, status: 'Paid', date: today, type: notNewCash },
                 _sum: { amount: true }, _count: { _all: true },
             }),
             prisma.transaction.aggregate({
-                where: { clinicId, status: 'Paid', date: { gte: monthStart }, type: { not: 'Refund' } },
+                where: { clinicId, status: 'Paid', date: { gte: monthStart }, type: notNewCash },
                 _sum: { amount: true },
             }),
             financialSnapshot(prisma, clinicId, monthStart, today),

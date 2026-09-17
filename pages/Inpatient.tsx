@@ -251,7 +251,21 @@ export const Inpatient: React.FC<Props> = ({
     const giveMed = async (orderId: string, dose?: string | null) => {
         setMarBusy(orderId); setError('');
         try {
-            const res = await api.inpatient.administer(orderId, { dose: dose || undefined });
+            let res: any;
+            try {
+                res = await api.inpatient.administer(orderId, { dose: dose || undefined });
+            } catch (e: any) {
+                /* Faqat muddati o'tgan partiya qolgan — server rad etadi (409).
+                   Hamshira ongli ravishda tasdiqlasa `force` bilan qayta yuboriladi. */
+                if (e?.data?.code !== 'EXPIRED_STOCK_BLOCKED') throw e;
+                const proceed = await confirmAction({
+                    title: t('inpatient.expiredForceTitle'),
+                    body: t('inpatient.expiredForceBody'),
+                    confirmLabel: t('inpatient.expiredForceConfirm'),
+                });
+                if (!proceed) return;
+                res = await api.inpatient.administer(orderId, { dose: dose || undefined, force: true } as any);
+            }
             await reloadMar();
             if (res?.charge) {
                 // Bemor hisobiga qator tushdi — jami o'zgardi
