@@ -122,6 +122,8 @@ export function buildClinicFlow(
     services: Service[],
     today: string,
     now: number,
+    /** Bo'sh bo'lsa ham chiziladigan qator (shifokor id si) — shifokorning o'z kabineti */
+    pinnedKey?: string,
 ): ClinicFlow {
     const d = new Date(now);
     const nowMin = d.getHours() * 60 + d.getMinutes();
@@ -174,7 +176,9 @@ export function buildClinicFlow(
         const queue = mine.filter(v => v.status === 'Waiting' || v.status === 'Called').sort(byArrival);
         const laneComing = comingByKey.get(key) || [];
         const done = mine.filter(v => v.status === 'Completed').length;
-        if (!chair && queue.length === 0 && laneComing.length === 0 && done === 0) return null;
+        /* Bo'sh qator chizilmaydi — faqat shifokorning O'Z qatori bundan
+           mustasno: «Mening kabinetim» bemorsiz ham kabinetni ko'rsatadi. */
+        if (!chair && queue.length === 0 && laneComing.length === 0 && done === 0 && key !== pinnedKey) return null;
 
         for (const v of [...seated, ...queue]) {
             plan[v.id] = planOf(v);

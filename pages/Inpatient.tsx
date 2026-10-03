@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatDate, formatFullName, formatNumber } from '../utils/format';
 import {
     BedDouble, Plus, X, AlertCircle, LogOut, Stethoscope,
@@ -241,6 +242,22 @@ export const Inpatient: React.FC<Props> = ({
         setDetail(adm);
         if (adm) loadDetailExtras(adm);
     };
+
+    /* HAVOLA ORQALI BITTA YOTISHNI OCHISH. «Bugun» dagi «Statsionardagi
+       bemorlarim» shu yerga `?admission=<id>` bilan olib keladi — shifokor
+       bemorini ro'yxatdan qayta qidirmaydi. Oyna ochilgach parametr olib
+       tashlanadi: sahifa yangilanganda u o'zidan-o'zi qayta ochilmasin. */
+    const [searchParams, setSearchParams] = useSearchParams();
+    const wantedAdmission = searchParams.get('admission');
+    useEffect(() => {
+        if (!wantedAdmission || admissions.length === 0) return;
+        const adm = admissions.find(a => a.id === wantedAdmission);
+        const next = new URLSearchParams(searchParams);
+        next.delete('admission');
+        setSearchParams(next, { replace: true });
+        if (adm) openDetail(adm);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [wantedAdmission, admissions]);
 
     const reloadMar = async (date = marDate) => {
         if (!detail) return;

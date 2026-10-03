@@ -413,7 +413,7 @@ Registratura  «Bugun» -> «Yangi qabul» (F2): bemor -> bo'lim -> shifokor ->
      |
 Kassa         har buyurtma alohida hisob qatori: to'lanmagan -> to'langan
      |
-Shifokor      «Bugun» (o'z navbati) -> BEMOR KARTASI
+Shifokor      «Bugun» («Mening kabinetim») -> «Qabulni boshlash» -> BEMOR KARTASI
               chapda: allergiya, tashxislar, qabullar, tahlil dinamikasi,
                       retseptlar, to'lovlar, hujjatlar
               o'ngda: joriy qabul — bayon · tashxis · xizmat · tahlilga ·
@@ -518,6 +518,11 @@ shifokor uchun bitta sahifa, bitta nom. Qoida — **bir ish — bir joy**:
   smenasi, muddati o'tayotgan dori, natijasi kiritilmagan tahlil, tuzilmagan
   vedomost va hokazo. Har qator bosilganda o'sha ish bajariladigan ekran
   ochiladi.
+- **«Mening kabinetim»** — shifokorda: o'sha xaritaning bitta qatori (o'z
+  yozuvlari, o'z navbati, kabineti). Shifokor bemorni «kiritmaydi» — qabulni
+  boshlaydi: holat «Qabulda» ga o'tadi va karta ochiladi. Ostida natijalar va
+  **statsionardagi bemorlari** (bugun ko'rilmaganlari tepada); qator
+  Statsionarda aynan o'sha yotishni ochadi (`/inpatient?admission=<id>`).
 
 **Hisobot** (`/dashboard`, faqat ega) — o'tgan davr, ikki vkladka:
 
@@ -587,7 +592,7 @@ nomda, rolga qarab boshqacha ko'rinadi:
 |---|---|
 | Registrator | jonli xarita (butun klinika navbati) · «Yangi qabul» · kim to'lashi kerakligi |
 | Ega | registratorniki + bugun kassaga tushgan pul · «Bugun hal qilinsin» · natijalar |
-| Shifokor | natijasi tayyor bo'lganlar · o'z navbati · bugunga yozilganlar · natija kutayotganlar · bugun yakunlanganlar |
+| Shifokor | «Mening kabinetim» (xaritaning o'z qatori) · natijasi tayyor va kutilayotganlar · statsionardagi bemorlari · bugun yakunlanganlar |
 | Hamshira | navbat va bemor kartasi |
 
 Tarix: 2026-09-07 dan 09-16 gacha bu ekran ham «Bugun» edi (tepasida eganing

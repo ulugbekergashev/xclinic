@@ -61,6 +61,9 @@ ko'chdi, Moliya faqat kassa.
 xarita yagona navbat, «Yangi qabul» oynasi — F2, egaga «Bugun hal qilinsin»)
 va **Hisobot** (`/dashboard`, faqat ega: hisobot, davomat). Sabab: Bosh panel
 xaritani ham, navbatni ham takrorlab qo'ygan edi — bitta ish ikki ekranda.
+Shifokorda «Bugun» — «Mening kabinetim»: xaritaning o'z qatori (ilgari ikki
+ro'yxat edi va «Bugunga yozilganlar» da butun klinikaning yozuvlari chiqardi)
+hamda statsionardagi bemorlari. Hamshirada hozircha eski ro'yxat qoldi.
 
 **Ehtiyot.** Yangi raqam qo'shilsa u ham serverdan kelishi shart. Propdagi
 45 kunlik ro'yxatdan sanalgan har qanday son — jimgina yolg'on.

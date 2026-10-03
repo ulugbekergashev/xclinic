@@ -28,6 +28,11 @@ import {
    TUGMALAR IXTIYORIY. Ishlovchi berilmasa tugma chizilmaydi — xarita faqat
    ko'rsatadi. «Bugun» ekranida u navbatni boshqaradi.
 
+   IKKI KO'RINISH, BITTA KOMPONENT. Registrator va egada — butun klinika.
+   Shifokorda — faqat o'z qatori (`pinDoctorId`, «Mening kabinetim»): unga
+   o'z yozuvlari, o'z navbati va o'z kabineti beriladi, bo'sh bo'lsa ham
+   qator chiziladi.
+
    YAKUNLASH TUGMASI YO'Q (denta7 da bor). Bu yerda qabulni yopish —
    shifokorning ishi: tashxis, to'lov va tahlil natijasi tekshiriladi
    (`PUT /api/visits/:id`, 409 VISIT_INCOMPLETE). Xaritadan «Ochish» bemor
@@ -35,6 +40,10 @@ import {
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface ClinicMapProps {
+    /** Sarlavha. Berilmasa — «Bugun klinikada» */
+    title?: string;
+    /** Shu shifokorning qatori bemorsiz ham chiziladi — shifokorning o'z ekrani */
+    pinDoctorId?: string;
     visits: Visit[];
     appointments: Appointment[];
     doctors: Doctor[];
@@ -52,6 +61,9 @@ interface ClinicMapProps {
     onCall?: (v: Visit) => Promise<void>;
     /** «Kirdi» — bemor kabinetga kirdi */
     onEnter?: (v: Visit) => Promise<void>;
+    /** Bo'sh kabinetdagi asosiy tugma yozuvi. Berilmasa — «Kirdi» (registratorning amali);
+     *  shifokorda — «Qabulni boshlash»: u kartani ham ochadi */
+    enterLabel?: string;
     /** Adashib bosilgan «Kirdi» — bemor navbatga qaytadi */
     onUndoEnter?: (v: Visit) => Promise<void>;
     /** Pastdagi «Barcha qabullar — Kalendar» havolasi */
@@ -153,8 +165,8 @@ const Name: React.FC<{ name: string; onOpen?: () => void; className?: string; sh
 };
 
 export const ClinicMap: React.FC<ClinicMapProps> = ({
-    visits, appointments, doctors, departments, services,
-    onPatientClick, onOpenVisit, onArrived, onNoShow, onCall, onEnter, onUndoEnter, onSeeAll, collapsible, dueOf,
+    title, pinDoctorId, visits, appointments, doctors, departments, services,
+    onPatientClick, onOpenVisit, onArrived, onNoShow, onCall, onEnter, enterLabel, onUndoEnter, onSeeAll, collapsible, dueOf,
 }) => {
     const { t } = useLanguage();
     const now = useNow(30000);
@@ -165,8 +177,8 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
     const nowMs = now.getTime();
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const flow = useMemo(
-        () => buildClinicFlow(visits, appointments, doctors, departments, services, today, nowMs),
-        [visits, appointments, doctors, departments, services, today, nowMs]);
+        () => buildClinicFlow(visits, appointments, doctors, departments, services, today, nowMs, pinDoctorId),
+        [visits, appointments, doctors, departments, services, today, nowMs, pinDoctorId]);
     const [hover, setHover] = useState<string | null>(null);
     const [pending, setPending] = useState<string | null>(null);
     const [showAll, setShowAll] = useState(false);
@@ -416,28 +428,50 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
             : booked
                 ? fill(t('flow.nextBooked'), booked.time, shortName(booked.patientName))
                 : t('flow.noMore');
+        const enterHint = next
+            ? (enterLabel ? `${visitName(next)}: ${enterLabel}` : fill(t('flow.enterHint'), visitName(next)))
+            : '';
+        const seatEl = (
+            <span className="shrink-0 rounded-full border-2 border-dashed border-primary-200 dark:border-primary-800 bg-surface/70 flex items-center justify-center text-primary-300 dark:text-primary-700" style={{ width: ring, height: ring }}>
+                <Armchair className="w-7 h-7" strokeWidth={1.8} />
+            </span>
+        );
+        const freeInfo = (
+            <div className="flex-1 min-w-0">
+                <p className={`${compact ? 'text-sm' : 'text-[15px]'} font-extrabold text-primary-700 dark:text-primary-300`}>{t('flow.chairFree')}</p>
+                <p className="truncate text-xs text-muted">{hint}</p>
+            </div>
+        );
+        const enterButton = next && onEnter && (
+            <button
+                type="button"
+                onClick={() => run(`in:${next.id}`, () => onEnter(next))}
+                disabled={!!pending}
+                title={enterHint}
+                aria-label={enterHint}
+                className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-[12.5px] font-extrabold shadow-lg shadow-primary-500/30 active:scale-95 disabled:opacity-60 transition-all"
+            >
+                {pending === `in:${next.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (enterLabel || t('flow.enter'))}
+                <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+        );
+        // Telefonda tugma alohida qatorda — «Qabulni boshlash» yozuvni siqib qo'ymasin
+        if (compact) {
+            return (
+                <div className="w-full min-w-0">
+                    <div className="flex items-center gap-3">
+                        {seatEl}
+                        {freeInfo}
+                    </div>
+                    {enterButton && <div className="mt-2.5 flex justify-end">{enterButton}</div>}
+                </div>
+            );
+        }
         return (
             <>
-                <span className="shrink-0 rounded-full border-2 border-dashed border-primary-200 dark:border-primary-800 bg-surface/70 flex items-center justify-center text-primary-300 dark:text-primary-700" style={{ width: ring, height: ring }}>
-                    <Armchair className="w-7 h-7" strokeWidth={1.8} />
-                </span>
-                <div className="flex-1 min-w-0">
-                    <p className={`${compact ? 'text-sm' : 'text-[15px]'} font-extrabold text-primary-700 dark:text-primary-300`}>{t('flow.chairFree')}</p>
-                    <p className="truncate text-xs text-muted">{hint}</p>
-                </div>
-                {next && onEnter && (
-                    <button
-                        type="button"
-                        onClick={() => run(`in:${next.id}`, () => onEnter(next))}
-                        disabled={!!pending}
-                        title={fill(t('flow.enterHint'), visitName(next))}
-                        aria-label={fill(t('flow.enterHint'), visitName(next))}
-                        className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-[12.5px] font-extrabold shadow-lg shadow-primary-500/30 active:scale-95 disabled:opacity-60 transition-all"
-                    >
-                        {pending === `in:${next.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t('flow.enter')}
-                        <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                )}
+                {seatEl}
+                {freeInfo}
+                {enterButton}
             </>
         );
     };
@@ -804,7 +838,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                     <section aria-labelledby="clinic-map-title">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
-                                <h2 id="clinic-map-title" className="text-lg font-black text-ink">{t('flow.title')}</h2>
+                                <h2 id="clinic-map-title" className="text-lg font-black text-ink">{title || t('flow.title')}</h2>
                                 <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-extrabold tracking-wide tabular-nums">
                                     <span className="relative flex w-2 h-2">
                                         <span className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-60" />

@@ -7,9 +7,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
     UserPlus, Search, ArrowRight, Printer, Clock, Plus,
     CheckCircle, AlertCircle, X, Phone, RefreshCw, Calendar as CalendarIcon,
-    Volume2, FlaskConical, BellRing, CalendarClock, Tv, Wallet,
+    Volume2, FlaskConical, BellRing, CalendarClock, Tv, Wallet, BedDouble,
 } from 'lucide-react';
-import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment } from '../types';
+import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment, Admission } from '../types';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { maskPhone } from '../utils/accessControl';
@@ -24,6 +24,7 @@ import { AttentionList, AttentionItem } from '../components/AttentionList';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
 const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
+const INPATIENT_EVENTS: LiveEventType[] = ['admission.changed'];
 
 /* ─────────────────────────────────────────────────────────────────────────────
    BUGUN — klinikaning kunlik ish ekrani, hamma rol uchun bitta sahifa:
@@ -32,8 +33,9 @@ const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.p
        «Keldi», «Chaqirish», «Kirdi» shu yerda; qabul «Yangi qabul» oynasida
        ochiladi; sarlavhada kunning puli;
      · ega qo'shimcha — «Bugun hal qilinsin» ro'yxati;
-     · shifokor — natijasi tayyor bo'lganlar, o'z navbati, natija
-       kutayotganlar va bugun yakunlanganlar;
+     · shifokor — «Mening kabinetim»: o'sha xaritaning bitta qatori (o'z
+       yozuvlari, o'z navbati, kabineti), ostida natijalar va statsionardagi
+       bemorlari;
      · hamshira — navbat va bemor kartasi.
 
    TARIX. Bu ekran TO'RT marta shakl o'zgartirdi:
@@ -107,6 +109,7 @@ export const Reception: React.FC<Props> = ({
     const isDoctorView = userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN
         || userRole === UserRole.NURSE;
     const isOwner = userRole === UserRole.CLINIC_ADMIN;
+    const isDoctor = userRole === UserRole.DOCTOR;
 
     const [search, setSearch] = useState('');
     const [patient, setPatient] = useState<Patient | null>(null);
@@ -200,6 +203,21 @@ export const Reception: React.FC<Props> = ({
     }, [isOwner]);
     useEffect(() => { loadOwner(); }, [loadOwner, todayVisits]);
 
+    /* ─── SHIFOKORNING STATSIONARDAGI BEMORLARI ───────────────────────────
+       Ko'p profilli klinikada shifokorning kuni faqat navbat emas: yotgan
+       bemorlarini ham ko'rishi kerak (obxod). Ro'yxat shu yerda, ish esa
+       Statsionarda — qator bosilganda o'sha yotishning o'zi ochiladi. */
+    const [myInpatients, setMyInpatients] = useState<Admission[]>([]);
+    const loadInpatients = useCallback(async () => {
+        if (!isDoctor || !myDoctorId) return;
+        try {
+            const list = await api.admissions.getAll({ status: 'Active' });
+            setMyInpatients(list.filter(a => a.doctorId === myDoctorId));
+        } catch { /* statsionar kelmasa ham navbat ishlayveradi */ }
+    }, [isDoctor, myDoctorId]);
+    useEffect(() => { loadInpatients(); }, [loadInpatients]);
+    useLiveUpdates(INPATIENT_EVENTS, loadInpatients);
+
     /* Shifokor FAQAT o'z bemorlarini ko'radi. Ega va registrator —
        butun klinikani. */
     const myVisits = useMemo(
@@ -207,6 +225,14 @@ export const Reception: React.FC<Props> = ({
             ? todayVisits.filter(v => v.doctorId === myDoctorId)
             : todayVisits,
         [todayVisits, userRole, myDoctorId],
+    );
+
+    /* Kirgan shifokorning o'zi — «Mening kabinetim» xaritasi shu bitta
+       qatorni chizadi. Hisob shifokorga bog'lanmagan bo'lsa (`doctorId`
+       yo'q) — eski qoida: butun klinika ko'rinadi. */
+    const me = useMemo(
+        () => (isDoctor && myDoctorId ? doctors.find(d => d.id === myDoctorId) : undefined),
+        [isDoctor, myDoctorId, doctors],
     );
 
     const groups = useMemo(() => ({
@@ -493,6 +519,13 @@ export const Reception: React.FC<Props> = ({
         [todayAppts],
     );
 
+    /* Shifokorning O'Z yozuvlari — xaritasining «yo'l» qismi. Ilgari unga
+       «Bugunga yozilganlar» ro'yxatida butun klinikaning yozuvlari chiqardi. */
+    const myAppts = useMemo(
+        () => (me ? todayAppts.filter(a => a.doctorId === me.id) : todayAppts),
+        [todayAppts, me],
+    );
+
     /* «Keldi» — kalendardagi yozuv bilan navbat orasidagi ko'prik.
        Mantiq `utils/arrival.ts` da: kalendar ham xuddi shu funksiyani
        chaqiradi, ya'ni qoida bitta joyda turadi. */
@@ -673,109 +706,154 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
        kichik klinikada u o'zi shifokor. */
     const hasDoctorSections = isDoctorView
         && (readyUnseen.length > 0 || stillWaiting.length > 0 || groups.done.length > 0);
-    const doctorSections = isDoctorView && (
-        <>
-            {readyUnseen.length > 0 && (
-                <div className="bg-surface rounded-xl border border-purple-300 dark:border-purple-700 p-4">
-                    <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
-                        <BellRing className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                        {t('today.resultsReady')}
-                        <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                            {readyUnseen.length}
+    const readyBlock = readyUnseen.length > 0 && (
+        <div className="bg-surface rounded-xl border border-purple-300 dark:border-purple-700 p-4">
+            <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
+                <BellRing className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                {t('today.resultsReady')}
+                <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                    {readyUnseen.length}
+                </span>
+            </h3>
+            <div className="space-y-2">
+                {readyUnseen.map(r => (
+                    <button key={r.visitId}
+                        onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
+                        className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-900/20 hover:border-purple-400 transition-colors">
+                        <FlaskConical className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-ink truncate">{r.patientName}</p>
+                            <p className="text-xs text-muted truncate">
+                                {r.department || '—'}
+                                {r.date && r.date !== today() ? ` · ${r.date}` : ''}
+                            </p>
+                        </div>
+                        <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-600 text-white">
+                            {r.unseenCount} {t('today.newResult')}
                         </span>
-                    </h3>
-                    <div className="space-y-2">
-                        {readyUnseen.map(r => (
-                            <button key={r.visitId}
-                                onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
-                                className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-900/20 hover:border-purple-400 transition-colors">
-                                <FlaskConical className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-ink truncate">{r.patientName}</p>
-                                    <p className="text-xs text-muted truncate">
-                                        {r.department || '—'}
-                                        {r.date && r.date !== today() ? ` · ${r.date}` : ''}
-                                    </p>
-                                </div>
-                                <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-600 text-white">
-                                    {r.unseenCount} {t('today.newResult')}
-                                </span>
-                                <ArrowRight className="w-4 h-4 text-purple-300 shrink-0" />
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {stillWaiting.length > 0 && (
-                <div className="bg-surface rounded-xl border border-line p-4">
-                    <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
-                        <CalendarClock className="w-4 h-4 text-amber-500" />
-                        {t('today.awaitingResults')}
-                        <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
-                            {stillWaiting.length}
-                        </span>
-                    </h3>
-                    <div className="space-y-2">
-                        {stillWaiting.map(r => (
-                            <button key={r.visitId}
-                                onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
-                                className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-line hover:border-primary-400 transition-colors">
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-ink truncate">{r.patientName}</p>
-                                    <p className="text-xs text-muted truncate">
-                                        {r.department || '—'}
-                                        {/* `0 ta kutilmoqda` hech narsa aytmaydi. Bunday
-                                            qabul aslida OSILIB QOLGAN: natija ham
-                                            kutilmayapti, ko'rilmagan natija ham yo'q. */}
-                                        {r.stillPending > 0
-                                            ? ` · ${r.stillPending} ${t('today.pendingShort')}`
-                                            : ` · ${t('today.stuck')}`}
-                                    </p>
-                                </div>
-                                <ArrowRight className="w-4 h-4 text-faint shrink-0" />
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {groups.done.length > 0 && (
-                <div className="bg-surface rounded-xl border border-line p-4">
-                    <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
-                        <CheckCircle className="w-4 h-4 text-emerald-500" />
-                        {t('today.finished')}
-                        <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
-                            {groups.done.length}
-                        </span>
-                    </h3>
-                    <div className="space-y-1.5">
-                        {groups.done.map(v => (
-                            <button key={v.id} onClick={() => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
-                                className="w-full text-left flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-elevated">
-                                <span className="text-xs tabular-nums text-faint w-6 shrink-0">{v.queueNumber ?? '—'}</span>
-                                <span className="text-sm text-muted truncate flex-1">
-                                    {v.patient?.lastName} {v.patient?.firstName}
-                                </span>
-                                {/* YAKUNLANGAN, LEKIN TO'LANMAGAN — eng muhim
-                                    holat. Odam hali binoda; ertaga u
-                                    qarzdorlar ro'yxatiga tushadi va
-                                    qo'ng'iroq qilish kerak bo'ladi. */}
-                                {canRegister && v.patientId && dueByPatient.has(v.patientId) && (
-                                    <span title={t('today.toPay')}
-                                        className="shrink-0 px-2 py-0.5 rounded-lg text-[11px] font-bold tabular-nums
-                                                   bg-amber-500/12 text-amber-600 dark:text-amber-400 border border-amber-500/25">
-                                        {formatNumber(dueByPatient.get(v.patientId)!.due)}
-                                    </span>
-                                )}
-                                <span className="text-xs text-faint truncate">{v.department?.name || ''}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </>
+                        <ArrowRight className="w-4 h-4 text-purple-300 shrink-0" />
+                    </button>
+                ))}
+            </div>
+        </div>
     );
+
+    const awaitingBlock = stillWaiting.length > 0 && (
+        <div className="bg-surface rounded-xl border border-line p-4">
+            <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
+                <CalendarClock className="w-4 h-4 text-amber-500" />
+                {t('today.awaitingResults')}
+                <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
+                    {stillWaiting.length}
+                </span>
+            </h3>
+            <div className="space-y-2">
+                {stillWaiting.map(r => (
+                    <button key={r.visitId}
+                        onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
+                        className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-line hover:border-primary-400 transition-colors">
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-ink truncate">{r.patientName}</p>
+                            <p className="text-xs text-muted truncate">
+                                {r.department || '—'}
+                                {/* `0 ta kutilmoqda` hech narsa aytmaydi. Bunday
+                                    qabul aslida OSILIB QOLGAN: natija ham
+                                    kutilmayapti, ko'rilmagan natija ham yo'q. */}
+                                {r.stillPending > 0
+                                    ? ` · ${r.stillPending} ${t('today.pendingShort')}`
+                                    : ` · ${t('today.stuck')}`}
+                            </p>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-faint shrink-0" />
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+
+    const finishedBlock = groups.done.length > 0 && (
+        <div className="bg-surface rounded-xl border border-line p-4">
+            <h3 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
+                <CheckCircle className="w-4 h-4 text-emerald-500" />
+                {t('today.finished')}
+                <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
+                    {groups.done.length}
+                </span>
+            </h3>
+            <div className="space-y-1.5">
+                {groups.done.map(v => (
+                    <button key={v.id} onClick={() => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
+                        className="w-full text-left flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-elevated">
+                        <span className="text-xs tabular-nums text-faint w-6 shrink-0">{v.queueNumber ?? '—'}</span>
+                        <span className="text-sm text-muted truncate flex-1">
+                            {v.patient?.lastName} {v.patient?.firstName}
+                        </span>
+                        {/* YAKUNLANGAN, LEKIN TO'LANMAGAN — eng muhim
+                            holat. Odam hali binoda; ertaga u
+                            qarzdorlar ro'yxatiga tushadi va
+                            qo'ng'iroq qilish kerak bo'ladi. */}
+                        {canRegister && v.patientId && dueByPatient.has(v.patientId) && (
+                            <span title={t('today.toPay')}
+                                className="shrink-0 px-2 py-0.5 rounded-lg text-[11px] font-bold tabular-nums
+                                           bg-amber-500/12 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                                {formatNumber(dueByPatient.get(v.patientId)!.due)}
+                            </span>
+                        )}
+                        <span className="text-xs text-faint truncate">{v.department?.name || ''}</span>
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+
+    const doctorSections = isDoctorView && <>{readyBlock}{awaitingBlock}{finishedBlock}</>;
+
+    /* STATSIONARDAGI BEMORLARIM — faqat shifokorga. Bugun ko'rilmaganlar
+       tepada: obxod — kunning majburiy ishi. Qator Statsionar sahifasida
+       aynan shu yotishni ochadi (`?admission=`); obxod o'sha yerda yoziladi. */
+    const seenToday = (a: Admission) => (a.rounds || []).some(r => String(r.date).slice(0, 10) === today());
+    const inpatientBlock = myInpatients.length > 0 && (
+        <div className="bg-surface rounded-xl border border-line p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+                    <BedDouble className="w-4 h-4 text-pink-500" />
+                    {t('today.myInpatients')}
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
+                        {myInpatients.length}
+                    </span>
+                </h3>
+                <span className="text-xs font-medium text-muted">
+                    {fill(t('today.roundsDone'), myInpatients.filter(seenToday).length, myInpatients.length)}
+                </span>
+            </div>
+            <div className="space-y-2">
+                {[...myInpatients].sort((a, b) => Number(seenToday(a)) - Number(seenToday(b))).map(a => {
+                    const seen = seenToday(a);
+                    const day = Math.max(1, Math.ceil((Date.now() - new Date(a.admittedAt).getTime()) / 864e5));
+                    const where = a.bed
+                        ? [a.bed.ward?.name, a.bed.label].filter(Boolean).join(' · ')
+                        : t('inpatient.koyka_biriktirilmagan_2');
+                    return (
+                        <button key={a.id} onClick={() => navigate(`/inpatient?admission=${a.id}`)}
+                            className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-line hover:border-primary-400 transition-colors">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-ink truncate">{a.patientName}</p>
+                                <p className="text-xs text-muted truncate">{where} · {fill(t('today.dayN'), day)}</p>
+                            </div>
+                            <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${seen
+                                ? 'bg-elevated text-muted'
+                                : 'bg-amber-500/12 text-amber-700 dark:text-amber-400 border border-amber-500/25'}`}>
+                                {seen ? t('today.seenToday') : t('today.notSeenToday')}
+                            </span>
+                            <ArrowRight className="w-4 h-4 text-faint shrink-0" />
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+    const hasResultBlocks = readyUnseen.length > 0 || stillWaiting.length > 0;
+    const hasPatientBlocks = myInpatients.length > 0 || groups.done.length > 0;
 
     return (
         <>
@@ -863,9 +941,8 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
 
         {/* ── BUGUN KLINIKADA — jonli xarita ─────────────────────────────
             Yo'l (bugunga yozilganlar), kutish zali va kabinetlar bitta
-            ko'rinishda. Faqat navbatni yuritadiganlarga: shifokor o'z
-            navbatini pastdagi ro'yxatda ko'radi, butun klinika unga kerak
-            emas.
+            ko'rinishda. Registrator va egaga — butun klinika; shifokorga —
+            faqat o'z qatori (pastda, «Mening kabinetim»).
 
             Ma'lumot shu ekranniki (`todayVisits`, `todayAppts`) — xarita
             o'zi hech narsa yuklamaydi.
@@ -898,6 +975,36 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
             />
         )}
 
+        {/* ── MENING KABINETIM — shifokorning o'z yo'lagi ────────────────
+            O'sha xarita, lekin bitta qator: o'z yozuvlari (yo'l), o'z
+            navbati (kutish zali) va kabineti. Ilgari bular ikki ro'yxat edi:
+            «Bugunga yozilganlar» (unda BUTUN klinikaning yozuvlari chiqardi)
+            va «Mening navbatim».
+
+            Shifokorning amali registratornikidan farq qiladi: u bemorni
+            kabinetga «kiritmaydi», qabulni BOSHLAYDI — holat «Qabulda» ga
+            o'tadi va karta ochiladi (`openVisitCard`). Ismni bosish ham
+            shuni qiladi. Pul va «Kelmadi» bu yerda yo'q: registratorning ishi. */}
+        {isDoctor && (
+            <ClinicMap
+                title={me ? t('today.myCabinet') : undefined}
+                pinDoctorId={me?.id}
+                visits={myVisits}
+                appointments={myAppts}
+                doctors={me ? [me] : doctors}
+                departments={departments}
+                services={services}
+                onPatientClick={(id) => navigate(`/patients/${id}`)}
+                onOpenVisit={openVisitCard}
+                onArrived={markArrived}
+                onCall={callVisit}
+                onEnter={openVisitCard}
+                enterLabel={t('flow.startVisit')}
+                onUndoEnter={undoEnter}
+                onSeeAll={() => navigate('/calendar')}
+            />
+        )}
+
         {canRegister ? (
             /* EGANING QISMI — xaritaning ostida, yonma-yon: chapda «Bugun hal
                qilinsin», o'ngda natijalar (kichik klinikada ega o'zi shifokor).
@@ -913,7 +1020,18 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                     {hasDoctorSections && <div className="space-y-4 min-w-0">{doctorSections}</div>}
                 </div>
             )
+        ) : isDoctor ? (
+            /* SHIFOKORNING QISMI — kabinet ostida, yonma-yon: chapda natijalar
+               (tayyor va kutilayotgan), o'ngda statsionardagi bemorlari va
+               bugun yakunlangan qabullar. */
+            (hasResultBlocks || hasPatientBlocks) && (
+                <div className={`grid grid-cols-1 gap-4 items-start ${hasResultBlocks && hasPatientBlocks ? 'xl:grid-cols-2' : ''}`}>
+                    {hasResultBlocks && <div className="space-y-4 min-w-0">{readyBlock}{awaitingBlock}</div>}
+                    {hasPatientBlocks && <div className="space-y-4 min-w-0">{inpatientBlock}{finishedBlock}</div>}
+                </div>
+            )
         ) : (
+        /* HAMSHIRA — navbat ro'yxat ko'rinishida (xaritasiz). */
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             {/* ── Chap: natijalar va bugungi yozuvlar ───────────────────────── */}
             <div className="xl:col-span-2 space-y-4">
@@ -967,12 +1085,12 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                 )}
             </div>
 
-            {/* ── O'ng: bugungi navbat — shifokor va hamshiraga ───────────── */}
+            {/* ── O'ng: bugungi navbat ─────────────────────────────────── */}
             <div className="space-y-3">
                 <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-faint" />
                     <h3 className="font-semibold text-ink">
-                        {userRole === UserRole.DOCTOR ? t('today.myQueue') : t('reception.todayQueue')}
+                        {t('reception.todayQueue')}
                     </h3>
                     <span className="text-sm text-muted">{groups.active.length} {t('ui.ta')}</span>
                 </div>
