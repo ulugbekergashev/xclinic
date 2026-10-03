@@ -9,15 +9,16 @@ import {
     CheckCircle, AlertCircle, X, Phone, RefreshCw, Calendar as CalendarIcon,
     Volume2, FlaskConical, BellRing, CalendarClock, Tv, Wallet,
 } from 'lucide-react';
-import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole } from '../types';
+import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment } from '../types';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { maskPhone } from '../utils/accessControl';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
-import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
+import { useLiveUpdates, useLiveHealthy, LiveEventType } from '../hooks/useLiveUpdates';
 import { PatientFormModal } from '../components/PatientFormModal';
+import { ClinicMap } from '../components/ClinicMap';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
 const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
@@ -191,10 +192,25 @@ export const Reception: React.FC<Props> = ({
     /** Navbatga chaqirish — tablo shu holatni ko'rsatadi */
     const callVisit = async (v: Visit) => {
         setBusyVisit(v.id);
-        try { await api.visits.call(v.id); await loadToday(); addToast('success', `№${v.queueNumber ?? '—'} chaqirildi`); }
+        try { await api.visits.call(v.id); await loadToday(); addToast('success', fill(t('flow.toast.called'), v.queueNumber ?? '—')); }
         catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
         finally { setBusyVisit(null); }
     };
+
+    /* ─── XARITADAGI AMALLAR ──────────────────────────────────────────────
+       «Kirdi» kartani OCHMAYDI — registrator xaritada qoladi. Pastdagi
+       `openVisitCard` esa holatni o'zgartirib, kartaga olib o'tadi: u
+       shifokorning yo'li. Ikkalasi ham bitta holatga yozadi, shuning uchun
+       shifokor kartani ochganda xaritada bemor o'zi kabinetga o'tadi. */
+    const setVisitStatus = async (v: Visit, status: Visit['status'], doneKey: 'flow.toast.entered' | 'flow.toast.returned') => {
+        try {
+            await api.visits.update(v.id, { status });
+            await loadToday();
+            addToast('success', fill(t(doneKey), `${v.patient?.lastName || ''} ${v.patient?.firstName || ''}`.trim() || `№${v.queueNumber ?? '—'}`));
+        } catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
+    };
+    const enterVisit = (v: Visit) => setVisitStatus(v, 'In Progress', 'flow.toast.entered');
+    const undoEnter = (v: Visit) => setVisitStatus(v, 'Waiting', 'flow.toast.returned');
 
     /** Qabulni ochish — bemor kartasiga o'tadi va holat «Qabulda» bo'ladi */
     const openVisitCard = async (v: Visit) => {
@@ -373,6 +389,34 @@ export const Reception: React.FC<Props> = ({
 
     useEffect(() => { loadTodayAppts(); }, [loadTodayAppts]);
 
+    /* Xarita ikki manbadan chiziladi: qabullar va bugungi yozuvlar. Qabul
+       o'zgarsa yozuv ham o'zgargan bo'ladi («Keldi» ikkalasiga yozadi) —
+       shuning uchun yozuvlar ham o'sha hodisalarda yangilanadi. */
+    useLiveUpdates(LIVE_EVENTS, loadTodayAppts);
+
+    /* Boshqa kompyuterda bugunga yozilgan yangi bemor uchun alohida hodisa
+       yo'q — daqiqada bir so'raladi. Oqim uzilgan bo'lsa navbat ham shu
+       yerda yangilanadi: `useLiveUpdates` dagi 4-qaror shuni va'da qiladi,
+       lekin bu ekranda so'rov yo'q edi va navbat qotib qolardi. */
+    const liveOk = useLiveHealthy();
+    useEffect(() => {
+        const id = setInterval(() => {
+            if (document.visibilityState === 'hidden') return;
+            loadTodayAppts();
+            if (!liveOk) loadToday();
+        }, liveOk ? 60000 : 30000);
+        return () => clearInterval(id);
+    }, [liveOk, loadToday, loadTodayAppts]);
+
+    /** «Kelmadi» — vaqti o'tgan yozuv yopiladi. Server bemorga xabar ham yuboradi */
+    const markNoShow = async (appt: Appointment) => {
+        try {
+            await api.appointments.update(appt.id, { status: 'No-Show' });
+            addToast('info', fill(t('flow.toast.noShow'), appt.patientName));
+            await loadTodayAppts();
+        } catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
+    };
+
     /* Hali kelmaganlar. Yakunlangan va bekor qilinganlar ko'rsatilmaydi —
        ular bilan qiladigan ish qolmagan. */
     const waitingAppts = useMemo(
@@ -544,9 +588,9 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
 
     return (
         <>
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-            {/* ── Chap: qabul ochish ────────────────────────────────────────── */}
-            <div className="xl:col-span-2 space-y-4">
+        <div className="space-y-5">
+                {/* Sarlavha butun kenglikda: undan keyin xarita, keyin ish
+                    ustunlari. Ilgari u chap ustun ichida turardi. */}
                 <div className="flex flex-wrap items-center gap-3">
                     <Stethoscope className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                     {/* Sarlavha rolga qarab: registrator «Registratura» ni,
@@ -576,7 +620,41 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                     </div>
                 </div>
 
+        {/* ── BUGUN KLINIKADA — jonli xarita ─────────────────────────────
+            Yo'l (bugunga yozilganlar), kutish zali va kabinetlar bitta
+            ko'rinishda. Faqat navbatni yuritadiganlarga: shifokor o'z
+            navbatini pastdagi ro'yxatda ko'radi, butun klinika unga kerak
+            emas.
 
+            Ma'lumot shu ekranniki (`todayVisits`, `todayAppts`) — xarita
+            o'zi hech narsa yuklamaydi, ya'ni o'ngdagi navbat ro'yxati bilan
+            ikki xil raqam chiqmaydi.
+
+            Yig'ish tugmasi bor: katta klinikada xarita baland bo'ladi va
+            qabul ochish masterosini pastga suradi. Yig'ilganda ham
+            sarlavhadagi jonli raqamlar ko'rinib turadi. */}
+        {canRegister && (
+            <ClinicMap
+                visits={todayVisits}
+                appointments={todayAppts}
+                doctors={doctors}
+                departments={departments}
+                services={services}
+                collapsible
+                onPatientClick={(id) => navigate(`/patients/${id}`)}
+                onOpenVisit={(v) => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
+                onArrived={markArrived}
+                onNoShow={markNoShow}
+                onCall={callVisit}
+                onEnter={enterVisit}
+                onUndoEnter={undoEnter}
+                onSeeAll={() => navigate('/calendar')}
+            />
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+            {/* ── Chap: qabul ochish ────────────────────────────────────────── */}
+            <div className="xl:col-span-2 space-y-4">
                 {error && (
                     <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                         <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
@@ -690,8 +768,12 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                 {/* ── Bugun yozilganlar ──────────────────────────────────
                     Kalendardan kelgan ro'yxat. Pastdagi qo'lda ochish
                     yo'li yo'qolmaydi — kim yozilmasdan kelsa, o'sha
-                    orqali kiritiladi. */}
-                {waitingAppts.length > 0 && (
+                    orqali kiritiladi.
+
+                    Registrator va egada bu ro'yxat xaritaning «yo'l»
+                    qismida turadi («Keldi» ham o'sha yerda) — ikki marta
+                    ko'rsatilmaydi. */}
+                {!canRegister && waitingAppts.length > 0 && (
                     <div className="bg-surface rounded-xl border border-line p-4">
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
@@ -1081,6 +1163,7 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                 </div>
             )}
 
+        </div>
         </div>
         </>
     );

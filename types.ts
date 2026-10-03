@@ -262,7 +262,6 @@ export type AutomationTrigger = string;
 export interface TriggerDescriptor {
   id: string;
   label: string;
-  respectCooldown: boolean;
   supportsDoctorFilter: boolean;
   /* Backend (`backend/triggers.ts`) bu ikki maydonni ham yuboradi va
      ular Xabarlar bo'limida ISHLATILADI — segment tanlash va jadval
@@ -317,7 +316,8 @@ export interface MessageLog {
   patientId?: string | null;
   type: string;
   // 'Retried' — xato yozuv qayta yuborishga jo'natilgan, natijasi alohida logda
-  // 'Skipped' — chastota chegarasi sababli ataylab yuborilmagan (xato emas)
+  // 'Skipped' — ataylab yuborilmagan, xato emas (eski yozuvlar: chastota chegarasi
+  // olib tashlanishidan oldin shu holat bilan yozilgan)
   status: 'Sent' | 'Failed' | 'Retried' | 'Skipped';
   message?: string | null;
   error?: string | null;
@@ -713,6 +713,8 @@ export interface Visit {
   /** Kunlik navbat raqami — registratura beradi */
   queueNumber?: number | null;
   calledAt?: string | null;
+  /** Kabinetga kirgan vaqt (holat «In Progress» ga o'tgan payt). Migratsiya 0037 */
+  startedAt?: string | null;
   /** Natija kutila boshlangan vaqt */
   awaitingSince?: string | null;
   /** Bo'lim shabloni bo'yicha to'ldirilgan ko'rik maydonlari (JSON matn) */

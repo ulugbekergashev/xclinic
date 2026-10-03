@@ -60,6 +60,7 @@ function unknownTokens(text: string): string[] {
 // Trigger ro'yxati backenddan keladi (backend/triggers.ts) — bu yerda faqat
 // belgichalar. Yangi trigger qo'shilsa, forma o'zi yangilanadi.
 const TRIGGER_ICONS: Record<string, string> = {
+    appointment_booked: '📅',
     before_appointment: '⏰',
     birthday: '🎂',
     no_show: '❗',
@@ -90,6 +91,7 @@ const SOURCE_LABELS: Record<string, string> = {
     bulk: tr('messagesmanagement.qolda_yuborildi'),
     auto: tr('messagesmanagement.avtomatik'),
     scheduled: tr('messagesmanagement.jadval_boyicha'),
+    appointment_booked: tr('messages.trigger.booked'),
     before_appointment: tr('messagesmanagement.qabuldan_oldin'),
     after_appointment: tr('messagesmanagement.qabuldan_keyin'),
     new_patient: tr('reception.newPatient'),
@@ -108,15 +110,24 @@ const inputCls = "w-full px-3 py-2.5 bg-surface border border-line rounded-xl te
 const labelCls = "block text-xs font-bold text-muted uppercase tracking-wider mb-1.5";
 
 // Eskiz'dan qaytgan xom holat matnini o'qiladigan yorliq + rangga aylantiradi.
-// Aniq enum kafolatlanmagani uchun kalit so'zlarga qarab taxminiy rang beriladi.
+// Eskiz hujjatidagi holatlar: moderation, inproccess — moderatsiyada; service, reklama —
+// tasdiqlangan (shablon turi). Ilgari «service» ham sariq «Moderatsiyada (service)» bo'lib
+// chiqardi va klinika tasdiqlangan shablonni kutib o'tirardi. Hujjatda yo'q yozilishlar
+// kalit so'zlar bo'yicha taxmin qilinadi (backend/eskizTemplates.ts dagi isApprovedStatus
+// bilan bir xil qoida).
 function eskizStatusBadge(status?: string | null): { label: string; cls: string } | null {
     if (!status) return null;
-    const s = status.toLowerCase();
+    const s = status.trim().toLowerCase();
+    const approved = 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400';
+    const pending = 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400';
     if (s === 'error') return { label: tr('messagesmanagement.yuborishda_xatolik'), cls: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
     if (s === 'not_found') return { label: tr('messagesmanagement.eskizda_topilmadi'), cls: 'bg-elevated text-muted' };
+    if (s === 'service') return { label: tr('messages.eskiz.approvedService'), cls: approved };
+    if (s === 'reklama') return { label: tr('messages.eskiz.approvedAd'), cls: approved };
+    if (s === 'moderation' || s === 'inproccess' || s === 'inprocess') return { label: tr('messages.eskiz.moderation'), cls: pending };
     if (/(declin|reject|rad)/.test(s)) return { label: fill(tr('messagesmanagement.rad_etildi_x'), status), cls: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
-    if (/(confirm|approv|activ|tasdiq)/.test(s)) return { label: `Tasdiqlandi (${status})`, cls: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' };
-    return { label: `Moderatsiyada (${status})`, cls: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' };
+    if (/\b(confirm|approv|activ|tasdiq)/.test(s)) return { label: fill(tr('messages.eskiz.approvedX'), status), cls: approved };
+    return { label: fill(tr('messages.eskiz.moderationX'), status), cls: pending };
 }
 
 /**
@@ -211,7 +222,6 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                     .catch(() => { });
             }
         }).catch(() => { });
-        api.messages.getSettings(clinicId).then(s => setCooldownDays(s.cooldownDays || 0)).catch(() => { });
         loadLogs('all');
         // Sahifa qayta ochilganda fonda ketayotgan yuborish bo'lsa — ulanib olamiz
         api.messages.bulkStatus(clinicId).then(s => { if (s.active && !s.done) setBulkJob(s); }).catch(() => { });
@@ -527,24 +537,6 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
         }
     };
 
-    // ── Chastota chegarasi ──
-    const [cooldownDays, setCooldownDays] = useState(0);
-    const [cooldownSaving, setCooldownSaving] = useState(false);
-    const [ignoreCooldown, setIgnoreCooldown] = useState(false);
-
-    const saveCooldown = async (days: number) => {
-        setCooldownDays(days);
-        setCooldownSaving(true);
-        try {
-            await api.messages.saveSettings(clinicId, days);
-            addToast('success', days === 0 ? t('messagesmanagement.chastota_chegarasi_ochirildi') : fill(t('messagesmanagement.chegara_x_kunda_bir'), days));
-        } catch (e: any) {
-            addToast('error', e.message || t('ui.saqlashda_xatolik'));
-        } finally {
-            setCooldownSaving(false);
-        }
-    };
-
     // Yuborish serverda fonda ketadi (yuzlab SMS bir HTTP so'roviga sig'maydi).
     const [bulkJob, setBulkJob] = useState<BulkSendStatus | null>(null);
 
@@ -578,7 +570,7 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
         if (!await confirmAction({ title: fill(t('messagesmanagement.x_ta_bemorga_xabar'), recipientCount, costNote) })) return;
         setManualSending(true);
         try {
-            const result = await api.messages.sendBulk(clinicId, recipientIds, manualMessage, manualChannel, ignoreCooldown);
+            const result = await api.messages.sendBulk(clinicId, recipientIds, manualMessage, manualChannel);
             addToast('info', fill(t('messagesmanagement.x_ta_bemorga_yuborish'), result.total));
             setBulkJob({ active: true, total: result.total, sent: 0, failed: 0, done: false });
             setManualMessage('');
@@ -820,32 +812,6 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
             {/* ═══ AVTOMATIK ═══ */}
             {activeTab === 'auto' && (
                 <div className="space-y-4">
-                    {/* Chastota chegarasi — bir bemorga N kunda bittadan ko'p xabar ketmasin */}
-                    <Card className="p-5">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                                <h3 className="font-bold text-ink text-sm">Chastota chegarasi</h3>
-                                <p className="text-xs text-muted mt-0.5">
-                                    {t('messagesmanagement.bitta_bemorga_shu_muddat')}
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                {[0, 1, 3, 7, 30].map(d => (
-                                    <button
-                                        key={d}
-                                        disabled={cooldownSaving}
-                                        onClick={() => saveCooldown(d)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50 ${cooldownDays === d
-                                            ? 'bg-primary-600 text-white'
-                                            : 'text-muted hover:bg-elevated'}`}
-                                    >
-                                        {d === 0 ? "O'chiq" : fill(t('ui.x_kun'), d)}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </Card>
-
                     <div className="flex justify-end">
                         <Button onClick={() => openRuleForm()}>
                             <Plus className="w-4 h-4 mr-1" /> {t('messagesmanagement.yangi_qoida')}
@@ -1033,17 +999,10 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     </select>
                                 </div>
                             )}
-                            {activeTriggerDef && (
-                                <div className="text-xs text-faint space-y-1">
-                                    {activeTriggerDef.sendWindow && (
-                                        <p>
-                                            {t('messagesmanagement.yuborish_vaqti')}: <strong>{activeTriggerDef.sendWindow.fromHour}:00 – {activeTriggerDef.sendWindow.toHour}:00</strong> {t('messagesmanagement.oraligida_bemorlarga_tunda_xabar')}
-                                        </p>
-                                    )}
-                                    {!activeTriggerDef.respectCooldown && cooldownDays > 0 && (
-                                        <p>{t('messagesmanagement.bu_trigger_transaksion_hisoblanadi')}{cooldownDays} {t('messagesmanagement.kun_boysunmaydi')}</p>
-                                    )}
-                                </div>
+                            {activeTriggerDef?.sendWindow && (
+                                <p className="text-xs text-faint">
+                                    {t('messagesmanagement.yuborish_vaqti')}: <strong>{activeTriggerDef.sendWindow.fromHour}:00 – {activeTriggerDef.sendWindow.toHour}:00</strong> {t('messagesmanagement.oraligida_bemorlarga_tunda_xabar')}
+                                </p>
                             )}
                             <div className="flex justify-end gap-2 pt-2">
                                 <Button variant="secondary" onClick={closeRuleForm}>{t('ui.bekor')}</Button>
@@ -1496,18 +1455,6 @@ export const MessagesManagement: React.FC<MessagesManagementProps> = ({
                                     </div>
                                 )}
                             </div>
-                        )}
-
-                        {cooldownDays > 0 && (
-                            <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={ignoreCooldown}
-                                    onChange={e => setIgnoreCooldown(e.target.checked)}
-                                    className="w-3.5 h-3.5 rounded border-line text-amber-600 focus:ring-amber-500"
-                                />
-                                Chastota chegarasini ({cooldownDays} {t('messagesmanagement.kun_etiborsiz_qoldirish_yaqinda')}
-                            </label>
                         )}
 
                         <button

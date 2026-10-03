@@ -850,32 +850,6 @@ const canAccessClinic = (req: any, clinicId: string): boolean => {
 
 // ─── Markaziy (yagona) xabar yuborish funksiyasi ─────────────────────────────
 // Barcha kanallar (Telegram/SMS) shu yerdan o'tadi va yagona TelegramLog tarixiga yoziladi.
-// ─── Chastota chegarasi (bir bemorga N kun ichida bittadan ko'p xabar yubormaslik) ──
-// Klinika sozlamasi mavjud PlatformSetting kalit-qiymat jadvalida saqlanadi —
-// shu sabab yangi ustun va migratsiya kerak emas.
-const cooldownKey = (clinicId: string) => `messages:cooldownDays:${clinicId}`;
-
-async function getMessageCooldownDays(clinicId: string): Promise<number> {
-    try {
-        const row = await prisma.platformSetting.findUnique({ where: { key: cooldownKey(clinicId) } });
-        const days = parseInt(row?.value || '0');
-        return isNaN(days) || days < 0 ? 0 : days;
-    } catch {
-        return 0;
-    }
-}
-
-// Bemorga oxirgi N kun ichida muvaffaqiyatli xabar yuborilganmi
-async function isWithinCooldown(clinicId: string, patientId: string, days: number): Promise<boolean> {
-    if (days <= 0) return false;
-    const since = new Date(Date.now() - days * 86400000);
-    const recent = await prisma.telegramLog.findFirst({
-        where: { clinicId, patientId, status: 'Sent', sentAt: { gte: since } },
-        select: { id: true }
-    });
-    return !!recent;
-}
-
 type UnifiedSendOpts = {
     // 'auto' = clinic.notificationMode bo'yicha
     // 'telegram_first' = Telegram bo'lsa faqat Telegram, aks holda SMS (arzon yo'l)
@@ -885,9 +859,6 @@ type UnifiedSendOpts = {
     refId?: string;    // masalan appointmentId
     type?: string;     // TelegramLog.type (eski maydon)
     replyMarkup?: any;
-    // Chastota chegarasi qo'llanilsinmi. Avtomatika va ommaviy yuborish uchun ha,
-    // qo'lda bitta xabar / qayta yuborish / test uchun yo'q.
-    respectCooldown?: boolean;
 };
 
 async function sendUnified(
@@ -914,33 +885,6 @@ async function sendUnified(
     let attempted = false;
     let anySuccess = false;
     let lastError: string | undefined;
-
-    // Chastota chegarasi: yaqinda xabar olgan bemorga qayta yubormaymiz.
-    // 'Skipped' holati bilan yoziladi — bu xato emas, shuning uchun "Xato"
-    // hisoblagichini shishirmaydi va qayta yuborishga tushmaydi.
-    if (opts.respectCooldown && patient.id) {
-        const cooldownDays = await getMessageCooldownDays(clinic.id);
-        if (await isWithinCooldown(clinic.id, patient.id, cooldownDays)) {
-            const reason = `Chastota chegarasi: oxirgi ${cooldownDays} kun ichida xabar yuborilgan`;
-            await prisma.telegramLog.create({
-                data: {
-                    clinicId: clinic.id,
-                    patientId: patient.id,
-                    type: logType,
-                    status: 'Skipped',
-                    message,
-                    error: reason,
-                    channel: channel === 'sms' ? 'sms' : 'telegram',
-                    source: logExtra.source,
-                    ruleId: logExtra.ruleId || null,
-                    refId: logExtra.refId || null,
-                    recipient: patient.phone || patient.telegramChatId || null,
-                }
-            }).catch((err: any) => console.error('Cooldown log error:', err));
-            console.log(`[Notification] SKIPPED (cooldown ${cooldownDays}d) → ${patientName}`);
-            return { success: false, error: reason };
-        }
-    }
 
     // Telegram
     if ((channel === 'telegram' || channel === 'both' || channel === 'telegram_first') && clinic.botToken && patient.telegramChatId) {
@@ -1397,7 +1341,7 @@ app.delete('/api/automation-rules/:id', authenticateToken, async (req, res) => {
 // jarayonni /api/messages/bulk-status orqali kuzatadi, natija esa Tarixda ko'rinadi.
 const bulkJobs = new Map<string, { total: number; sent: number; failed: number; done: boolean; startedAt: number; error?: string }>();
 
-async function runBulkSend(clinicId: string, clinic: any, patients: any[], message: string, channel: string, ignoreCooldown = false) {
+async function runBulkSend(clinicId: string, clinic: any, patients: any[], message: string, channel: string) {
     const job = bulkJobs.get(clinicId)!;
     try {
         const patientIds = patients.map(p => p.id);
@@ -1428,7 +1372,7 @@ async function runBulkSend(clinicId: string, clinic: any, patients: any[], messa
                 clinicName: clinic.name,
                 amount: debtMap.get(patient.id) || 0,
             });
-            const result = await sendUnified(clinic, patient, personalized, { channel: channel as any, source: 'bulk', type: 'Bulk', respectCooldown: !ignoreCooldown });
+            const result = await sendUnified(clinic, patient, personalized, { channel: channel as any, source: 'bulk', type: 'Bulk' });
             if (result.success) job.sent++; else job.failed++;
         }
     } catch (error: any) {
@@ -1443,7 +1387,7 @@ app.post('/api/messages/send-bulk', authenticateToken, async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
         if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
-        const { patientIds, segment, message, channel, ignoreCooldown } = req.body;
+        const { patientIds, segment, message, channel } = req.body;
         const hasIds = Array.isArray(patientIds) && patientIds.length > 0;
         if (!hasIds && !segment) return res.status(400).json({ error: 'Bemorlar tanlanmagan' });
         if (!message || !message.trim()) return res.status(400).json({ error: 'Xabar matni bo\'sh' });
@@ -1465,7 +1409,7 @@ app.post('/api/messages/send-bulk', authenticateToken, async (req, res) => {
         if (patients.length === 0) return res.status(400).json({ error: 'Bemorlar topilmadi' });
 
         bulkJobs.set(clinicId as string, { total: patients.length, sent: 0, failed: 0, done: false, startedAt: Date.now() });
-        void runBulkSend(clinicId as string, clinic, patients, message, channel, !!ignoreCooldown);
+        void runBulkSend(clinicId as string, clinic, patients, message, channel);
 
         res.json({ total: patients.length, queued: true });
     } catch (error: any) {
@@ -1625,40 +1569,8 @@ app.post('/api/messages/audience', authenticateToken, async (req, res) => {
     }
 });
 
-// Xabarlar moduli sozlamalari (hozircha faqat chastota chegarasi)
-app.get('/api/messages/settings', authenticateToken, async (req, res) => {
-    try {
-        const clinicId = getScopedClinicId(req);
-        if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
-        res.json({ cooldownDays: await getMessageCooldownDays(clinicId as string) });
-    } catch (error) {
-        res.status(500).json({ error: 'Sozlamalarni olishda xatolik' });
-    }
-});
-
-app.put('/api/messages/settings', authenticateToken, async (req, res) => {
-    try {
-        const clinicId = getScopedClinicId(req);
-        if (!clinicId) return res.status(400).json({ error: 'clinicId is required' });
-        const days = parseInt(req.body?.cooldownDays);
-        if (isNaN(days) || days < 0 || days > 365) {
-            return res.status(400).json({ error: 'Kunlar soni 0 dan 365 gacha bo\'lishi kerak' });
-        }
-        const key = cooldownKey(clinicId as string);
-        await prisma.platformSetting.upsert({
-            where: { key },
-            update: { value: String(days), updatedAt: new Date() },
-            create: { key, value: String(days) },
-        });
-        res.json({ cooldownDays: days });
-    } catch (error) {
-        console.error('Messages settings save error:', error);
-        res.status(500).json({ error: 'Sozlamalarni saqlashda xatolik' });
-    }
-});
-
 // Test yuborish: aynan shu matnni o'zingizga yuborib ko'rish.
-// Chastota chegarasiga bo'ysunmaydi va bemorlarga tegmaydi.
+// Bemorlarga tegmaydi.
 app.post('/api/messages/test-send', authenticateToken, async (req, res) => {
     try {
         const clinicId = getScopedClinicId(req);
@@ -2934,9 +2846,14 @@ app.post('/api/appointments', authenticateToken, async (req, res) => {
                 status,
                 reminderSent,
                 notes: notes,
-                clinicId: clinicId
+                clinicId: clinicId,
+                // «Qabulga yozilganda» xabari shu vaqtga qarab ketadi (0038).
+                // Faqat shu yerda qo'yiladi: bot orqali yozilganlarda NULL qoladi.
+                bookedAt: new Date(),
             }
         });
+        // Tasdiq xabari 10 daqiqalik aylanishni kutmasin
+        kickTrigger('appointment_booked');
         res.json(appointment);
     } catch (error) {
         console.error('Failed to create appointment:', error);
@@ -6985,6 +6902,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // bitta yozuv qo'shiladi — bu yerdagi dvigatel va cron o'zgarmaydi.
 const { TRIGGERS, isWithinSendWindow } = require('./triggers');
 
+// Bir trigger bir vaqtda ikki marta aylanmasin. Log xabar yuborilgandan KEYIN
+// yoziladi, shuning uchun ustma-ust ikki aylanish (cron + kickTrigger yoki
+// ketma-ket ikki yozuv) dedupe tekshiruvidan ikkalasi ham o'tib, bemorga ikki
+// SMS ketardi. Band paytida kelgan so'rov tugagach bir marta qayta aylantiriladi.
+const runningTriggers = new Set<string>();
+const rerunTriggers = new Set<string>();
+
 /**
  * Bitta trigger bo'yicha barcha faol qoidalarni bajaradi.
  * Dedupe TelegramLog.ruleId + refId indeksi orqali — bir hodisaga bir marta.
@@ -6993,6 +6917,30 @@ async function runTrigger(triggerDef: any, ignoreWindow = false) {
     // Tinch soatlar: tug'ilgan kun tabrigi yarim tunda ketmasligi uchun
     if (!ignoreWindow && !isWithinSendWindow(triggerDef)) return;
 
+    if (runningTriggers.has(triggerDef.id)) {
+        rerunTriggers.add(triggerDef.id);
+        return;
+    }
+    runningTriggers.add(triggerDef.id);
+    try {
+        await runTriggerRules(triggerDef);
+    } finally {
+        runningTriggers.delete(triggerDef.id);
+    }
+    if (rerunTriggers.delete(triggerDef.id)) await runTrigger(triggerDef, ignoreWindow);
+}
+
+/**
+ * Hodisa sodir bo'lgan zahoti triggerni aylantiradi (javobni kutmasdan).
+ * Xato so'rovni yiqitmaydi: xabar — qulaylik, yozuvning o'zi allaqachon saqlangan.
+ */
+function kickTrigger(id: string) {
+    const def = getTrigger(id);
+    if (!def) return;
+    runTrigger(def).catch((err: any) => console.error(`❌ [${id}] darhol yuborishda xatolik:`, err));
+}
+
+async function runTriggerRules(triggerDef: any) {
     const rules = await prisma.automationRule.findMany({
         where: { active: true, trigger: triggerDef.id },
         include: { template: true },
@@ -7037,7 +6985,6 @@ async function runTrigger(triggerDef: any, ignoreWindow = false) {
                     refId: item.refId,
                     type: item.type,
                     replyMarkup: item.replyMarkup,
-                    respectCooldown: triggerDef.respectCooldown,
                 });
 
                 // Eski maydonni moslik uchun yangilaymiz

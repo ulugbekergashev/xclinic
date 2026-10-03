@@ -207,6 +207,19 @@ async function main() {
     if (v3.data?.id) {
         const inprog = await call('PUT', `/visits/${v3.data.id}`, { status: 'In Progress' }, token);
         ok('«Qabulda» holatiga o\'tish to\'silmadi', inprog.status === 200, `status: ${inprog.status}`);
+
+        /* KABINETGA KIRGAN VAQT (migratsiya 0037). «Bugun klinikada»
+           xaritasidagi taymer shundan sanaydi. Uch qoida: navbatda yo'q,
+           holat o'zgarganda yoziladi va shifokor kartani qayta ochganda
+           (yana «In Progress») noldan boshlanmaydi. */
+        ok('navbatdagi qabulda kirgan vaqt yo\'q', v3.data.startedAt == null, String(v3.data.startedAt));
+        ok('kabinetga kirgan vaqt yozildi', !!inprog.data?.startedAt, String(inprog.data?.startedAt));
+        const again = await call('PUT', `/visits/${v3.data.id}`, { status: 'In Progress' }, token);
+        ok('qayta «Qabulda» — vaqt o\'zgarmadi', again.data?.startedAt === inprog.data?.startedAt,
+            `${inprog.data?.startedAt} → ${again.data?.startedAt}`);
+        const back = await call('PUT', `/visits/${v3.data.id}`, { status: 'Waiting' }, token);
+        ok('navbatga qaytarilganda vaqt tozalandi', back.status === 200 && back.data?.startedAt === null,
+            `status: ${back.status}, ${back.data?.startedAt}`);
     }
 
     await lockedVisit(token, tag);

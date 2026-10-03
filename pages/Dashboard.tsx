@@ -3,9 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, BarChart3, CalendarCheck } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
-import { Department } from '../types';
+import { Department, Doctor, Service } from '../types';
 import { formatDateLong } from '../utils/format';
 import { DashboardOverview } from '../components/DashboardOverview';
+import { ClinicMapLive } from '../components/ClinicMapLive';
 import { AttendanceTab } from '../components/AttendanceReport';
 import { FinanceReport } from './FinanceReport';
 
@@ -42,12 +43,16 @@ const TABS: { key: Tab; labelKey: TranslationKey; icon: React.ElementType }[] = 
 ];
 
 interface Props {
+    clinicId: string;
     departments: Department[];
+    /** «Bugun klinikada» xaritasi uchun: qatorlar shifokorlar bo'yicha, reja xizmat davomiyligidan */
+    doctors: Doctor[];
+    services: Service[];
     /** Salomlashish uchun */
     userName?: string;
 }
 
-export const Dashboard: React.FC<Props> = ({ departments, userName }) => {
+export const Dashboard: React.FC<Props> = ({ clinicId, departments, doctors, services, userName }) => {
     const { t, language } = useLanguage();
 
     /* Vkladka manzilda (`?tab=hisobot`) — Xodimlar va Moliya bilan bir xil
@@ -98,7 +103,13 @@ export const Dashboard: React.FC<Props> = ({ departments, userName }) => {
             ) : tab === 'davomat' ? (
                 <AttendanceTab />
             ) : (
-                <DashboardOverview />
+                <>
+                    {/* Eganing birinchi savoli — «hozir klinikada nima bo'lyapti».
+                        Raqamlar undan keyin. Bu yerda xarita faqat ko'rsatadi;
+                        navbatni yuritish Registraturada. */}
+                    <ClinicMapLive clinicId={clinicId} doctors={doctors} departments={departments} services={services} />
+                    <DashboardOverview />
+                </>
             )}
         </div>
     );

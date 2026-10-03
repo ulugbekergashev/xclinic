@@ -48,9 +48,15 @@ async function main() {
     ok('material yaratildi', !!itemId, JSON.stringify(created.data).slice(0, 120));
     if (!itemId) process.exit(1);
 
-    // Uch partiya, turli muddat bilan — FEFO tartibini tekshirish uchun
-    await api('POST', '/stock-movements/in', { itemId, quantity: 10, cost: 100, batchNumber: 'B-KECH', expiryDate: '2027-12-01' });
-    await api('POST', '/stock-movements/in', { itemId, quantity: 10, cost: 100, batchNumber: 'B-ERTA', expiryDate: '2026-10-01' });
+    /* Uch partiya, turli muddat bilan — FEFO tartibini tekshirish uchun.
+
+       MUDDATLAR BUGUNDAN HISOBLANADI. Bu yerda qat'iy sanalar turardi
+       (`2026-10-01`, `2027-12-01`). 2026-10-01 o'tgach «erta» partiya
+       MUDDATI O'TGAN bo'lib qoldi: FEFO uni chetlab o'tdi va uchta sinov
+       yiqildi — dasturda emas, sinovning o'zida xato. */
+    const inDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    await api('POST', '/stock-movements/in', { itemId, quantity: 10, cost: 100, batchNumber: 'B-KECH', expiryDate: inDays(420) });
+    await api('POST', '/stock-movements/in', { itemId, quantity: 10, cost: 100, batchNumber: 'B-ERTA', expiryDate: inDays(60) });
     await api('POST', '/stock-movements/in', { itemId, quantity: 10, cost: 100, batchNumber: 'B-YOQ' });
     const afterIn = await itemById(itemId);
     ok('kirimdan keyin qoldiq 30', Math.round(afterIn?.quantity) === 30, `qoldiq: ${afterIn?.quantity}`);

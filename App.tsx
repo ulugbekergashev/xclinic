@@ -1795,7 +1795,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                   chiqardi. */}
               <Route path="/dashboard" element={
                 guard('dashboard',
-                <Dashboard departments={departments} userName={userName} />)
+                <Dashboard clinicId={clinicId} departments={departments} doctors={doctors} services={services} userName={userName} />)
               } />
 
               <Route path="/patients" element={

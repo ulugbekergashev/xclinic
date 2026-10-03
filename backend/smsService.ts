@@ -1,5 +1,8 @@
 import axios from 'axios';
 import { prisma } from './db';
+import { toEskizTemplate, pickEskizTemplate } from './eskizTemplates';
+
+export { toEskizTemplate };
 
 const ESKIZ_BASE_URL = 'https://notify.eskiz.uz/api';
 // Eskiz kabinetida ro'yxatdan o'tgan jo'natuvchi nomi.
@@ -8,16 +11,6 @@ const ESKIZ_BASE_URL = 'https://notify.eskiz.uz/api';
 // bilan SMS yuborib, boshqa klinikaning hisobidan foydalanib qo'yardi.
 // Endi nom Sozlamalarda kiritilmasa, SMS yuborilmaydi.
 const ESKIZ_NICK = process.env.ESKIZ_NICK || '';
-
-// Eskiz shablonida o'zgaruvchan qism `%w` bilan belgilanadi. Bizning
-// `{bemor_ismi}` kabi tokenlarimiz literal matn sifatida yuborilsa, moderatsiyadan
-// o'tgan shablon real (ism qo'yilgan) SMS'ga mos kelmaydi va yuborish rad etiladi.
-const TEMPLATE_TOKEN_RE = /\{[A-Za-z_]+\}/g;
-export const toEskizTemplate = (text: string): string => (text || '').replace(TEMPLATE_TOKEN_RE, '%w');
-
-// Eskiz matnni ozgina qayta formatlab qaytarishi mumkin — solishtirishdan oldin
-// bo'sh joy va registr farqlarini yo'qotamiz.
-const normalizeForMatch = (text: string): string => (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 /* Mantiq `shared/validation.ts` ga ko'chirildi (S3.1) — u yerdan front ham
    o'qiydi. Ilgari bu yerda va `utils/phone.ts` da IKKI NUSXA turardi va
@@ -250,26 +243,29 @@ class SmsService {
     }
 
     /**
-     * Berilgan shablon matnini Eskiz'dagi ro'yxatdan topadi (tokenlar `%w` ga
-     * aylantirilgan holda solishtiriladi) va ID + moderatsiya holatini qaytaradi.
+     * Berilgan shablon matnini Eskiz'dagi ro'yxatdan topadi va ID + moderatsiya holatini
+     * qaytaradi. Allaqachon tasdiqlangan mos matn ustuvor — klinika uni kabinetdan aniq
+     * misol bilan tasdiqlatgan bo'lsa ham (qoidasi — eskizTemplates.ts).
      */
     public async findTemplate(clinicId: string, text: string): Promise<{ match: { id: number; status: string } | null; error?: string }> {
         const { templates, error } = await this.getTemplates(clinicId);
         if (error) return { match: null, error };
 
-        const target = normalizeForMatch(toEskizTemplate(text));
-        // Oxirgi yuborilgani ustuvor — bir xil matn bir necha marta yuborilgan bo'lishi mumkin
-        const found = [...templates].reverse().find(t =>
-            normalizeForMatch(t.original_text) === target || normalizeForMatch(t.template) === target
-        );
+        const found = pickEskizTemplate(templates, text);
         return { match: found ? { id: found.id, status: found.status } : null };
     }
 
     /**
-     * Shablonni Eskiz'ga yuborib, so'ng ro'yxatdan (matn bo'yicha) topib, ID va holatini qaytaradi.
+     * Shablonni Eskiz'ga bog'laydi va ID + holatini qaytaradi. Eskiz'da mos matn allaqachon
+     * tasdiqlangan (yoki aynan shu matn yuborilgan) bo'lsa, qayta moderatsiyaga yubormaydi —
+     * klinika bekorga kutib qolmasin. Aks holda yuborib, ro'yxatdan topadi.
      * Klinikada Eskiz ulanmagan bo'lsa jim o'tkazib yuboradi (null qaytaradi).
      */
     public async submitAndSyncTemplate(clinicId: string, text: string): Promise<{ eskizTemplateId: number | null; eskizStatus: string | null }> {
+        const existing = await this.findTemplate(clinicId, text);
+        if (existing.error === 'Eskiz token topilmadi') return { eskizTemplateId: null, eskizStatus: null };
+        if (existing.match) return { eskizTemplateId: existing.match.id, eskizStatus: existing.match.status };
+
         const submitResult = await this.submitTemplate(clinicId, text);
         if (!submitResult.success) {
             // Eskiz ulanmagan bo'lsa jim qoladi; ulangan-yu xato bo'lsa holatni belgilaymiz

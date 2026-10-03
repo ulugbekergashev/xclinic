@@ -408,6 +408,8 @@ const DEMO_VISITS: Visit[] = DEMO_VISIT_PLAN.map((v, i) => {
         doctorName: doc ? `Dr. ${doc.firstName} ${doc.lastName}` : undefined,
         queueNumber: i + 1,
         calledAt: v.status === 'Waiting' ? null : minsAgo(Math.max(0, v.waited - 10)),
+        // «Bugun klinikada» xaritasidagi taymer shundan sanaydi
+        startedAt: v.status === 'In Progress' ? minsAgo(Math.max(0, v.waited - 20)) : null,
         awaitingSince: v.status === 'AwaitingResults' ? minsAgo(Math.max(0, v.waited - 15)) : null,
         patient: DEMO_PATIENTS.find(p => p.id === patientId),
     } as Visit;
@@ -2701,6 +2703,10 @@ export const api = {
             if (isDemoMode()) {
                 const v = DEMO_VISITS.find(x => x.id === id);
                 if (v) {
+                    /* Serverdagi bilan bir xil (`PUT /api/visits/:id`): kabinetga
+                       kirgan vaqt holat HAQIQATAN o'zgarganda yoziladi. */
+                    if (data.status === 'In Progress' && v.status !== 'In Progress') v.startedAt = new Date().toISOString();
+                    if (data.status === 'Waiting') v.startedAt = null;
                     Object.assign(v, data);
                     if (data.status === 'Completed' && !v.checkOutTime) v.checkOutTime = new Date().toISOString();
                 }
@@ -4656,14 +4662,14 @@ export const api = {
     messages: {
         // Yuborish serverda fonda bajariladi — javob darhol qaytadi, jarayonni
         // bulkStatus() orqali kuzatiladi, natija esa Tarix bo'limida ko'rinadi.
-        sendBulk: (clinicId: string, patientIds: string[], message: string, channel: MessageChannel, ignoreCooldown = false) => {
+        sendBulk: (clinicId: string, patientIds: string[], message: string, channel: MessageChannel) => {
             if (isDemoMode()) {
                 return Promise.resolve({ total: patientIds.length, queued: true });
             }
             return fetchJson<{ total: number; queued: boolean }>('/messages/send-bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ clinicId, patientIds, message, channel, ignoreCooldown }),
+                body: JSON.stringify({ clinicId, patientIds, message, channel }),
             });
         },
         testSend: (clinicId: string, message: string, channel: 'sms' | 'telegram', phone?: string, patientId?: string) => {
@@ -4672,18 +4678,6 @@ export const api = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ clinicId, message, channel, phone, patientId }),
-            });
-        },
-        getSettings: (clinicId: string) => {
-            if (isDemoMode()) return Promise.resolve({ cooldownDays: 0 });
-            return fetchJson<{ cooldownDays: number }>(`/messages/settings?clinicId=${clinicId}`);
-        },
-        saveSettings: (clinicId: string, cooldownDays: number) => {
-            if (isDemoMode()) return Promise.resolve({ cooldownDays });
-            return fetchJson<{ cooldownDays: number }>('/messages/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ clinicId, cooldownDays }),
             });
         },
         // Segment qurish uchun mavjud maydonlar — forma shu ro'yxatdan quriladi

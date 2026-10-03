@@ -160,6 +160,11 @@ model Appointment {
   /// Migratsiya 0034.
   serviceId    Int?
   reminderSent Boolean     @default(false)
+  /// Xodim yozuvni yaratgan payt. «Qabulga yozilganda» xabari shunga qarab
+  /// ketadi. NULL — xabar kerak emas: eski yozuvlar va Telegram bot orqali
+  /// yozilganlar (bot chatda o'zi tasdiqlaydi). Shuning uchun @default yo'q —
+  /// qiymatni `POST /api/appointments` o'zi qo'yadi. Migratsiya 0038.
+  bookedAt     DateTime?
   service      Service?    @relation(fields: [serviceId], references: [id])
   department   Department? @relation(fields: [departmentId], references: [id])
   clinic       Clinic      @relation(fields: [clinicId], references: [id])
@@ -205,6 +210,10 @@ model Visit {
   queueNumber   Int?
   /// Navbat chaqirilgan vaqt — tablo va kutish vaqti uchun
   calledAt      DateTime?
+  /// Kabinetga kirgan vaqt: holat «In Progress» ga o'tgan payt. Navbatga
+  /// qaytarilsa tozalanadi. «Bugun klinikada» xaritasi shundan sanaydi.
+  /// Migratsiya 0037.
+  startedAt     DateTime?
   /// Natija kutilmoqda: qabul navbatdan chiqadi, lekin yopilmaydi
   awaitingSince DateTime?
   /// Registratura yoki shifokor: qaysi bosqichda turibdi

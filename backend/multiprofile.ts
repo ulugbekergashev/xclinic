@@ -397,6 +397,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 treatmentPlan: treatmentPlan || null,
                 // Registratura ochsa — navbatda kutadi; shifokor o'zi ochsa — darhol ish boshlanadi
                 status: status || 'Waiting',
+                ...(status === 'In Progress' && { startedAt: new Date() }),
             },
             include: { patient: true, department: true, procedures: true },
         });
@@ -728,6 +729,12 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 ...(treatmentPlan !== undefined && { treatmentPlan }),
                 ...(status !== undefined && { status }),
                 ...(status === 'Called' && { calledAt: new Date() }),
+                /* Kabinetga kirgan vaqt — faqat holat HAQIQATAN o'zgarganda.
+                   Shifokor kartani qayta ochsa ham so'rov «In Progress» bilan
+                   keladi; har safar yangilansa xaritadagi taymer noldan
+                   boshlanardi. Navbatga qaytarilsa tozalanadi. */
+                ...(status === 'In Progress' && current.status !== 'In Progress' && { startedAt: new Date() }),
+                ...(status === 'Waiting' && { startedAt: null }),
                 ...(status === 'AwaitingResults' && { awaitingSince: new Date() }),
                 // Natija kelib bemor qaytganda kutish vaqti tozalanadi
                 ...(status === 'In Progress' && { awaitingSince: null }),

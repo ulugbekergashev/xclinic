@@ -302,7 +302,6 @@ export const RULES: Rule[] = [
     { method: 'POST', path: '/api/messages/saved-segments', roles: owner() },
     { method: 'DELETE', path: '/api/messages/saved-segments/:id', roles: owner() },
     { method: 'POST', path: '/api/messages/audience', roles: owner() },
-    { method: 'PUT', path: '/api/messages/settings', roles: owner() },
     { method: 'POST', path: '/api/messages/test-send', roles: owner() },
     { method: 'POST', path: '/api/messages/retry', roles: owner() },
     { method: 'POST', path: '/api/batch/remind-debts', roles: owner() },

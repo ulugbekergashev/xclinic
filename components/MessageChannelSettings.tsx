@@ -35,6 +35,16 @@ interface Props {
 
 type Mode = 'telegram_only' | 'sms_only' | 'both';
 
+/* Eskiz login va paroli uchun. «Login + parol» juftligini brauzer XClinic'ga
+   kirish formasi deb o'ylab, saqlangan XClinic login va parolini shu yerga
+   o'zi yozib qo'yardi — «Saqlash» bosilsa ular Eskiz'ga yuborilib, klinika
+   sozlamasiga yozilib qolardi. `autocomplete="off"` ni Chrome login
+   maydonlarida e'tiborsiz qoldiradi; parol maydonidagi `new-password` esa
+   butun juftlikni to'ldirishni to'xtatadi. `data-1p-ignore` / `data-lpignore`
+   — 1Password va LastPass uchun. */
+const NO_AUTOFILL = { autoComplete: 'off', 'data-1p-ignore': true, 'data-lpignore': 'true' } as const;
+const NO_AUTOFILL_PASSWORD = { ...NO_AUTOFILL, autoComplete: 'new-password' } as const;
+
 const MODES: { key: Mode; icon: string; title: string; hint: string }[] = [
     { key: 'telegram_only', icon: '🤖', title: tr('messagechannelsettings.faqat_telegram_bot'), hint: tr('messagechannelsettings.xabarlar_mijozning_telegram_profiliga') },
     { key: 'sms_only', icon: '📱', title: tr('messagechannelsettings.faqat_sms_eskiz'), hint: tr('messagechannelsettings.xabarlar_bevosita_telefon_raqamiga') },
@@ -171,10 +181,11 @@ export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClini
                         )}
 
                         <Input label="Kabinet email" placeholder="kabinet@eskiz.uz"
-                            value={eskizEmail} onChange={e => setEskizEmail(e.target.value)} />
+                            value={eskizEmail} onChange={e => setEskizEmail(e.target.value)} {...NO_AUTOFILL} />
                         <div className="space-y-1">
                             <label className="block text-sm font-medium text-muted">Kabinet paroli</label>
                             <input type="password"
+                                {...NO_AUTOFILL_PASSWORD}
                                 className="w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                                 placeholder={hasPassword ? t('messagechannelsettings.parol_kiritilgan_ozgartirish_uchun') : t('messagechannelsettings.parolni_kiriting')}
                                 value={eskizPassword} onChange={e => setEskizPassword(e.target.value)} />

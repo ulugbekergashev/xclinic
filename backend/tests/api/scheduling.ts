@@ -81,6 +81,9 @@ async function main() {
         date, time: '08:30', duration: 60, status: 'Pending',
     }, token);
     ok('birinchi qabul 08:30–09:30 yaratildi', first.status === 200, `status: ${first.status}`);
+    /* «Qabulga yozilganda» xabari yozilish vaqtiga qarab ketadi (migratsiya
+       0038). Vaqt bo'lmasa qoida bu yozuvni hech qachon topmaydi. */
+    ok('yozilish vaqti (bookedAt) saqlandi', !!first.data?.bookedAt, String(first.data?.bookedAt));
 
     /* MANA SHU auditdagi holat: 09:00 — boshlanish vaqti BOSHQA, lekin
        oraliq kesishadi. Eski tekshiruv buni o'tkazib yuborardi. */

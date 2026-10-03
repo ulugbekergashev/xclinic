@@ -54,8 +54,6 @@ export interface DueItem {
 export interface TriggerDef {
     id: string;
     label: string;
-    /** Chastota chegarasiga bo'ysunadimi. Transaksion xabarlar uchun false. */
-    respectCooldown: boolean;
     /**
      * Tinch soatlar: trigger faqat shu oraliqda ishlaydi (Toshkent vaqti).
      * Dvigatel har 10 daqiqada aylangani uchun bu bo'lmasa tug'ilgan kun
@@ -101,7 +99,6 @@ export const TRIGGERS: TriggerDef[] = [
     {
         id: 'scheduled',
         label: 'Jadval bo\'yicha (segmentga)',
-        respectCooldown: true,
         supportsDoctorFilter: false, // shifokor segment ichida tanlanadi
         supportsSegment: true,
         supportsSchedule: true,
@@ -133,8 +130,6 @@ export const TRIGGERS: TriggerDef[] = [
     {
         id: 'before_appointment',
         label: 'Qabuldan oldin',
-        // Transaksion: bemor o'z qabuli haqida bilishi shart
-        respectCooldown: false,
         offset: { label: 'Necha soat oldin', unit: 'hour', options: [1, 2, 3, 6, 12, 24], default: 2 },
         supportsDoctorFilter: true,
         async findDue(rule, clinic) {
@@ -173,11 +168,60 @@ export const TRIGGERS: TriggerDef[] = [
         },
     },
 
+    // ── 1b. Qabulga yozilganda (tasdiq) ─────────────────────────────────────
+    // Xodim qabul yozgach bemorga "siz ... kuni ... da yozildingiz" xabari.
+    // Yozilish vaqti — Appointment.bookedAt (migratsiya 0038); eski yozuvlar
+    // va Telegram bot orqali yozilganlarda u NULL, ularga ketmaydi.
+    {
+        id: 'appointment_booked',
+        label: 'Qabulga yozilganda',
+        sendWindow: { fromHour: 8, toHour: 22 },
+        supportsDoctorFilter: true,
+        async findDue(rule, clinic) {
+            // Oxirgi sutkada yozilganlar (kechqurun yozilgani ertalab ketadi),
+            // lekin qoida yaratilgunga qadar yozilganlar emas — qoida yoqilgan
+            // zahoti oldingi yozilishlarga birdaniga SMS ketmasin
+            const since = new Date(Math.max(Date.now() - 86400000, new Date(rule.createdAt).getTime()));
+            const appointments = await prisma.appointment.findMany({
+                where: {
+                    clinicId: rule.clinicId,
+                    bookedAt: { gte: since },
+                    date: { gte: tashkentDateStr(0) },
+                    status: { in: ['Confirmed', 'Pending'] },
+                    ...(rule.doctorId ? { doctorId: rule.doctorId } : {}),
+                },
+                include: { patient: true, doctor: true },
+            });
+
+            const nowMs = tashkentNowMs();
+            const due: DueItem[] = [];
+            for (const appt of appointments) {
+                const apptMs = wallClockMs(appt.date, appt.time);
+                // Qabulgacha 30 daqiqa ham qolmagan — bemor klinikada yoki
+                // u bilan hozirgina gaplashildi, tasdiq ortiqcha
+                if (isNaN(apptMs) || apptMs - nowMs < 30 * 60000) continue;
+                due.push({
+                    patient: appt.patient,
+                    // Yozilish vaqti bilan: har yozilish — alohida hodisa
+                    refId: `${appt.id}:${new Date(appt.bookedAt!).getTime()}`,
+                    type: 'Booked',
+                    vars: {
+                        ...patientName(appt.patient),
+                        date: appt.date.split('-').reverse().join('.'),
+                        time: appt.time,
+                        clinicName: clinic.name,
+                        doctorName: doctorName(appt.doctor),
+                    },
+                });
+            }
+            return due;
+        },
+    },
+
     // ── 2. Tug'ilgan kun ────────────────────────────────────────────────────
     {
         id: 'birthday',
         label: "Tug'ilgan kun",
-        respectCooldown: true,
         sendWindow: { fromHour: 9, toHour: 21 },
         supportsDoctorFilter: true,
         async findDue(rule, clinic) {
@@ -208,7 +252,6 @@ export const TRIGGERS: TriggerDef[] = [
     {
         id: 'no_show',
         label: 'Kelmagan bemor',
-        respectCooldown: true,
         sendWindow: { fromHour: 20, toHour: 22 },
         supportsDoctorFilter: true,
         async findDue(rule, clinic) {
@@ -242,7 +285,6 @@ export const TRIGGERS: TriggerDef[] = [
     {
         id: 'after_appointment',
         label: 'Qabuldan keyin',
-        respectCooldown: true,
         sendWindow: { fromHour: 9, toHour: 21 },
         offset: { label: 'Necha soat keyin', unit: 'hour', options: [2, 4, 24, 48, 72], default: 24 },
         supportsDoctorFilter: true,
@@ -292,7 +334,6 @@ export const TRIGGERS: TriggerDef[] = [
     {
         id: 'new_patient',
         label: "Yangi bemor ro'yxatdan o'tdi",
-        respectCooldown: false, // birinchi salomlashuv — bir marta bo'ladi
         sendWindow: { fromHour: 9, toHour: 21 },
         offset: { label: 'Necha soat keyin', unit: 'hour', options: [0, 1, 2, 24], default: 1 },
         supportsDoctorFilter: true,
@@ -325,7 +366,6 @@ export const TRIGGERS: TriggerDef[] = [
     {
         id: 'payment_received',
         label: "To'lov qabul qilindi",
-        respectCooldown: false, // transaksion tasdiq
         sendWindow: { fromHour: 8, toHour: 22 },
         offset: { label: 'Necha soat keyin', unit: 'hour', options: [0, 1, 2, 24], default: 0 },
         supportsDoctorFilter: false,
@@ -366,7 +406,6 @@ export const TRIGGERS: TriggerDef[] = [
     {
         id: 'recall',
         label: 'Uzoq kelmaganlarni qaytarish',
-        respectCooldown: true,
         sendWindow: { fromHour: 10, toHour: 19 },
         offset: { label: 'Necha oydan beri kelmagan', unit: 'month', options: [3, 6, 9, 12], default: 6 },
         supportsDoctorFilter: true,
@@ -405,7 +444,6 @@ export const TRIGGERS: TriggerDef[] = [
     {
         id: 'debt_reminder',
         label: 'Qarz eslatmasi',
-        respectCooldown: true,
         sendWindow: { fromHour: 10, toHour: 19 },
         offset: { label: 'Qarz necha kundan beri', unit: 'day', options: [3, 7, 14, 30], default: 7 },
         supportsDoctorFilter: false,
@@ -459,8 +497,8 @@ export const getTrigger = (id: string) => TRIGGERS.find(t => t.id === id);
 
 /** Frontendga yuboriladigan tavsif (findDue funksiyasisiz) */
 export const TRIGGER_DESCRIPTORS = TRIGGERS.map(
-    ({ id, label, offset, supportsDoctorFilter, respectCooldown, sendWindow, supportsSegment, supportsSchedule }) => ({
-        id, label, offset, supportsDoctorFilter, respectCooldown, sendWindow,
+    ({ id, label, offset, supportsDoctorFilter, sendWindow, supportsSegment, supportsSchedule }) => ({
+        id, label, offset, supportsDoctorFilter, sendWindow,
         supportsSegment: !!supportsSegment,
         supportsSchedule: !!supportsSchedule,
     })
