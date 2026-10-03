@@ -57,6 +57,11 @@ ega: umumiy, hisobot, davomat) va **Registratura** (`/reception`, hamma;
 shifokor uchun «Mening navbatim»). Hisobot va davomat Moliyadan Bosh panelga
 ko'chdi, Moliya faqat kassa.
 
+2026-10-03: qayta birlashtirildi — **Bugun** (`/reception`, hamma rol: jonli
+xarita yagona navbat, «Yangi qabul» oynasi — F2, egaga «Bugun hal qilinsin»)
+va **Hisobot** (`/dashboard`, faqat ega: hisobot, davomat). Sabab: Bosh panel
+xaritani ham, navbatni ham takrorlab qo'ygan edi — bitta ish ikki ekranda.
+
 **Ehtiyot.** Yangi raqam qo'shilsa u ham serverdan kelishi shart. Propdagi
 45 kunlik ro'yxatdan sanalgan har qanday son — jimgina yolg'on.
 

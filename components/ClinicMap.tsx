@@ -6,6 +6,7 @@ import { Card } from './Common';
 import { LiveTimer } from './LiveTimer';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { formatDateToISO } from '../utils/dateUtils';
+import { formatNumber } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import {
     buildClinicFlow, FlowLane, flowIdOfAppointment, flowIdOfVisit, initialsOf, minutesOf,
@@ -21,11 +22,11 @@ import {
    loyihaning o'z modeliga (`Visit` holatlari) tayanadi.
 
    KOMPONENT MA'LUMOT YUKLAMAYDI. Qabullar va yozuvlar tashqaridan keladi —
-   Registratura ularni allaqachon yuklaydi va jonli yangilaydi; ikkinchi
+   «Bugun» ekrani ularni allaqachon yuklaydi va jonli yangilaydi; ikkinchi
    nusxa ikki xil raqam degani bo'lardi.
 
-   TUGMALAR IXTIYORIY. Ishlovchi berilmasa tugma chizilmaydi: eganing Bosh
-   panelida xarita faqat ko'rsatadi, Registraturada esa boshqaradi.
+   TUGMALAR IXTIYORIY. Ishlovchi berilmasa tugma chizilmaydi — xarita faqat
+   ko'rsatadi. «Bugun» ekranida u navbatni boshqaradi.
 
    YAKUNLASH TUGMASI YO'Q (denta7 da bor). Bu yerda qabulni yopish —
    shifokorning ishi: tashxis, to'lov va tahlil natijasi tekshiriladi
@@ -53,11 +54,12 @@ interface ClinicMapProps {
     onEnter?: (v: Visit) => Promise<void>;
     /** Adashib bosilgan «Kirdi» — bemor navbatga qaytadi */
     onUndoEnter?: (v: Visit) => Promise<void>;
+    /** Pastdagi «Barcha qabullar — Kalendar» havolasi */
     onSeeAll?: () => void;
-    /** Pastdagi havola matni. Berilmasa — «Barcha qabullar — Kalendar» */
-    seeAllLabel?: string;
     /** Sarlavhada yig'ish tugmasi. Holat shu brauzerda eslab qolinadi */
     collapsible?: boolean;
+    /** Bemorning to'lanmagan summasi — belgi yonida ko'rinadi. Faqat pul oladiganlarga beriladi */
+    dueOf?: (patientId: string) => number;
 }
 
 /** Yo'l chizig'ida ko'rinadigan oyna — keyingi 3 soat */
@@ -152,7 +154,7 @@ const Name: React.FC<{ name: string; onOpen?: () => void; className?: string; sh
 
 export const ClinicMap: React.FC<ClinicMapProps> = ({
     visits, appointments, doctors, departments, services,
-    onPatientClick, onOpenVisit, onArrived, onNoShow, onCall, onEnter, onUndoEnter, onSeeAll, seeAllLabel, collapsible,
+    onPatientClick, onOpenVisit, onArrived, onNoShow, onCall, onEnter, onUndoEnter, onSeeAll, collapsible, dueOf,
 }) => {
     const { t } = useLanguage();
     const now = useNow(30000);
@@ -168,6 +170,8 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
     const [hover, setHover] = useState<string | null>(null);
     const [pending, setPending] = useState<string | null>(null);
     const [showAll, setShowAll] = useState(false);
+    /** To'liq ochilgan navbat (kutish zalidagi bitta qator) — «+N» bosilganda */
+    const [openLane, setOpenLane] = useState<string | null>(null);
     const [open, setOpen] = useState(() => (collapsible ? readOpen() : true));
 
     const toggleOpen = () => setOpen(prev => {
@@ -204,6 +208,18 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
     const waitText = (v: Visit) => {
         const m = waitedMinutes(v, nowMs);
         return m <= 0 ? t('flow.newArrival') : fmtMin(m);
+    };
+    /* To'lanmagan summa — navbat va kabinetdagi bemor yonida. Registrator
+       bemorni chaqirayotganda ham, chiqarayotganda ham summani ko'rib turadi;
+       ilgari bu belgi alohida navbat ro'yxatida edi. */
+    const dueBadge = (patientId?: string, extra = '') => {
+        const due = patientId && dueOf ? dueOf(patientId) : 0;
+        if (!(due > 0)) return null;
+        return (
+            <span title={t('today.toPay')} className={`inline-block px-1.5 rounded-md border border-amber-500/25 bg-amber-500/12 text-[10px] leading-4 font-bold tabular-nums text-amber-700 dark:text-amber-400 ${extra}`}>
+                {formatNumber(due)}
+            </span>
+        );
     };
     const waitTone = (m: number) => (m >= 30 ? 'text-red-600 dark:text-red-400' : m >= 15 ? 'text-amber-700 dark:text-amber-400' : 'text-muted');
 
@@ -323,9 +339,17 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                         {[visitLabel(chair, flow.booked[chair.id]), fill(t('flow.since'), hhmmOf(chairSince))].filter(Boolean).join(' · ')}
                     </p>
                     <p className={`truncate text-xs font-bold ${over ? 'text-amber-700 dark:text-amber-400' : 'text-muted'}`}>{foot}</p>
-                    {lane.chairExtra > 0 && (
-                        <p className="truncate text-[11px] text-faint">{fill(t('flow.alsoInChair'), lane.chairExtra)}</p>
+                    {/* Ismma-ism va bosiladi: navbat ro'yxati olib tashlangach
+                        bu qabullarga «Bugun» dan boshqa yo'l qolmagan edi. */}
+                    {lane.chairOthers.length > 0 && (
+                        <p className="flex flex-wrap items-baseline gap-x-1.5 text-[11px] text-faint">
+                            <span>{fill(t('flow.alsoInChair'), lane.chairOthers.length)}:</span>
+                            {lane.chairOthers.map(v => (
+                                <Name key={v.id} name={visitName(v)} short onOpen={openVisit(v)} className="font-bold text-muted" />
+                            ))}
+                        </p>
                     )}
+                    {dueBadge(chair.patientId, 'mt-0.5')}
                 </div>
             );
             const timer = (
@@ -471,6 +495,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                 <span className={`text-[11px] font-bold whitespace-nowrap ${called ? 'text-primary-600 dark:text-primary-400' : waitTone(waited)}`}>
                     {called ? t('flow.called') : waitText(v)}
                 </span>
+                {dueBadge(v.patientId)}
                 {onCall && (
                     <button
                         type="button"
@@ -488,18 +513,34 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
         );
     };
 
+    /* Qatorga sig'maganlar «+N» ortida turadi. U TUGMA: bosilsa qator to'liq
+       ochiladi. Ilgari yashirin bemorlarga yonidagi navbat ro'yxatidan
+       borilardi; ro'yxat olib tashlangach xaritaning o'zi shu ishni qilishi
+       kerak — aks holda beshinchi bo'lib kelgan bemorni chaqirib bo'lmaydi. */
     const benchSeats = (lane: FlowLane, slots: number, size: number) => {
-        const visible = lane.queue.length > slots ? lane.queue.slice(0, slots - 1) : lane.queue;
+        const all = openLane === lane.key;
+        const overflow = lane.queue.length > slots;
+        const visible = overflow && !all ? lane.queue.slice(0, slots - 1) : lane.queue;
         const hidden = lane.queue.length - visible.length;
         const empty = Math.max(0, slots - visible.length - (hidden > 0 ? 1 : 0));
         return (
             <>
                 {visible.map((v, i) => seated(lane, v, i, size))}
                 {hidden > 0 && (
-                    <div className="shrink-0 w-20 flex flex-col items-center">
-                        <span className="mt-1.5 inline-flex items-center justify-center rounded-full border-2 border-dashed border-amber-300 dark:border-amber-700 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-sm font-black" style={{ width: size, height: size }}>+{hidden}</span>
+                    <button type="button" onClick={() => setOpenLane(lane.key)} aria-expanded={false}
+                        aria-label={`${laneLabel(lane)}: ${fill(t('flow.showAllWaiting'), hidden)}`}
+                        className="shrink-0 w-20 flex flex-col items-center group">
+                        <span className="mt-1.5 inline-flex items-center justify-center rounded-full border-2 border-dashed border-amber-300 dark:border-amber-700 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-sm font-black group-hover:border-amber-500 transition-colors" style={{ width: size, height: size }}>+{hidden}</span>
                         <span className="mt-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-400">{t('flow.moreWaiting')}</span>
-                    </div>
+                    </button>
+                )}
+                {all && overflow && (
+                    <button type="button" onClick={() => setOpenLane(null)} aria-expanded={true}
+                        aria-label={`${laneLabel(lane)}: ${t('flow.collapseLane')}`}
+                        className="shrink-0 w-20 flex flex-col items-center text-amber-700 dark:text-amber-400">
+                        <span className="mt-1.5 inline-flex items-center justify-center rounded-full border-2 border-dashed border-amber-300 dark:border-amber-700" style={{ width: size, height: size }}><ChevronUp className="w-4 h-4" /></span>
+                        <span className="mt-1.5 text-[11px] font-bold">{t('flow.collapseLane')}</span>
+                    </button>
                 )}
                 {Array.from({ length: empty }, (_, i) => (
                     <div key={`empty-${i}`} aria-hidden="true" className="shrink-0 w-20 flex justify-center">
@@ -694,7 +735,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                                     <span className="mt-1">{etaChip(lane)}</span>
                                 </div>
                                 {/* Navbatdagi birinchi eshikka (kabinetga) eng yaqin o'tiradi */}
-                                <div className="flex-1 min-w-0 flex flex-row-reverse items-center justify-start gap-1">
+                                <div className={`flex-1 min-w-0 flex flex-row-reverse items-center justify-start gap-1 ${openLane === lane.key ? 'flex-wrap gap-y-3 py-1' : ''}`}>
                                     {benchSeats(lane, seatsPerBench, 44)}
                                 </div>
                             </div>
@@ -813,7 +854,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                                         ) : <span />}
                                         {onSeeAll && (
                                             <button type="button" onClick={onSeeAll} className="inline-flex items-center gap-1 font-bold text-primary-600 dark:text-primary-400 hover:underline">
-                                                {seeAllLabel || t('flow.calendar')} <ChevronRight className="w-3.5 h-3.5" />
+                                                {t('flow.calendar')} <ChevronRight className="w-3.5 h-3.5" />
                                             </button>
                                         )}
                                     </div>

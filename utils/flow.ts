@@ -63,8 +63,8 @@ export interface FlowLane {
     chair: Visit | null;
     /** Kabinetga kirgan payt (ms) */
     chairSince: number | null;
-    /** Kabinetda yana ochiq turgan qabullar soni (odatda 0) */
-    chairExtra: number;
+    /** Kabinetda yana ochiq turgan qabullar (odatda bo'sh) — ismma-ism, xaritadan ochilsin */
+    chairOthers: Visit[];
     /** Kutish zalida — chaqirilganlar oldinda, keyin kelish tartibida */
     queue: Visit[];
     /** Bugun hali keladiganlar — vaqt tartibida */
@@ -207,7 +207,7 @@ export function buildClinicFlow(
             color: doctor?.color || department?.color || '#4f46e5',
             chair,
             chairSince: chair ? chairSinceOf(chair) : null,
-            chairExtra: Math.max(0, seated.length - 1),
+            chairOthers: seated.slice(1),
             queue,
             coming: laneComing,
             done,

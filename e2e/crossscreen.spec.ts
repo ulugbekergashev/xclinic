@@ -64,10 +64,24 @@ async function addPatient(page: Page, surname: string, n: string) {
     await expect(page.getByText(surname).first()).toBeVisible();
 }
 
-/** Registraturada qabul ochish: bemor → bo'lim → shifokor → xizmat. */
+/** «Bugun» dagi «Yangi qabul» oynasi — qabul masterosi shu yerda. */
+async function openIntake(page: Page) {
+    await nav(page, /^Bugun$/);
+    await page.getByRole('button', { name: /^Yangi qabul$/ }).click();
+    await expect(page.locator('#rc-dept')).toBeVisible();
+}
+
+/** Oyna yon menyuni yopib turadi — boshqa ekranga o'tishdan oldin yopiladi,
+    foydalanuvchi ham shunday qiladi. */
+async function closeIntake(page: Page) {
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Yangi qabul' })).toHaveCount(0);
+}
+
+/** «Yangi qabul» oynasida qabul ochish: bemor → bo'lim → shifokor → xizmat. */
 async function openVisitAtReception(page: Page, surname: string, dept: RegExp) {
-    await nav(page, /^Registratura$/);
-    await page.getByPlaceholder(/qidir|ism|telefon/i).first().fill(surname);
+    await openIntake(page);
+    await page.getByRole('dialog').getByPlaceholder(/qidir|ism|telefon/i).first().fill(surname);
     await page.getByRole('button', { name: new RegExp(surname) }).first().click();
     const deptSelect = page.locator('#rc-dept');
     const value = await deptSelect.locator('option', { hasText: dept }).first().getAttribute('value');
@@ -103,7 +117,7 @@ test.describe('bir kompyuterda', () => {
         await enter(page);
         await addDepartment(page, name);
 
-        await nav(page, /^Registratura$/);
+        await openIntake(page);
         await expect(page.locator('#rc-dept option', { hasText: name })).toHaveCount(1);
         await stillSamePage(page);
     });
@@ -119,13 +133,14 @@ test.describe('bir kompyuterda', () => {
         await page.getByRole('dialog').getByRole('button', { name: /^Faolsizlantirish$/ }).click();
         await expect(row.getByText(/O'chirilgan/i)).toBeVisible();
 
-        await nav(page, /^Registratura$/);
+        await openIntake(page);
         await expect(page.locator('#rc-dept option', { hasText: name })).toHaveCount(0);
+        await closeIntake(page);
 
         await settingsTab(page, /^Bo'limlar$/);
         await page.locator('div.border.rounded-lg', { hasText: name }).last()
             .getByRole('button', { name: /^Yoqish$/ }).click();
-        await nav(page, /^Registratura$/);
+        await openIntake(page);
         await expect(page.locator('#rc-dept option', { hasText: name })).toHaveCount(1);
         await stillSamePage(page);
     });
@@ -185,8 +200,7 @@ test.describe('ikki kompyuterda', () => {
     test("ega bo'lim qo'shadi — registrator qayta kirmasdan ko'radi", async ({ page, browser }) => {
         const name = `Endokrin${uniq().slice(0, 4)}`;
         const reg = await secondScreen(browser, 'admin');
-        await nav(reg.page, /^Registratura$/);
-        await expect(reg.page.locator('#rc-dept')).toBeVisible();
+        await openIntake(reg.page);
 
         await enter(page);
         await addDepartment(page, name);

@@ -25,11 +25,11 @@ import { login, go } from './helpers';
    `smoke.spec.ts` da alohida qaralgan. */
 const ROUTES: { path: string; name: string }[] = [
     { path: '/', name: 'Bosh sahifa' },
-    { path: '/dashboard', name: 'Bosh panel' },
-    { path: '/dashboard?tab=hisobot', name: 'Bosh panel — Hisobot' },
-    { path: '/dashboard?tab=davomat', name: 'Bosh panel — Davomat' },
-    { path: '/reception', name: 'Registratura' },
-    /* Eski manzillar — Registraturaga yo'naltiriladi. Ular ham ochilishi
+    { path: '/dashboard', name: 'Hisobot' },
+    { path: '/dashboard?tab=hisobot', name: 'Hisobot (eski havola)' },
+    { path: '/dashboard?tab=davomat', name: 'Hisobot — Davomat' },
+    { path: '/reception', name: 'Bugun' },
+    /* Eski manzillar — «Bugun» ga yo'naltiriladi. Ular ham ochilishi
        kerak: talonlarda va xatcho'plarda o'shalar qolgan. */
     { path: '/today', name: 'Bugun (eski manzil)' },
     { path: '/myqueue', name: 'Mening navbatim (eski manzil)' },

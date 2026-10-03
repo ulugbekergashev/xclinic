@@ -171,7 +171,7 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await page.waitForTimeout(1500);
         await expect(page.getByText('Sinov UZI').first()).toBeVisible();
     });
-    test("Registraturadan qabul ochiladi, eski havola ham ishlaydi", async ({ page }) => {
+    test("«Bugun» xaritasidan qabul ochiladi, eski havola ham ishlaydi", async ({ page }) => {
         /* Ikkita narsa birga tekshiriladi, chunki ikkinchisi birinchisining
            natijasiga tayanadi: navbatdagi tugma bemor kartasini ochishi va
            eski `/visit/:id` havolasi o'sha kartaga yo'naltirishi kerak.
@@ -180,20 +180,27 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
            umid qilardi va oldingi sinovlar navbatni bo'shatib qo'yganda
            jimgina o'tkazib yuborilardi — ya'ni hech narsa tekshirmasdi. */
         await login(page);
-        await openFreshPatientCard(page);
+        const n = await openFreshPatientCard(page);
 
         await page.locator('select').first().selectOption({ index: 1 });
         await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
         await page.waitForTimeout(2500);
         await expect(page.getByText('Joriy qabul')).toBeVisible();
 
-        /* Endi Registraturada o'sha qabul navbatda turishi kerak. */
+        /* Endi «Bugun» xaritasida o'sha bemor kutish zalida turishi kerak.
+           Alohida navbat ro'yxati yo'q (u xaritani takrorlardi) — karta
+           bemorning ismi bosilganda ochiladi. Navbat uzun bo'lsa bemor
+           «+N» ortida turadi, shuning uchun qatorlar avval ochiladi. */
         await go(page, '/reception');
-        await page.waitForTimeout(3000);
-
-        const openBtn = page.getByRole('button', { name: /^Ochish$/ }).first();
-        await expect(openBtn).toBeVisible({ timeout: 15_000 });
-        await openBtn.click();
+        await expect(page.getByRole('heading', { name: 'Bugun klinikada' })).toBeVisible({ timeout: 15_000 });
+        const seat = page.getByRole('button', { name: new RegExp(`^Kartaviy${n}`) }).first();
+        for (let i = 0; i < 12 && !(await seat.isVisible()); i++) {
+            const more = page.getByRole('button', { name: /hammasini ko'rsatish/ }).first();
+            if (!(await more.count())) { await page.waitForTimeout(500); continue; }
+            await more.click();
+        }
+        await expect(seat).toBeVisible({ timeout: 15_000 });
+        await seat.click();
         await page.waitForTimeout(3000);
 
         expect(page.url()).toContain('/patients/');

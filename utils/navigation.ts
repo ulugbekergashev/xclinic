@@ -1,5 +1,5 @@
 import {
-    LayoutDashboard, Stethoscope, Users, Calendar as CalendarIcon, Wallet, Package,
+    LayoutDashboard, BarChart3, Users, Calendar as CalendarIcon, Wallet, Package,
     FlaskConical, Scan, BedDouble, Settings as SettingsIcon, UserCog,
     MessageSquare,
 } from 'lucide-react';
@@ -30,10 +30,9 @@ export interface NavItemDef {
     id: string;
     path: string;
     labelKey: TranslationKey;
-    /* BITTA EKRAN, ROLGA QARAB BOSHQA NOM. Registratura shifokor uchun
-       «Mening navbatim»: u yerda qabul ochmaydi, o'z navbatini ko'radi.
-       Alohida punkt emas — sahifa bitta, nomi ikki xil. Nomni har doim
-       `navLabelKey` orqali oling, `labelKey` ni to'g'ridan-to'g'ri emas. */
+    /* BITTA EKRAN, ROLGA QARAB BOSHQA NOM — kerak bo'lganda. Hozir hech
+       bir punkt ishlatmaydi («Bugun» hamma rol uchun bir xil nomda), lekin
+       nomni baribir `navLabelKey` orqali oling. */
     labelFor?: Partial<Record<UserRole, TranslationKey>>;
     icon: React.ElementType;
     roles: UserRole[];
@@ -42,22 +41,24 @@ export interface NavItemDef {
 const ALL = [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE];
 
 export const NAVIGATION: NavItemDef[] = [
-    /* BOSH PANEL — faqat egaga. Bugungi raqamlar, «hal qilinsin»
-       ro'yxati, hisobot va davomat. 2026-09-16 gacha bular «Bugun»
-       ekranining tepasidagi yig'iq tasma va Moliyaning vkladkalari edi. */
-    { id: 'dashboard', path: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, roles: [UserRole.CLINIC_ADMIN] },
-    /* REGISTRATURA — kunlik ish. Registrator qabul ochadi va navbatni
-       boshqaradi, shifokor o'z navbatini ko'radi, hamshira kimga nima
-       buyurilganini biladi. Sahifa bitta (`pages/Reception.tsx`). */
-    {
-        id: 'reception', path: '/reception', labelKey: 'reception.title',
-        labelFor: { [UserRole.DOCTOR]: 'today.myQueue', [UserRole.NURSE]: 'nav.queue' },
-        icon: Stethoscope, roles: ALL,
-    },
+    /* BUGUN — kunlik ish, hamma uchun bitta ekran (`pages/Reception.tsx`).
+       Registrator va ega jonli xaritada navbatni yuritadi va «Yangi qabul»
+       ochadi; egaga qo'shimcha — kassa qatori va «Bugun hal qilinsin»;
+       shifokor o'z navbatini ko'radi.
+
+       Bu punkt «Registratura» edi, yonida esa egaga alohida «Bosh panel»
+       turardi va o'sha xaritani takrorlardi. 2026-10-03 da birlashtirildi:
+       bitta ish — bitta joy. Manzil va modul nomi (`reception`) o'zgarmadi —
+       talonlarda, xatcho'plarda va «Ruxsatlar» sozlamasida shular turadi. */
+    { id: 'reception', path: '/reception', labelKey: 'nav.today', icon: LayoutDashboard, roles: ALL },
     { id: 'patients', path: '/patients', labelKey: 'nav.patients', icon: Users, roles: ALL },
     { id: 'calendar', path: '/calendar', labelKey: 'nav.calendar', icon: CalendarIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-    /* MOLIYA — kassa. Hisobot va davomat bu yerda emas, Bosh panelda. */
+    /* MOLIYA — kassa. Hisobot va davomat bu yerda emas, «Hisobot» da. */
     { id: 'finance', path: '/finance', labelKey: 'nav.finance', icon: Wallet, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
+    /* HISOBOT — faqat egaga: davr bo'yicha foyda, qarz, davomat. Bugungi
+       holat bu yerda emas, «Bugun» da. Modul nomi `dashboard` bo'lib qoldi
+       (eski havolalar uchun), ekran esa `pages/Dashboard.tsx`. */
+    { id: 'dashboard', path: '/dashboard', labelKey: 'nav.reports', icon: BarChart3, roles: [UserRole.CLINIC_ADMIN] },
     { id: 'inventory', path: '/inventory', labelKey: 'inventory.title', icon: Package, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
     /* Laboratoriya va Diagnostika — BAJARUVCHINING ish o'rni. Shifokor
        ularga bemor kartasidan yo'llanma yuboradi va natijani o'sha yerda
@@ -133,7 +134,6 @@ export function canOpenModule(role: UserRole, ac: AccessControl, moduleId: strin
 
 /** Rolning bosh sahifasi — kirganda shu yerga tushadi, ruxsat bo'lmaganda shu yerga qaytariladi */
 export function homeFor(role: UserRole): string {
-    if (role === UserRole.CLINIC_ADMIN) return '/dashboard';
     if (role === UserRole.NURSE) return '/inpatient';
     if (role === UserRole.LAB_TECHNICIAN) return '/lab';
     return '/reception';

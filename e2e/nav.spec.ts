@@ -19,18 +19,19 @@ test.describe('Menyu va ruxsatlar', () => {
 
         const nav = page.locator('nav').first();
         /* Lidlar, Shifokorlar analitikasi va Tablo menyudan chiqdi.
-           «Boshqaruv Paneli» ham yo'q — egaga endi «Bosh panel» bor:
-           eski nomdagi olti plitkali ekran emas, boshqa sahifa. */
+           «Bosh panel» va «Registratura» ham yo'q: ikkalasi bitta «Bugun»
+           ekraniga birlashdi (2026-10-03), davr bo'yicha tahlil esa
+           «Hisobot» nomini oldi. */
         /* «Xabarlar» bu ro'yxatdan CHIQARILDI: u menyuga qaytarildi
            (`utils/navigation.ts`, faqat egaga). Sinov eskirgan qarorni
            yozib turgan edi va shu sababdan yiqilardi. */
-        for (const gone of ['Boshqaruv Paneli', 'Lidlar', 'Shifokorlar', 'Navbat tablosi']) {
+        for (const gone of ['Boshqaruv Paneli', 'Bosh panel', 'Registratura', 'Lidlar', 'Shifokorlar', 'Navbat tablosi']) {
             await expect(page.getByRole('link', { name: gone })).toHaveCount(0);
         }
         void nav;
 
         // Qolganlari joyida
-        for (const stays of ['Bosh panel', 'Registratura', 'Bemorlar', 'Kalendar', 'Moliya', 'Xodimlar', 'Sozlamalar']) {
+        for (const stays of ['Bugun', 'Bemorlar', 'Kalendar', 'Moliya', 'Hisobot', 'Xodimlar', 'Sozlamalar']) {
             await expect(page.getByRole('link', { name: stays }).first()).toBeVisible();
         }
     });
@@ -47,13 +48,51 @@ test.describe('Menyu va ruxsatlar', () => {
         }
     });
 
-    test("bosh sahifa egani «Bosh panel» ga yo'naltiradi", async ({ page }) => {
-        /* Sinov ega (`admin`) bilan kiradi. Registrator va shifokor
-           Registraturaga tushadi — `homeFor` (`utils/navigation.ts`). */
+    test("bosh sahifa egani «Bugun» ga yo'naltiradi", async ({ page }) => {
+        /* Sinov ega (`admin`) bilan kiradi. Registrator va shifokor ham
+           shu ekranga tushadi — `homeFor` (`utils/navigation.ts`). */
         await login(page);
         await go(page, '/');
         await page.waitForTimeout(2500);
-        expect(page.url()).toContain('/dashboard');
+        expect(page.url()).toContain('/reception');
+        await expect(page.getByRole('heading', { name: 'Bugun', exact: true })).toBeVisible();
+    });
+
+    test("«Bugun» da ega uchun xarita, kassa qatori va «hal qilinsin» bitta ekranda", async ({ page }) => {
+        /* Ilgari bular ikki sahifada edi: xarita ham Bosh panelda, ham
+           Registraturada turardi. Endi bitta joyda, takrorsiz. */
+        await login(page);
+        await go(page, '/reception');
+        await expect(page.getByRole('heading', { name: 'Bugun klinikada' })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('heading', { name: 'Bugun hal qilinsin' })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/Bugun kassaga/).first()).toBeVisible();
+        // Qabul masterosi sahifada doim ochiq turmaydi — u «Yangi qabul» oynasida
+        await expect(page.locator('#rc-dept')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Yangi qabul' }).click();
+        await expect(page.getByRole('dialog', { name: 'Yangi qabul' })).toBeVisible();
+        await expect(page.locator('#rc-dept')).toBeVisible();
+        // Escape yopadi
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog', { name: 'Yangi qabul' })).toHaveCount(0);
+
+        /* F2 — boshqa sahifadan ham: «Bugun» ga olib keladi, oyna ochiq va
+           fokus qidiruvda — registrator darhol ism yoza oladi. */
+        await go(page, '/patients');
+        await expect(page.getByRole('button', { name: /Bemor qo'shish/ }).first()).toBeVisible({ timeout: 15_000 });
+        await page.keyboard.press('F2');
+        const dialog = page.getByRole('dialog', { name: 'Yangi qabul' });
+        await expect(dialog).toBeVisible();
+        expect(page.url()).toContain('/reception');
+        await expect(dialog.getByPlaceholder(/qidir|ism|telefon/i).first()).toBeFocused();
+    });
+
+    test("«Hisobot» — faqat davr: bugungi xarita u yerda takrorlanmaydi", async ({ page }) => {
+        await login(page);
+        await go(page, '/dashboard');
+        await expect(page.getByRole('heading', { name: 'Hisobot', exact: true })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('tab', { name: /Davomat/ })).toBeVisible();
+        await expect(page.getByRole('tab')).toHaveCount(2);
+        await expect(page.getByRole('heading', { name: 'Bugun klinikada' })).toHaveCount(0);
     });
 
     test('AI yordamchi sahifa USTIDA ochiladi', async ({ page }) => {

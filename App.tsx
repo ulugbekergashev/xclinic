@@ -87,24 +87,17 @@ const DEMO_ROLE_PROFILES: Record<string, { label: string; name: string; doctorId
    `return 'today.title'` ishlab ketardi — Xodimlar sahifasida yuqorida
    «Bugun» deb turardi. Ilgari bu ko'rinmasdi, chunki sahifa nomi faqat
    brauzer tabida edi; endi ekranda ham chiqadi. */
-/* Registratura sahifasining nomi rolga qarab: shifokor uchun «Mening
-   navbatim», hamshira uchun «Navbat» — menyudagi nom bilan bir xil
-   (`utils/navigation.ts`). */
-const receptionLabelKey = (role?: UserRole): any =>
-  role === UserRole.DOCTOR ? 'today.myQueue'
-    : role === UserRole.NURSE ? 'nav.queue' : 'reception.title';
-
 /* Rolning bosh sahifasi qanday nomlanadi — `/` va noma'lum manzil ham
-   shu nomni oladi (`homeFor` bilan bir xil ro'yxat). */
+   shu nomni oladi (`homeFor` bilan bir xil ro'yxat). «Bugun» hamma rol
+   uchun bir xil nomda — menyudagi bilan bir xil (`utils/navigation.ts`). */
 const homeLabelKey = (role?: UserRole): any =>
-  role === UserRole.CLINIC_ADMIN ? 'nav.dashboard'
-    : role === UserRole.NURSE ? 'nav.inpatient'
-      : role === UserRole.LAB_TECHNICIAN ? 'nav.lab' : receptionLabelKey(role);
+  role === UserRole.NURSE ? 'nav.inpatient'
+    : role === UserRole.LAB_TECHNICIAN ? 'nav.lab' : 'nav.today';
 
 const getPageLabelKey = (pathname: string, role?: UserRole): any => {
   if (pathname === '/') return homeLabelKey(role);
-  if (pathname === '/dashboard') return 'nav.dashboard';
-  if (pathname === '/reception' || pathname === '/today') return receptionLabelKey(role);
+  if (pathname === '/dashboard') return 'nav.reports';
+  if (pathname === '/reception' || pathname === '/today') return 'nav.today';
   if (pathname.startsWith('/patients/')) return 'nav.patients'; // Will translate as "Patients", detail page handles own title
   if (pathname === '/patients') return 'nav.patients';
   if (pathname.startsWith('/staff')) return 'nav.staff';
@@ -1330,13 +1323,17 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
      mavjud. Sahifa ichidagi ish (fokus, modal ochish) esa sahifaning o'zida
      bo'ladi — u yerda `Escape` va `Ctrl+S` ishlatiladi. */
   const canOpenFinance = clinicSettingsReady && canOpenModule(userRole, accessControl, 'finance');
+  const onToday = location.pathname === '/reception';
   const hotkeys = React.useMemo(() => ({
-    F2: () => navigate('/reception'),
+    /* F2 — yangi qabul: «Bugun» ga olib boradi va «Yangi qabul» oynasini
+       ochadi (`state` ni `pages/Reception.tsx` o'qiydi). O'sha sahifada
+       turgan bo'lsa tarixga ikkinchi yozuv qo'shilmaydi. */
+    F2: () => navigate('/reception', { state: { newVisit: true }, replace: onToday }),
     F3: () => navigate('/patients'),
     /* Moliya marshruti bilan BIR XIL tekshiruv: rol, yashirilgan modul va
        «Moliyani ko'rsatish». Sozlama kelmaguncha F4 hech narsa qilmaydi. */
     F4: () => { if (canOpenFinance) navigate('/finance'); },
-  }), [navigate, canOpenFinance]);
+  }), [navigate, canOpenFinance, onToday]);
   useHotkeys(hotkeys, isAuthenticated && !mustChangePassword);
 
   /* Hodisalar oqimi — kirgandan keyin ochiladi, chiqishda yopiladi.
@@ -1883,21 +1880,18 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
           <Routes>
 
             <>
-              {/* BOSH SAHIFA — rolga qarab (`homeFor`): ega Bosh panelga,
-                  registrator va shifokor Registraturaga, laborant
-                  Laboratoriyaga, hamshira Statsionarga tushadi. */}
+              {/* BOSH SAHIFA — rolga qarab (`homeFor`): ega, registrator va
+                  shifokor «Bugun» ga, laborant Laboratoriyaga, hamshira
+                  Statsionarga tushadi. */}
               <Route path="/" element={<Navigate to={homeFor(userRole)} replace />} />
 
-              {/* ── BOSH PANEL — faqat egaga ─────────────────────────────
-                  Bugungi raqamlar, «hal qilinsin», hisobot va davomat.
-                  Hisobot Moliyadan ko'chdi: Moliya — kassa (registratorning
-                  quroli), Bosh panel — tahlil (eganing savoli). Raqamlar
-                  serverda sanaladi (`/api/reports/dashboard`), brauzerda
-                  emas — aks holda Moliyadagi hisobot bilan ikki xil javob
-                  chiqardi. */}
+              {/* ── HISOBOT — faqat egaga ────────────────────────────────
+                  Davr bo'yicha tahlil: hisobot va davomat. Bugungi holat
+                  («hal qilinsin», kassa, jonli xarita) bu yerda emas —
+                  «Bugun» da. Manzil `/dashboard` bo'lib qoldi: eski
+                  havolalar va Moliyadan yo'naltirish shunga tayanadi. */}
               <Route path="/dashboard" element={
-                guard('dashboard',
-                <Dashboard clinicId={clinicId} departments={departments} doctors={doctors} services={services} userName={userName} />)
+                guard('dashboard', <Dashboard departments={departments} />)
               } />
 
               <Route path="/patients" element={

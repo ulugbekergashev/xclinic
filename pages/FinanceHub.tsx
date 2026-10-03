@@ -13,8 +13,8 @@ import { useLanguage } from '../context/LanguageContext';
 
    HISOBOT VA DAVOMAT BU YERDA EMAS (2026-09-16). Ular Moliyaning
    vkladkalari edi — faqat egaga ko'rinadigan, kassaning yonida. Endi ular
-   Bosh panelda (`pages/Dashboard.tsx`): Moliya registratorning ish
-   quroli, Bosh panel eganing savoli. Eski `?tab=hisobot` va
+   «Hisobot» da (`pages/Dashboard.tsx`): Moliya registratorning ish
+   quroli, Hisobot eganing savoli. Eski `?tab=hisobot` va
    `?tab=davomat` havolalari o'sha yerga yo'naltiriladi. */
 
 /* «Ulush» BU YERDA EMAS — u Xodimlar moduliga ko'chdi.
@@ -67,7 +67,7 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
     const { userRole, transactions, expenses, doctors, currentClinic, onPatientClick } = props;
 
     /* Eski havola: `/finance?tab=hisobot` yoki `?tab=davomat`. Hisobot
-       Bosh panelga ko'chdi — o'sha yerga, o'sha vkladkaga. Egadan boshqa
+       o'z sahifasiga ko'chdi — o'sha yerga, o'sha vkladkaga. Egadan boshqa
        rol uchun bu vkladkalar hech qachon bo'lmagan: ular kassada qoladi. */
     const [searchParams] = useSearchParams();
     const requested = searchParams.get('tab');

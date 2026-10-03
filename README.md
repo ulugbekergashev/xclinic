@@ -407,12 +407,13 @@ Tizim ekranlar to'plami emas — bemorni bir qo'ldan ikkinchisiga uzatadigan
 konveyer. Shifokorning ish joyi bitta: **bemor kartasi**.
 
 ```
-Registratura  bemor -> bo'lim -> shifokor -> QABUL ochiladi (navbat №, talon)
-     |        (yoki kalendardagi yozuvda «Keldi» — bir bosishda o'sha ish)
+Registratura  «Bugun» -> «Yangi qabul» (F2): bemor -> bo'lim -> shifokor ->
+     |        QABUL ochiladi (navbat №, talon)
+     |        (yoki xaritada / kalendarda «Keldi» — bir bosishda o'sha ish)
      |
 Kassa         har buyurtma alohida hisob qatori: to'lanmagan -> to'langan
      |
-Shifokor      "Mening navbatim" -> BEMOR KARTASI
+Shifokor      «Bugun» (o'z navbati) -> BEMOR KARTASI
               chapda: allergiya, tashxislar, qabullar, tahlil dinamikasi,
                       retseptlar, to'lovlar, hujjatlar
               o'ngda: joriy qabul — bayon · tashxis · xizmat · tahlilga ·
@@ -500,23 +501,32 @@ necha kun keldi, foizi qancha) va CSV ga chiqarish.
 
 Tafsilot: `PLAN-HR.md`.
 
-### Bosh panel
+### Bugun va Hisobot
 
-Klinika egasi kirganda tushadigan ekran (`/dashboard`). Registrator va
-shifokorda u yo'q — ular Registraturaga tushadi.
+**Bugun** (`/reception`) — kirganda tushadigan ekran: ega, registrator va
+shifokor uchun bitta sahifa, bitta nom. Qoida — **bir ish — bir joy**:
 
-Uch vkladka:
-
-- **Umumiy** — to'rtta raqam (bugun kassaga tushgan pul, qarz, bugungi
-  qabullar, bemorlar) va **«Bugun hal qilinsin»** ro'yxati: yopilmagan kassa
+- **Jonli xarita** — registrator va egada yagona navbat: yo'l (bugunga
+  yozilganlar: «Keldi», «Kelmadi») → kutish zali («Chaqirish», to'lanmagan
+  summa) → kabinetlar («Kirdi», «Ochish»). Alohida navbat ro'yxati yo'q;
+  qatorga sig'maganlar «+N» bosilganda ochiladi.
+- **«Yangi qabul»** — oyna: tugma, **F2** (istalgan sahifadan) yoki skaner.
+  Bemor → bo'lim va shifokor → qabul ochiladi, talon chiqadi.
+- **Kunning puli** — sarlavhada bitta qator: egaga bugun kassaga tushgani,
+  pul oladiganlarga kim to'lashi kerakligi. Bosilsa Moliya (kassa) ochiladi.
+- **«Bugun hal qilinsin»** — faqat egaga, xaritaning ostida: yopilmagan kassa
   smenasi, muddati o'tayotgan dori, natijasi kiritilmagan tahlil, tuzilmagan
   vedomost va hokazo. Har qator bosilganda o'sha ish bajariladigan ekran
   ochiladi.
+
+**Hisobot** (`/dashboard`, faqat ega) — o'tgan davr, ikki vkladka:
+
 - **Hisobot** — foyda, qarz, bo'limlar, chiqimlar.
 - **Davomat** — kim keldi, kim kelmadi, qaysi kunlar gavjum.
 
-Hisobot va Davomat ilgari Moliyaning vkladkalari edi; Moliya endi faqat
-kassa — registratorning ish quroli. Raqamlar serverda sanaladi
+Bugungi holat «Hisobot» da takrorlanmaydi: «Bugun» — hozir, «Hisobot» —
+o'tgan kunlar. Hisobot va Davomat ilgari Moliyaning vkladkalari edi; Moliya
+endi faqat kassa — registratorning ish quroli. Raqamlar serverda sanaladi
 (`/api/reports/dashboard`, `/attention`), brauzerda emas.
 
 **Nol bo'lgan band ro'yxatga tushmaydi.** «0 ta muddati o'tgan dori»
@@ -567,22 +577,25 @@ kerak emas.
 
 ### Rol bo'yicha bosh sahifa
 
-Ega → **Bosh panel** · Registrator, shifokor → **Registratura** · Laborant →
-Laboratoriya · Hamshira → Statsionar (`homeFor`, `utils/navigation.ts`).
+Ega, registrator, shifokor → **Bugun** · Laborant → Laboratoriya · Hamshira →
+Statsionar (`homeFor`, `utils/navigation.ts`).
 
-Registratura bitta ekran (`pages/Reception.tsx`), rolga qarab boshqacha
-ko'rinadi va menyuda boshqacha nomlanadi:
+«Bugun» bitta ekran (`pages/Reception.tsx`), menyuda hamma uchun bir xil
+nomda, rolga qarab boshqacha ko'rinadi:
 
-| Rol | Menyudagi nomi | Nima ko'radi |
-|---|---|---|
-| Registrator, ega | Registratura | qabul ochish mastero · butun klinika navbati (chaqirish, ochish) · bugunga yozilganlar («Keldi») |
-| Shifokor | Mening navbatim | natijasi tayyor bo'lganlar · o'z navbati · natija kutayotganlar · bugun yakunlanganlar |
-| Hamshira | Navbat | navbat va bemor kartasi |
+| Rol | Nima ko'radi |
+|---|---|
+| Registrator | jonli xarita (butun klinika navbati) · «Yangi qabul» · kim to'lashi kerakligi |
+| Ega | registratorniki + bugun kassaga tushgan pul · «Bugun hal qilinsin» · natijalar |
+| Shifokor | natijasi tayyor bo'lganlar · o'z navbati · bugunga yozilganlar · natija kutayotganlar · bugun yakunlanganlar |
+| Hamshira | navbat va bemor kartasi |
 
-2026-09-07 dan 09-16 gacha bu ekran «Bugun» deb atalgan va tepasida eganing
-yig'iq tasmasi turgan; tasma Bosh panelga ketdi. `/today` va `/myqueue`
-manzillari Registraturaga yo'naltiriladi. Ruxsatlarda saqlangan eski
-`today` moduli id si `reception` uchun ham amal qiladi.
+Tarix: 2026-09-07 dan 09-16 gacha bu ekran ham «Bugun» edi (tepasida eganing
+yig'iq tasmasi bilan); 09-16 dan 10-03 gacha — «Registratura», yonida egaga
+alohida «Bosh panel». 10-03 da qayta birlashtirildi: Bosh panel xaritani ham,
+navbatni ham takrorlab qo'ygan edi. `/today` va `/myqueue` manzillari
+`/reception` ga yo'naltiriladi. Ruxsatlarda saqlangan eski `today` moduli
+id si `reception` uchun ham amal qiladi.
 
 ---
 

@@ -27,6 +27,16 @@ export async function login(page: Page, username = 'admin', password = PASSWORD)
 
     // Kirish tugagani — kirish formasi yo'qolgani bilan bilinadi
     await expect(page.locator('input[type="password"]')).toHaveCount(0, { timeout: 30_000 });
+
+    /* …va ILOVA OCHILGANI — qobiq (`main`) chiqqani bilan.
+
+       Kirgandan keyin ilova avval «Ma'lumotlar yuklanmoqda» ekranini
+       ko'rsatadi: 1-3 soniya, band mashinada ko'proq. Sinovlar esa `go()`
+       dan keyin qat'iy 2.5-3.5 s kutib sahifani o'qirdi. Yuklanish cho'zilsa
+       `sweep` «sahifa deyarli bo'sh (43 belgi)» deb yiqilardi — o'sha 43
+       belgi shu ekranning matni; `arrival` esa «yozuv yo'q» deb jimgina
+       o'tkazib yuborilardi, ya'ni hech narsani tekshirmasdi. */
+    await expect(page.locator('main')).toBeVisible({ timeout: 60_000 });
 }
 
 /* Noyob qo'shimcha — sinovlar bir-birining ma'lumotiga urilmasin.

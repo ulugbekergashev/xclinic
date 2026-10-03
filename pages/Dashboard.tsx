@@ -1,69 +1,55 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, BarChart3, CalendarCheck } from 'lucide-react';
+import { BarChart3, CalendarCheck } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
-import { Department, Doctor, Service } from '../types';
+import { Department } from '../types';
 import { formatDateLong } from '../utils/format';
-import { DashboardOverview } from '../components/DashboardOverview';
-import { ClinicMapLive } from '../components/ClinicMapLive';
 import { AttendanceTab } from '../components/AttendanceReport';
 import { FinanceReport } from './FinanceReport';
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   BOSH PANEL — klinika egasining ekrani. Uchta vkladka:
+   HISOBOT — klinika egasining ekrani: o'tgan davr. Ikki vkladka:
 
-     · Umumiy  — bugungi raqamlar va «Bugun hal qilinsin» ro'yxati;
      · Hisobot — foyda, qarz, bo'limlar, chiqimlar;
      · Davomat — kim keldi, kim kelmadi, qaysi kunlar gavjum.
 
-   Hisobot va Davomat Moliyadan ko'chdi. Moliya endi faqat kassa —
-   registratorning ish quroli. Bosh panel — tahlil, eganing savoli. Har
-   biri o'z odamiga; ilgari ikkalasi bitta bo'limda, kassaning yonidagi
-   vkladkalarda turardi va registrator ularni ko'rmasa ham, ega kassa
-   orqali o'tib borardi.
+   TARIX. Bu sahifa «Bosh panel» edi va uchinchi — «Umumiy» — vkladkasida
+   bugungi raqamlar, «Bugun hal qilinsin» ro'yxati va jonli xarita turardi.
+   O'sha xarita Registraturada ham bor edi: bitta ish ikki ekranda. Endi
+   bugungi hamma narsa bitta «Bugun» ekranida (`pages/Reception.tsx`),
+   bu yerda esa faqat davr bo'yicha tahlil qoldi. Qoida: «Bugun» — hozir,
+   «Hisobot» — o'tgan kunlar.
 
-   NEGA ALOHIDA EKRAN. «Bugun» ekrani ikki odamning ish stoli edi:
-   registrator unda qabul ochadi va navbatni ko'radi, ega esa tepadagi
-   tasmadan «klinika qanday ketyapti» deb so'raydi. Bitta ekranda
-   turgani uchun tasma yig'iq turardi va uni hech kim ochmasdi.
-   2026-09-16 da bo'lindi: registratura o'z nomiga qaytdi, ega shu
-   ekranni oldi.
+   Manzil `/dashboard` va modul nomi `dashboard` o'zgarmadi: eski havolalar
+   (`/dashboard?tab=hisobot`, Moliyadan yo'naltirish) ishlayveradi.
+   `?tab=` siz ochilsa — Hisobot.
 
    Faqat egaga — menyuda ham, marshrutda ham (`utils/navigation.ts`).
    Registrator `/dashboard` ni qo'lda yozsa, o'z bosh sahifasiga qaytadi.
    ───────────────────────────────────────────────────────────────────────────── */
 
-type Tab = 'umumiy' | 'hisobot' | 'davomat';
+type Tab = 'hisobot' | 'davomat';
 
 const TABS: { key: Tab; labelKey: TranslationKey; icon: React.ElementType }[] = [
-    { key: 'umumiy', labelKey: 'dashboard.tab.overview', icon: LayoutDashboard },
     { key: 'hisobot', labelKey: 'finance.hub.report', icon: BarChart3 },
     { key: 'davomat', labelKey: 'finance.hub.attendance', icon: CalendarCheck },
 ];
 
 interface Props {
-    clinicId: string;
     departments: Department[];
-    /** «Bugun klinikada» xaritasi uchun: qatorlar shifokorlar bo'yicha, reja xizmat davomiyligidan */
-    doctors: Doctor[];
-    services: Service[];
-    /** Salomlashish uchun */
-    userName?: string;
 }
 
-export const Dashboard: React.FC<Props> = ({ clinicId, departments, doctors, services, userName }) => {
+export const Dashboard: React.FC<Props> = ({ departments }) => {
     const { t, language } = useLanguage();
 
-    /* Vkladka manzilda (`?tab=hisobot`) — Xodimlar va Moliya bilan bir xil
-       odat: yangilanganda o'sha vkladka qoladi, havolani ulashib bo'ladi.
-       Moliyadagi eski `?tab=hisobot` havolalari ham shu yerga tushadi. */
+    /* Vkladka manzilda (`?tab=davomat`) — Xodimlar va Moliya bilan bir xil
+       odat: yangilanganda o'sha vkladka qoladi, havolani ulashib bo'ladi. */
     const [searchParams, setSearchParams] = useSearchParams();
-    const q = searchParams.get('tab');
-    const tab: Tab = q === 'hisobot' || q === 'davomat' ? q : 'umumiy';
+    const tab: Tab = searchParams.get('tab') === 'davomat' ? 'davomat' : 'hisobot';
     const setTab = (next: Tab) => {
         const p = new URLSearchParams(searchParams);
-        if (next === 'umumiy') p.delete('tab'); else p.set('tab', next);
+        if (next === 'hisobot') p.delete('tab'); else p.set('tab', next);
         setSearchParams(p, { replace: true });
     };
 
@@ -71,12 +57,10 @@ export const Dashboard: React.FC<Props> = ({ clinicId, departments, doctors, ser
         <div className="space-y-5 animate-fade-in">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-ink">{t('nav.dashboard')}</h1>
+                    <h1 className="text-2xl font-bold text-ink">{t('nav.reports')}</h1>
                     {/* Sana loyihaning O'Z formatlagichidan: `toLocaleDateString('uz-UZ')`
                         Chrome da «M09 6, Sun» beradi — `uz` lokali to'liq emas. */}
                     <p className="text-sm text-muted">
-                        {t('header.welcome')}{userName ? `, ${userName}` : ''}
-                        {' · '}
                         {formatDateLong(new Date(), language === 'ru' ? 'ru' : 'uz')}
                     </p>
                 </div>
@@ -98,19 +82,9 @@ export const Dashboard: React.FC<Props> = ({ clinicId, departments, doctors, ser
                 </div>
             </div>
 
-            {tab === 'hisobot' ? (
-                <FinanceReport embedded departments={departments} />
-            ) : tab === 'davomat' ? (
-                <AttendanceTab />
-            ) : (
-                <>
-                    {/* Eganing birinchi savoli — «hozir klinikada nima bo'lyapti».
-                        Raqamlar undan keyin. Bu yerda xarita faqat ko'rsatadi;
-                        navbatni yuritish Registraturada. */}
-                    <ClinicMapLive clinicId={clinicId} doctors={doctors} departments={departments} services={services} />
-                    <DashboardOverview />
-                </>
-            )}
+            {tab === 'davomat'
+                ? <AttendanceTab />
+                : <FinanceReport embedded departments={departments} />}
         </div>
     );
 };

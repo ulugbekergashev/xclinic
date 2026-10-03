@@ -123,7 +123,7 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         await expect(page.locator('main')).toContainText('Kardiologiya');
     });
 
-    test("Sozlamalarda qo'shilgan bo'lim Registraturada QAYTA YUKLAMASDAN chiqadi", async ({ page }) => {
+    test("Sozlamalarda qo'shilgan bo'lim «Yangi qabul» da QAYTA YUKLAMASDAN chiqadi", async ({ page }) => {
         await go(page, '/settings');
         await page.getByRole('button', { name: /^Bo.limlar$/ }).click();
         await page.waitForTimeout(1200);
@@ -135,7 +135,9 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         /* MENYU orqali o'tamiz. `go` sahifani qayta yuklaydi va xatoni
            yashiradi: bo'lim saqlangan holatdan qayta o'qiladi. Namoyishni
            ko'rayotgan odam esa menyuni bosadi — va bo'limni topolmasdi. */
-        await page.locator('aside, nav').getByRole('link', { name: /^Registratura$/ }).first().click();
+        await page.locator('aside, nav').getByRole('link', { name: /^Bugun$/ }).first().click();
+        // Qabul masterosi sahifada emas — «Yangi qabul» oynasida
+        await page.getByRole('button', { name: /^Yangi qabul$/ }).click();
         await expect(page.locator('#rc-dept option', { hasText: 'Urologiya' })).toHaveCount(1);
     });
 
@@ -169,13 +171,16 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         await expect(page.locator('main')).toContainText(/Gemini|Groq|OpenRouter/);
     });
 
-    test('Registratura: bo\'lim tanlansa xizmatlar chiqadi', async ({ page }) => {
+    test('«Yangi qabul»: bo\'lim tanlansa xizmatlar chiqadi', async ({ page }) => {
         await go(page, '/reception');
+        await page.getByRole('button', { name: /^Yangi qabul$/ }).click();
+        const intake = page.getByRole('dialog', { name: 'Yangi qabul' });
         /* Bemor tanlanmaguncha 2-blok o'chiq turadi — birinchi topilgan
-           bemorni tanlaymiz. */
-        await page.getByPlaceholder(/qidir|ism|telefon/i).first().fill('Aziza');
+           bemorni tanlaymiz. Qidiruv oynaning ICHIDA: xaritada ham shu ismli
+           bemor turishi mumkin, u esa oyna ostida. */
+        await intake.getByPlaceholder(/qidir|ism|telefon/i).first().fill('Aziza');
         await page.waitForTimeout(1500);
-        await page.getByText('Aziza').first().click();
+        await intake.getByText('Aziza').first().click();
         await page.waitForTimeout(800);
 
         await page.locator('#rc-dept').selectOption({ label: 'Terapiya' });
@@ -283,8 +288,8 @@ test.describe("Demo: rol va xizmat ko'rsatish", () => {
         await roleSelect.selectOption('DOCTOR');
         await page.waitForTimeout(2500);
         await expect(page.getByRole('link', { name: 'Moliya' })).toHaveCount(0);
-        /* Shifokor uchun Registratura «Mening navbatim» deb nomlanadi. */
-        await expect(page.getByRole('link', { name: 'Mening navbatim' })).toBeVisible();
+        /* «Bugun» shifokorda ham shu nomda: bitta ekran — bitta nom. */
+        await expect(page.getByRole('link', { name: 'Bugun' })).toBeVisible();
 
         // Laborantga — faqat Laboratoriya va Bemorlar
         await roleSelect.selectOption('LAB_TECHNICIAN');

@@ -1,4 +1,4 @@
-/* «KELDI» — Registratura bilan Kalendar orasidagi ko'prik.
+/* «KELDI» — «Bugun» bilan Kalendar orasidagi ko'prik.
  *
  * NIMA TEKSHIRILADI. Yozilgan bemor kelganda bir bosishda qabul
  * ochilishi va kalendardagi yozuv YOPILISHI kerak.
@@ -27,12 +27,19 @@ test.describe('Yozilgan bemor keldi', () => {
         if (await more.count()) await more.first().click();
     };
 
+    /* «Bugun» ni ochib, XARITA CHIQISHINI kutadi. Ilgari bu yerda 2.5 s
+       qat'iy kutish turardi: ma'lumot sekinroq yuklansa «Keldi» tugmalari
+       hali yo'q bo'lardi va sinov «yozuv yo'q» deb jimgina o'tkazib
+       yuborilardi — ya'ni hech narsani tekshirmasdi. */
+    const openToday = async (page: import('@playwright/test').Page) => {
+        await go(page, '/reception');
+        await expect(page.getByRole('heading', { name: 'Bugun klinikada' })).toBeVisible({ timeout: 30_000 });
+        await page.waitForTimeout(1500);
+    };
+
     test('xarita bugungi yozuvlarni ko\'rsatadi', async ({ page }) => {
         await login(page);
-        await go(page, '/reception');
-        await page.waitForTimeout(2500);
-
-        await expect(page.getByText('Bugun klinikada')).toBeVisible();
+        await openToday(page);
 
         /* Har bemorda vaqt, ism va «Keldi» tugmasi bo'lishi kerak —
            registrator bir qarashda kimni kutayotganini bilishi uchun. */
@@ -43,8 +50,7 @@ test.describe('Yozilgan bemor keldi', () => {
 
     test('«Keldi» qabul ochadi va yozuvni ro\'yxatdan chiqaradi', async ({ page }) => {
         await login(page);
-        await go(page, '/reception');
-        await page.waitForTimeout(2500);
+        await openToday(page);
         await showAllBooked(page);
 
         const buttons = page.getByRole('button', { name: /Keldi/ });
@@ -103,8 +109,7 @@ test.describe('Yozilgan bemor keldi', () => {
            ekrandan ko'rib bo'lmaydi, shuning uchun API dan so'raymiz:
            yozuv holati «Checked-In» ga o'tgan bo'lishi kerak. */
         await login(page);
-        await go(page, '/reception');
-        await page.waitForTimeout(2500);
+        await openToday(page);
 
         const buttons = page.getByRole('button', { name: /Keldi/ });
         test.skip(await buttons.count() === 0, 'Bugunga yozuv yo\'q');
