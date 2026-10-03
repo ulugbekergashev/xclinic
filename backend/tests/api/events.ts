@@ -141,6 +141,43 @@ async function main() {
     ok('yangi ulanish hodisa oladi', !!(await afterDrop.wait('visit.created')));
     afterDrop.close();
 
+    /* UMUMIY RO'YXATLAR. Ilova bo'limlar, xizmatlar va xodimlarni kirishda
+       bir marta yuklaydi. Ega Sozlamalarda bo'lim qo'shsa, registratorning
+       ochiq ekrani buni BILMASDI — qayta kirmaguncha ro'yxatda yo'q edi.
+       Endi har muvaffaqiyatli yozuv `data.changed` ni e'lon qiladi. */
+    console.log('\n═══ 6. YOZUV → "data.changed" (umumiy ro\'yxatlar) ══');
+    const d = openStream();
+    await d.waitReady();
+    const changed = (resource: string) =>
+        d.events.filter((x) => x.type === 'data.changed' && x.resource === resource).length;
+    const waitChanged = async (resource: string, atLeast: number, ms = 3000) => {
+        const t0 = Date.now();
+        while (Date.now() - t0 < ms) { if (changed(resource) >= atLeast) return true; await sleep(20); }
+        return false;
+    };
+
+    const code = `T${Date.now() % 100000}`;
+    const dep = await api('POST', '/departments', { name: `Sinov bo'limi ${code}`, code, type: 'CLINICAL' });
+    ok('bo\'lim yaratildi', dep.status === 200 || dep.status === 201, `status: ${dep.status}`);
+    ok('OQIM "data.changed: departments" ni yetkazdi', await waitChanged('departments', 1),
+        `hodisalar: ${JSON.stringify(d.events.map((e) => e.resource || e.type))}`);
+
+    const before = changed('departments');
+    await api('GET', '/departments');
+    const bad = await api('POST', '/departments', {});
+    await sleep(300);
+    ok('o\'qish (GET) e\'lon qilinmaydi, rad etilgan yozuv ham',
+        bad.status >= 400 && changed('departments') === before,
+        `status: ${bad.status}, oldin: ${before}, keyin: ${changed('departments')}`);
+
+    if (dep.data?.id) await api('DELETE', `/departments/${dep.data.id}`);
+    ok('faolsizlantirish ham e\'lon qilinadi', await waitChanged('departments', before + 1));
+    ok('hodisada faqat manzil bo\'g\'ini bor — ma\'lumot yo\'q',
+        d.events.filter((x) => x.type === 'data.changed')
+            .every((x) => Object.keys(x).sort().join() === 'at,resource,type'),
+        JSON.stringify(d.events.find((x) => x.type === 'data.changed')));
+    d.close();
+
     console.log('\n═══ 9.3 SMENA POYGASI ═════════════════════════════');
     const today = new Date().toISOString().split('T')[0];
     const shiftNo = 90 + (Date.now() % 9);

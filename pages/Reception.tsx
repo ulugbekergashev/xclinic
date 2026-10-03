@@ -343,12 +343,20 @@ export const Reception: React.FC<Props> = ({
         if (patient) setTimeout(() => deptRef.current?.focus(), 0);
     }, [patient]);
 
-    // Bo'lim almashsa, unga tegishsiz tanlovlarni tozalaymiz
+    /* Bo'lim almashsa, unga tegishsiz tanlovlarni tozalaymiz.
+
+       FAQAT bo'lim almashganda. Ilgari effekt `services` ga ham bog'liq
+       edi: xizmatlar ro'yxati yangilansa (ega boshqa kompyuterda narxni
+       tuzatdi) registrator tanlab bo'lgan shifokor jimgina tozalanib
+       ketardi. Ro'yxat `ref` orqali o'qiladi — u effektni ishga
+       tushirmaydi. */
+    const servicesRef = React.useRef(services);
+    servicesRef.current = services;
     useEffect(() => {
         setDoctorId('');
-        const first = services.find(s => s.departmentId === departmentId);
+        const first = servicesRef.current.find(s => s.departmentId === departmentId);
         setServiceId(first?.id ?? '');
-    }, [departmentId, services]);
+    }, [departmentId]);
 
     const reset = () => {
         setPatient(null); setSearch(''); setDepartmentId(''); setDoctorId('');

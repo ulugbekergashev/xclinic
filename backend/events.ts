@@ -45,6 +45,14 @@ export type EventType =
     | 'study.result'       // diagnostika xulosasi kiritildi
     | 'admission.changed'  // statsionar: yotqizish, ko'chirish, chiqarish
     | 'stock.changed'      // ombor qoldig'i o'zgardi
+    /* UMUMIY HODISA: har qanday muvaffaqiyatli yozuvdan keyin
+       (`server.ts` dagi middleware). `resource` — manzilning birinchi
+       bo'g'ini (`departments`, `services`, `visits`...). Yuqoridagi aniq
+       hodisalar bitta ekranning o'z ro'yxati uchun; bu esa ilovaning
+       kirishda bir marta yuklanadigan UMUMIY ro'yxatlari uchun — ular
+       hech qaysi hodisaga quloq solmasdi va bo'lim yoki xizmat qo'shilsa
+       boshqa ekranlar (boshqa kompyuterlar ham) eskisini ko'rsatardi. */
+    | 'data.changed'
     | 'ping';              // ulanish tirikligini bildiradi
 
 type Client = {

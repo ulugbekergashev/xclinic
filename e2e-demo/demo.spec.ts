@@ -123,6 +123,22 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         await expect(page.locator('main')).toContainText('Kardiologiya');
     });
 
+    test("Sozlamalarda qo'shilgan bo'lim Registraturada QAYTA YUKLAMASDAN chiqadi", async ({ page }) => {
+        await go(page, '/settings');
+        await page.getByRole('button', { name: /^Bo.limlar$/ }).click();
+        await page.waitForTimeout(1200);
+        await page.getByRole('button', { name: /qo.sh/i }).first().click();
+        await page.getByPlaceholder(/Masalan: Kardiologiya/).fill('Urologiya');
+        await page.getByRole('button', { name: 'Saqlash' }).last().click();
+        await expect(page.locator('main')).toContainText('Urologiya');
+
+        /* MENYU orqali o'tamiz. `go` sahifani qayta yuklaydi va xatoni
+           yashiradi: bo'lim saqlangan holatdan qayta o'qiladi. Namoyishni
+           ko'rayotgan odam esa menyuni bosadi — va bo'limni topolmasdi. */
+        await page.locator('aside, nav').getByRole('link', { name: /^Registratura$/ }).first().click();
+        await expect(page.locator('#rc-dept option', { hasText: 'Urologiya' })).toHaveCount(1);
+    });
+
     test('Laboratoriya: natija kiritish oynasi to\'ladi va saqlanadi', async ({ page }) => {
         await go(page, '/lab');
         await page.getByRole('button', { name: 'Natijalar' }).first().click();

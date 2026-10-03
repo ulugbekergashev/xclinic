@@ -27,7 +27,10 @@ export type LiveEventType =
     | 'visit.created' | 'visit.status'
     | 'charge.paid' | 'charge.changed'
     | 'lab.result' | 'study.result'
-    | 'admission.changed' | 'stock.changed';
+    | 'admission.changed' | 'stock.changed'
+    /* Har qanday yozuv — `payload.resource` manzilning birinchi bo'g'ini.
+       Umumiy ro'yxatlarni `useDataSync` shu orqali yangi tutadi. */
+    | 'data.changed';
 
 type Listener = (payload: any) => void;
 

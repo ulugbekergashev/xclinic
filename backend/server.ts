@@ -291,6 +291,37 @@ app.use((req, res, next) => {
     next();
 });
 
+/* ── «MA'LUMOT O'ZGARDI» — BARCHA OCHIQ EKRANLARGA ────────────────────────
+
+   Ilova umumiy ro'yxatlarni (bo'limlar, xizmatlar, xodimlar, to'lanmagan
+   qatorlar, laboratoriya buyurtmalari, ombor) kirishda BIR MARTA yuklaydi.
+   Ekran yozuvni to'g'ridan-to'g'ri API orqali o'zgartirsa, o'sha umumiy
+   ro'yxat eskirib qolardi: Sozlamalarda qo'shilgan bo'lim Registraturada
+   chiqmasdi, registrator ochgan qabulning qarzi kassadagi «To'lash»
+   oynasida yo'q edi. Boshqa kompyuterdagi ekran esa umuman bilmasdi —
+   ega bo'lim qo'shsa, registrator qayta kirmaguncha ko'rmasdi.
+
+   Har bir marshrutga `emitEvent` yozib chiqish o'rniga BITTA joy: yozuv
+   muvaffaqiyatli tugasa, manzilning birinchi bo'g'ini e'lon qilinadi.
+   Yangi marshrut qo'shilganda ham hech narsa unutilmaydi. Nima qayta
+   o'qilishi mijozda hal qilinadi (`hooks/useDataSync.ts`).
+
+   `auth`, `events`, `tts` va `ai` kirmaydi: kirish/chiqish, ovoz va AI
+   so'rovi umumiy ro'yxatlarni o'zgartirmaydi.
+   Token bo'lmagan so'rovda `clinicId` yo'q — `emitEvent` o'zi jim qaytadi. */
+const SILENT_WRITE_RE = /^\/api\/(auth|events|tts|ai)(\/|$)/;
+app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS'
+        && req.path.startsWith('/api/') && !SILENT_WRITE_RE.test(req.path)) {
+        res.on('finish', () => {
+            if (res.statusCode >= 400) return;
+            const resource = req.path.split('/')[2] || '';
+            if (resource) emitEvent((req as any).user?.clinicId, 'data.changed', { resource });
+        });
+    }
+    next();
+});
+
 /* ── AKTIVATSIYA TEKSHIRUVI ───────────────────────────────────────────────
    Aktivlashtirilmagan nusxa faqat sozlash va kirish marshrutlariga
    ruxsat oladi (`licenseMiddleware.ts` dagi ro'yxat).

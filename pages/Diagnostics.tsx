@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { DiagnosticStudy, Modality, MODALITY_LABELS, Patient, Department, Service, Clinic } from '../types';
 import { api, getFileUrl, authFetch, isDemoMode } from '../services/api';
+import { useResourceSync } from '../hooks/useDataSync';
 import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { EmptyState } from '../components/Common';
 import { printStudyConclusion } from '../utils/printForms';
@@ -46,6 +47,9 @@ interface Props {
 const fmt = (n: number) => formatNumber(n);
 const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
+/** Shu manzillarga yozilsa tekshiruvlar ro'yxati eskiradi */
+const STUDY_RESOURCES = ['studies', 'visits', 'payments', 'charges'] as const;
+
 export const Diagnostics: React.FC<Props> = ({
     clinicId, patients = [], departments = [], services = [], doctors = [], currentUserName,
     currentClinic,
@@ -72,6 +76,12 @@ export const Diagnostics: React.FC<Props> = ({
     }, []);
 
     useEffect(() => { reload(); }, [reload]);
+
+    /* Shifokor boshqa kompyuterda tekshiruv buyursa yoki kassir pulini
+       olsa — ro'yxat o'zi yangilanadi. Ilgari u faqat sahifa ochilganda
+       yuklanardi: diagnost yangi bemorni ko'rish uchun sahifadan chiqib
+       qayta kirishi kerak edi. */
+    useResourceSync(STUDY_RESOURCES, reload);
 
     const diagDept = useMemo(() => departments.find(d => d.type === 'DIAGNOSTIC'), [departments]);
     // Faqat Diagnostika bo'limiga tegishli xizmatlar. Bo'lim topilmasa BO'SH —

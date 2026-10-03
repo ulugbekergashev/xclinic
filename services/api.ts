@@ -2,6 +2,7 @@ import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Reception
 import { todayISO } from '../utils/dateUtils';
 import * as auth from './authStore';
 import { tr } from '../context/LanguageContext';
+import { emitDataChanged, resourceOf } from './dataBus';
 
 /** Yagona hisoblash qatlamining javobi — `backend/snapshot.ts` bilan
  *  bir xil shakl. Bu tur o'zgarsa, ikkala tomon ham o'zgarishi shart. */
@@ -1050,7 +1051,13 @@ export const demoQueueBoard = () => DEMO_VISITS
 /** Demo YOZUVINING yakuni: holatni saqlaydi va natijani qaytaradi.
  *  Har bir o'zgartiruvchi amal shu orqali tugaydi — saqlashni bitta joyda
  *  ushlab turish uchun (unutilgan chaqiruv = yo'qolgan o'zgarish). */
-const demoDone = <T,>(value: T): Promise<T> => { saveDemoState(); return Promise.resolve(value); };
+/* Demoda server yo'q, ya'ni `fetchJson` dagi e'lon ishlamaydi. Yozuv shu
+   yerdan e'lon qilinadi: aks holda namoyishda qo'shilgan bo'lim yoki
+   ochilgan qabul boshqa ekranda ko'rinmasdi. */
+const demoDone = <T,>(value: T): Promise<T> => { saveDemoState(); emitDataChanged('demo'); return Promise.resolve(value); };
+/** Xuddi shu e'lon, lekin holatni saqlamaydi — sessiya ichida yashaydigan
+ *  demo yozuvlari uchun (qabul, yo'llanma). */
+const demoWrote = <T,>(value: T): Promise<T> => { emitDataChanged('demo'); return Promise.resolve(value); };
 
 /* AI provayderlari — Sozlamalar > «AI yordamchi» ro'yxati. Nomlar
    `backend/aiSettings.ts` dagi `AI_PROVIDER_INFO` bilan bir xil bo'lishi
@@ -1497,7 +1504,14 @@ async function fetchJson<T>(url: string, options: RequestInit = {}, isRetry = fa
         err.data = errorData;
         throw err;
     }
-    return response.json();
+    const data = await response.json();
+    /* YOZUV MUVAFFAQIYATLI — ilovaga e'lon qilamiz (`services/dataBus.ts`).
+       `App` shu bo'g'inga bog'liq umumiy ro'yxatlarni qayta o'qiydi. Ekran
+       buni o'zi eslab qolishi shart emas: aynan unutilgan joylarda
+       «qo'shdim, lekin boshqa ekranda yo'q» degan xato chiqardi. */
+    const method = (options.method || 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') emitDataChanged(resourceOf(url));
+    return data;
 }
 
 /** Sozlamalar oynasi uchun AI holati. Kalitlar oshkor qilinmaydi. */
@@ -2647,7 +2661,7 @@ export const api = {
                     patient: DEMO_PATIENTS.find(p => p.id === data.patientId),
                 };
                 DEMO_VISITS.push(visit);
-                return demoRead<Visit>(visit);
+                return demoWrote<Visit>(visit);
             }
             return fetchJson<Visit>('/visits', { method: 'POST', body: JSON.stringify(data) });
         },
@@ -2681,7 +2695,7 @@ export const api = {
                     visit: visit ? { id: visit.id, date: visit.date, queueNumber: visit.queueNumber, departmentId: visit.departmentId } : undefined,
                 };
                 DEMO_CHARGES.push(row);
-                return demoRead<any>(row);
+                return demoWrote<any>(row);
             })() : fetchJson<any>(`/visits/${visitId}/procedures`, { method: 'POST', body: JSON.stringify(data) }),
         removeProcedure: (procedureId: string) => {
             if (isDemoMode()) {
@@ -2710,7 +2724,7 @@ export const api = {
                     Object.assign(v, data);
                     if (data.status === 'Completed' && !v.checkOutTime) v.checkOutTime = new Date().toISOString();
                 }
-                return demoRead<Visit>(v as Visit);
+                return demoWrote<Visit>(v as Visit);
             }
             return fetchJson<Visit>(`/visits/${id}`, { method: 'PUT', body: JSON.stringify(data) });
         },
@@ -2735,7 +2749,7 @@ export const api = {
             if (isDemoMode()) {
                 const v = DEMO_VISITS.find(x => x.id === id);
                 if (v) { v.status = 'Called'; v.calledAt = new Date().toISOString(); }
-                return demoRead<Visit>(v as Visit);
+                return demoWrote<Visit>(v as Visit);
             }
             return fetchJson<Visit>(`/visits/${id}/call`, { method: 'POST' });
         },
@@ -5113,7 +5127,7 @@ export const api = {
                 };
                 DEMO_LAB_ORDERS.push(newOrder);
                 saveDemoData();
-                return Promise.resolve(newOrder);
+                return demoWrote(newOrder);
             }
             return fetchJson<any>('/lab-orders', {
                 method: 'POST',
@@ -5126,7 +5140,7 @@ export const api = {
                 if (idx !== -1) {
                     DEMO_LAB_ORDERS[idx] = { ...DEMO_LAB_ORDERS[idx], ...data };
                     saveDemoData();
-                    return Promise.resolve(DEMO_LAB_ORDERS[idx]);
+                    return demoWrote(DEMO_LAB_ORDERS[idx]);
                 }
                 return Promise.reject('Order not found');
             }
@@ -5142,7 +5156,7 @@ export const api = {
                     DEMO_LAB_ORDERS.splice(idx, 1);
                     saveDemoData();
                 }
-                return Promise.resolve({ success: true });
+                return demoWrote({ success: true });
             }
             return fetchJson<{ success: true }>(`/lab-orders/${id}`, {
                 method: 'DELETE',

@@ -1,5 +1,5 @@
 ﻿
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { IS_DEMO_BUILD } from './services/demoBuild';
 
 /* ─── MARSHRUT BO'YICHA BO'LISH (S5.5, T08) ─────────────────────────────────
@@ -53,6 +53,8 @@ import { Logo, LogoWordmark } from './components/Logo';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { useHotkeys } from './hooks/useHotkeys';
 import { startLiveUpdates, stopLiveUpdates } from './hooks/useLiveUpdates';
+import { useDataSync, keepIfSame } from './hooks/useDataSync';
+import type { Slice } from './hooks/useDataSync';
 import { API_URL, API_BASE_URL } from './services/api';
 import * as auth from './services/authStore';
 import { connectToast, disconnectToast } from './services/toast';
@@ -288,6 +290,25 @@ const AppContent: React.FC = () => {
    aynan shu 41 MB ga olib kelgan edi — o'lcham har oy o'sadi. */
 const INITIAL_DAYS = 45;
 const INITIAL_PATIENTS = 500;
+
+/* QAYSI RO'YXAT QAYSI EKRANGA KERAK (`useDataSync`).
+
+   Bu yerda yo'q ro'yxat (bo'limlar, xizmatlar, xodimlar, bemorlar) yengil
+   va hamma joyda ishlatiladi — u darhol qayta o'qiladi. Quyidagilar esa
+   og'ir va faqat sanalgan ekranlarda ko'rinadi: boshqa ekranda turgan
+   kompyuter ularni har o'zgarishda tortmaydi, o'sha ekran ochilganda
+   bir marta o'qiydi. Eski manzillar (`/cashbook`, `/cashier`) Moliyaga
+   yo'naltiriladi va shu ro'yxatga kirmaydi. */
+const SLICE_ROUTES: Partial<Record<Slice, RegExp>> = {
+  transactions: /^\/finance/,
+  charges: /^\/finance/,
+  expenses: /^\/finance/,
+  cashClosures: /^\/finance/,
+  cashMovements: /^\/finance/,
+  labOrders: /^\/(lab|finance)/,
+  appointments: /^\/(calendar|finance|patients)/,
+  inventory: /^\/(inventory|inpatient)/,
+};
 
 /** `n` kun oldingi sana, YYYY-MM-DD — MAHALLIY kun bo'yicha.
  *  `toISOString()` UTC beradi va Toshkentda tunda bir kun orqaga siljirdi;
@@ -594,7 +615,9 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
 
   /* Serverdan alohida olingan bemor (ro'yxatdagi 500 tadan tashqari) —
      ro'yxatga qo'shiladi: karta tahriri va boshqa ekranlar uni topsin. */
+  const rememberedPatients = useRef(new Set<string>());
   const rememberPatient = useCallback((p: Patient) => {
+    rememberedPatients.current.add(p.id);
     setPatients(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev]);
   }, []);
 
@@ -693,19 +716,19 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
          ketadi, o'zgargani yangilanadi);
        · so'rov ketgandan keyin qo'shilgan qatorlar (parallel to'lov) qoladi;
        · oynadan eski qatorlar qoladi. */
-  const refreshRecentTransactions = () => {
-    if (!clinicId) return;
-    if (userRole === UserRole.NURSE || userRole === UserRole.LAB_TECHNICIAN) return;
+  const refreshRecentTransactions = (): Promise<void> => {
+    if (!clinicId) return Promise.resolve();
+    if (userRole === UserRole.NURSE || userRole === UserRole.LAB_TECHNICIAN) return Promise.resolve();
     const from = sinceDate(INITIAL_DAYS);
     const idsAtStart = new Set(transactions.map(x => x.id));
-    api.transactions.getAll(clinicId, { from })
+    return api.transactions.getAll(clinicId, { from })
       .then(fresh => {
         setTransactions(prev => {
           const freshIds = new Set(fresh.map(x => x.id));
           const rest = prev.filter(x => !freshIds.has(x.id));
           const newer = rest.filter(x => !idsAtStart.has(x.id));
           const older = rest.filter(x => idsAtStart.has(x.id) && dayKey(x.date) < from);
-          return [...newer, ...fresh, ...older];
+          return keepIfSame(prev, [...newer, ...fresh, ...older]);
         });
       })
       .catch(console.error);
@@ -812,7 +835,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
     if (!canSeeFinance(parseAccessControl(currentClinic), userRole)) return;
     try {
       const exps = await api.expenses.getAll(clinicId);
-      setExpenses(exps || []);
+      setExpenses(prev => keepIfSame(prev, exps || []));
     } catch (e) {
       console.error('Failed to refresh expenses:', e);
     }
@@ -823,7 +846,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
   const refreshInventory = async () => {
     try {
       const invItems = await api.inventory.getAll(clinicId);
-      setInventoryItems(invItems || []);
+      setInventoryItems(prev => keepIfSame(prev, invItems || []));
     } catch (e) {
       console.error('Failed to refresh inventory:', e);
     }
@@ -1044,7 +1067,10 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
      Ilgari bu Sozlamalar route'ida inline yozilgan edi. */
   const refreshClinic = React.useCallback(async () => {
     if (!clinicId) return;
-    try { setCurrentClinic(await api.clinics.getById(clinicId)); }
+    try {
+      const fresh = await api.clinics.getById(clinicId);
+      setCurrentClinic(prev => keepIfSame(prev, fresh));
+    }
     catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
   }, [clinicId]);
 
@@ -1056,11 +1082,87 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
         api.receptionists.getAll(clinicId),
         api.labTechnicians.getAll(clinicId),
       ]);
-      setDoctors(docs);
-      setReceptionists(recs);
-      setLabTechnicians(techs || []);
+      setDoctors(prev => keepIfSame(prev, docs));
+      setReceptionists(prev => keepIfSame(prev, recs));
+      setLabTechnicians(prev => keepIfSame(prev, techs || []));
     } catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
   }, [clinicId]);
+
+  /* ─── UMUMIY RO'YXATLAR — YANGI HOLATDA ─────────────────────────────────
+     Yuqoridagi ro'yxatlar kirishda bir marta yuklanadi. Yozuv qayerda
+     qilinmasin (shu oynadagi boshqa ekran yoki boshqa kompyuter), tegishli
+     ro'yxat shu yerda qayta o'qiladi — `hooks/useDataSync.ts` ga qarang.
+     Ilgari bunday yo'l YO'Q edi: Sozlamalarda qo'shilgan bo'lim
+     Registraturada, ochilgan qabulning qarzi kassada, buyurilgan tahlil
+     Laboratoriyada qayta kirmaguncha ko'rinmasdi.
+
+     Har yuklovchi `loadAppData` dagi bilan BIR XIL so'rovni yuboradi:
+     o'sha oyna, o'sha ruxsat. */
+  const refreshDepartments = React.useCallback(async () => {
+    const depts = await api.departments.getAll();
+    setDepartments(prev => keepIfSame(prev, depts || []));
+  }, []);
+
+  const financeAllowed = () => canSeeFinance(parseAccessControl(currentClinic), userRole);
+
+  useDataSync({
+    departments: refreshDepartments,
+    services: async () => {
+      const list = await api.services.getAll(clinicId);
+      setServices(prev => keepIfSame(prev, list));
+    },
+    categories: async () => {
+      const list = await api.categories.getAll(clinicId);
+      // @ts-ignore — `loadAppData` dagi bilan bir xil tur nomuvofiqligi
+      setCategories(prev => keepIfSame(prev, list));
+    },
+    staff: refreshStaffLists,
+    clinic: refreshClinic,
+    /* Bemorlar: oxirgi `INITIAL_PATIENTS` ta qayta o'qiladi. Oynadan
+       tashqaridagi, lekin karta ochilganda eslab qolingan bemorlar
+       (`rememberPatient`) ro'yxatda qoladi. */
+    patients: async () => {
+      const fresh = await api.patients.getAllForClinic(clinicId, INITIAL_PATIENTS);
+      setPatients(prev => {
+        const ids = new Set(fresh.map(p => p.id));
+        const kept = prev.filter(p => !ids.has(p.id) && rememberedPatients.current.has(p.id));
+        return keepIfSame(prev, [...fresh, ...kept]);
+      });
+    },
+    /* Qabullar: kirishdagi oyna almashadi, undan eski qatorlar qoladi. */
+    appointments: async () => {
+      const from = sinceDate(INITIAL_DAYS);
+      const fresh = await api.appointments.getAll(clinicId, { from });
+      setAppointments(prev => {
+        const ids = new Set(fresh.map(a => a.id));
+        const older = prev.filter(a => !ids.has(a.id) && dayKey(a.date) < from);
+        return keepIfSame(prev, [...fresh, ...older]);
+      });
+    },
+    transactions: refreshRecentTransactions,
+    charges: async () => {
+      const list = await api.charges.getAll({ status: 'Unpaid' });
+      setCharges(prev => keepIfSame(prev, list || []));
+    },
+    labOrders: async () => {
+      const list = await api.labOrders.getAll(clinicId);
+      setLabOrders(prev => keepIfSame(prev, list || []));
+    },
+    inventory: refreshInventory,
+    expenses: refreshExpenses,
+    cashClosures: async () => {
+      if (!financeAllowed()) return;
+      const list = await api.cashRegister.getAll(clinicId);
+      setCashClosures(prev => keepIfSame(prev, list || []));
+    },
+    cashMovements: async () => {
+      if (!financeAllowed()) return;
+      const list = await api.cashMovements.getAll(clinicId);
+      setCashMovements(prev => keepIfSame(prev, list || []));
+    },
+  }, isAuthenticated && !mustChangePassword && !!clinicId,
+    (slice) => !SLICE_ROUTES[slice] || SLICE_ROUTES[slice]!.test(location.pathname),
+    location.pathname);
 
   /* Klinika sozlamasi (ruxsatlar) hali kelmagan. Bu paytda `accessControl`
      bo'sh obyekt, ya'ni «hammasi ochiq» — qo'riqchi yashirilgan sahifani

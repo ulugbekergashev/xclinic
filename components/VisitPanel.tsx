@@ -9,6 +9,7 @@ import {
     Prescription, InventoryItem,
 } from '../types';
 import { api } from '../services/api';
+import { useResourceSync } from '../hooks/useDataSync';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { EncounterForm } from '../components/EncounterForm';
 import { printReferral, printPrescription } from '../utils/printForms';
@@ -73,6 +74,12 @@ const STATUS_TONE: Record<string, string> = {
     'Cancelled': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
+/** Shu manzillarga yozilsa ochiq qabul paneli eskiradi */
+const VISIT_RESOURCES = [
+    'visits', 'visit-procedures', 'lab-orders', 'studies', 'prescriptions',
+    'diagnoses', 'referrals', 'payments', 'charges',
+] as const;
+
 export const VisitPanel: React.FC<Props> = ({
     patient, visitId, departments, services, doctors, currentUserName, userRole,
     loggedDoctorId, addToast, onVisitChanged, onGoToCashier,
@@ -131,6 +138,13 @@ export const VisitPanel: React.FC<Props> = ({
     }, [visitId]);
 
     useEffect(() => { setLoading(!!visitId); reload(); }, [reload, visitId]);
+
+    /* Karta ochiq turganda boshqa kompyuterda biror narsa o'zgarsa —
+       kassir pulni oldi, laborant natija kiritdi, registrator xizmat
+       qo'shdi — panel o'zi yangilanadi. Ilgari shifokor buni ko'rish
+       uchun kartadan chiqib qayta kirardi. Yozilayotgan matn buzilmaydi:
+       forma faqat serverdagi qiymat O'ZGARGANDA qayta to'ladi. */
+    useResourceSync(VISIT_RESOURCES, reload, !!visitId);
 
     useEffect(() => {
         api.encounterTemplates.getAll().then(setTemplates).catch(() => { });
@@ -813,7 +827,13 @@ export const VisitPanel: React.FC<Props> = ({
                 patientAge={age}
                 departmentId={visit.departmentId || undefined}
                 templateId={visit.templateId || undefined}
-                value={visit.examData || {}}
+                /* `|| {}` YO'Q. Bo'sh qabulda u har renderda YANGI obyekt
+                   berardi, forma esa `value` o'zgarganda o'zini qayta
+                   to'ldiradi — ya'ni panel har qayta chizilganda (shifokor
+                   «Tahlilga» ni bosdi, boshqa kompyuterdan yangilanish
+                   keldi) saqlanmagan ko'rik matni o'chib ketardi. Matn
+                   (yoki `undefined`) esa o'zgarmaguncha bir xil qoladi. */
+                value={visit.examData}
                 readOnly={clinicalReadOnly}
                 onSave={saveEncounter}
             />

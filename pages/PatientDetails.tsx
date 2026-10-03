@@ -20,6 +20,7 @@ import { SendMessageModal } from '../components/SendMessageModal';
 import { printPrescription } from '../utils/printForms';
 import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, InventoryLog, InventoryItem, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription, VisitCharge } from '../types';
 import { api, getFileUrl, getStoredClinicId, getAuthToken } from '../services/api';
+import { useResourceSync } from '../hooks/useDataSync';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
 import type { TranslationKey } from '../i18n/translations';
@@ -88,6 +89,12 @@ const SECTIONS: [HistorySection, React.ElementType, TranslationKey][] = [
    ['documents', FileText, 'card.secDocuments'],
    ['anamnesis', Activity, 'card.secAnamnesis'],
 ];
+
+/** Shu manzillarga yozilsa bemor kartasidagi ro'yxatlar eskiradi */
+const CARD_RESOURCES = [
+    'visits', 'visit-procedures', 'lab-orders', 'studies', 'prescriptions',
+    'diagnoses', 'payments', 'charges', 'transactions', 'appointments', 'installments',
+] as const;
 
 export const PatientDetails: React.FC<PatientDetailsProps> = ({
    patientId: patientIdProp, 
@@ -283,6 +290,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       almashtirsak, ular kartadan yo'qolardi. */
    const clinicIdForHistory = currentClinic?.id || getStoredClinicId();
    const [history, setHistory] = useState<{ appts: Appointment[]; tx: Transaction[] } | null>(null);
+   /** Oshsa — tarix qayta so'raladi (`useResourceSync`, pastda) */
+   const [historyTick, setHistoryTick] = useState(0);
 
    useEffect(() => {
       if (!clinicIdForHistory || !patientId) { setHistory(null); return; }
@@ -296,7 +305,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       ]).then(([appts, tx]) => { if (alive) setHistory({ appts, tx }); })
         .catch(() => { if (alive) setHistory(null); });
       return () => { alive = false; };
-   }, [clinicIdForHistory, patientId]);
+   }, [clinicIdForHistory, patientId, historyTick]);
 
    /** Ikki ro'yxatni `id` bo'yicha birlashtiradi — takror qator qolmaydi. */
    const mergeById = <T extends { id: string }>(a: T[], b: T[]): T[] => {
@@ -406,6 +415,13 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       }).catch(console.error);
    }, [patientId]);
 
+   /* Karta ochiq turganda bemorga tegishli biror narsa o'zgarsa (boshqa
+      kompyuterda ham) — chap ustun va tarix o'zi yangilanadi. Registrator
+      shu bemorga qabul ochsa, panelga o'sha qabul o'zi tushadi. */
+   useResourceSync(CARD_RESOURCES, () => { reloadClinical(); setHistoryTick(x => x + 1); }, !!patientId);
+
+   const cardClinicId = currentClinic?.id;
+
    useEffect(() => {
       if (patientId) {
          setPanelVisitId(requestedVisitId || null);
@@ -416,12 +432,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          api.encounterTemplates.getAll(undefined, patientId).then(setTemplates).catch(console.error);
 
          // Fetch inventory data
-         if (currentClinic) {
-            api.inventory.getAll(currentClinic.id).then(setInventoryItems).catch(console.error);
-            api.inventory.getLogs(currentClinic?.id ?? undefined, patientId).then(setMaterialLogs).catch(console.error);
+         if (cardClinicId) {
+            api.inventory.getAll(cardClinicId).then(setInventoryItems).catch(console.error);
+            api.inventory.getLogs(cardClinicId, patientId).then(setMaterialLogs).catch(console.error);
          }
       }
-   }, [patientId, currentClinic, reloadClinical, requestedVisitId]);
+      /* Klinika yozuvining O'ZIGA emas, faqat `id` siga bog'liq. Yozuv
+         o'zgarsa (ega sozlamani saqladi) butun karta qaytadan ochilardi:
+         panel `null` ga tushib qayta yuklanar va shifokor yozayotgan
+         ko'rik matni yo'qolardi. */
+   }, [patientId, cardClinicId, reloadClinical, requestedVisitId]);
 
    const [isAssignDoctorModalOpen, setIsAssignDoctorModalOpen] = useState(false);
 
