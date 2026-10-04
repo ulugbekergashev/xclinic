@@ -67,6 +67,9 @@ export interface FlowLane {
     chairOthers: Visit[];
     /** Kutish zalida — chaqirilganlar oldinda, keyin kelish tartibida */
     queue: Visit[];
+    /** Tahlil yoki tekshiruvga ketganlar («natija kutmoqda») — shu shifokorga
+     *  qaytadi. Navbatda ham, kabinetda ham emas, lekin klinikada. */
+    away: Visit[];
     /** Bugun hali keladiganlar — vaqt tartibida */
     coming: Appointment[];
     /** Bugun yakunlanganlar soni */
@@ -174,11 +177,12 @@ export function buildClinicFlow(
             .sort((a, b) => chairSinceOf(b) - chairSinceOf(a));
         const chair = seated[0] || null;
         const queue = mine.filter(v => v.status === 'Waiting' || v.status === 'Called').sort(byArrival);
+        const away = mine.filter(v => v.status === 'AwaitingResults');
         const laneComing = comingByKey.get(key) || [];
         const done = mine.filter(v => v.status === 'Completed').length;
         /* Bo'sh qator chizilmaydi — faqat shifokorning O'Z qatori bundan
            mustasno: «Mening kabinetim» bemorsiz ham kabinetni ko'rsatadi. */
-        if (!chair && queue.length === 0 && laneComing.length === 0 && done === 0 && key !== pinnedKey) return null;
+        if (!chair && queue.length === 0 && away.length === 0 && laneComing.length === 0 && done === 0 && key !== pinnedKey) return null;
 
         for (const v of [...seated, ...queue]) {
             plan[v.id] = planOf(v);
@@ -213,6 +217,7 @@ export function buildClinicFlow(
             chairSince: chair ? chairSinceOf(chair) : null,
             chairOthers: seated.slice(1),
             queue,
+            away,
             coming: laneComing,
             done,
             etaMin,
@@ -240,7 +245,7 @@ export function buildClinicFlow(
        ular «hozir bo'sh» ro'yxatiga o'tadi. Kichik klinikada hamma qator turadi:
        u yerda barqaror ko'rinish muhimroq. */
     if (lanes.length > MAX_QUIET_LANES) {
-        const busy = (l: FlowLane) => !!l.chair || l.queue.length > 0 || l.coming.length > 0;
+        const busy = (l: FlowLane) => !!l.chair || l.queue.length > 0 || l.away.length > 0 || l.coming.length > 0;
         for (const l of lanes) if (!busy(l) && l.doctor?.status === 'Active') idle.push(l.doctor);
         lanes = lanes.filter(busy);
     }

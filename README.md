@@ -613,6 +613,23 @@ shifokor uchun bitta sahifa, bitta nom. Qoida — **bir ish — bir joy**:
   `shared/medSchedule.ts`, soatlar ro'yxatda ko'rinadi.
 - **«Yangi qabul»** — oyna: tugma, **F2** (istalgan sahifadan) yoki skaner.
   Bemor → bo'lim va shifokor → qabul ochiladi, talon chiqadi.
+- **Marshrut** — o'sha oynada shifokor qabuliga **tahlil va tekshiruvlar**
+  qo'shiladi (yoki shifokorsiz, faqat ular). Bemor bitta kelishda bir necha
+  joyga boradi; tartibni registrator emas, qoida qo'yadi: laboratoriya →
+  diagnostika → shifokor (oxirida, natijalar bilan). Bazada yangi narsa yo'q:
+  marshrut — qabul va unga bog'langan yo'llanmalar (`LabOrder.visitId`,
+  `DiagnosticStudy.visitId`), u saqlanmaydi, hisoblanadi
+  (`utils/visitRoute.ts`). Shuning uchun:
+  - hisob qatorlari bitta qabulga yoziladi — kassada **bitta chek**;
+  - talonda bekatlar ro'yxati chiqadi — bemor qayerga, qaysi tartibda;
+  - xaritada bemor **yo'qolmaydi**: tahlilga ketgani shifokor qatorida
+    «tekshiruvda · 1/3» bilan turadi (ilgari u faqat tepada bitta son edi);
+  - shifokor kartadan yana tahlil qo'shsa — u ham marshrutga o'zi tushadi.
+
+  Yo'llanmalar shifokor kartadan ishlatadigan so'rovlarning o'zi bilan
+  yoziladi — narx, hisob, ombor va «natija kutmoqda» holati bir xil qoidada.
+  Shifokorsiz yozilganda qabul ochilmaydi (navbat raqami ham yo'q): bemor
+  to'g'ridan-to'g'ri laboratoriyaga boradi.
 - **Kunning puli** — sarlavhada bitta qator: egaga bugun kassaga tushgani,
   pul oladiganlarga kim to'lashi kerakligi. Bosilsa Kassa ochiladi.
 - **«Bugun hal qilinsin»** — faqat egaga, xaritaning ostida: yopilmagan kassa

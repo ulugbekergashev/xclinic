@@ -5232,11 +5232,21 @@ export const api = {
         },
         create: (data: any) => {
             if (isDemoMode()) {
-                const newOrder = { 
-                    ...data, 
-                    id: `demo-order-${Date.now()}`, 
-                    orderedAt: new Date().toISOString(), 
-                    status: 'Pending' 
+                /* Server yo'llanmani TAHLILLARI bilan qaytaradi (`items`) va
+                   holati `Ordered`. Bu yerda ikkalasi ham yo'q edi: holat
+                   mavjud bo'lmagan `Pending`, tahlillar esa umuman yozilmasdi
+                   — laboratoriya liniyasida va marshrutda bemor qatori
+                   tahlil nomisiz («—») chiqardi. */
+                const id = `demo-order-${Date.now()}`;
+                const picked = DEMO_LAB_TESTS.filter(x => (data.testIds || []).includes(x.id));
+                const newOrder = {
+                    ...data,
+                    id,
+                    orderedAt: new Date().toISOString(),
+                    status: 'Ordered',
+                    priority: data.priority || 'Normal',
+                    totalPrice: picked.reduce((n, x) => n + (x.price || 0), 0),
+                    items: picked.map((x, i) => ({ id: `${id}-i${i}`, orderId: id, testId: x.id, testName: x.name, price: x.price, status: 'Pending' })),
                 };
                 DEMO_LAB_ORDERS.push(newOrder);
                 saveDemoData();

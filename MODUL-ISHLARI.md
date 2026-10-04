@@ -82,6 +82,14 @@ birlashdi). To'lov laboratoriya ro'yxatini ham yangilaydi
 (`hooks/useDataSync.ts`, `AFFECTS`): «to'lanmagan» belgisi laborantning ochiq
 ekranida o'zi ketadi.
 
+**Marshrut (2026-10-04).** «Yangi qabul» oynasida shifokor qabuliga tahlil va
+tekshiruv qo'shiladi; sxema o'zgarmagan — qoida `utils/visitRoute.ts` da
+(bekatlar tartibi, «1/3», tekshiruv turi nomdan). Qilinmagani: maketdagi
+«Statsionarga yotqizish» vkladkasi shu oynaga ko'chmadi (yotqizish —
+Statsionar xaritasidagi bo'sh koykadan); bekat oldidagi kutish vaqti
+(«6 kishi · ~15 daq») ko'rsatilmaydi; diagnostika xizmati qaysi turga
+(UZI, EKG …) tegishliligi prayslistda yo'q — nomdan aniqlanadi.
+
 **Ehtiyot.** Yangi raqam qo'shilsa u ham serverdan kelishi shart. Propdagi
 45 kunlik ro'yxatdan sanalgan har qanday son — jimgina yolg'on.
 

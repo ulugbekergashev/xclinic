@@ -9,7 +9,8 @@ import {
     CheckCircle, AlertCircle, X, Phone, RefreshCw,
     FlaskConical, BellRing, CalendarClock, Tv, Wallet, BedDouble,
 } from 'lucide-react';
-import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment, Admission, TodayZones as Zones } from '../types';
+import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment, Admission, LabTest, MODALITY_LABELS, TodayZones as Zones } from '../types';
+import { routeOfVisit, modalityOfName } from '../utils/visitRoute';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { maskPhone } from '../utils/accessControl';
@@ -134,6 +135,13 @@ export const Reception: React.FC<Props> = ({
     const [doctorId, setDoctorId] = useState('');
     const [serviceId, setServiceId] = useState<number | ''>('');
     const [complaints, setComplaints] = useState('');
+    /* MARSHRUT: shifokor qabuliga qo'shimcha — tahlillar va tekshiruvlar.
+       Bemor bitta kelishda bir necha joyga boradi; ilgari registrator faqat
+       shifokor qabulini ocha olardi, tahlilni esa shifokor kartadan
+       buyurishi yoki laborant «tashqi yo'llanma» yozishi kerak edi. */
+    const [labTests, setLabTests] = useState<LabTest[]>([]);
+    const [labPick, setLabPick] = useState<string[]>([]);
+    const [studyPick, setStudyPick] = useState<number[]>([]);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 
@@ -373,15 +381,55 @@ export const Reception: React.FC<Props> = ({
     /** Qabulni ochishga nima to'sqinlik qilyapti. `null` — hammasi tayyor. */
     const blockingReason = useMemo(() => {
         if (!patient) return t('today.avval_bemorni_tanlang_yoki');
-        if (!departmentId) return t('ui.bolimni_tanlang');
+        /* Faqat tahlil yoki tekshiruv — shifokorsiz ham bo'ladi: bemor
+           to'g'ridan-to'g'ri laboratoriyaga boradi. */
+        if (!departmentId) return labPick.length + studyPick.length > 0 ? null : t('route.pickSomething');
         if (!isDiagnosticDept && !doctorId && deptDoctors.length > 0) return t('today.shifokorni_tanlang');
         return null;
-    }, [patient, departmentId, isDiagnosticDept, doctorId, deptDoctors]);
+    }, [patient, departmentId, isDiagnosticDept, doctorId, deptDoctors, labPick, studyPick]);
 
     const selectedService = useMemo(
         () => services.find(s => s.id === serviceId),
         [services, serviceId],
     );
+
+    /* Tahlillar katalogi — oyna birinchi ochilganda. Diagnostika xizmatlari
+       prayslistdan: diagnostika bo'limiga biriktirilgan xizmatlar. */
+    useEffect(() => {
+        if (!showIntake || labTests.length > 0) return;
+        api.labTests.getAll().then(list => setLabTests(list.filter(x => x.isActive))).catch(() => { /* katalogsiz ham qabul ochiladi */ });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showIntake]);
+    const diagServices = useMemo(() => {
+        const diag = new Set(departments.filter(d => d.type === 'DIAGNOSTIC').map(d => d.id));
+        return services.filter(x => x.id != null && x.departmentId && diag.has(x.departmentId));
+    }, [services, departments]);
+    const pickedTests = useMemo(() => labTests.filter(x => labPick.includes(x.id)), [labTests, labPick]);
+    const pickedStudies = useMemo(() => diagServices.filter(x => studyPick.includes(x.id!)), [diagServices, studyPick]);
+    const hasExtras = pickedTests.length > 0 || pickedStudies.length > 0;
+
+    /* BEKATLAR — tartibni registrator emas, qoida qo'yadi (`utils/visitRoute.ts`):
+       laboratoriya → diagnostika → shifokor (oxirida, natijalar bilan). */
+    const routePlan = useMemo(() => {
+        const stops: { key: string; place: string; services: string; sum: number }[] = [];
+        if (pickedTests.length) {
+            stops.push({ key: 'lab', place: t('nav.lab'), services: pickedTests.map(x => x.name).join(' · '), sum: pickedTests.reduce((n, x) => n + (x.price || 0), 0) });
+        }
+        for (const x of pickedStudies) {
+            stops.push({ key: `study-${x.id}`, place: MODALITY_LABELS[modalityOfName(x.name)], services: x.name, sum: x.price || 0 });
+        }
+        if (departmentId) {
+            const dept = departments.find(d => d.id === departmentId);
+            const doc = doctors.find(d => d.id === doctorId);
+            const place = doc
+                ? `${formatFullName(doc)}${doc.room ? ` · ${fill(t('reception.ticketRoom'), doc.room)}` : ''}`
+                : dept?.name || '';
+            stops.push({ key: 'doctor', place, services: selectedService?.name || t('today.noService'), sum: selectedService?.price || 0 });
+        }
+        return stops;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pickedTests, pickedStudies, departmentId, doctorId, selectedService, departments, doctors]);
+    const routeTotal = routePlan.reduce((n, x) => n + x.sum, 0);
 
     /* Qidiruv SERVERDA. Ilgari bu yerda brauzerdagi massiv filtrlanardi va
        faqat ism + telefon bo'yicha — ya'ni KARTA RAQAMI bo'yicha bemorni
@@ -397,6 +445,7 @@ export const Reception: React.FC<Props> = ({
     const reset = () => {
         setPatient(null); setSearch(''); setDepartmentId(''); setDoctorId('');
         setServiceId(''); setComplaints(''); setError('');
+        setLabPick([]); setStudyPick([]);
     };
 
     /* ─── «YANGI QABUL» OYNASI ────────────────────────────────────────────
@@ -572,8 +621,66 @@ export const Reception: React.FC<Props> = ({
         }
     };
 
+    /* Marshrutning qolgan bekatlari — qabul ochilgandan KEYIN, o'sha qabulga
+       bog'lab. Yangi server yo'li yo'q: shifokor kartadan tahlil buyurganda
+       ishlatadigan so'rovlarning o'zi (`VisitPanel`: «Tahlilga», «Tekshiruvga»).
+       Shuning uchun narx, hisob qatori, ombor va «natija kutmoqda» holati
+       aynan o'sha qoidalar bilan yuradi. Yozilmay qolgani nomma-nom qaytadi. */
+    const sendExtras = async (visitId: string | undefined, doctorName: string): Promise<string[]> => {
+        const failed: string[] = [];
+        const patientName = formatFullName(patient!);
+        if (pickedTests.length) {
+            try {
+                await api.labOrders.create({
+                    patientId: patient!.id, patientName, visitId,
+                    doctorId: doctorId || undefined, doctorName,
+                    testIds: pickedTests.map(x => x.id),
+                });
+            } catch (e: any) { failed.push(`${t('nav.lab')}: ${e?.message || t('ui.saqlanmadi')}`); }
+        }
+        for (const x of pickedStudies) {
+            try {
+                await api.studies.create({
+                    patientId: patient!.id, patientName, visitId,
+                    modality: modalityOfName(x.name), name: x.name, price: x.price, serviceId: x.id,
+                    orderedById: doctorId || undefined, orderedByName: doctorName || undefined,
+                } as any);
+            } catch (e: any) { failed.push(`${x.name}: ${e?.message || t('ui.saqlanmadi')}`); }
+        }
+        return failed;
+    };
+
+    /** Qabul ochilgach: qolgan bekatlar yoziladi, talon marshrut bilan chiqadi. */
+    const finishVisit = async (visit: Visit, doctorName: string, toastKey: 'today.qabul_ochildi_navbat_x' | 'today.ikkinchi_qabul_ochildi_navbat') => {
+        const failed = hasExtras ? await sendExtras(visit.id, doctorName) : [];
+        /* Talon uchun qabul yo'llanmalari bilan qayta o'qiladi — marshrut shundan. */
+        const full = hasExtras ? await api.visits.getById(visit.id).catch(() => visit) : visit;
+        setLastTicket({ ...full, patient: patient! });
+        addToast('success', fill(t(toastKey), visit.queueNumber ?? '—'));
+        if (failed.length) addToast('error', fill(t('route.partFailed'), failed.join('; ')));
+        reset();
+        setShowIntake(false);
+        loadToday();
+    };
+
     const openVisit = async () => {
         if (!patient) { setError(t('ui.bemorni_tanlang')); return; }
+        /* SHIFOKORSIZ: faqat tahlil va tekshiruv. Qabul ochilmaydi (navbat
+           raqami ham yo'q) — bemor to'g'ridan-to'g'ri laboratoriyaga yoki
+           diagnostikaga boradi va o'sha yerdagi ro'yxatda, to'lovi esa
+           kassaning navbatida ko'rinadi. */
+        if (!departmentId && hasExtras) {
+            setSaving(true); setError('');
+            try {
+                const failed = await sendExtras(undefined, '');
+                if (failed.length) { setError(failed.join('; ')); return; }
+                addToast('success', t('route.sentNoVisit'));
+                reset();
+                setShowIntake(false);
+                loadToday();
+            } finally { setSaving(false); }
+            return;
+        }
         if (!departmentId) { setError(t('encounterform.bolimni_tanlang')); return; }
 
         /* SHIFOKORSIZ QABUL (audit B-21).
@@ -608,11 +715,7 @@ export const Reception: React.FC<Props> = ({
                 catch (e) { console.error('Xizmat qo\'shilmadi', e); }
             }
 
-            setLastTicket({ ...visit, patient });
-            addToast('success', fill(t('today.qabul_ochildi_navbat_x'), visit.queueNumber ?? '—'));
-            reset();
-            setShowIntake(false);
-            loadToday();
+            await finishVisit(visit, doc ? formatFullName(doc) : '', 'today.qabul_ochildi_navbat_x');
         } catch (e: any) {
             /* 409 — bugun shu bo'limda qabul allaqachon ochilgan. Bu XATO
                emas, holat: registratura ikki marta bosgan yoki bemor
@@ -659,11 +762,7 @@ export const Reception: React.FC<Props> = ({
                 try { await api.visits.addProcedure(visit.id, { serviceId: Number(serviceId) }); }
                 catch (err) { console.error("Xizmat qo'shilmadi", err); }
             }
-            setLastTicket({ ...visit, patient: patient! });
-            addToast('success', fill(t('today.ikkinchi_qabul_ochildi_navbat'), visit.queueNumber ?? '—'));
-            reset();
-            setShowIntake(false);
-            loadToday();
+            await finishVisit(visit, doc ? formatFullName(doc) : '', 'today.ikkinchi_qabul_ochildi_navbat');
         } catch (e: any) {
             setError(e.message || t('today.qabul_ochilmadi'));
         } finally { setSaving(false); }
@@ -673,6 +772,18 @@ export const Reception: React.FC<Props> = ({
         const dept = departments.find(d => d.id === v.departmentId);
         // Kabinet raqami — bemor qaysi xonaga borishini bilishi kerak
         const room = doctors.find(d => d.id === v.doctorId)?.room || '';
+        /* MARSHRUT — bemor qo'lidagi qog'ozda: qayerga, qaysi tartibda. Bitta
+           bekatli qabulda (faqat shifokor) ro'yxat chiqmaydi. */
+        const stops = routeOfVisit(v);
+        const placeOf = (st: ReturnType<typeof routeOfVisit>[number]) => (
+            st.kind === 'lab' ? t('nav.lab')
+                : st.kind === 'study' ? (st.modality ? MODALITY_LABELS[st.modality] : t('nav.diagnostics'))
+                    : `${v.doctorName || dept?.name || ''}${room ? ` · ${fill(t('reception.ticketRoom'), room)}` : ''}`
+        );
+        const routeHtml = stops.length > 1
+            ? `<div class="s"></div><div class="c">${esc(t('route.ticket'))}</div>` + stops.map((st, i) =>
+                `<div class="r"><b>${i + 1}. ${esc(placeOf(st))}</b>${st.services.length ? `<br>${esc(st.services.join(', '))}` : ''}</div>`).join('')
+            : '';
         const w = window.open('', '_blank', 'width=380,height=520');
         if (!w) { addToast('error', t('print.popupBlocked')); return; }
         /* Ism, bo'lim, shifokor — foydalanuvchi kiritgan matn. Hammasi `esc()`
@@ -681,6 +792,7 @@ export const Reception: React.FC<Props> = ({
 <style>@page{size:80mm auto;margin:4mm}body{font-family:'Segoe UI',Arial,sans-serif;text-align:center;margin:0;padding:8px}
 .n{font-size:64px;font-weight:800;line-height:1;margin:10px 0}
 .c{font-size:15px;font-weight:700}.d{font-size:13px;margin:3px 0}.s{border-top:1px dashed #000;margin:10px 0}
+.r{font-size:13px;margin:6px 0;text-align:left}
 </style></head><body>
 <div class="c">${esc(currentClinic?.name || t('ui.klinika'))}</div>
 <div class="s"></div>
@@ -689,6 +801,7 @@ export const Reception: React.FC<Props> = ({
 <div class="d"><b>${esc(v.patient?.lastName || '')} ${esc(v.patient?.firstName || '')}</b></div>
 ${v.doctorName ? `<div class="d">${esc(v.doctorName)}</div>` : ''}
 ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></div>` : ''}
+${routeHtml}
 <div class="s"></div>
 <div class="d">${esc(new Date().toLocaleString('uz-UZ'))}</div>
 <script>window.onload=()=>window.print()</script>
@@ -1206,12 +1319,59 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                         </div>
                     </div>
 
-                    {/* 3. Qabulni ochish */}
+                    {/* 3. Tahlil va tekshiruvlar — ixtiyoriy. Tanlangani marshrutga
+                        bekat bo'lib tushadi; shifokorsiz ham yozsa bo'ladi. */}
+                    {(labTests.length > 0 || diagServices.length > 0) && (
+                        <div className={`bg-surface rounded-xl border border-line p-4 ${!patient ? 'opacity-50 pointer-events-none' : ''}`}>
+                            <h3 className="text-sm font-semibold text-ink">{t('route.extrasTitle')}</h3>
+                            <p className="mt-0.5 mb-3 text-xs text-muted">{t('route.extrasHint')}</p>
+                            {([
+                                [t('route.lab'), labTests.map(x => ({ id: x.id as string | number, name: x.name, price: x.price, on: labPick.includes(x.id) })),
+                                    (id: string | number) => setLabPick(p => p.includes(id as string) ? p.filter(v => v !== id) : [...p, id as string])],
+                                [t('route.studies'), diagServices.map(x => ({ id: x.id as string | number, name: x.name, price: x.price, on: studyPick.includes(x.id!) })),
+                                    (id: string | number) => setStudyPick(p => p.includes(id as number) ? p.filter(v => v !== id) : [...p, id as number])],
+                            ] as const).map(([label, items, toggle]) => items.length > 0 && (
+                                <div key={label} role="group" aria-label={label} className="mt-2 first:mt-0">
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-faint mb-1.5">{label}</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {items.map(x => (
+                                            <button key={x.id} type="button" onClick={() => toggle(x.id)} aria-pressed={x.on}
+                                                className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-xs font-semibold transition-colors ${x.on
+                                                    ? 'border-primary-600 bg-primary-600 text-white'
+                                                    : 'border-line bg-surface text-ink hover:border-primary-300 dark:hover:border-primary-700'}`}>
+                                                {x.name}
+                                                <span className={`tabular-nums ${x.on ? 'text-white/80' : 'text-faint'}`}>{fmt(x.price)}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Marshrut — ikki va undan ko'p bekat bo'lsa */}
+                    {routePlan.length > 1 && (
+                        <ol aria-label={t('route.ticket')} className="bg-surface rounded-xl border border-line p-4 flex flex-col gap-2">
+                            <li className="text-sm font-semibold text-ink">{fill(t('route.title'), routePlan.length)}</li>
+                            {routePlan.map((st, i) => (
+                                <li key={st.key} className="flex items-center gap-3">
+                                    <span aria-hidden="true" className="shrink-0 w-7 h-7 rounded-full border-2 border-primary-300 dark:border-primary-700 text-primary-600 dark:text-primary-300 text-xs font-bold inline-flex items-center justify-center tabular-nums">{i + 1}</span>
+                                    <span className="min-w-0 flex-1 leading-snug">
+                                        <span className="block text-sm font-bold text-ink truncate">{st.place}</span>
+                                        <span className="block text-xs text-muted truncate">{st.services}</span>
+                                    </span>
+                                    <span className="shrink-0 text-sm font-bold text-ink tabular-nums">{fmt(st.sum)}</span>
+                                </li>
+                            ))}
+                        </ol>
+                    )}
+
+                    {/* 4. Qabulni ochish */}
                     <div className="bg-surface rounded-xl border border-line p-4 flex flex-wrap items-center gap-4">
                         <div>
                             <p className="text-sm text-muted">{t('reception.toPay')}</p>
                             <p className="text-2xl font-bold text-ink tabular-nums">
-                                {fmt(selectedService?.price || 0)} <span className="text-base font-normal">{t('ui.som')}</span>
+                                {fmt(routeTotal)} <span className="text-base font-normal">{t('ui.som')}</span>
                             </p>
                         </div>
                         {/* NIMA YETISHMAYOTGANI aytiladi. Ilgari tugma jimgina
@@ -1221,9 +1381,9 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                             {blockingReason && (
                                 <p className="text-xs text-amber-600 dark:text-amber-400 max-w-[16rem] text-right">{blockingReason}</p>
                             )}
-                            <button aria-label={t('today.qabulni_ochish')} onClick={openVisit} disabled={!!blockingReason || saving}
+                            <button aria-label={!departmentId && hasExtras ? t('route.sendOnly') : t('today.qabulni_ochish')} onClick={openVisit} disabled={!!blockingReason || saving}
                                 className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                                {saving ? t('today.opening') : t('today.qabulni_ochish')} <ArrowRight className="w-4 h-4" />
+                                {saving ? t('today.opening') : !departmentId && hasExtras ? t('route.sendOnly') : t('today.qabulni_ochish')} <ArrowRight className="w-4 h-4" />
                             </button>
                         </div>
                     </div>

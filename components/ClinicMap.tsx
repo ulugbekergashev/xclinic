@@ -12,6 +12,7 @@ import {
     buildClinicFlow, FlowLane, flowIdOfAppointment, flowIdOfVisit, initialsOf, minutesOf,
     shortName, spreadPositions, visitLabel, visitName, waitedMinutes,
 } from '../utils/flow';
+import { routeProgress } from '../utils/visitRoute';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    «BUGUN KLINIKADA» — klinikaning jonli xaritasi: yo'l → kutish zali →
@@ -187,6 +188,8 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
     const [showAll, setShowAll] = useState(false);
     /** To'liq ochilgan navbat (kutish zalidagi bitta qator) — «+N» bosilganda */
     const [openLane, setOpenLane] = useState<string | null>(null);
+    /* Qaysi qatorda «tekshiruvda»gilarning hammasi ochilgan */
+    const [openAway, setOpenAway] = useState<ReadonlySet<string>>(new Set());
     const [open, setOpen] = useState(() => (collapsible ? readOpen() : true));
 
     const toggleOpen = () => setOpen(prev => {
@@ -588,6 +591,49 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
         );
     };
 
+    /* TEKSHIRUVDAGILAR. Bemor tahlil yoki UZI ga ketgan — navbatda ham,
+       kabinetda ham yo'q, lekin klinikada va shu shifokorga qaytadi. Ilgari
+       ular faqat tepada bitta son edi («4 natija kutmoqda»): kim, kimning
+       bemori va marshrutning qayerida ekani ko'rinmasdi — «yo'qolgan bemor».
+       Endi har biri shifokor qatorida: ismi va «1/3» (nechta bekatdan
+       nechtasi o'tildi). Bosilsa — kartasi. */
+    const awayChips = (lane: FlowLane) => {
+        if (lane.away.length === 0) return null;
+        /* Uchtadan ko'pi «+N» ortida — u TUGMA: bosilsa hammasi ochiladi.
+           Bosilmaydigan son bo'lsa, to'rtinchi bemor yana «yo'qolardi». */
+        const all = openAway.has(lane.key);
+        const shown = all ? lane.away : lane.away.slice(0, 3);
+        const hidden = lane.away.length - shown.length;
+        return (
+            <span className="mt-1 flex flex-wrap items-center gap-1">
+                {shown.map(v => {
+                    const name = visitName(v);
+                    const p = routeProgress(v);
+                    const label = `${name}: ${t('flow.away')}${p ? ` · ${p.done}/${p.total}` : ''}`;
+                    const cls = 'inline-flex items-center gap-1 h-5 pl-1.5 pr-1.5 rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/30 text-[10.5px] font-bold text-purple-700 dark:text-purple-300';
+                    const body = <>{initialsOf(name)}{p && <span className="tabular-nums opacity-80">{p.done}/{p.total}</span>}</>;
+                    return onOpenVisit
+                        ? <button key={v.id} type="button" title={label} aria-label={label} onClick={() => onOpenVisit(v)} className={`${cls} hover:border-purple-400`}>{body}</button>
+                        : <span key={v.id} title={label} className={cls}>{body}</span>;
+                })}
+                {hidden > 0 && (
+                    <button type="button" onClick={() => setOpenAway(prev => new Set(prev).add(lane.key))} aria-expanded={false}
+                        aria-label={`${laneLabel(lane)}: ${fill(t('flow.awayMore'), hidden)}`} title={fill(t('flow.awayMore'), hidden)}
+                        className="h-5 px-1.5 rounded-md border border-dashed border-purple-300 dark:border-purple-700 text-[10.5px] font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/30">
+                        +{hidden}
+                    </button>
+                )}
+                {all && lane.away.length > 3 && (
+                    <button type="button" onClick={() => setOpenAway(prev => { const next = new Set(prev); next.delete(lane.key); return next; })} aria-expanded={true}
+                        aria-label={`${laneLabel(lane)}: ${t('flow.collapseLane')}`} title={t('flow.collapseLane')}
+                        className="h-5 w-5 inline-flex items-center justify-center rounded-md border border-dashed border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/30">
+                        <ChevronUp className="w-3 h-3" />
+                    </button>
+                )}
+            </span>
+        );
+    };
+
     const benchLabel = (lane: FlowLane, withName = true) => {
         const longest = lane.queue.reduce((m, v) => Math.max(m, waitedMinutes(v, nowMs)), 0);
         return (
@@ -601,6 +647,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                 <span className={`block truncate text-[11.5px] font-bold ${waitTone(longest)}`}>
                     {lane.queue.length ? fill(t('flow.queueCount'), lane.queue.length) : t('flow.queueEmpty')}
                 </span>
+                {awayChips(lane)}
             </>
         );
     };
