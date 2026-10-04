@@ -109,6 +109,22 @@ describe('medDue — doza kutyaptimi', () => {
         expect(d.nextAt).toBe('14:00');
     });
 
+    it('hozir berilgan doza joriy vaqtni yopadi — ertalabkisi belgilanmagan bo\'lsa ham', () => {
+        // 08:00 belgilanmagan; 14:05 da bitta belgi — endi kutmaydi
+        expect(medDue('Kuniga 3 marta', 1, at(14, 10), at(14, 5)).due).toBe(0);
+        // vaqtidan biroz oldin berilgani ham o'sha vaqtga hisoblanadi
+        expect(medDue('Kuniga 3 marta', 1, at(14, 10), at(13, 20)).due).toBe(0);
+        // ertalab berilgan, tushki vaqt keldi — kutyapti
+        expect(medDue('Kuniga 3 marta', 1, at(14, 10), at(8, 15)).due).toBe(1);
+        expect(medDue('Kuniga 3 marta', 1, at(20, 10), at(8, 15)).due).toBe(2);
+    });
+
+    it('«har 2 soatda»: bitta belgi joriy vaqtni yopadi, keyingi vaqtda yana kutadi', () => {
+        expect(medDue('har 2 soatda', 0, at(13, 20)).due).toBe(6);
+        expect(medDue('har 2 soatda', 1, at(13, 25), at(13, 21)).due).toBe(0);
+        expect(medDue('har 2 soatda', 1, at(14, 50), at(13, 21)).due).toBe(6);
+    });
+
     it('oldindan berilgan doza keyingi vaqtni yopadi', () => {
         expect(medDue('Kuniga 2 mahal', 2, at(20, 5)).due).toBe(0);
     });

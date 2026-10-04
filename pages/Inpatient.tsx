@@ -4,7 +4,7 @@ import { formatDate, formatFullName, formatNumber } from '../utils/format';
 import {
     BedDouble, Plus, X, AlertCircle, LogOut, Stethoscope,
     Pill, CalendarDays, Search, Check, Printer, ArrowRightLeft,
-    Sparkles, Activity, Wallet, Loader2, ClipboardList, Edit2, Ban,
+    Activity, Wallet, Loader2, ClipboardList, Ban,
 } from 'lucide-react';
 import { confirmAction } from '../services/confirm';
 import { Ward, Bed, Admission, Patient, Department, InventoryItem } from '../types';
@@ -27,6 +27,11 @@ import { printDischarge } from '../utils/printForms';
 import { VitalsChart } from '../components/VitalsChart';
 import { todayISO } from '../utils/dateUtils';
 import { DoctorPicker } from '../components/DoctorPicker';
+import { WardMap } from '../components/WardMap';
+import { useResourceSync } from '../hooks/useDataSync';
+
+/* Boshqa kompyuterda dori tayinlansa yoki berilsa — post o'zi yangilanadi */
+const POST_RESOURCES = ['medication-orders', 'admissions', 'inpatient'] as const;
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Statsionar — palata, koyka, yotqizish, obxod.
@@ -35,16 +40,6 @@ import { DoctorPicker } from '../components/DoctorPicker';
    kuni koyka haqi hisoblanadi. Koyka bandligi serverda tekshiriladi — ikki
    bemor bitta koykaga tushib qolmaydi.
    ───────────────────────────────────────────────────────────────────────────── */
-
-const BED_UI: Record<string, string> = {
-    Free: 'bg-emerald-50 border-emerald-300 dark:bg-emerald-900/20 dark:border-emerald-700',
-    Occupied: 'bg-primary-50 border-primary-300 dark:bg-primary-900/20 dark:border-primary-700',
-    Cleaning: 'bg-amber-50 border-amber-300 dark:bg-amber-900/20 dark:border-amber-700',
-    Blocked: 'bg-elevated border-line',
-};
-const BED_LABEL: Record<string, string> = {
-    Free: tr('leads.empty'), Occupied: tr('inpatient.band'), Cleaning: tr('inpatient.tozalanmoqda'), Blocked: tr('inpatient.yopiq'),
-};
 
 interface Props {
     clinicId: string;
@@ -85,7 +80,7 @@ export const Inpatient: React.FC<Props> = ({
     const { t } = useLanguage();
     const [wards, setWards] = useState<Ward[]>([]);
     const [admissions, setAdmissions] = useState<Admission[]>([]);
-    const [tab, setTab] = useState<'beds' | 'active' | 'archive' | 'meds'>('beds');
+    const [tab, setTab] = useState<'beds' | 'active' | 'archive'>('beds');
     const [search, setSearch] = useState('');
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -122,24 +117,6 @@ export const Inpatient: React.FC<Props> = ({
         const q = search.trim().toLowerCase();
         return q ? src.filter(a => a.patientName.toLowerCase().includes(q)) : src;
     }, [tab, active, archive, search]);
-
-    /* Koyka holatlari TO'RTTA: bo'sh, band, tozalanmoqda va yopiq.
-       Sarlavhada faqat birinchi ikkitasi ko'rsatilardi va yig'indi
-       jamiga yetmasdi — «Koyka 6 · Bo'sh 2 · Band 3» degan qator
-       o'zi-o'ziga zid ko'rinardi (audit XC-31). Qolganlari bitta
-       «boshqa» soniga yig'iladi: ular ham koyka, lekin hozir
-       ishlatib bo'lmaydi. */
-    const stats = useMemo(() => {
-        const beds = wards.flatMap(w => w.beds || []);
-        const free = beds.filter(b => b.status === 'Free').length;
-        const occupied = beds.filter(b => b.status === 'Occupied').length;
-        return {
-            total: beds.length,
-            free,
-            occupied,
-            other: beds.length - free - occupied,
-        };
-    }, [wards]);
 
     // ── Amallar ─────────────────────────────────────────────────────────────
     const admit = async () => {
@@ -261,12 +238,17 @@ export const Inpatient: React.FC<Props> = ({
        bemorini ro'yxatdan qayta qidirmaydi. Oyna ochilgach parametr olib
        tashlanadi: sahifa yangilanganda u o'zidan-o'zi qayta ochilmasin. */
     const [searchParams, setSearchParams] = useSearchParams();
-    /* `?tab=meds` — «Bugun» dagi «N muolaja vaqti keldi» shu ro'yxatga olib
-       keladi. Parametr o'qilgach olib tashlanadi (pastdagi bilan bir xil sabab). */
+    /* `?tab=meds` — «Bugun» dagi «N muolaja vaqti keldi» shu yerga olib
+       keladi. Dori varag'i alohida vkladka edi; endi u xaritadagi hamshira
+       posti, shuning uchun havola xaritani ochib postga o'tkazadi. Parametr
+       o'qilgach olib tashlanadi (pastdagi bilan bir xil sabab). */
     const wantedTab = searchParams.get('tab');
     useEffect(() => {
         if (!wantedTab) return;
-        if (['beds', 'active', 'archive', 'meds'].includes(wantedTab)) setTab(wantedTab as typeof tab);
+        if (wantedTab === 'meds') {
+            setTab('beds');
+            window.setTimeout(() => document.getElementById('nurse-post')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 400);
+        } else if (['beds', 'active', 'archive'].includes(wantedTab)) setTab(wantedTab as typeof tab);
         const next = new URLSearchParams(searchParams);
         next.delete('tab');
         setSearchParams(next, { replace: true });
@@ -308,6 +290,7 @@ export const Inpatient: React.FC<Props> = ({
                 res = await api.inpatient.administer(orderId, { dose: dose || undefined, force: true } as any);
             }
             await reloadMar();
+            loadSchedule();
             if (res?.charge) {
                 // Bemor hisobiga qator tushdi — jami o'zgardi
                 const fresh = await api.admissions.getAll().catch(() => null);
@@ -425,14 +408,15 @@ export const Inpatient: React.FC<Props> = ({
     }, [schedDept]);
 
     useEffect(() => {
-        if (tab === 'meds') loadSchedule();
+        if (tab === 'beds') loadSchedule();
     }, [tab, loadSchedule]);
+    useResourceSync(POST_RESOURCES, loadSchedule, tab === 'beds');
 
     /* «Vaqti keldi» belgisi soatga bog'liq: hech kim hech narsa yozmasa ham
        14:00 da yangi dozalar kutib qoladi. Ro'yxat ochiq turganda daqiqada
        bir yangilanadi (yashirin oynada — yo'q). */
     useEffect(() => {
-        if (tab !== 'meds') return;
+        if (tab !== 'beds') return;
         const id = setInterval(() => {
             if (document.visibilityState !== 'hidden') loadSchedule();
         }, 60000);
@@ -606,16 +590,6 @@ export const Inpatient: React.FC<Props> = ({
                     <BedDouble className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                     <h2 className="text-xl font-bold text-ink">{t('inp.title')}</h2>
                 </div>
-                <div className="flex items-center gap-4 text-sm">
-                    <span className="text-muted">{t('inp.bedLabel')}<b className="text-ink tabular-nums">{stats.total}</b></span>
-                    <span className="text-emerald-600 dark:text-emerald-400">{t('inp.free')}<b className="tabular-nums">{stats.free}</b></span>
-                    <span className="text-primary-600 dark:text-primary-400">{t('inp.occupied')}<b className="tabular-nums">{stats.occupied}</b></span>
-                    {stats.other > 0 && (
-                        <span className="text-amber-600 dark:text-amber-400" title={t('inpatient.tozalanmoqda_yoki_yopiq')}>
-                            {t('inpatient.boshqa')}: <b className="tabular-nums">{stats.other}</b>
-                        </span>
-                    )}
-                </div>
                 {canManageStay && (
                     <button onClick={() => setShowWard(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
@@ -635,10 +609,9 @@ export const Inpatient: React.FC<Props> = ({
             {/* Bo'limlar */}
             <div className="flex gap-1 border-b border-line">
                 {([
-                    ['beds', t('inpatient.palatalar')],
-                    ['active', `Yotganlar (${active.length})`],
-                    // Hamshiraning asosiy ekrani: "bugun kimga nima berilishi kerak"
-                    ['meds', t('inpatient.dori_varagi')],
+                    // Xarita: palatalar va hamshira posti (dori varag'i shu yerda)
+                    ['beds', t('wardmap.tabMap')],
+                    ['active', `${t('wardmap.tabActive')} (${active.length})`],
                     ['archive', t('patients.filter.archived')],
                 ] as const).map(([k, label]) => (
                     <button key={k} onClick={() => setTab(k as any)}
@@ -659,71 +632,43 @@ export const Inpatient: React.FC<Props> = ({
                     hint={t('inp.noWardsHint')}
                 />
                 ) : (
-                    <div className="space-y-4">
-                        {wards.map(w => (
-                            <div key={w.id} className="bg-surface rounded-xl border border-line p-4">
-                                <div className="flex flex-wrap items-baseline gap-2 mb-3">
-                                    <h3 className="font-semibold text-ink">{w.name}</h3>
-                                    <span className="text-xs px-2 py-0.5 rounded bg-elevated text-muted">{wardKindLabel(w.kind)}</span>
-                                    {w.floor && <span className="text-xs text-faint">{w.floor}-{t('inpatient.qavat')}</span>}
-                                    <span className="ml-auto text-sm text-muted tabular-nums">{fmt(w.dailyRate)} {t('inpatient.som_kun')}</span>
-                                    {/* PALATANI TAHRIRLASH VA KOYKA QO'SHISH.
-
-                                        Ilgari koykalar FAQAT palata yaratilganda,
-                                        `bedCount` orqali paydo bo'lardi: bitta koyka
-                                        qo'shish yoki narxni o'zgartirish uchun palatani
-                                        o'chirib qayta yaratish kerak edi. */}
-                                    {canManageStay && (
-                                        <span className="flex items-center gap-1">
-                                            <button onClick={() => openWardEdit(w)} title={t('inp.editWard')} aria-label={t('inp.editWard')}
-                                                className="p-1.5 text-faint hover:text-primary-600 rounded-lg">
-                                                <Edit2 className="w-4 h-4" />
-                                            </button>
-                                            <button onClick={() => addBed(w.id)} disabled={saving} title={t('inp.addBed')}
-                                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border border-line text-muted hover:border-primary-400 disabled:opacity-50">
-                                                <Plus className="w-3.5 h-3.5" /> {t('inp.bed')}
-                                            </button>
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                                    {(w.beds || []).map(b => {
-                                        const occ = b.admissions?.[0];
-                                        return (
-                                            <div key={b.id}
-                                                className={`p-3 rounded-lg border-2 transition-colors ${BED_UI[b.status] || BED_UI.Blocked}`}>
-                                                <button
-                                                    onClick={() => { if (b.status === 'Free') { if (canManageStay) setAdmitBed({ bed: b, ward: w }); } else if (occ) openDetail(admissions.find(a => a.id === occ.id) || null); }}
-                                                    className="w-full text-left hover:opacity-80">
-                                                    <p className="text-sm font-medium text-ink">{b.label}</p>
-                                                    <p className="text-xs text-muted mt-0.5 truncate">
-                                                        {occ ? occ.patientName : BED_LABEL[b.status]}
-                                                    </p>
-                                                </button>
-                                                {/* B53: ilgari koyka chiqarishdan keyin ABADIY "tozalanmoqda"
-                                                    bo'lib qolardi va palata asta-sekin to'lib borardi. */}
-                                                {b.status === 'Cleaning' && (
-                                                    <button onClick={() => markBedReady(b.id)} disabled={saving}
-                                                        className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-white/70 dark:bg-surface/40 text-amber-800 dark:text-amber-200 hover:bg-surface disabled:opacity-50">
-                                                        <Sparkles className="w-3 h-3" /> {t('inpatient.koyka_tayyor')}
-                                                    </button>
-                                                )}
-                                                {/* Ta'mirdagi yoki vaqtincha yopilgan koyka.
-                                                    `Blocked` qiymati sxemada bor edi, lekin
-                                                    unga o'tadigan yo'l YO'Q edi. */}
-                                                {canManageStay && (b.status === 'Free' || b.status === 'Blocked') && (
-                                                    <button onClick={() => toggleBedBlock(b)} disabled={saving}
-                                                        className="mt-2 w-full px-2 py-1 rounded text-[11px] font-medium bg-white/60 dark:bg-surface/40 text-muted hover:bg-surface disabled:opacity-50">
-                                                        {b.status === 'Blocked' ? t('inp.unblockBed') : t('inp.blockBed')}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    <WardMap
+                        wards={wards}
+                        admissions={active}
+                        schedule={schedule}
+                        canManage={canManageStay}
+                        canGiveMeds={canGiveMeds}
+                        saving={saving}
+                        busyOrder={marBusy}
+                        onOpenAdmission={openDetail}
+                        onAdmit={(bed, ward) => setAdmitBed({ bed, ward })}
+                        onBedReady={markBedReady}
+                        onToggleBlock={toggleBedBlock}
+                        onEditWard={openWardEdit}
+                        onAddBed={addBed}
+                        onGive={o => giveMed(o.id, o.dosage)}
+                        wardNote={w => [wardKindLabel(w.kind), w.floor ? `${w.floor}-${t('inpatient.qavat')}` : '', `${fmt(w.dailyRate)} ${t('inpatient.som_kun')}`].filter(Boolean).join(' · ')}
+                        postActions={<>
+                            {departments.filter(d => d.isActive).length > 1 && (
+                                <select value={schedDept} onChange={e => setSchedDept(e.target.value)} aria-label={t('inp.allDepts')}
+                                    className="h-9 min-w-0 flex-1 px-2.5 border border-line rounded-lg bg-surface text-ink text-xs font-semibold">
+                                    <option value="">{t('inp.allDepts')}</option>
+                                    {departments.filter(d => d.isActive).map(d => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                </select>
+                            )}
+                            {/* DORI SHU YERDAN TAYINLANADI. Ilgari ro'yxatda faqat
+                                «Berildi» bor edi, bo'sh holat esa foydalanuvchini
+                                boshqa ekranga yuborardi. */}
+                            {canGiveMeds && (
+                                <button onClick={() => setAssignOpen(true)}
+                                    className="ml-auto shrink-0 inline-flex items-center gap-1.5 h-9 px-3 text-xs font-extrabold bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+                                    <Plus className="w-3.5 h-3.5" /> {t('inp.assignMed')}
+                                </button>
+                            )}
+                        </>}
+                    />
                 )
             )}
 
@@ -833,139 +778,6 @@ export const Inpatient: React.FC<Props> = ({
             )}
 
             {/* ── Bemor kartasi (obxod + dorilar) ───────────────────────────── */}
-            {/* ── Bo'lim bo'yicha kunlik dori varag'i ───────────────────────
-                Hamshiraning asosiy ekrani: bitta ro'yxatda butun bo'lim.
-                Ilgari har bemorni alohida ochish kerak edi, ya'ni dori berish
-                paytida hamshira o'n marta oyna ochib yopardi. */}
-            {tab === 'meds' && (
-                <div className="space-y-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <select value={schedDept} onChange={e => setSchedDept(e.target.value)} className={inputCls + ' max-w-xs'}>
-                            <option value="">{t('inp.allDepts')}</option>
-                            {departments.filter(d => d.isActive).map(d => (
-                                <option key={d.id} value={d.id}>{d.name}</option>
-                            ))}
-                        </select>
-                        <span className="text-sm text-muted">
-                            {schedule?.date || todayISO()}
-                        </span>
-                        <button onClick={loadSchedule} disabled={schedLoading}
-                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-line rounded-lg hover:bg-elevated disabled:opacity-50">
-                            {schedLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-                            {t('ui.yangilash')}
-                        </button>
-                        {/* DORI SHU YERDAN TAYINLANADI.
-
-                            Ilgari bu vkladkada faqat «Berildi» tugmasi bor edi,
-                            bo'sh holat esa foydalanuvchini BOSHQA ekranga
-                            yuborardi: «Yotganlar bo'limida bemorni ochib, Dori
-                            tayinlash». Ya'ni hamshira ko'rgan ro'yxatga dori
-                            qo'shib bo'lmasdi. */}
-                        {canGiveMeds && (
-                            <button onClick={() => setAssignOpen(true)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
-                                <Plus className="w-4 h-4" /> {t('inp.assignMed')}
-                            </button>
-                        )}
-                    </div>
-
-                    {schedLoading && !schedule ? (
-                        <div className="space-y-2">
-                            {[0, 1, 2].map(i => (
-                                <div key={i} className="h-20 bg-elevated rounded-xl animate-pulse" />
-                            ))}
-                        </div>
-                    ) : (schedule?.rows || []).length === 0 ? (
-                        <div className="text-center py-16 bg-surface rounded-xl border border-line">
-                            <Pill className="w-12 h-12 mx-auto text-faint mb-3" />
-                            <p className="text-muted">{t('inp.noMedsToday')}</p>
-                            <p className="text-xs text-faint mt-1">
-                                {t('inp.assignMed')} — {t('inpatient.yuqoridagi_tugma')}
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {schedule.rows.map((row: any) => (
-                                <div key={row.admissionId} className="bg-surface rounded-xl border border-line overflow-hidden">
-                                    <div className="px-4 py-2.5 bg-canvas/40 border-b border-line flex flex-wrap items-center gap-2">
-                                        <p className="font-semibold text-ink">{row.patientName}</p>
-                                        <span className="text-xs text-muted">
-                                            {[row.ward, row.bed].filter(Boolean).join(' / ') || t('inpatient.koyka_yoq')}
-                                        </span>
-                                        <button
-                                            onClick={() => {
-                                                const adm = admissions.find(a => a.id === row.admissionId);
-                                                if (adm) openDetail(adm);
-                                            }}
-                                            className="ml-auto text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
-                                            {t('inpatient.kartani_ochish')}
-                                        </button>
-                                    </div>
-
-                                    {(row.orders || []).length === 0 ? (
-                                        <p className="px-4 py-3 text-sm text-faint">{t('inp.noOrdersToday')}</p>
-                                    ) : (
-                                        <div className="divide-y divide-line">
-                                            {row.orders.map((o: any) => {
-                                                const given = (o.marks || []).filter((m: any) => m.status === 'Given').length;
-                                                return (
-                                                    <div key={o.id} className="px-4 py-2.5 flex flex-wrap items-center gap-2">
-                                                        {/* Telefonda matn butun qatorni oladi, belgi va tugma pastga tushadi —
-                                                            aks holda jadval soatlari bir so'zdan ustun bo'lib qolardi. */}
-                                                        <div className="min-w-0 flex-1 basis-full sm:basis-0">
-                                                            <p className="text-sm text-ink truncate">
-                                                                {o.name}
-                                                                {o.dosage ? <span className="text-muted"> · {o.dosage}</span> : null}
-                                                            </p>
-                                                            <p className="text-xs text-faint">
-                                                                {[o.route, o.frequency].filter(Boolean).join(' · ')}
-                                                                {medSlots(o)}
-                                                            </p>
-                                                        </div>
-                                                        {medDueBadge(o)}
-
-                                                        {(o.marks || []).length > 0 && (
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {o.marks.map((m: any, i: number) => (
-                                                                    <span key={i}
-                                                                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${m.status === 'Given'
-                                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
-                                                                        {new Date(m.givenAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        )}
-
-                                                        {canGiveMeds && (
-                                                            <button
-                                                                onClick={async () => {
-                                                                    setMarBusy(o.id);
-                                                                    try {
-                                                                        await api.inpatient.administer(o.id, { dose: o.dosage || undefined });
-                                                                        await loadSchedule();
-                                                                    } catch (e: any) {
-                                                                        setError(e?.message || 'Belgilanmadi');
-                                                                    } finally { setMarBusy(''); }
-                                                                }}
-                                                                disabled={marBusy === o.id}
-                                                                className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
-                                                                {marBusy === o.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                                                                Berildi{given > 0 ? ` (${given})` : ''}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
-
             {detail && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDetail(null)}>
                     <div className="bg-surface rounded-xl w-full max-w-3xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>

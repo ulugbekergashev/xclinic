@@ -1312,10 +1312,12 @@ const demoMedMarks = (orderId: string, day: string) => DEMO_ADMINISTRATIONS
     .filter(x => x.orderId === orderId && String(x.at).slice(0, 10) === day)
     .map(x => ({ ...x, status: (x as any).status || 'Given', givenAt: x.at }));
 
-const demoMedSchedule = (order: { frequency?: string | null; status?: string }, handled: number, day: string) => {
+const demoMedSchedule = (order: { frequency?: string | null; status?: string }, marks: { givenAt: string }[], day: string) => {
     const live = day === todayISO() && order.status !== 'Stopped';
     const now = new Date();
-    const s = medDue(order.frequency, handled, live ? now.getHours() * 60 + now.getMinutes() : -1);
+    const minOf = (d: Date) => d.getHours() * 60 + d.getMinutes();
+    const last = marks.length ? new Date(Math.max(...marks.map(m => +new Date(m.givenAt)))) : null;
+    const s = medDue(order.frequency, marks.length, live ? minOf(now) : -1, last ? minOf(last) : null);
     return { perDay: s.perDay, slots: s.slots, due: live ? s.due : 0, nextAt: live ? s.nextAt : null };
 };
 
@@ -1331,7 +1333,7 @@ const demoMedRows = (day: string) => DEMO_ADMISSIONS.filter(a => a.status === 'A
             return {
                 id: m.id, name: m.name, dosage: m.dosage, route: m.route, frequency: m.frequency,
                 marks,
-                ...demoMedSchedule(m, marks.length, day),
+                ...demoMedSchedule(m, marks, day),
             };
         }),
     };
@@ -4373,7 +4375,7 @@ export const api = {
                             ...o,
                             administrations: marks,
                             givenToday: marks.filter(m => m.status === 'Given').length,
-                            ...demoMedSchedule(o, marks.length, day),
+                            ...demoMedSchedule(o, marks, day),
                         };
                     }),
                 });

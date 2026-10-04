@@ -70,8 +70,17 @@ Registrator va egada xarita ichida laboratoriya va statsionar zonalari bor:
 raqamlar `backend/todayZones.ts` da sanaladi (`/api/today/zones`), chegaralar
 «Bugun hal qilinsin» dagi bilan bir xil (bir kundan eski yo'llanma — «eskirgan»).
 Vaqti kelgan muolajalar: tayinlovdagi «kuniga 3 mahal» matnidan standart
-vaqtlar chiqariladi (`shared/medSchedule.ts`) — Statsionarning «Dori varag'i»
-va «Bugun» zonasi bitta qoidadan o'qiydi.
+vaqtlar chiqariladi (`shared/medSchedule.ts`) — Statsionarning hamshira posti
+va «Bugun» zonasi bitta qoidadan o'qiydi. Ikkalasi TAYINLOV kesimida sanaydi
+(doza emas) va bitta «Berildi» joriy vaqtni yopadi.
+
+Bo'limlarning o'z ekranlari ham xarita tilida (2026-10-04): Laboratoriya —
+liniya (`components/LabLine.tsx`: proba olish → ishlanmoqda → bugun tayyor,
+ostida jurnal), Statsionar — bo'lim xaritasi (`components/WardMap.tsx`:
+palatalar → hamshira posti; «Palatalar» va «Dori varag'i» vkladkalari
+birlashdi). To'lov laboratoriya ro'yxatini ham yangilaydi
+(`hooks/useDataSync.ts`, `AFFECTS`): «to'lanmagan» belgisi laborantning ochiq
+ekranida o'zi ketadi.
 
 **Ehtiyot.** Yangi raqam qo'shilsa u ham serverdan kelishi shart. Propdagi
 45 kunlik ro'yxatdan sanalgan har qanday son — jimgina yolg'on.

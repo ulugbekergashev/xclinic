@@ -233,6 +233,12 @@ async function main() {
             const mark = await call('POST', `/medication-orders/${med.data.id}/administer`,
                 { status: 'Skipped', skipReason: 'sinov' }, admin);
             if (mark.status !== 200) { ok('doza belgilandi', false, `status ${mark.status}: ${JSON.stringify(mark.data).slice(0, 120)}`); break; }
+            /* BITTA belgi joriy vaqtni yopadi: ertalabki belgilanmagan
+               dozalar hamshirani «berildi» ni qayta-qayta bosishga majburlamaydi. */
+            if (i === 0) {
+                const one = (await zones()).inpatient;
+                ok('birinchi belgidan keyin — endi kutmaydi', one.medsDue === dueBase, `${one.medsDue}, kutilgan ${dueBase}`);
+            }
         }
         inp = (await zones()).inpatient;
         ok('hammasi belgilangach — kutayotgani yo\'q', inp.medsDue === dueBase, `${inp.medsDue}, kutilgan ${dueBase}`);

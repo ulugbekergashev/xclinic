@@ -397,6 +397,21 @@ yo'qotmaydi.
 Seed 6 ta tahlil, 45 ta ko'rsatkich beradi: umumiy qon, umumiy siydik,
 biokimyo, gormonlar, koagulogramma, qon guruhi.
 
+**Ekran — liniya** (`components/LabLine.tsx`), «Bugun» xaritasining tilida.
+Yo'llanma chapdan o'ngga yuradi:
+
+1. **Proba olish** — odamlar: proba hali olinmagan, eng uzoq kutgani tepada.
+   «Olindi» — shu yerda. Bir kundan ortiq kutayotganlari yig'iq (soni
+   ko'rinadi, bosilsa ochiladi): eski yo'llanmalar bugungi navbatni to'smaydi.
+2. **Ishlanmoqda** — probirkalar, namuna turi bo'yicha shtativlarda. Probirka
+   — bitta tahlil; bosilsa natija kiritish ochiladi. Muddati o'tgani qizil
+   (muddat = proba olingan vaqt + tahlilning bajarilish muddati),
+   to'lanmagani belgilangan — to'lovsiz natija saqlanmaydi (402).
+3. **Bugun tayyor** — bugun chiqqan natijalar; shifokor hali ochmagani sariq.
+
+Ostida **jurnal** — barcha yo'llanmalar, qidiruv va holat filtri bilan. U
+ro'yxat, ish joyi emas: «Proba olindi» faqat liniyada.
+
 ### Diagnostika
 
 UZI, EKG, rentgen, endoskopiya, MRT, KT. Natija — tavsif + xulosa + rasm.
@@ -406,6 +421,20 @@ Rasmlar mahalliy `uploads/` ga tushadi va backup'ga baza bilan birga kiradi.
 
 Palata, koyka, yotqizish, kunlik obxod, dori tayinlash, chiqarish. Koyka
 bandligi serverda tekshiriladi — ikki bemor bitta koykaga tushmaydi (409).
+
+**Ekran — bo'lim xaritasi** (`components/WardMap.tsx`):
+
+- chapda **palatalar** — har biri xona, ichida koykalar. Band koykada bemor,
+  necha kun yotgani va belgilar: muolaja vaqti keldi, bugun obxod yozilmagan,
+  bugun yotdi. Bosilsa — o'sha yotish ochiladi (obxod, tayinlov, hisob,
+  chiqarish u yerda). Bo'sh koyka — yotqizish, tozalanayotgani — «Tayyor».
+- o'ngda **hamshira posti** — bugungi muolajalar SOAT bo'yicha: vaqti kelgani
+  tepada, keyin navbatdagilari. Tayinlov boshiga bitta satr. «Berildi» va
+  «Dori tayinlash» — shu yerda.
+
+«Palatalar» va «Dori varag'i» ilgari ikkita alohida vkladka edi; eski
+`/inpatient?tab=meds` havolasi xaritani ochib postga o'tkazadi. «Yotganlar» va
+«Arxiv» — ro'yxat ko'rinishida, qidiruv bilan.
 
 ### Dorixona
 
@@ -567,17 +596,21 @@ shifokor uchun bitta sahifa, bitta nom. Qoida — **bir ish — bir joy**:
   egada. Laboratoriya: proba kutayotganlar → ishdagi yo'llanmalar (muddatidan
   kechikkani belgilanadi) → bugun tayyor bo'lgan natijalar. Statsionar:
   palatalar va koykalar — band, bo'sh, tozalanmoqda; bugun obxod yozilmagan
-  bemor sariq nuqta bilan, **vaqti kelgan muolajalar** soni esa Statsionarning
-  «Dori varag'i» ni ochadi. Zona — raqam va havola: ish o'sha bo'limlarning
+  bemor sariq nuqta bilan, **vaqti kelgan muolajalar** soni esa Statsionar
+  xaritasidagi hamshira postini ochadi. Zona — raqam va havola: ish o'sha bo'limlarning
   o'zida bajariladi (band koyka o'sha yotishni ochadi). Raqamlar serverda
   sanaladi (`/api/today/zones`); «Ruxsatlar» da bo'lim yashirilgan rolga
   uning zonasi ham ko'rsatilmaydi.
 - **Dori jadvali** — tayinlovda soat saqlanmaydi, qabul tartibi erkin matn
   («kuniga 3 mahal», «har 8 soatda», «og'riqda»). Matndan «necha mahal»
   ajratiladi va standart vaqtlarga yoyiladi (08:00 · 14:00 · 20:00 kabi);
-  vaqti o'tgan, lekin belgilanmagan doza — «vaqti keldi». Zaruratga qarab
-  beriladigan yoki tushunib bo'lmagan matn — jadvalsiz: eslatma chiqmaydi.
-  Qoida bitta joyda — `shared/medSchedule.ts`, soatlar ro'yxatda ko'rinadi.
+  vaqti o'tgan, lekin belgilanmagan doza — «vaqti keldi». Hozir berilgan
+  doza JORIY vaqtni yopadi: ertalabkisi belgilanmay qolgan bo'lsa ham bitta
+  «Berildi» yetadi — aks holda eslatmani o'chirish uchun hamshira bermagan
+  dozasini ham yozishi kerak bo'lardi (ombordan ortiqcha chiqim, hisobga
+  ortiqcha qator). Zaruratga qarab beriladigan yoki tushunib bo'lmagan matn
+  — jadvalsiz: eslatma chiqmaydi. Qoida bitta joyda —
+  `shared/medSchedule.ts`, soatlar ro'yxatda ko'rinadi.
 - **«Yangi qabul»** — oyna: tugma, **F2** (istalgan sahifadan) yoki skaner.
   Bemor → bo'lim va shifokor → qabul ochiladi, talon chiqadi.
 - **Kunning puli** — sarlavhada bitta qator: egaga bugun kassaga tushgani,

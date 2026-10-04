@@ -109,27 +109,45 @@ export interface MedDue {
     perDay: number | null;
     /** Bugungi vaqtlar — «08:00» ko'rinishida */
     slots: string[];
-    /** Vaqti kelgan, lekin belgilanmagan dozalar soni */
+    /** Vaqti kelgan, lekin belgilanmagan dozalar soni. Joriy vaqt yopilgan
+     *  bo'lsa (`lastHandledMin`) — nol, avvalgilari belgilanmagan bo'lsa ham */
     due: number;
     /** Bugungi keyingi vaqt; qolmagan bo'lsa `null` */
     nextAt: string | null;
 }
 
+/** Doza vaqtidan shuncha daqiqa OLDIN berilgan bo'lsa ham o'sha vaqtga hisoblanadi */
+export const EARLY_MIN = 60;
+
 /**
  * Tayinlovning bugungi holati.
  * `handledToday` — bugun belgilangan dozalar: berilgani ham, o'tkazib
  * yuborilgani ham, rad etilgani ham — uchalasi ham hamshiraning qarori.
+ *
+ * `lastHandledMin` — bugungi OXIRGI belgining vaqti (kun boshidan daqiqada).
+ * Berilsa, joriy vaqt (oxirgi o'tgan soat) shu belgi bilan yopilgan deb
+ * olinadi: 08:00 dagi doza belgilanmay qolib, hamshira 14:05 da dorini berib
+ * belgilasa — tayinlov endi kutmaydi. Busiz hisob faqat SONGA qarardi
+ * (o'tgan vaqtlar − belgilar) va bitta belgidan keyin ham «vaqti keldi»
+ * turaverardi: hamshira uni o'chirish uchun bermagan dozasini ham «berildi»
+ * deb yozishi kerak bo'lardi — ya'ni ombordan ortiqcha chiqim va bemor
+ * hisobiga ortiqcha qator.
  */
-export function medDue(frequency: string | null | undefined, handledToday: number, nowMin: number): MedDue {
+export function medDue(
+    frequency: string | null | undefined, handledToday: number, nowMin: number, lastHandledMin?: number | null,
+): MedDue {
     const perDay = dosesPerDay(frequency);
     if (perDay == null) return { perDay: null, slots: [], due: 0, nextAt: null };
     const mins = slotMinutes(perDay);
-    const passed = mins.filter(m => m <= nowMin).length;
+    const passed = mins.filter(m => m <= nowMin);
     const next = mins.find(m => m > nowMin);
+    let due = Math.max(0, passed.length - Math.max(0, handledToday));
+    const current = passed[passed.length - 1];
+    if (due > 0 && lastHandledMin != null && current != null && lastHandledMin >= current - EARLY_MIN) due = 0;
     return {
         perDay,
         slots: mins.map(slotLabel),
-        due: Math.max(0, passed - Math.max(0, handledToday)),
+        due,
         nextAt: next != null ? slotLabel(next) : null,
     };
 }

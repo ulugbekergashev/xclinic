@@ -41,6 +41,12 @@ export const tashkentMinuteOfDay = (): number => {
     return d.getUTCHours() * 60 + d.getUTCMinutes();
 };
 
+/** Berilgan lahzaning Toshkent bo'yicha kun boshidan daqiqasi (0-1439) */
+export const tashkentMinuteOf = (at: Date | string): number => {
+    const d = new Date(new Date(at).getTime() + TASHKENT_OFFSET_MS);
+    return d.getUTCHours() * 60 + d.getUTCMinutes();
+};
+
 /** Toshkent bo'yicha soat (0-23) */
 export const tashkentHour = (): number => new Date(tashkentNowMs()).getUTCHours();
 

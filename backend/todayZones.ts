@@ -28,7 +28,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
-import { tashkentDateStr, tashkentDayBounds, tashkentMinuteOfDay } from './tashkentTime';
+import { tashkentDateStr, tashkentDayBounds, tashkentMinuteOfDay, tashkentMinuteOf } from './tashkentTime';
 import { medDue } from '../shared/medSchedule';
 
 type Deps = {
@@ -163,7 +163,7 @@ export function registerTodayZonesRoutes(app: express.Express, deps: Deps) {
                 }),
                 prisma.medicationAdministration.findMany({
                     where: { clinicId, givenAt: { gte: start, lte: end } },
-                    select: { orderId: true },
+                    select: { orderId: true, givenAt: true },
                 }),
             ]);
 
@@ -223,10 +223,16 @@ export function registerTodayZonesRoutes(app: express.Express, deps: Deps) {
             /* Vaqti kelgan dorilar — TAYINLOV kesimida: bitta dorining ikki
                dozasi kechikkan bo'lsa ham, hamshira uchun bu bitta ish. */
             const handled = new Map<string, number>();
-            for (const m of medMarks) handled.set(m.orderId, (handled.get(m.orderId) || 0) + 1);
+            const lastMark = new Map<string, number>();
+            for (const m of medMarks) {
+                handled.set(m.orderId, (handled.get(m.orderId) || 0) + 1);
+                lastMark.set(m.orderId, Math.max(lastMark.get(m.orderId) || 0, +new Date(m.givenAt)));
+            }
             const nowMin = tashkentMinuteOfDay();
-            const medsDue = medOrders.filter((o: any) =>
-                medDue(o.frequency, handled.get(o.id) || 0, nowMin).due > 0).length;
+            const medsDue = medOrders.filter((o: any) => medDue(
+                o.frequency, handled.get(o.id) || 0, nowMin,
+                lastMark.has(o.id) ? tashkentMinuteOf(new Date(lastMark.get(o.id)!)) : null,
+            ).due > 0).length;
 
             const allBeds = zoneWards.flatMap((w: any) => w.beds);
             const count = (status: string) => allBeds.filter((b: any) => b.status === status).length;

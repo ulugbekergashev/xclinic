@@ -12,12 +12,19 @@ import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { printLabResult } from '../utils/printForms';
 import { useNavigate } from 'react-router-dom';
 import { DoctorPicker } from '../components/DoctorPicker';
+import { LabLine } from '../components/LabLine';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Laboratoriya — tahlillar.
 
    denta7 da bu sahifa stomatologik protez buyurtmalari edi (koronka, veneer,
    metallkeramika). Endi klinik laboratoriya: yo'llanma → namuna → natija.
+
+   Sahifa ikki qismdan iborat: tepada LINIYA (`components/LabLine.tsx`) —
+   bugungi ish: kimdan proba olinadi, qaysi probirka ishlanmoqda, nima tayyor;
+   ostida JURNAL — barcha yo'llanmalar, qidiruv va holat filtri bilan (eski
+   natijani topish, tashqi yo'llanmani o'chirish). «Proba olindi» faqat
+   liniyada: jurnal — ro'yxat, ish joyi emas.
 
    Eng muhim jihati: norma bemorning jinsi va yoshiga bog'liq. Normani server
    tanlaydi va bahoni (norma/yuqori/past) o'sha yerda hisoblab saqlaydi —
@@ -211,7 +218,6 @@ export const LabOrders: React.FC<Props> = ({
                 <div className="flex items-center gap-2 mr-auto">
                     <FlaskConical className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                     <h2 className="text-xl font-bold text-ink">{t('lab.title')}</h2>
-                    <span className="text-sm text-muted">{filtered.length} {t('laborders.ta_yollanma')}</span>
                 </div>
                 {/* Yo'llanmalar odatda shifokordan keladi (Qabul → Tahlilga yuborish).
                     Bu tugma faqat to'g'ridan-to'g'ri kelgan bemor uchun. */}
@@ -249,7 +255,13 @@ export const LabOrders: React.FC<Props> = ({
                 </div>
             )}
 
-            {/* Filtrlar */}
+            <LabLine orders={labOrders} tests={tests} busy={saving} onCollect={collectSample} onOpen={openResults} />
+
+            {/* Jurnal: barcha yo'llanmalar */}
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-2">
+                <h3 className="text-base font-bold text-ink">{t('labline.journal')}</h3>
+                <span className="text-sm text-muted">{filtered.length} {t('laborders.ta_yollanma')} · {t('labline.journalHint')}</span>
+            </div>
             <div className="flex flex-wrap gap-3">
                 <div className="relative flex-1 min-w-[220px]">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
@@ -325,15 +337,6 @@ export const LabOrders: React.FC<Props> = ({
                                     <div className="text-right shrink-0">
                                         <p className="font-semibold text-ink tabular-nums">{fmt(order.totalPrice || 0)} {t('ui.som')}</p>
                                         <div className="flex gap-2 mt-2">
-                                            {/* Bemor keldi va proba olindi. Sana maydoni bor edi,
-                                                lekin uni faqat umumiy tahrirlash orqali
-                                                o'zgartirish mumkin edi. */}
-                                            {!(order as any).sampleCollectedAt && order.status !== 'Completed' && order.status !== 'Cancelled' && (
-                                                <button onClick={() => collectSample(order)} disabled={saving}
-                                                    className="px-3 py-1.5 text-xs font-medium border border-line text-muted rounded-lg hover:border-primary-400 disabled:opacity-50">
-                                                    {t('finance.report.sampleTaken')}
-                                                </button>
-                                            )}
                                             <button onClick={() => openResults(order)}
                                                 className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                                                 {t('laborders.natijalar')}

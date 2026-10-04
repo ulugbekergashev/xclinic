@@ -247,7 +247,7 @@ test.describe('«Bugun klinikada» xaritasi', () => {
         await expect(map.locator('section[aria-label="Laboratoriya"]')).toHaveCount(0);
     });
 
-    test("vaqti kelgan muolaja: zonadagi son «Dori varag'i»ni ochadi, tayinlovda jadval ko'rinadi", async ({ page, request }) => {
+    test("vaqti kelgan muolaja: zonadagi son hamshira postini ochadi, tayinlov o'sha yerda", async ({ page, request }) => {
         /* Tayinlovda soat yo'q — «har 2 soatda» matnidan jadval chiqariladi
            (`shared/medSchedule.ts`): 06:00 dan 22:00 gacha o'n ikki vaqt. */
         const auth = await (await request.post('/api/auth/login', {
@@ -282,9 +282,12 @@ test.describe('«Bugun klinikada» xaritasi', () => {
             await go(page, '/inpatient?tab=meds');
         }
 
-        await expect(page.getByText(new RegExp(`Jadval${n}`)).first()).toBeVisible({ timeout: 20_000 });
-        await expect(page.getByText(/jadval: 06:00 · 07:27/).first()).toBeVisible();
-        if (anyDue) await expect(page.getByText(/^vaqti keldi$/i).first()).toBeVisible();
+        /* «Dori varag'i» alohida vkladka edi; endi u Statsionar xaritasidagi
+           hamshira posti. Tayinlov postda bitta satr: soati va holati bilan. */
+        const row = page.locator('#nurse-post li', { hasText: `Jadval${n}` });
+        await expect(row).toBeVisible({ timeout: 20_000 });
+        await expect(row).toContainText(/\d{2}:\d{2}/);
+        if (anyDue) await expect(row).toContainText(/vaqti keldi/i);
     });
 
     test('xarita yig\'iladi va holatini eslab qoladi', async ({ page }) => {

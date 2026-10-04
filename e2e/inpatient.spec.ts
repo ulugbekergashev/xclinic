@@ -4,8 +4,9 @@
  * лекарственное, вот этот список, тут нет вот этого добавить».
  *
  * Uchta joy tekshiriladi:
- *   · kunlik dori varag'ida «Dori tayinlash» tugmasi bormi (ilgari faqat
- *     «Berildi» bor edi, bo'sh holat esa BOSHQA ekranga yuborardi);
+ *   · hamshira postida («Dori varag'i» endi xaritaning o'ng tomoni) «Dori
+ *     tayinlash» tugmasi bormi (ilgari faqat «Berildi» bor edi, bo'sh holat
+ *     esa BOSHQA ekranga yuborardi);
  *   · palatani tahrirlash va unga koyka qo'shish mumkinmi (ilgari koyka
  *     faqat palata yaratilganda, `bedCount` orqali paydo bo'lardi);
  *   · koykani ta'mirga chiqarish mumkinmi (`Blocked` sxemada bor edi,
@@ -16,15 +17,14 @@ import { login, go } from './helpers';
 
 test.describe('Statsionar — ro\'yxatlarga qo\'shish', () => {
 
-    test('kunlik dori varag\'ida «Dori tayinlash» bor', async ({ page }) => {
+    test('hamshira postida «Dori tayinlash» bor', async ({ page }) => {
         await login(page);
         await go(page, '/inpatient');
         await page.waitForTimeout(3000);
 
-        await page.getByRole('button', { name: /Dori varag/ }).click();
-        await page.waitForTimeout(2000);
-
-        const assign = page.getByRole('button', { name: /^Dori tayinlash$/ });
+        // Alohida vkladka yo'q: post — xaritaning o'zida
+        await expect(page.getByRole('button', { name: /^Dori varag/ })).toHaveCount(0);
+        const assign = page.locator('#nurse-post').getByRole('button', { name: /^Dori tayinlash$/ });
         await expect(assign).toBeVisible();
 
         // Oyna ochiladi va bemorni tanlash mumkin
@@ -38,7 +38,7 @@ test.describe('Statsionar — ro\'yxatlarga qo\'shish', () => {
         await go(page, '/inpatient');
         await page.waitForTimeout(3000);
 
-        const addBed = page.getByRole('button', { name: /^Koyka$/ }).first();
+        const addBed = page.getByRole('button', { name: /: Koyka qo'shish$/ }).first();
         test.skip(await addBed.count() === 0, 'Palata yo\'q');
 
         const before = await page.getByText(/-koyka/).count();

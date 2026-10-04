@@ -61,8 +61,12 @@ const AFFECTS: Record<string, Slice[]> = {
     admissions: ['charges', 'inventory'],
     'medication-orders': ['charges', 'inventory'],
 
-    charges: ['charges', 'transactions'],
-    payments: ['charges', 'transactions'],
+    /* To'lov yo'llanmaning «to'landi» belgisini ham o'zgartiradi (`paid`,
+       `due` — laboratoriya ro'yxatida serverdan keladi). Busiz kassir pulni
+       olgandan keyin ham laborantning ochiq ekranida «to'lanmagan» turardi
+       va u natijani kiritmasdi — sahifani qayta yuklamaguncha. */
+    charges: ['charges', 'transactions', 'labOrders'],
+    payments: ['charges', 'transactions', 'labOrders'],
     transactions: ['transactions', 'charges'],
     installments: ['transactions', 'charges'],
 
