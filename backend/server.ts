@@ -88,6 +88,7 @@ import { registerInpatientRoutes, chargeAllPendingBedDays } from './inpatient';
 import { registerPayrollRoutes } from './payroll';
 import { registerHrRoutes, serializeWorkDays } from './hr';
 import { registerAttentionRoutes } from './attention';
+import { registerTodayZonesRoutes } from './todayZones';
 import { requestStableTunnel } from './tunnelClient';
 import { readTunnelAddresses, notifyBackupAddress } from './tunnelAddresses';
 import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
@@ -6377,6 +6378,7 @@ registerLicenseRoutes(app, { prisma });
 registerPayrollRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerHrRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerAttentionRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerTodayZonesRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerComplianceRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
 registerFileRoutes(app, { prisma, authenticateToken, getScopedClinicId, uploadsDir });
 

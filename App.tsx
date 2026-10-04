@@ -2048,6 +2048,10 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                   userRole={userRole}
                   doctorId={doctorId}
                   showPatientPhone={showPatientPhoneForRole}
+                  /* Zonalar o'sha bo'limlarga havola: «Ruxsatlar» da bo'lim
+                     yashirilgan rolga uning zonasi ham ko'rsatilmaydi. */
+                  showLabZone={canOpenModule(userRole, accessControl, 'lab')}
+                  showInpatientZone={canOpenModule(userRole, accessControl, 'inpatient')}
                   onCreatePatient={addPatient}
                   onPatientAdded={rememberPatient}
                   addToast={addToast}

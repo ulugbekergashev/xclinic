@@ -1,4 +1,4 @@
-import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
+import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, TodayZones, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
 import { todayISO } from '../utils/dateUtils';
 import * as auth from './authStore';
 import { tr } from '../context/LanguageContext';
@@ -4360,6 +4360,81 @@ export const api = {
         transfers: (id: string) => {
             if (isDemoMode()) return demoRead<any[]>(DEMO_TRANSFERS.filter(t => t.admissionId === id));
             return fetchJson<any[]>(`/admissions/${id}/transfers`);
+        },
+    },
+
+    /* «Bugun» ekranidagi laboratoriya va statsionar zonalari. Bitta so'rov,
+       raqamlar serverda sanaladi (`backend/todayZones.ts`) — yo'llanmalar
+       ro'yxatini to'liq yuklab brauzerda sanash yillar o'tib og'irlashardi. */
+    today: {
+        zones: () => {
+            if (isDemoMode()) {
+                /* Qoidalar serverdagi bilan bir xil: kutayotganlar — oxirgi
+                   24 soat, eskisi — `stale`; muddat — proba olingandan 24 soat. */
+                demoSyncBeds();
+                const today = todayISO();
+                const nowMs = Date.now();
+                const dayAgo = nowMs - 864e5;
+                const at = (iso?: string | null) => (iso ? Date.parse(iso) : 0);
+                const status = (o: any) => String(o.status || '');
+                const ordered = DEMO_LAB_ORDERS.filter(o => status(o) === 'Ordered');
+                const waiting = ordered.filter(o => at(o.orderedAt) >= dayAgo);
+                const people = new Map<string, { patientId: string | null; patientName: string; urgent: boolean }>();
+                for (const o of waiting) {
+                    const key = o.patientId || `name:${o.patientName}`;
+                    const seen = people.get(key);
+                    const urgent = o.priority === 'Urgent';
+                    if (seen) seen.urgent = seen.urgent || urgent;
+                    else people.set(key, { patientId: o.patientId || null, patientName: o.patientName, urgent });
+                }
+                const working = DEMO_LAB_ORDERS
+                    .filter(o => ['Collected', 'InProgress', 'In-Progress'].includes(status(o)))
+                    .map(o => ({
+                        overdue: nowMs > at(o.sampleCollectedAt || o.orderedAt) + 24 * 3600e3,
+                        urgent: o.priority === 'Urgent',
+                    }))
+                    .sort((a, b) => Number(b.overdue) - Number(a.overdue));
+                const ready = DEMO_LAB_ORDERS.filter(o =>
+                    status(o) === 'Completed' && String(o.completedAt || '').slice(0, 10) === today);
+
+                const active = DEMO_ADMISSIONS.filter(a => a.status === 'Active');
+                const seenToday = (admissionId: string) => DEMO_ROUNDS.some(r =>
+                    r.admissionId === admissionId && String(r.date).slice(0, 10) === today);
+                const wards = DEMO_WARDS.filter(w => w.isActive).map(w => ({
+                    id: w.id,
+                    name: w.name,
+                    beds: (w.beds || []).map(b => {
+                        const adm = active.find(a => a.bedId === b.id) || null;
+                        return {
+                            id: b.id, label: b.label, status: b.status,
+                            admissionId: adm?.id || null,
+                            patientName: adm?.patientName || null,
+                            admittedToday: !!adm && String(adm.admittedAt).slice(0, 10) === today,
+                            seenToday: !!adm && seenToday(adm.id),
+                        };
+                    }),
+                }));
+                const beds = wards.flatMap(w => w.beds);
+                const count = (st: string) => beds.filter(b => b.status === st).length;
+                return demoRead<TodayZones>({
+                    date: today,
+                    lab: {
+                        waiting: { count: people.size, people: [...people.values()].slice(0, 6) },
+                        stale: ordered.length - waiting.length,
+                        working: { count: working.length, overdue: working.filter(x => x.overdue).length, items: working.slice(0, 24) },
+                        ready: { count: ready.length, unseen: ready.filter(o => !o.seenByDoctorAt).length },
+                    },
+                    inpatient: wards.length ? {
+                        beds: { total: beds.length, occupied: count('Occupied'), free: count('Free'), cleaning: count('Cleaning'), blocked: count('Blocked') },
+                        wards,
+                        admittedToday: beds.filter(b => b.admittedToday).length,
+                        dischargedToday: DEMO_ADMISSIONS.filter(a =>
+                            a.status === 'Discharged' && String(a.dischargedAt || '').slice(0, 10) === today).length,
+                        notSeenToday: active.filter(a => !seenToday(a.id)).length,
+                    } : null,
+                });
+            }
+            return fetchJson<TodayZones>('/today/zones');
         },
     },
 

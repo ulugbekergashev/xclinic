@@ -1048,6 +1048,38 @@ export interface Admission {
   medicationOrders?: MedicationOrder[];
 }
 
+/** «Bugun» ekranidagi laboratoriya va statsionar zonalari — serverda sanaladi
+ *  (`backend/todayZones.ts`). Bo'lim klinikada yo'q bo'lsa — `null`. */
+export interface TodayZones {
+  date: string;
+  lab: null | {
+    /** Proba kutayotganlar (oxirgi 24 soat). `count` — odam soni */
+    waiting: { count: number; people: { patientId: string | null; patientName: string; urgent: boolean }[] };
+    /** Bir kundan ortiq proba kutayotgan yo'llanmalar */
+    stale: number;
+    /** Proba olingan, natija kiritilmagan; `overdue` — tahlil muddatidan o'tgani */
+    working: { count: number; overdue: number; items: { overdue: boolean; urgent: boolean }[] };
+    /** Bugun tayyor bo'lgan natijalar; `unseen` — shifokor hali ochmagani */
+    ready: { count: number; unseen: number };
+  };
+  inpatient: null | {
+    beds: { total: number; occupied: number; free: number; cleaning: number; blocked: number };
+    wards: {
+      id: string;
+      name: string;
+      beds: {
+        id: string; label: string; status: string;
+        admissionId: string | null; patientName: string | null;
+        admittedToday: boolean; seenToday: boolean;
+      }[];
+    }[];
+    admittedToday: number;
+    dischargedToday: number;
+    /** Bugun obxod yozilmagan faol yotishlar */
+    notSeenToday: number;
+  };
+}
+
 export interface InpatientRound {
   id: string;
   admissionId: string;

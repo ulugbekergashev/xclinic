@@ -72,6 +72,9 @@ interface ClinicMapProps {
     collapsible?: boolean;
     /** Bemorning to'lanmagan summasi — belgi yonida ko'rinadi. Faqat pul oladiganlarga beriladi */
     dueOf?: (patientId: string) => number;
+    /** Qatorlardan keyin, o'sha panel ichida chiziladigan qism — laboratoriya va
+     *  statsionar zonalari (`TodayZones`). Bugun qabul bo'lmasa ham ko'rinadi */
+    footer?: React.ReactNode;
 }
 
 /** Yo'l chizig'ida ko'rinadigan oyna — keyingi 3 soat */
@@ -166,7 +169,7 @@ const Name: React.FC<{ name: string; onOpen?: () => void; className?: string; sh
 
 export const ClinicMap: React.FC<ClinicMapProps> = ({
     title, pinDoctorId, visits, appointments, doctors, departments, services,
-    onPatientClick, onOpenVisit, onArrived, onNoShow, onCall, onEnter, enterLabel, onUndoEnter, onSeeAll, collapsible, dueOf,
+    onPatientClick, onOpenVisit, onArrived, onNoShow, onCall, onEnter, enterLabel, onUndoEnter, onSeeAll, collapsible, dueOf, footer,
 }) => {
     const { t } = useLanguage();
     const now = useNow(30000);
@@ -878,6 +881,8 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                                         {flow.lanes.length > 0 && (wide ? mapDesktop : mapMobile)}
                                     </>
                                 )}
+
+                                {footer}
 
                                 {(flow.idle.length > 0 || onSeeAll) && (
                                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">

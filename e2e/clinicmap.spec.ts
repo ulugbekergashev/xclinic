@@ -134,6 +134,61 @@ test.describe('«Bugun klinikada» xaritasi', () => {
         expect(started.status).toBe('In Progress');
     });
 
+    test("laboratoriya va statsionar zonalari: proba olinsa zona o'zi yangilanadi, koyka yotishni ochadi", async ({ page, request }) => {
+        /* Zonalar «Bugun» xaritasining ichida turadi va raqamni serverdan
+           oladi (`/api/today/zones`). Ikki narsa tekshiriladi: ekrandagi son
+           serverniki bilan bir xilmi va boshqa kompyuterdagi yozuvdan keyin
+           sahifa QAYTA YUKLANMASDAN yangilanadimi. */
+        const auth = await (await request.post('/api/auth/login', {
+            data: { username: 'admin', password: PASSWORD },
+        })).json();
+        const headers = { Authorization: `Bearer ${auth.token}` };
+        const zones = async () => (await request.get('/api/today/zones', { headers })).json();
+
+        const tests: any[] = (await (await request.get('/api/lab-tests', { headers })).json())
+            .filter((t: any) => t.isActive);
+        test.skip(tests.length === 0, "Tahlillar katalogi bo'sh");
+
+        const n = uniq();
+        const patient = await (await request.post('/api/patients', {
+            headers,
+            data: { firstName: 'Sinov', lastName: `Zona${n}`, gender: 'Male', phone: `+99892${n.slice(0, 7)}`, force: true },
+        })).json();
+        const order = await (await request.post('/api/lab-orders', {
+            headers,
+            data: { patientId: patient.id, patientName: `Zona${n} Sinov`, doctorName: 'Dr. Sinov', testIds: [tests[0].id] },
+        })).json();
+        expect(order.id, "yo'llanma yozildi").toBeTruthy();
+        const before = await zones();
+
+        await login(page);
+        await go(page, '/reception');
+        const map = page.locator('section[aria-labelledby="clinic-map-title"]');
+        const lab = map.locator('section[aria-label="Laboratoriya"]');
+        await expect(lab).toBeVisible({ timeout: 30_000 });
+        await expect(lab.getByText(`${before.lab.waiting.count} kishi kutmoqda`)).toBeVisible();
+        await page.evaluate(() => { (window as any).__sameDocument = true; });
+
+        /* Proba «boshqa kompyuterda» olinadi — API orqali. Ochiq turgan
+           «Bugun» buni o'zi bilishi kerak. */
+        const collected = await request.post(`/api/lab-orders/${order.id}/collect`, { headers });
+        expect(collected.status()).toBe(200);
+        const waitingNow = before.lab.waiting.count - 1;
+        await expect(lab.getByText(waitingNow ? `${waitingNow} kishi kutmoqda` : "kutayotgan yo'q")).toBeVisible({ timeout: 20_000 });
+        await expect(lab.getByText(`${before.lab.working.count + 1} ta yo'llanma`)).toBeVisible();
+        expect(await page.evaluate(() => (window as any).__sameDocument === true), 'sahifa qayta yuklanmadi').toBe(true);
+
+        /* Statsionar: band koyka — o'sha yotishga havola. */
+        const inp = before.inpatient;
+        const bed = inp?.wards.flatMap((w: any) => w.beds.map((b: any) => ({ ...b, ward: w.name }))).find((b: any) => b.admissionId);
+        test.skip(!bed, "Statsionarda yotgan bemor yo'q");
+        const zone = map.locator('section[aria-label="Statsionar"]');
+        await expect(zone.getByText(new RegExp(`Statsionar · ${inp.beds.occupied} / ${inp.beds.total} band`, 'i'))).toBeVisible();
+        await zone.getByRole('button', { name: new RegExp(`^${bed.ward} · ${bed.label} — ${bed.patientName}`) }).click();
+        await expect(page).toHaveURL(/#\/inpatient/, { timeout: 15_000 });
+        await expect(page.locator('div.fixed').getByText(bed.patientName).first()).toBeVisible({ timeout: 15_000 });
+    });
+
     test('xarita yig\'iladi va holatini eslab qoladi', async ({ page }) => {
         await login(page);
         await go(page, '/reception');

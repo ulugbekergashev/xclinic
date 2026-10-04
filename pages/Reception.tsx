@@ -9,7 +9,7 @@ import {
     CheckCircle, AlertCircle, X, Phone, RefreshCw, Calendar as CalendarIcon,
     Volume2, FlaskConical, BellRing, CalendarClock, Tv, Wallet, BedDouble,
 } from 'lucide-react';
-import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment, Admission } from '../types';
+import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment, Admission, TodayZones as Zones } from '../types';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { maskPhone } from '../utils/accessControl';
@@ -17,14 +17,20 @@ import { useLanguage, fill } from '../context/LanguageContext';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
 import { useLiveUpdates, useLiveHealthy, LiveEventType } from '../hooks/useLiveUpdates';
+import { useResourceSync } from '../hooks/useDataSync';
 import { PatientFormModal } from '../components/PatientFormModal';
 import { Modal } from '../components/Common';
 import { ClinicMap } from '../components/ClinicMap';
 import { AttentionList, AttentionItem } from '../components/AttentionList';
+import { TodayZones } from '../components/TodayZones';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
 const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
 const INPATIENT_EVENTS: LiveEventType[] = ['admission.changed'];
+/* Zonalar shu manzillarga yozilganda yangilanadi (`/api/` dan keyingi birinchi
+   bo'g'in): yo'llanma va natija, yotqizish, obxod, koyka holati. `visits` —
+   shifokor tahlilni qabul kartasidan buyuradi. */
+const ZONE_RESOURCES = ['lab-orders', 'visits', 'admissions', 'beds', 'wards'] as const;
 
 /* ─────────────────────────────────────────────────────────────────────────────
    BUGUN — klinikaning kunlik ish ekrani, hamma rol uchun bitta sahifa:
@@ -32,6 +38,8 @@ const INPATIENT_EVENTS: LiveEventType[] = ['admission.changed'];
      · registrator va ega — jonli xarita (yo'l → kutish zali → kabinetlar):
        «Keldi», «Chaqirish», «Kirdi» shu yerda; qabul «Yangi qabul» oynasida
        ochiladi; sarlavhada kunning puli;
+     · ikkalasiga xarita ichida — laboratoriya va statsionar zonalari:
+       ko'p profilli klinikada kunning yarmi o'sha yerda o'tadi;
      · ega qo'shimcha — «Bugun hal qilinsin» ro'yxati;
      · shifokor — «Mening kabinetim»: o'sha xaritaning bitta qatori (o'z
        yozuvlari, o'z navbati, kabineti), ostida natijalar va statsionardagi
@@ -77,6 +85,9 @@ interface Props {
        «Bemorlar» va bemor kartasiga uzatilardi — Registraturada esa
        raqam ochiq turardi, ya'ni cheklov aylanib o'tilardi. */
     showPatientPhone?: boolean;
+    /** «Ruxsatlar» da Laboratoriya / Statsionar yashirilgan bo'lsa — zonasi ham ko'rsatilmaydi */
+    showLabZone?: boolean;
+    showInpatientZone?: boolean;
     /* Bemor yaratish — App dagi yagona yo'l orqali (`addPatient`).
        Ilgari bu ekran `api.patients.create` ga TO'G'RIDAN-TO'G'RI yozardi
        va shu sababli takror tekshiruvi (409) ham, maydon tekshiruvi ham
@@ -96,6 +107,7 @@ const today = () => todayISO();
 export const Reception: React.FC<Props> = ({
     clinicId, patients, doctors, departments, services, currentClinic,
     userRole, doctorId: myDoctorId, showPatientPhone = true,
+    showLabZone = true, showInpatientZone = true,
     onCreatePatient, onPatientAdded, addToast,
 }) => {
     const showPhone = (v?: string) => showPatientPhone ? formatUzPhone(v || '') : maskPhone(v);
@@ -202,6 +214,19 @@ export const Reception: React.FC<Props> = ({
         setAttention(a ? (a.items || []) : null);
     }, [isOwner]);
     useEffect(() => { loadOwner(); }, [loadOwner, todayVisits]);
+
+    /* ─── LABORATORIYA VA STATSIONAR ZONALARI ─────────────────────────────
+       Registrator va egaga, xaritaning ichida. Bitta yengil so'rov: raqamlar
+       serverda sanaladi (`backend/todayZones.ts`). Kelmasa — zonasiz xarita
+       chiziladi, navbat ishlayveradi. */
+    const [zones, setZones] = useState<Zones | null>(null);
+    const loadZones = useCallback(async () => {
+        if (!canRegister || (!showLabZone && !showInpatientZone)) return;
+        try { setZones(await api.today.zones()); }
+        catch { /* zonalar qo'shimcha — xato ko'rsatilmaydi */ }
+    }, [canRegister, showLabZone, showInpatientZone]);
+    useEffect(() => { loadZones(); }, [loadZones]);
+    useResourceSync(ZONE_RESOURCES, loadZones, canRegister);
 
     /* ─── SHIFOKORNING STATSIONARDAGI BEMORLARI ───────────────────────────
        Ko'p profilli klinikada shifokorning kuni faqat navbat emas: yotgan
@@ -488,18 +513,18 @@ export const Reception: React.FC<Props> = ({
     useLiveUpdates(LIVE_EVENTS, loadTodayAppts);
 
     /* Boshqa kompyuterda bugunga yozilgan yangi bemor uchun alohida hodisa
-       yo'q — daqiqada bir so'raladi. Oqim uzilgan bo'lsa navbat ham shu
-       yerda yangilanadi: `useLiveUpdates` dagi 4-qaror shuni va'da qiladi,
+       yo'q — daqiqada bir so'raladi. Oqim uzilgan bo'lsa navbat va zonalar
+       ham shu yerda yangilanadi: `useLiveUpdates` dagi 4-qaror shuni va'da qiladi,
        lekin bu ekranda so'rov yo'q edi va navbat qotib qolardi. */
     const liveOk = useLiveHealthy();
     useEffect(() => {
         const id = setInterval(() => {
             if (document.visibilityState === 'hidden') return;
             loadTodayAppts();
-            if (!liveOk) loadToday();
+            if (!liveOk) { loadToday(); loadZones(); }
         }, liveOk ? 60000 : 30000);
         return () => clearInterval(id);
-    }, [liveOk, loadToday, loadTodayAppts]);
+    }, [liveOk, loadToday, loadTodayAppts, loadZones]);
 
     /** «Kelmadi» — vaqti o'tgan yozuv yopiladi. Server bemorga xabar ham yuboradi */
     const markNoShow = async (appt: Appointment) => {
@@ -972,6 +997,7 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                 onEnter={enterVisit}
                 onUndoEnter={undoEnter}
                 onSeeAll={() => navigate('/calendar')}
+                footer={zones && <TodayZones zones={zones} showLab={showLabZone} showInpatient={showInpatientZone} />}
             />
         )}
 

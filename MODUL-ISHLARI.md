@@ -64,6 +64,9 @@ xaritani ham, navbatni ham takrorlab qo'ygan edi — bitta ish ikki ekranda.
 Shifokorda «Bugun» — «Mening kabinetim»: xaritaning o'z qatori (ilgari ikki
 ro'yxat edi va «Bugunga yozilganlar» da butun klinikaning yozuvlari chiqardi)
 hamda statsionardagi bemorlari. Hamshirada hozircha eski ro'yxat qoldi.
+Registrator va egada xarita ichida laboratoriya va statsionar zonalari bor:
+raqamlar `backend/todayZones.ts` da sanaladi (`/api/today/zones`), chegaralar
+«Bugun hal qilinsin» dagi bilan bir xil (bir kundan eski yo'llanma — «eskirgan»).
 
 **Ehtiyot.** Yangi raqam qo'shilsa u ham serverdan kelishi shart. Propdagi
 45 kunlik ro'yxatdan sanalgan har qanday son — jimgina yolg'on.

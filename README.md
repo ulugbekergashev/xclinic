@@ -510,6 +510,14 @@ shifokor uchun bitta sahifa, bitta nom. Qoida — **bir ish — bir joy**:
   yozilganlar: «Keldi», «Kelmadi») → kutish zali («Chaqirish», to'lanmagan
   summa) → kabinetlar («Kirdi», «Ochish»). Alohida navbat ro'yxati yo'q;
   qatorga sig'maganlar «+N» bosilganda ochiladi.
+- **Laboratoriya va statsionar zonalari** — xaritaning ichida, registrator va
+  egada. Laboratoriya: proba kutayotganlar → ishdagi yo'llanmalar (muddatidan
+  kechikkani belgilanadi) → bugun tayyor bo'lgan natijalar. Statsionar:
+  palatalar va koykalar — band, bo'sh, tozalanmoqda; bugun obxod yozilmagan
+  bemor sariq nuqta bilan. Zona — raqam va havola: ish o'sha bo'limlarning
+  o'zida bajariladi (band koyka o'sha yotishni ochadi). Raqamlar serverda
+  sanaladi (`/api/today/zones`); «Ruxsatlar» da bo'lim yashirilgan rolga
+  uning zonasi ham ko'rsatilmaydi.
 - **«Yangi qabul»** — oyna: tugma, **F2** (istalgan sahifadan) yoki skaner.
   Bemor → bo'lim va shifokor → qabul ochiladi, talon chiqadi.
 - **Kunning puli** — sarlavhada bitta qator: egaga bugun kassaga tushgani,
@@ -590,7 +598,7 @@ nomda, rolga qarab boshqacha ko'rinadi:
 
 | Rol | Nima ko'radi |
 |---|---|
-| Registrator | jonli xarita (butun klinika navbati) · «Yangi qabul» · kim to'lashi kerakligi |
+| Registrator | jonli xarita (butun klinika navbati, laboratoriya va statsionar zonalari) · «Yangi qabul» · kim to'lashi kerakligi |
 | Ega | registratorniki + bugun kassaga tushgan pul · «Bugun hal qilinsin» · natijalar |
 | Shifokor | «Mening kabinetim» (xaritaning o'z qatori) · natijasi tayyor va kutilayotganlar · statsionardagi bemorlari · bugun yakunlanganlar |
 | Hamshira | navbat va bemor kartasi |
