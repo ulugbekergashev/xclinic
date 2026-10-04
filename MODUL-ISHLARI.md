@@ -103,6 +103,11 @@ va «o'chirish» tugmasi «bekor qilish»ga almashdi (7-bo'limga qarang).
 
 ## 4. Kalendar — ✅ ochiq ish yo'q
 
+2026-10-04: Kun / Hafta / **Oy** (katakda kunning bandligi), yon panel (oy
+kalendari, mutaxassislik bo'yicha shifokorlar — filtr, holatlar izohi),
+«hozir» chizig'i; sana matni interfeys tilida. Xona (UZI, muolaja) ustunlari
+qilinmagan — yozuv xonaga bog'lanmaydi, bu sxema o'zgarishini talab qiladi.
+
 ## 5. Kassa (ilgari «Moliya») — ✅ ochiq ish yo'q
 
 Menyuda «Kassa» (2026-10-04); modul nomi va manzil — `finance`. Bugungi

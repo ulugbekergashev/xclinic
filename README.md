@@ -670,6 +670,29 @@ bo'lib qoladi.
 > Dorixona (sotuv) rejadan chiqarilgan — ombor faqat sarflanadigan materiallar
 > uchun. Retsept shifokor yozadigan hujjat bo'lib qoladi.
 
+### Kalendar
+
+Tuzilma denta7 dan: yon panel + setka. Ko'p profilli klinikaga moslangan
+joylari:
+
+- **Uch ko'rinish.** *Kun* — shifokorlar ustunlarda (registratorning ish
+  ko'rinishi); *Hafta* — kunlar ustunlarda; *Oy* — katakda ism emas, kunning
+  **bandligi**: yozuvlar soni va chiziq (band vaqt ÷ shifokorlarning ish
+  vaqti). Stomatologiyada oy katagiga besh-olti ism sig'ardi; sakkiz
+  shifokorli klinikada bir kunda yuzga yaqin yozuv bo'ladi. Kun bosilsa —
+  o'sha kun kunlik ko'rinishda ochiladi (`components/CalendarMonth.tsx`).
+- **Yon panel** (`components/CalendarSide.tsx`, keng ekranda): kichik oy
+  kalendari — istalgan kunga bitta bosish bilan; shifokorlar **mutaxassislik
+  bo'yicha** guruhlangan, yonida ko'rinayotgan davrdagi yozuvlar soni — bu
+  filtr; holatlar izohi (punktir — kutilmoqda, belgi — yakunlandi, xira —
+  kelmadi). Tor ekranda filtr — setka ustidagi nishonlar qatori.
+- **«Hozir» chizig'i** — hafta ko'rinishida bugungi ustunda, kunlikda butun
+  kenglikda.
+- Sarlavhadagi sana interfeys tilida (`utils/calendarLabels.ts`).
+
+Diagnostika xonalari va muolaja xonasi ustun sifatida YO'Q: yozuv
+(`Appointment`) faqat shifokorga bog'lanadi, xonaga emas.
+
 ### Navbat tablosi
 
 Kutish zalidagi ekran uchun: `http://<server-ip>:3000/#/board/<clinicId>`

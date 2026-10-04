@@ -22,6 +22,9 @@ import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage, fill } from '../context/LanguageContext';
+import { CalendarMonth } from '../components/CalendarMonth';
+import { CalendarSide } from '../components/CalendarSide';
+import { monthLabel, dayLabel, weekLabel } from '../utils/calendarLabels';
 
 interface CalendarProps {
   appointments: Appointment[];
@@ -64,7 +67,7 @@ const startOfWeekLocal = (date: Date): Date => {
 export const Calendar: React.FC<CalendarProps> = ({
   appointments, patients, doctors, services, categories, onAddAppointment, onUpdateAppointment, onDeleteAppointment, onAddPatient, userRole, doctorId, currentClinic, onPatientClick
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   // State
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -147,7 +150,17 @@ export const Calendar: React.FC<CalendarProps> = ({
     : effectiveAppointments
   ).filter(a => !doctorFilter || a.doctorId === doctorFilter);
 
-  const [view, setView] = useState<'day' | 'week'>('week');
+  /* UCH KO'RINISH. Kun — shifokorlar ustunlarda (registratorning ish
+     ko'rinishi); Hafta — kunlar ustunlarda; Oy — ism emas, kunning bandligi
+     (`components/CalendarMonth.tsx`). */
+  const [view, setView] = useState<'day' | 'week' | 'month'>('week');
+
+  /* «HOZIR» CHIZIG'I — setkada hozirgi vaqt. Daqiqada bir siljiydi. */
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   /* HISOBOT. Kalendar «kim qachon yozilgan» ni ko'rsatadi, lekin
      «qaysi kunlarda mijoz ko'p keladi» degan savolga javob bermaydi —
@@ -236,7 +249,7 @@ export const Calendar: React.FC<CalendarProps> = ({
   };
 
   // Helper: Get days to display
-  const getDisplayDays = (date: Date, currentView: 'day' | 'week') => {
+  const getDisplayDays = (date: Date, currentView: 'day' | 'week' | 'month') => {
     if (currentView === 'day') {
       return [new Date(date)];
     }
@@ -298,25 +311,65 @@ export const Calendar: React.FC<CalendarProps> = ({
       : { gridTemplateColumns: '60px 1fr' };
 
   // Handlers
+  /* Oy bo'yicha siljish: oyning shu kuni yo'q bo'lsa (31 → 30 kunlik oy) —
+     oxirgi kuni. `setMonth` bunday holda keyingi oyga sakrab ketardi. */
+  const shiftMonth = (delta: number) => {
+    const last = new Date(currentDate.getFullYear(), currentDate.getMonth() + delta + 1, 0).getDate();
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + delta, Math.min(currentDate.getDate(), last)));
+  };
+
   const handlePrev = () => {
+    if (view === 'month') { shiftMonth(-1); return; }
     const newDate = new Date(currentDate);
-    if (view === 'week') {
-      newDate.setDate(newDate.getDate() - 7);
-    } else {
-      newDate.setDate(newDate.getDate() - 1);
-    }
+    newDate.setDate(newDate.getDate() - (view === 'week' ? 7 : 1));
     setCurrentDate(newDate);
   };
 
   const handleNext = () => {
+    if (view === 'month') { shiftMonth(1); return; }
     const newDate = new Date(currentDate);
-    if (view === 'week') {
-      newDate.setDate(newDate.getDate() + 7);
-    } else {
-      newDate.setDate(newDate.getDate() + 1);
-    }
+    newDate.setDate(newDate.getDate() + (view === 'week' ? 7 : 1));
     setCurrentDate(newDate);
   };
+
+  // Dushanbadan boshlab — oy ko'rinishi va yon paneldagi kichik kalendar uchun
+  const weekdaysMonFirst = [
+    t('calendar.days.mon'), t('calendar.days.tue'), t('calendar.days.wed'), t('calendar.days.thu'),
+    t('calendar.days.fri'), t('calendar.days.sat'), t('calendar.days.sun'),
+  ];
+
+  /* Yon panel va oy ko'rinishi uchun sanoqlar. Bekor qilinganlar kirmaydi. */
+  const liveAppointments = filteredAppointments.filter(a => a.status !== 'Cancelled');
+  const countByDay = new Map<string, number>();
+  for (const a of liveAppointments) {
+    const k = dayKey(a.date);
+    countByDay.set(k, (countByDay.get(k) || 0) + 1);
+  }
+  /* Shifokor yonidagi son — KO'RINAYOTGAN davr bo'yicha (kun / hafta / oy)
+     va filtrdan MUSTAQIL: filtr yoqilganda qolganlari nolga tushib qolmasin. */
+  const periodKeys = new Set(view === 'month'
+    ? Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() },
+        (_, i) => formatDateToISO(new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1)))
+    : displayDays.map(d => formatDateToISO(d)));
+  const countByDoctor = new Map<string, number>();
+  for (const a of effectiveAppointments) {
+    if (a.status === 'Cancelled' || !periodKeys.has(dayKey(a.date))) continue;
+    countByDoctor.set(a.doctorId, (countByDoctor.get(a.doctorId) || 0) + 1);
+  }
+  /* Kunning sig'imi — faol shifokorlarning ish vaqti yig'indisi (daqiqada). */
+  const capacityMin = activeDoctors.reduce((sum, d) =>
+    sum + Math.max(1, (d.endHour ?? currentClinic?.endHour ?? 20) - (d.startHour ?? currentClinic?.startHour ?? 8)) * 60, 0);
+
+  const headerLabel = view === 'month' ? monthLabel(currentDate, language)
+    : view === 'week' ? weekLabel(displayDays[0], displayDays[6], language)
+      : dayLabel(displayDays[0], language);
+
+  /* «Hozir» chizig'ining o'rni: soat balandligi 96px (yarim soat — 48px). */
+  const nowDate = new Date(nowTick);
+  const nowTop = (nowDate.getHours() - startHour) * 96 + (nowDate.getMinutes() / 60) * 96;
+  const nowDayIndex = displayDays.findIndex(d => formatDateToISO(d) === formatDateToISO(nowDate));
+  const showNow = view !== 'month' && nowDayIndex !== -1 && nowDate.getHours() >= startHour && nowDate.getHours() <= endHour;
+  const nowLabel = `${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`;
 
   const [arriving, setArriving] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -405,12 +458,7 @@ export const Calendar: React.FC<CalendarProps> = ({
           <h1 className="text-2xl font-bold text-ink">{t('calendar.title')}</h1>
           <div className="flex items-center bg-surface rounded-md shadow-sm border border-line flex-1 sm:flex-none justify-between sm:justify-start">
             <button aria-label={t('calendar.oldingi')} onClick={handlePrev} className="p-2 hover:bg-elevated text-muted"><ChevronLeft className="w-4 h-4" /></button>
-            <span className="px-4 text-sm font-medium min-w-[140px] text-center">
-              {view === 'week'
-                ? `${displayDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${displayDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                : displayDays[0].toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-              }
-            </span>
+            <span className="px-4 text-sm font-medium min-w-[170px] text-center">{headerLabel}</span>
             <button aria-label={t('calendar.keyingi')} onClick={handleNext} className="p-2 hover:bg-elevated text-muted"><ChevronRight className="w-4 h-4" /></button>
           </div>
           {/* View Toggle for Desktop/Tablet */}
@@ -427,7 +475,17 @@ export const Calendar: React.FC<CalendarProps> = ({
             >
               {t('calendar.week')}
             </button>
+            <button
+              onClick={() => setView('month')}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'month' ? 'bg-surface shadow text-ink' : 'text-muted hover:text-ink'}`}
+            >
+              {t('cal.month.tab')}
+            </button>
           </div>
+          <button type="button" onClick={() => setCurrentDate(new Date())}
+            className="hidden md:inline-flex h-9 px-3 items-center rounded-md border border-line bg-surface text-xs font-bold text-muted hover:text-ink">
+            {t('ui.bugun')}
+          </button>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           {/* `openAddModal(initialDate?, initialTime?, initialDoctorId?)` —
@@ -446,7 +504,7 @@ export const Calendar: React.FC<CalendarProps> = ({
           Rang endi barqaror (`doctorColor` — `Doctor.color` bazada NULL
           bo'lsa ID dan hisoblanadi), legenda esa FILTR: bosilganda shu
           shifokorning qabullari qoladi, ikkinchi bosish bekor qiladi. */}
-      <div className="flex flex-wrap items-center gap-2 px-1 py-1">
+      <div className={`flex flex-wrap items-center gap-2 px-1 py-1 xl:hidden ${userRole === UserRole.DOCTOR ? 'hidden' : ''}`}>
         {doctors.filter(d => d.status === 'Active').map(doc => {
           const on = doctorFilter === doc.id;
           return (
@@ -480,9 +538,30 @@ export const Calendar: React.FC<CalendarProps> = ({
           «keldi» belgilanadi. Uch oylik grafik esa egaga oyda bir marta
           kerak, lekin u kalendar bilan bitta tugmalar qatorida turgani
           uchun kalendar har ochilganda og'ir so'rov ham ketardi. */}
-      {(
+      <div className="flex-1 min-h-0 flex gap-4">
+      <CalendarSide
+        current={currentDate}
+        lang={language}
+        weekdays={weekdaysMonFirst}
+        countByDay={countByDay}
+        doctors={doctors.filter(d => d.status === 'Active')}
+        countByDoctor={countByDoctor}
+        doctorFilter={doctorFilter}
+        onFilter={setDoctorFilter}
+        onPick={setCurrentDate}
+        hideDoctors={userRole === UserRole.DOCTOR}
+      />
+      {view === 'month' ? (
+        <CalendarMonth
+          month={currentDate}
+          appointments={filteredAppointments}
+          capacityMin={capacityMin}
+          weekdays={weekdaysMonFirst}
+          onOpenDay={day => { setCurrentDate(day); setView('day'); }}
+        />
+      ) : (
       /* Calendar Grid */
-      <div className="flex-1 bg-surface rounded-xl border border-line overflow-hidden flex flex-col relative">
+      <div className="flex-1 min-w-0 bg-surface rounded-xl border border-line overflow-hidden flex flex-col relative">
         <div className="flex-1 overflow-auto">
           <div className={`h-full relative ${view === 'week' ? 'min-w-[1000px]' : activeDoctors.length > 2 ? 'min-w-fit' : 'w-full'}`}>
             {/* Header Row */}
@@ -862,7 +941,20 @@ export const Calendar: React.FC<CalendarProps> = ({
                   );
                 });
 
-                return <>{blocks}{chips}</>;
+                /* «HOZIR» CHIZIG'I. Hafta ko'rinishida faqat bugungi ustunda,
+                   kunlikda — butun kenglikda (tanlangan kun bugun bo'lsa). */
+                const nowLine = showNow ? (
+                  <div aria-hidden="true" className="absolute z-20 pointer-events-none flex items-center"
+                    style={view === 'week'
+                      ? { top: `${nowTop}px`, left: `${(nowDayIndex + 1) * (100 / 8)}%`, width: `${100 / 8}%` }
+                      : { top: `${nowTop}px`, left: '60px', right: 0 }}>
+                    <span className="-ml-1 w-2 h-2 rounded-full bg-red-500" />
+                    <span className="flex-1 border-t-2 border-red-500" />
+                    <span className="absolute -top-2.5 left-2 px-1 rounded bg-red-500 text-white text-[10px] font-bold tabular-nums">{nowLabel}</span>
+                  </div>
+                ) : null;
+
+                return <>{blocks}{chips}{nowLine}</>;
               })()}
 
             </div>
@@ -870,6 +962,7 @@ export const Calendar: React.FC<CalendarProps> = ({
         </div>
       </div>
       )}
+      </div>
 
       {/* Yozuv formasi — YAGONA (`AppointmentFormModal`). Bemor
           kartasidagi nusxa ham shu komponentga o'tdi: u yerda o'zining

@@ -134,9 +134,11 @@ test.describe('XClinic — asosiy oqimlar', () => {
         await login(page);
         await go(page, '/calendar');
 
-        /* Kalendar lazy chunk — yuklanishini kutamiz. Legenda tugmalari
-           `aria-pressed` bilan: ilgari ular oddiy `div` edi va bosilmasdi. */
-        const legend = page.locator('button[aria-pressed]');
+        /* Kalendar lazy chunk — yuklanishini kutamiz. Shifokor tugmalari
+           `aria-pressed` bilan: ilgari ular oddiy `div` edi va bosilmasdi.
+           Keng ekranda filtr yon panelda (setka ustidagi nishonlar qatori
+           faqat tor ekranda ko'rinadi). */
+        const legend = page.locator('aside[aria-label="Kalendar paneli"]').getByRole('button', { name: /^Dr. / });
         await expect(legend.first()).toBeVisible({ timeout: 20_000 });
         const n = await legend.count();
         expect(n).toBeGreaterThan(0);
