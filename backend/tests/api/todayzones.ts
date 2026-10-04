@@ -14,6 +14,8 @@
 
    Ishga tushirish: cd backend && npm run test:api
 */
+import { slotMinutes } from '../../../shared/medSchedule';
+
 const BASE = process.env.T_BASE || 'http://localhost:3079';
 
 let pass = 0, fail = 0;
@@ -67,12 +69,13 @@ async function main() {
     const regToken = regName ? await login(regName) : null;
     if (regToken) ok('registrator — 200', (await call('GET', '/today/zones', undefined, regToken)).status === 200);
     else console.log('  – registrator hisobi yo\'q, o\'tkazib yuborildi');
-    /* Shifokor va hamshira o'z bemorlarini o'z ekranida ko'radi — butun
-       bo'limning holati ularga berilmaydi. */
-    for (const [who, endpoint] of [['shifokor', '/doctors'], ['hamshira', '/nurses']] as const) {
+    /* Hamshira ham ko'radi: «Bugun» da unga xarita va statsionar zonasi
+       chiziladi. Shifokor esa o'z bemorlarini o'z ekranida ko'radi — butun
+       bo'limning holati unga berilmaydi. */
+    for (const [who, endpoint, expected] of [['hamshira', '/nurses', 200], ['shifokor', '/doctors', 403]] as const) {
         const name = await firstUsername(admin, endpoint);
         const token = name ? await login(name) : null;
-        if (token) ok(`${who} — 403`, (await call('GET', '/today/zones', undefined, token)).status === 403);
+        if (token) ok(`${who} — ${expected}`, (await call('GET', '/today/zones', undefined, token)).status === expected);
         else console.log(`  – ${who} hisobi yo'q, o'tkazib yuborildi`);
     }
 
@@ -184,6 +187,56 @@ async function main() {
     inp = (await zones()).inpatient;
     ok('koyka «ko\'rildi»', bed()?.seenToday === true);
     ok('«bugun ko\'rilmagan» qaytdi', inp.notSeenToday === before.notSeenToday, `${inp.notSeenToday}`);
+
+    console.log('\n═══ 4. DORI: vaqti kelgan muolaja ═══');
+    /* Tayinlovda soat yo'q — «har 2 soatda» matnidan jadval chiqariladi
+       (`shared/medSchedule.ts`): 06:00 dan 22:00 gacha o'n ikki vaqt. Sinov
+       kunning istalgan soatida yuriladi, shuning uchun kutilgan son shu
+       paytgacha o'tgan vaqtlardan hisoblanadi. */
+    const tashkentMin = (() => {
+        const d = new Date(Date.now() + 5 * 3600e3);
+        return d.getUTCHours() * 60 + d.getUTCMinutes();
+    })();
+    const passed = slotMinutes(12).filter(m => m <= tashkentMin).length;
+    const dueBase = inp.medsDue;
+    const med = await call('POST', `/admissions/${adm.data.id}/medications`, {
+        name: `Sinov dori ${stamp}`, dosage: '1 tab', route: 'Ichga', frequency: 'har 2 soatda',
+    }, admin);
+    ok('dori tayinlandi', med.status === 200 && !!med.data?.id, `status ${med.status}: ${JSON.stringify(med.data).slice(0, 120)}`);
+    if (med.data?.id) {
+        inp = (await zones()).inpatient;
+        ok(passed > 0 ? '«vaqti keldi» +1' : 'kun boshida hali vaqti kelmagan — son o\'zgarmadi',
+            inp.medsDue === dueBase + (passed > 0 ? 1 : 0), `${dueBase} → ${inp.medsDue} (o'tgan vaqtlar: ${passed})`);
+
+        /* Zaruratga qarab beriladigan dori jadvalsiz — u hech qachon «kutmaydi». */
+        const prn = await call('POST', `/admissions/${adm.data.id}/medications`, {
+            name: `Sinov og'riq qoldiruvchi ${stamp}`, frequency: "Og'riqda",
+        }, admin);
+        ok('zaruratga qarab tayinlandi', prn.status === 200, `status ${prn.status}`);
+        const afterPrn = (await zones()).inpatient;
+        ok('«og\'riqda» sonni o\'zgartirmaydi', afterPrn.medsDue === inp.medsDue, `${inp.medsDue} → ${afterPrn.medsDue}`);
+
+        /* Statsionarning kunlik ro'yxati ham shu qoidadan o'qiydi. */
+        const sched = (await call('GET', '/inpatient/med-schedule', undefined, admin)).data;
+        const row = (sched?.rows || []).find((r: any) => r.admissionId === adm.data.id);
+        const mine = (row?.orders || []).find((o: any) => o.id === med.data.id);
+        const asNeeded = (row?.orders || []).find((o: any) => o.id === prn.data?.id);
+        ok('ro\'yxatda jadval: kuniga 12, o\'n ikki vaqt', mine?.perDay === 12 && (mine?.slots || []).length === 12,
+            JSON.stringify({ perDay: mine?.perDay, slots: mine?.slots?.length }));
+        ok('ro\'yxatda kutayotgan dozalar soni', mine?.due === passed, `due ${mine?.due}, o'tgan vaqtlar ${passed}`);
+        ok('«og\'riqda» — jadvalsiz', asNeeded?.perDay === null && (asNeeded?.slots || []).length === 0 && asNeeded?.due === 0,
+            JSON.stringify(asNeeded));
+
+        /* Har o'tgan vaqt uchun bittadan belgi. «O'tkazib yuborildi» ham
+           hamshiraning qarori — doza endi kutmaydi (ombor va hisobga tegmaydi). */
+        for (let i = 0; i < passed; i++) {
+            const mark = await call('POST', `/medication-orders/${med.data.id}/administer`,
+                { status: 'Skipped', skipReason: 'sinov' }, admin);
+            if (mark.status !== 200) { ok('doza belgilandi', false, `status ${mark.status}: ${JSON.stringify(mark.data).slice(0, 120)}`); break; }
+        }
+        inp = (await zones()).inpatient;
+        ok('hammasi belgilangach — kutayotgani yo\'q', inp.medsDue === dueBase, `${inp.medsDue}, kutilgan ${dueBase}`);
+    }
 
     const out = await call('POST', `/admissions/${adm.data.id}/discharge`, { confirmDebt: true }, admin);
     ok('bemor chiqarildi', out.status === 200, `status ${out.status}: ${JSON.stringify(out.data).slice(0, 120)}`);

@@ -1,7 +1,10 @@
 # shared — ikkala tomon o'qiydigan kod
 
-Bu yerda front va backend **birgalikda** ishlatadigan qoidalar yotadi.
-Hozircha bitta fayl: `validation.ts`.
+Bu yerda front va backend **birgalikda** ishlatadigan qoidalar yotadi:
+
+- `validation.ts` — maydon tekshiruvlari (telefon, bemor, ko'rik maydoni);
+- `medSchedule.ts` — dori jadvali: «kuniga 3 mahal» matnidan bugungi vaqtlar
+  va «doza kutyaptimi».
 
 ## Nima uchun `package.json` bor
 

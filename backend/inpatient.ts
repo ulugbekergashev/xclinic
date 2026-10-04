@@ -27,7 +27,8 @@
 import type express from 'express';
 import { serializeWorkDays } from './hr';
 import { som } from './money';
-import { tashkentDateStr } from './tashkentTime';
+import { tashkentDateStr, tashkentMinuteOfDay } from './tashkentTime';
+import { medDue } from '../shared/medSchedule';
 import { writeOffCore, withRetry } from './inventory';
 import { randomUUID } from 'crypto';
 import { emitEvent } from './events';
@@ -413,6 +414,16 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         res.json({ administration: outcome.record, charge: outcome.charge, stockMoves: outcome.stockMoves });
     });
 
+    /* DOZA KUTYAPTIMI. Tayinlovda soat yo'q — «kuniga 3 mahal» matnidan
+       standart vaqtlar olinadi (`shared/medSchedule.ts`) va bugun belgilangan
+       dozalar bilan solishtiriladi. Faqat BUGUNGI sana uchun: o'tgan kunda
+       «kutyapti» degan belgi ma'nosiz, to'xtatilgan tayinlov esa kutmaydi. */
+    const scheduleOf = (order: any, handledToday: number, date: string) => {
+        const live = date === tashkentDateStr() && order.status !== 'Stopped';
+        const s = medDue(order.frequency, handledToday, live ? tashkentMinuteOfDay() : -1);
+        return { perDay: s.perDay, slots: s.slots, due: live ? s.due : 0, nextAt: live ? s.nextAt : null };
+    };
+
     /** Bitta bemorning kunlik dori varag'i */
     route('get', '/api/admissions/:id/mar', async (req, res, clinicId) => {
         const adm = await ownAdmission(req.params.id, clinicId);
@@ -459,6 +470,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
                 ...o,
                 administrations: byOrder.get(o.id) || [],
                 givenToday: (byOrder.get(o.id) || []).filter((m: any) => m.status === 'Given').length,
+                ...scheduleOf(o, (byOrder.get(o.id) || []).length, date),
             })),
         });
     });
@@ -516,6 +528,7 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
                     id: o.id, name: o.name, dosage: o.dosage,
                     route: o.route, frequency: o.frequency,
                     marks: byOrder.get(o.id) || [],
+                    ...scheduleOf(o, (byOrder.get(o.id) || []).length, date),
                 })),
             })),
         });

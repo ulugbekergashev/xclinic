@@ -63,10 +63,15 @@ va **Hisobot** (`/dashboard`, faqat ega: hisobot, davomat). Sabab: Bosh panel
 xaritani ham, navbatni ham takrorlab qo'ygan edi — bitta ish ikki ekranda.
 Shifokorda «Bugun» — «Mening kabinetim»: xaritaning o'z qatori (ilgari ikki
 ro'yxat edi va «Bugunga yozilganlar» da butun klinikaning yozuvlari chiqardi)
-hamda statsionardagi bemorlari. Hamshirada hozircha eski ro'yxat qoldi.
+hamda statsionardagi bemorlari. Hamshirada — xarita faqat ko'rish uchun:
+eski ro'yxatdagi «Chaqirish», «Ochish», «Keldi» unga serverda yopiq edi va
+bosilganda 403 qaytardi.
 Registrator va egada xarita ichida laboratoriya va statsionar zonalari bor:
 raqamlar `backend/todayZones.ts` da sanaladi (`/api/today/zones`), chegaralar
 «Bugun hal qilinsin» dagi bilan bir xil (bir kundan eski yo'llanma — «eskirgan»).
+Vaqti kelgan muolajalar: tayinlovdagi «kuniga 3 mahal» matnidan standart
+vaqtlar chiqariladi (`shared/medSchedule.ts`) — Statsionarning «Dori varag'i»
+va «Bugun» zonasi bitta qoidadan o'qiydi.
 
 **Ehtiyot.** Yangi raqam qo'shilsa u ham serverdan kelishi shart. Propdagi
 45 kunlik ro'yxatdan sanalgan har qanday son — jimgina yolg'on.

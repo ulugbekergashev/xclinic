@@ -5,9 +5,9 @@ import { todayISO } from '../utils/dateUtils';
 import { esc } from '../utils/printDocument';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-    UserPlus, Search, ArrowRight, Printer, Clock, Plus,
-    CheckCircle, AlertCircle, X, Phone, RefreshCw, Calendar as CalendarIcon,
-    Volume2, FlaskConical, BellRing, CalendarClock, Tv, Wallet, BedDouble,
+    UserPlus, Search, ArrowRight, Printer, Plus,
+    CheckCircle, AlertCircle, X, Phone, RefreshCw,
+    FlaskConical, BellRing, CalendarClock, Tv, Wallet, BedDouble,
 } from 'lucide-react';
 import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment, Admission, TodayZones as Zones } from '../types';
 import { api } from '../services/api';
@@ -28,9 +28,9 @@ import { TodayZones } from '../components/TodayZones';
 const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
 const INPATIENT_EVENTS: LiveEventType[] = ['admission.changed'];
 /* Zonalar shu manzillarga yozilganda yangilanadi (`/api/` dan keyingi birinchi
-   bo'g'in): yo'llanma va natija, yotqizish, obxod, koyka holati. `visits` —
+   bo'g'in): yo'llanma va natija, yotqizish, obxod, koyka holati, dori berilishi. `visits` —
    shifokor tahlilni qabul kartasidan buyuradi. */
-const ZONE_RESOURCES = ['lab-orders', 'visits', 'admissions', 'beds', 'wards'] as const;
+const ZONE_RESOURCES = ['lab-orders', 'visits', 'admissions', 'beds', 'wards', 'medication-orders'] as const;
 
 /* ─────────────────────────────────────────────────────────────────────────────
    BUGUN — klinikaning kunlik ish ekrani, hamma rol uchun bitta sahifa:
@@ -44,7 +44,9 @@ const ZONE_RESOURCES = ['lab-orders', 'visits', 'admissions', 'beds', 'wards'] a
      · shifokor — «Mening kabinetim»: o'sha xaritaning bitta qatori (o'z
        yozuvlari, o'z navbati, kabineti), ostida natijalar va statsionardagi
        bemorlari;
-     · hamshira — navbat va bemor kartasi.
+     · hamshira — o'sha xarita, lekin faqat KO'RISH uchun: navbat amallari
+       unga serverda ham yopiq (`backend/permissions.ts`). Xarita ichida
+       statsionar zonasi — uning ishi (dori, obxod) o'sha yerda.
 
    TARIX. Bu ekran TO'RT marta shakl o'zgartirdi:
 
@@ -122,6 +124,9 @@ export const Reception: React.FC<Props> = ({
         || userRole === UserRole.NURSE;
     const isOwner = userRole === UserRole.CLINIC_ADMIN;
     const isDoctor = userRole === UserRole.DOCTOR;
+    const isNurse = userRole === UserRole.NURSE;
+    /** Butun klinika xaritasini ko'radiganlar. Hamshira — ko'radi, boshqarmaydi */
+    const seesClinic = canRegister || isNurse;
 
     const [search, setSearch] = useState('');
     const [patient, setPatient] = useState<Patient | null>(null);
@@ -145,7 +150,6 @@ export const Reception: React.FC<Props> = ({
        bo'lishi mumkin — o'sha qabul kechagi kunda qolib, shifokor
        ko'zidan butunlay g'oyib bo'lardi (GAP-ANALYSIS, B22). */
     const [pending, setPending] = useState<any[]>([]);
-    const [busyVisit, setBusyVisit] = useState<string | null>(null);
 
     const loadToday = useCallback(async () => {
         try {
@@ -216,17 +220,17 @@ export const Reception: React.FC<Props> = ({
     useEffect(() => { loadOwner(); }, [loadOwner, todayVisits]);
 
     /* ─── LABORATORIYA VA STATSIONAR ZONALARI ─────────────────────────────
-       Registrator va egaga, xaritaning ichida. Bitta yengil so'rov: raqamlar
+       Xaritani ko'radiganlarga, uning ichida. Bitta yengil so'rov: raqamlar
        serverda sanaladi (`backend/todayZones.ts`). Kelmasa — zonasiz xarita
        chiziladi, navbat ishlayveradi. */
     const [zones, setZones] = useState<Zones | null>(null);
     const loadZones = useCallback(async () => {
-        if (!canRegister || (!showLabZone && !showInpatientZone)) return;
+        if (!seesClinic || (!showLabZone && !showInpatientZone)) return;
         try { setZones(await api.today.zones()); }
         catch { /* zonalar qo'shimcha — xato ko'rsatilmaydi */ }
-    }, [canRegister, showLabZone, showInpatientZone]);
+    }, [seesClinic, showLabZone, showInpatientZone]);
     useEffect(() => { loadZones(); }, [loadZones]);
-    useResourceSync(ZONE_RESOURCES, loadZones, canRegister);
+    useResourceSync(ZONE_RESOURCES, loadZones, seesClinic);
 
     /* ─── SHIFOKORNING STATSIONARDAGI BEMORLARI ───────────────────────────
        Ko'p profilli klinikada shifokorning kuni faqat navbat emas: yotgan
@@ -260,8 +264,9 @@ export const Reception: React.FC<Props> = ({
         [isDoctor, myDoctorId, doctors],
     );
 
+    /* Navbatdagilar (kutmoqda / chaqirildi / qabulda) bu yerda sanalmaydi —
+       ularni xarita ko'rsatadi; ro'yxat faqat yakunlanganlar uchun. */
     const groups = useMemo(() => ({
-        active: myVisits.filter(v => ['Waiting', 'Called', 'In Progress'].includes(v.status)),
         done: myVisits.filter(v => v.status === 'Completed').slice(0, 10),
     }), [myVisits]);
 
@@ -271,10 +276,8 @@ export const Reception: React.FC<Props> = ({
 
     /** Navbatga chaqirish — tablo shu holatni ko'rsatadi */
     const callVisit = async (v: Visit) => {
-        setBusyVisit(v.id);
         try { await api.visits.call(v.id); await loadToday(); addToast('success', fill(t('flow.toast.called'), v.queueNumber ?? '—')); }
         catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
-        finally { setBusyVisit(null); }
     };
 
     /* ─── XARITADAGI AMALLAR ──────────────────────────────────────────────
@@ -298,13 +301,6 @@ export const Reception: React.FC<Props> = ({
             try { await api.visits.update(v.id, { status: 'In Progress' }); } catch { /* ochilaversin */ }
         }
         navigate(`/patients/${v.patientId}?visit=${v.id}`);
-    };
-
-    /** Necha daqiqadan beri kutyapti */
-    const waitedMin = (v: Visit) => {
-        const from = v.checkInTime ? new Date(v.checkInTime).getTime() : 0;
-        if (!from) return null;
-        return Math.max(0, Math.round((Date.now() - from) / 60000));
     };
 
     /* Ikkinchi registrator qabul ochsa — bugungi navbat DARHOL yangilanadi.
@@ -492,7 +488,6 @@ export const Reception: React.FC<Props> = ({
        modelida `appointmentId` bor va qabul yaratish marshruti uni
        qabul qilib saqlaydi. Faqat ekranda tugmasi yo'q edi. */
     const [todayAppts, setTodayAppts] = useState<any[]>([]);
-    const [arriving, setArriving] = useState<string | null>(null);
 
     const loadTodayAppts = React.useCallback(async () => {
         try {
@@ -513,15 +508,18 @@ export const Reception: React.FC<Props> = ({
     useLiveUpdates(LIVE_EVENTS, loadTodayAppts);
 
     /* Boshqa kompyuterda bugunga yozilgan yangi bemor uchun alohida hodisa
-       yo'q — daqiqada bir so'raladi. Oqim uzilgan bo'lsa navbat va zonalar
-       ham shu yerda yangilanadi: `useLiveUpdates` dagi 4-qaror shuni va'da qiladi,
+       yo'q — daqiqada bir so'raladi. Zonalar ham: «muolaja vaqti keldi» soni
+       hech kim hech narsa yozmasa ham o'zgaradi — soat o'tishi bilan. Oqim
+       uzilgan bo'lsa navbat ham shu yerda yangilanadi: `useLiveUpdates` dagi
+       4-qaror shuni va'da qiladi,
        lekin bu ekranda so'rov yo'q edi va navbat qotib qolardi. */
     const liveOk = useLiveHealthy();
     useEffect(() => {
         const id = setInterval(() => {
             if (document.visibilityState === 'hidden') return;
             loadTodayAppts();
-            if (!liveOk) { loadToday(); loadZones(); }
+            loadZones();
+            if (!liveOk) loadToday();
         }, liveOk ? 60000 : 30000);
         return () => clearInterval(id);
     }, [liveOk, loadToday, loadTodayAppts, loadZones]);
@@ -535,15 +533,6 @@ export const Reception: React.FC<Props> = ({
         } catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
     };
 
-    /* Hali kelmaganlar. Yakunlangan va bekor qilinganlar ko'rsatilmaydi —
-       ular bilan qiladigan ish qolmagan. */
-    const waitingAppts = useMemo(
-        () => todayAppts
-            .filter(a => !['Completed', 'Cancelled', 'No-Show', 'Checked-In'].includes(a.status))
-            .sort((a, b) => String(a.time || '').localeCompare(String(b.time || ''))),
-        [todayAppts],
-    );
-
     /* Shifokorning O'Z yozuvlari — xaritasining «yo'l» qismi. Ilgari unga
        «Bugunga yozilganlar» ro'yxatida butun klinikaning yozuvlari chiqardi. */
     const myAppts = useMemo(
@@ -555,7 +544,6 @@ export const Reception: React.FC<Props> = ({
        Mantiq `utils/arrival.ts` da: kalendar ham xuddi shu funksiyani
        chaqiradi, ya'ni qoida bitta joyda turadi. */
     const markArrived = async (appt: any) => {
-        setArriving(appt.id);
         setError('');
         try {
             const r = await markAppointmentArrived(appt, { doctors, services });
@@ -581,8 +569,6 @@ export const Reception: React.FC<Props> = ({
                 return;
             }
             setError(e?.message || t('ui.qabulni_ochib_bolmadi'));
-        } finally {
-            setArriving(null);
         }
     };
 
@@ -966,8 +952,13 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
 
         {/* ── BUGUN KLINIKADA — jonli xarita ─────────────────────────────
             Yo'l (bugunga yozilganlar), kutish zali va kabinetlar bitta
-            ko'rinishda. Registrator va egaga — butun klinika; shifokorga —
-            faqat o'z qatori (pastda, «Mening kabinetim»).
+            ko'rinishda. Registrator, ega va hamshiraga — butun klinika;
+            shifokorga — faqat o'z qatori (pastda, «Mening kabinetim»).
+
+            HAMSHIRA KO'RADI, BOSHQARMAYDI. «Keldi», «Chaqirish», «Kirdi» unga
+            berilmaydi: bu amallar serverda ham unga yopiq
+            (`backend/permissions.ts`). Ilgari u navbatni ro'yxat ko'rinishida
+            ko'rardi va tugmalari bosilganda 403 qaytardi.
 
             Ma'lumot shu ekranniki (`todayVisits`, `todayAppts`) — xarita
             o'zi hech narsa yuklamaydi.
@@ -976,7 +967,7 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
             ro'yxat bo'lib ham turardi — «Chaqirish» va «Ochish» ikki joyda
             edi. Registrator va ega uchun navbat endi faqat xaritada;
             ro'yxatdagi qarz belgisi ham xaritaga ko'chdi (`dueOf`). */}
-        {canRegister && (
+        {seesClinic && (
             <ClinicMap
                 visits={todayVisits}
                 appointments={todayAppts}
@@ -988,15 +979,15 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                    (ayniqsa eski tartibdan eslab qolingan holat bilan) navbat
                    butunlay ko'rinmay qolardi. */
                 collapsible={isOwner}
-                dueOf={(id) => dueByPatient.get(id)?.due || 0}
+                dueOf={canRegister ? (id) => dueByPatient.get(id)?.due || 0 : undefined}
                 onPatientClick={(id) => navigate(`/patients/${id}`)}
                 onOpenVisit={(v) => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
-                onArrived={markArrived}
-                onNoShow={markNoShow}
-                onCall={callVisit}
-                onEnter={enterVisit}
-                onUndoEnter={undoEnter}
-                onSeeAll={() => navigate('/calendar')}
+                onArrived={canRegister ? markArrived : undefined}
+                onNoShow={canRegister ? markNoShow : undefined}
+                onCall={canRegister ? callVisit : undefined}
+                onEnter={canRegister ? enterVisit : undefined}
+                onUndoEnter={canRegister ? undoEnter : undefined}
+                onSeeAll={canRegister ? () => navigate('/calendar') : undefined}
                 footer={zones && <TodayZones zones={zones} showLab={showLabZone} showInpatient={showInpatientZone} />}
             />
         )}
@@ -1057,112 +1048,9 @@ ${room ? `<div class="d"><b>${esc(fill(t('reception.ticketRoom'), room))}</b></d
                 </div>
             )
         ) : (
-        /* HAMSHIRA — navbat ro'yxat ko'rinishida (xaritasiz). */
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-            {/* ── Chap: natijalar va bugungi yozuvlar ───────────────────────── */}
-            <div className="xl:col-span-2 space-y-4">
-                {doctorSections}
-                {/* ── Bugun yozilganlar ──────────────────────────────────
-                    Kalendardan kelgan ro'yxat. Registrator va egada bu
-                    ro'yxat xaritaning «yo'l» qismida turadi («Keldi» ham
-                    o'sha yerda) — ikki marta ko'rsatilmaydi. */}
-                {waitingAppts.length > 0 && (
-                    <div className="bg-surface rounded-xl border border-line p-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
-                                <CalendarIcon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                                {t('today.bugunga_yozilganlar')}
-                                <span className="px-2 py-0.5 text-xs rounded-full bg-elevated text-muted">
-                                    {waitingAppts.length}
-                                </span>
-                            </h3>
-                            <button type="button" onClick={() => navigate('/calendar')}
-                                className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline">
-                                {t('today.kalendar')}
-                            </button>
-                        </div>
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                            {waitingAppts.map(a => (
-                                <div key={a.id}
-                                    className="flex items-center gap-3 p-2.5 rounded-lg border border-line bg-canvas/40">
-                                    <span className="text-sm font-semibold tabular-nums text-muted w-12 shrink-0">
-                                        {a.time || '—'}
-                                    </span>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium text-ink truncate">{a.patientName}</p>
-                                        <p className="text-xs text-muted truncate">
-                                            {a.type || t('nav.visit')}{a.doctorName ? ` · ${a.doctorName}` : ''}
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => markArrived(a)}
-                                        disabled={arriving === a.id}
-                                        title={t('today.qabulni_ochish_bolim_shifokor')}
-                                        className="shrink-0 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center gap-1.5"
-                                    >
-                                        <CheckCircle className="w-3.5 h-3.5" />
-                                        {arriving === a.id ? t('today.opening') : t('ui.keldi')}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* ── O'ng: bugungi navbat ─────────────────────────────────── */}
-            <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-faint" />
-                    <h3 className="font-semibold text-ink">
-                        {t('reception.todayQueue')}
-                    </h3>
-                    <span className="text-sm text-muted">{groups.active.length} {t('ui.ta')}</span>
-                </div>
-
-                {groups.active.length === 0 ? (
-                    <div className="text-center py-10 bg-surface rounded-xl border border-line">
-                        <p className="text-sm text-muted">{t('reception.noVisits')}</p>
-                    </div>
-                ) : (
-                    <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-                        {groups.active.map(v => {
-                            const waited = waitedMin(v);
-                            return (
-                                <div key={v.id}
-                                    className="w-full bg-surface rounded-lg border border-line p-3 flex items-center gap-3 hover:border-primary-400 transition-colors">
-                                    <span className="w-9 h-9 rounded-lg grid place-items-center font-bold text-sm shrink-0 bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-                                        {v.queueNumber ?? '—'}
-                                    </span>
-                                    <button onClick={() => openVisitCard(v)} className="min-w-0 flex-1 text-left">
-                                        <p className="text-sm font-medium text-ink truncate">
-                                            {v.patient?.lastName} {v.patient?.firstName}
-                                        </p>
-                                        <p className="text-xs text-muted truncate">
-                                            {v.department?.name || '—'}{v.doctorName ? ` · ${v.doctorName}` : ''}
-                                            {waited != null && v.status === 'Waiting' ? ` · ${waited} ${t('common.min')}` : ''}
-                                        </p>
-                                    </button>
-                                    {/* Chaqirish — tablo va ovoz shu holatdan ishlaydi */}
-                                    {v.status === 'Waiting' && (
-                                        <button onClick={() => callVisit(v)} disabled={busyVisit === v.id}
-                                            aria-label={t('today.call')} title={t('today.call')}
-                                            className="shrink-0 p-1.5 rounded-lg text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 disabled:opacity-50">
-                                            <Volume2 className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                    <button onClick={() => openVisitCard(v)}
-                                        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold inline-flex items-center gap-1">
-                                        {t('today.open')} <ArrowRight className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
-        </div>
+            /* HAMSHIRA — xaritadan keyin natijalar (o'qish uchun). Uning o'z
+               ishi — Statsionarda; zonadagi sonlar o'sha yerga olib boradi. */
+            hasDoctorSections && <div className="space-y-4">{doctorSections}</div>
         )}
         </div>
 

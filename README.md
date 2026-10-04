@@ -514,10 +514,17 @@ shifokor uchun bitta sahifa, bitta nom. Qoida — **bir ish — bir joy**:
   egada. Laboratoriya: proba kutayotganlar → ishdagi yo'llanmalar (muddatidan
   kechikkani belgilanadi) → bugun tayyor bo'lgan natijalar. Statsionar:
   palatalar va koykalar — band, bo'sh, tozalanmoqda; bugun obxod yozilmagan
-  bemor sariq nuqta bilan. Zona — raqam va havola: ish o'sha bo'limlarning
+  bemor sariq nuqta bilan, **vaqti kelgan muolajalar** soni esa Statsionarning
+  «Dori varag'i» ni ochadi. Zona — raqam va havola: ish o'sha bo'limlarning
   o'zida bajariladi (band koyka o'sha yotishni ochadi). Raqamlar serverda
   sanaladi (`/api/today/zones`); «Ruxsatlar» da bo'lim yashirilgan rolga
   uning zonasi ham ko'rsatilmaydi.
+- **Dori jadvali** — tayinlovda soat saqlanmaydi, qabul tartibi erkin matn
+  («kuniga 3 mahal», «har 8 soatda», «og'riqda»). Matndan «necha mahal»
+  ajratiladi va standart vaqtlarga yoyiladi (08:00 · 14:00 · 20:00 kabi);
+  vaqti o'tgan, lekin belgilanmagan doza — «vaqti keldi». Zaruratga qarab
+  beriladigan yoki tushunib bo'lmagan matn — jadvalsiz: eslatma chiqmaydi.
+  Qoida bitta joyda — `shared/medSchedule.ts`, soatlar ro'yxatda ko'rinadi.
 - **«Yangi qabul»** — oyna: tugma, **F2** (istalgan sahifadan) yoki skaner.
   Bemor → bo'lim va shifokor → qabul ochiladi, talon chiqadi.
 - **Kunning puli** — sarlavhada bitta qator: egaga bugun kassaga tushgani,
@@ -601,7 +608,7 @@ nomda, rolga qarab boshqacha ko'rinadi:
 | Registrator | jonli xarita (butun klinika navbati, laboratoriya va statsionar zonalari) · «Yangi qabul» · kim to'lashi kerakligi |
 | Ega | registratorniki + bugun kassaga tushgan pul · «Bugun hal qilinsin» · natijalar |
 | Shifokor | «Mening kabinetim» (xaritaning o'z qatori) · natijasi tayyor va kutilayotganlar · statsionardagi bemorlari · bugun yakunlanganlar |
-| Hamshira | navbat va bemor kartasi |
+| Hamshira | xarita — faqat ko'rish uchun (navbat amallari unga serverda ham yopiq) · statsionar zonasi va vaqti kelgan muolajalar · natijalar |
 
 Tarix: 2026-09-07 dan 09-16 gacha bu ekran ham «Bugun» edi (tepasida eganing
 yig'iq tasmasi bilan); 09-16 dan 10-03 gacha — «Registratura», yonida egaga

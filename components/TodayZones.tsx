@@ -206,6 +206,15 @@ export const TodayZones: React.FC<Props> = ({ zones, showLab = true, showInpatie
                 ))}
             </div>
             <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11.5px] font-bold text-muted">
+                {/* Vaqti kelgan dorilar — birinchi: bu hamshiraning HOZIRGI ishi.
+                    Havola Statsionarning «Dorilar» ro'yxatini ochadi. */}
+                {inp.medsDue > 0 && (
+                    <button type="button" onClick={() => navigate('/inpatient?tab=meds')}
+                        className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:underline">
+                        <span aria-hidden="true" className="w-[7px] h-[7px] rounded-full bg-red-500" />
+                        {fill(t('zones.inp.medsDue'), inp.medsDue)}
+                    </button>
+                )}
                 {inp.notSeenToday > 0 && (
                     <span className="inline-flex items-center gap-1.5">
                         <span aria-hidden="true" className="w-[7px] h-[7px] rounded-full bg-amber-500" />

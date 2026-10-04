@@ -1,4 +1,5 @@
 import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, TodayZones, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
+import { medDue } from '../shared/medSchedule';
 import { todayISO } from '../utils/dateUtils';
 import * as auth from './authStore';
 import { tr } from '../context/LanguageContext';
@@ -1302,6 +1303,39 @@ const DEMO_VITALS: any[] = [
     { id: 'demo-vital-4', patientId: 'demo-patient-1', admissionId: 'demo-adm-1', kind: 'Pulse', value: 84, unit: "zarb/daq", measuredAt: dayShift(-2) },
     { id: 'demo-vital-5', patientId: 'demo-patient-1', admissionId: 'demo-adm-1', kind: 'Pulse', value: 76, unit: "zarb/daq", measuredAt: dayShift(-1) },
 ];
+
+/* ─── Demo: dori varag'i ───────────────────────────────────────────────────
+   Belgilar va jadval serverdagi shaklda: `status` + `givenAt`, tayinlovda
+   `perDay / slots / due / nextAt` (`backend/inpatient.ts`, `scheduleOf`).
+   Qoida ikkalasida bitta — `shared/medSchedule.ts`. */
+const demoMedMarks = (orderId: string, day: string) => DEMO_ADMINISTRATIONS
+    .filter(x => x.orderId === orderId && String(x.at).slice(0, 10) === day)
+    .map(x => ({ ...x, status: (x as any).status || 'Given', givenAt: x.at }));
+
+const demoMedSchedule = (order: { frequency?: string | null; status?: string }, handled: number, day: string) => {
+    const live = day === todayISO() && order.status !== 'Stopped';
+    const now = new Date();
+    const s = medDue(order.frequency, handled, live ? now.getHours() * 60 + now.getMinutes() : -1);
+    return { perDay: s.perDay, slots: s.slots, due: live ? s.due : 0, nextAt: live ? s.nextAt : null };
+};
+
+const demoMedRows = (day: string) => DEMO_ADMISSIONS.filter(a => a.status === 'Active').map(a => {
+    const bed = DEMO_BEDS.find(b => b.id === a.bedId);
+    return {
+        admissionId: a.id,
+        patientName: a.patientName,
+        ward: DEMO_WARDS.find(w => w.id === bed?.wardId)?.name || null,
+        bed: bed?.label || null,
+        orders: DEMO_MED_ORDERS.filter(m => m.admissionId === a.id).map(m => {
+            const marks = demoMedMarks(m.id, day);
+            return {
+                id: m.id, name: m.name, dosage: m.dosage, route: m.route, frequency: m.frequency,
+                marks,
+                ...demoMedSchedule(m, marks.length, day),
+            };
+        }),
+    };
+});
 
 /** Koyka holatini yotqizilganlar ro'yxatiga qarab qayta hisoblaydi. */
 const demoSyncBeds = () => {
@@ -4329,11 +4363,19 @@ export const api = {
         /** Kunlik dori varag'i: tayinlovlar + shu kundagi belgilar */
         mar: (id: string, date?: string) => {
             if (isDemoMode()) {
+                const day = date || todayISO();
                 const orders = DEMO_MED_ORDERS.filter(m => m.admissionId === id);
                 return demoRead<any>({
-                    date: date || todayISO(),
-                    orders: orders.map(o => ({ ...o, administrations: DEMO_ADMINISTRATIONS.filter(x => x.orderId === o.id) })),
-                    administrations: DEMO_ADMINISTRATIONS.filter(x => orders.some(o => o.id === x.orderId)),
+                    date: day,
+                    orders: orders.map(o => {
+                        const marks = demoMedMarks(o.id, day);
+                        return {
+                            ...o,
+                            administrations: marks,
+                            givenToday: marks.filter(m => m.status === 'Given').length,
+                            ...demoMedSchedule(o, marks.length, day),
+                        };
+                    }),
                 });
             }
             return fetchJson<any>(`/admissions/${id}/mar${date ? `?date=${date}` : ''}`);
@@ -4416,6 +4458,7 @@ export const api = {
                 }));
                 const beds = wards.flatMap(w => w.beds);
                 const count = (st: string) => beds.filter(b => b.status === st).length;
+                const medsDue = demoMedRows(today).flatMap(r => r.orders).filter(o => o.due > 0).length;
                 return demoRead<TodayZones>({
                     date: today,
                     lab: {
@@ -4431,6 +4474,7 @@ export const api = {
                         dischargedToday: DEMO_ADMISSIONS.filter(a =>
                             a.status === 'Discharged' && String(a.dischargedAt || '').slice(0, 10) === today).length,
                         notSeenToday: active.filter(a => !seenToday(a.id)).length,
+                        medsDue,
                     } : null,
                 });
             }
@@ -4442,20 +4486,12 @@ export const api = {
     inpatient: {
         medSchedule: (params?: { date?: string; departmentId?: string }) => {
             if (isDemoMode()) {
-                const activeIds = new Set(DEMO_ADMISSIONS.filter(a => a.status === 'Active').map(a => a.id));
-                return demoRead<any>({
-                    date: params?.date || todayISO(),
-                    items: DEMO_MED_ORDERS.filter(m => activeIds.has(m.admissionId)).map(m => {
-                        const adm = DEMO_ADMISSIONS.find(a => a.id === m.admissionId);
-                        return {
-                            orderId: m.id, admissionId: m.admissionId,
-                            patientId: adm?.patientId, patientName: adm?.patientName,
-                            bedLabel: DEMO_BEDS.find(b => b.id === adm?.bedId)?.label,
-                            name: m.name, dosage: m.dosage, route: m.route, frequency: m.frequency,
-                            administrations: DEMO_ADMINISTRATIONS.filter(x => x.orderId === m.id),
-                        };
-                    }),
-                });
+                /* SHAKL SERVERNIKI BILAN BIR XIL (`rows`). Bu yerda ilgari
+                   `items` degan tekis ro'yxat qaytarilardi, ekran esa
+                   `rows` ni o'qiydi — namoyishda «Dorilar» vkladkasi doim
+                   bo'sh turardi. */
+                const day = params?.date || todayISO();
+                return demoRead<any>({ date: day, rows: demoMedRows(day) });
             }
             const q = new URLSearchParams();
             if (params?.date) q.set('date', params.date);

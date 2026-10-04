@@ -1077,6 +1077,8 @@ export interface TodayZones {
     dischargedToday: number;
     /** Bugun obxod yozilmagan faol yotishlar */
     notSeenToday: number;
+    /** Vaqti kelgan, lekin belgilanmagan dori tayinlovlari (`shared/medSchedule.ts`) */
+    medsDue: number;
   };
 }
 

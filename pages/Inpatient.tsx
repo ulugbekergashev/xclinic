@@ -238,6 +238,19 @@ export const Inpatient: React.FC<Props> = ({
         }
     }, []);
 
+    /* DORI JADVALI. Tayinlovda soat yo'q; server «kuniga 3 mahal» matnidan
+       standart vaqtlarni chiqaradi (`shared/medSchedule.ts`) va vaqti kelgan,
+       lekin belgilanmagan dozani `due` da beradi. Soatlar ko'rsatib qo'yiladi:
+       belgi taxminga tayanadi va hamshira uni ko'rib turishi kerak. */
+    const medSlots = (o: { slots?: string[] }) => (o.slots?.length
+        ? <span> · {fill(t('inp.medSlots'), o.slots.join(' · '))}</span>
+        : null);
+    const medDueBadge = (o: { due?: number }) => ((o.due || 0) > 0 ? (
+        <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-500/12 text-red-700 dark:text-red-400 border border-red-500/25">
+            {t('inp.medDueNow')}
+        </span>
+    ) : null);
+
     const openDetail = (adm: Admission | null) => {
         setDetail(adm);
         if (adm) loadDetailExtras(adm);
@@ -248,6 +261,17 @@ export const Inpatient: React.FC<Props> = ({
        bemorini ro'yxatdan qayta qidirmaydi. Oyna ochilgach parametr olib
        tashlanadi: sahifa yangilanganda u o'zidan-o'zi qayta ochilmasin. */
     const [searchParams, setSearchParams] = useSearchParams();
+    /* `?tab=meds` — «Bugun» dagi «N muolaja vaqti keldi» shu ro'yxatga olib
+       keladi. Parametr o'qilgach olib tashlanadi (pastdagi bilan bir xil sabab). */
+    const wantedTab = searchParams.get('tab');
+    useEffect(() => {
+        if (!wantedTab) return;
+        if (['beds', 'active', 'archive', 'meds'].includes(wantedTab)) setTab(wantedTab as typeof tab);
+        const next = new URLSearchParams(searchParams);
+        next.delete('tab');
+        setSearchParams(next, { replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [wantedTab]);
     const wantedAdmission = searchParams.get('admission');
     useEffect(() => {
         if (!wantedAdmission || admissions.length === 0) return;
@@ -402,6 +426,17 @@ export const Inpatient: React.FC<Props> = ({
 
     useEffect(() => {
         if (tab === 'meds') loadSchedule();
+    }, [tab, loadSchedule]);
+
+    /* «Vaqti keldi» belgisi soatga bog'liq: hech kim hech narsa yozmasa ham
+       14:00 da yangi dozalar kutib qoladi. Ro'yxat ochiq turganda daqiqada
+       bir yangilanadi (yashirin oynada — yo'q). */
+    useEffect(() => {
+        if (tab !== 'meds') return;
+        const id = setInterval(() => {
+            if (document.visibilityState !== 'hidden') loadSchedule();
+        }, 60000);
+        return () => clearInterval(id);
     }, [tab, loadSchedule]);
 
     /** Bo'sh koykalar — ko'chirish oynasi uchun */
@@ -875,15 +910,19 @@ export const Inpatient: React.FC<Props> = ({
                                                 const given = (o.marks || []).filter((m: any) => m.status === 'Given').length;
                                                 return (
                                                     <div key={o.id} className="px-4 py-2.5 flex flex-wrap items-center gap-2">
-                                                        <div className="min-w-0 flex-1">
+                                                        {/* Telefonda matn butun qatorni oladi, belgi va tugma pastga tushadi —
+                                                            aks holda jadval soatlari bir so'zdan ustun bo'lib qolardi. */}
+                                                        <div className="min-w-0 flex-1 basis-full sm:basis-0">
                                                             <p className="text-sm text-ink truncate">
                                                                 {o.name}
                                                                 {o.dosage ? <span className="text-muted"> · {o.dosage}</span> : null}
                                                             </p>
                                                             <p className="text-xs text-faint">
                                                                 {[o.route, o.frequency].filter(Boolean).join(' · ')}
+                                                                {medSlots(o)}
                                                             </p>
                                                         </div>
+                                                        {medDueBadge(o)}
 
                                                         {(o.marks || []).length > 0 && (
                                                             <div className="flex flex-wrap gap-1">
@@ -1074,7 +1113,7 @@ export const Inpatient: React.FC<Props> = ({
                                         {mar.orders.map((o: any) => (
                                             <div key={o.id} className="p-3">
                                                 <div className="flex flex-wrap items-center gap-2">
-                                                    <div className="min-w-0 flex-1">
+                                                    <div className="min-w-0 flex-1 basis-full sm:basis-0">
                                                         <p className="text-sm font-medium text-ink truncate">
                                                             {o.name}
                                                             {o.dosage ? <span className="text-muted font-normal"> · {o.dosage}</span> : null}
@@ -1084,8 +1123,10 @@ export const Inpatient: React.FC<Props> = ({
                                                             {o.givenToday > 0 && (
                                                                 <span className="text-emerald-600 dark:text-emerald-400 font-semibold"> · {t('cashbook.bugun')} {o.givenToday} {t('inpatient.marta_berildi')}</span>
                                                             )}
+                                                            {medSlots(o)}
                                                         </p>
                                                     </div>
+                                                    {medDueBadge(o)}
 
                                                     {canGiveMeds && detail.status === 'Active' && (
                                                         <div className="flex items-center gap-1.5 shrink-0">

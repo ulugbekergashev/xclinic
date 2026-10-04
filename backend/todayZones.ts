@@ -28,7 +28,8 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
-import { tashkentDateStr, tashkentDayBounds } from './tashkentTime';
+import { tashkentDateStr, tashkentDayBounds, tashkentMinuteOfDay } from './tashkentTime';
+import { medDue } from '../shared/medSchedule';
 
 type Deps = {
     prisma: any;
@@ -68,19 +69,22 @@ export interface TodayZones {
         dischargedToday: number;
         /** Bugun obxod yozilmagan faol yotishlar */
         notSeenToday: number;
+        /** Vaqti kelgan, lekin belgilanmagan dori tayinlovlari (`shared/medSchedule.ts`) */
+        medsDue: number;
     };
 }
 
 export function registerTodayZonesRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId } = deps;
 
-    /* Faqat navbatni yuritadiganlarga — ega va registrator: zonalar ularning
-       «Bugun» ekranida turadi. Shifokor o'z bemorlarini o'z ekranida ko'radi. */
+    /* Navbatni yuritadiganlarga — ega, registrator va hamshira: zonalar
+       ularning «Bugun» ekranida turadi. Shifokor o'z bemorlarini o'z ekranida
+       ko'radi. */
     app.get('/api/today/zones', auth, async (req: any, res: any) => {
         try {
             const clinicId = getScopedClinicId(req);
             if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
-            if (!['CLINIC_ADMIN', 'RECEPTIONIST'].includes(req.user?.role)) {
+            if (!['CLINIC_ADMIN', 'RECEPTIONIST', 'NURSE'].includes(req.user?.role)) {
                 return res.status(403).json({ error: "Ruxsat yo'q" });
             }
 
@@ -91,7 +95,7 @@ export function registerTodayZonesRoutes(app: express.Express, deps: Deps) {
 
             const [
                 labDepts, waiting, stale, working, readyToday,
-                wards, activeNoRound, dischargedToday,
+                wards, activeNoRound, dischargedToday, medOrders, medMarks,
             ] = await Promise.all([
                 prisma.department.count({ where: { clinicId, type: 'LAB', isActive: true } }),
                 /* Maydon nomi `orderedAt` — `createdAt` EMAS (`attention.ts`
@@ -144,6 +148,22 @@ export function registerTodayZonesRoutes(app: express.Express, deps: Deps) {
                 }),
                 prisma.admission.count({
                     where: { clinicId, status: 'Discharged', dischargedAt: { gte: start, lte: end } },
+                }),
+                /* Bugun amal qiladigan tayinlovlar — statsionarning kunlik
+                   ro'yxatidagi bilan bir xil shart (`inpatient.ts`), ustiga
+                   to'xtatilmagani. */
+                prisma.medicationOrder.findMany({
+                    where: {
+                        status: { not: 'Stopped' },
+                        admission: { clinicId, status: 'Active' },
+                        startDate: { lte: today },
+                        OR: [{ endDate: null }, { endDate: { gte: today } }],
+                    },
+                    select: { id: true, frequency: true },
+                }),
+                prisma.medicationAdministration.findMany({
+                    where: { clinicId, givenAt: { gte: start, lte: end } },
+                    select: { orderId: true },
                 }),
             ]);
 
@@ -200,6 +220,14 @@ export function registerTodayZonesRoutes(app: express.Express, deps: Deps) {
                     };
                 }),
             }));
+            /* Vaqti kelgan dorilar — TAYINLOV kesimida: bitta dorining ikki
+               dozasi kechikkan bo'lsa ham, hamshira uchun bu bitta ish. */
+            const handled = new Map<string, number>();
+            for (const m of medMarks) handled.set(m.orderId, (handled.get(m.orderId) || 0) + 1);
+            const nowMin = tashkentMinuteOfDay();
+            const medsDue = medOrders.filter((o: any) =>
+                medDue(o.frequency, handled.get(o.id) || 0, nowMin).due > 0).length;
+
             const allBeds = zoneWards.flatMap((w: any) => w.beds);
             const count = (status: string) => allBeds.filter((b: any) => b.status === status).length;
             const inpatient: TodayZones['inpatient'] = zoneWards.length > 0 ? {
@@ -214,6 +242,7 @@ export function registerTodayZonesRoutes(app: express.Express, deps: Deps) {
                 admittedToday,
                 dischargedToday,
                 notSeenToday: activeNoRound,
+                medsDue,
             } : null;
 
             const body: TodayZones = { date: today, lab, inpatient };

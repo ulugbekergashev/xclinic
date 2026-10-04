@@ -19,6 +19,7 @@
     },
     "include": [
         "../shared/validation.ts",
+        "../shared/medSchedule.ts",
         "server.ts",
         "multiprofile.ts",
         "billing.ts",

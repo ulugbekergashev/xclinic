@@ -189,6 +189,104 @@ test.describe('«Bugun klinikada» xaritasi', () => {
         await expect(page.locator('div.fixed').getByText(bed.patientName).first()).toBeVisible({ timeout: 15_000 });
     });
 
+    test("hamshirada xarita faqat ko'rish uchun: navbat tugmalari yo'q, statsionar zonasi bor", async ({ page, request }) => {
+        /* Navbat amallari hamshiraga serverda yopiq (`backend/permissions.ts`).
+           Ilgari u navbatni ro'yxat ko'rinishida ko'rardi va «Chaqirish»,
+           «Ochish», «Keldi» tugmalari bosilganda 403 qaytardi. */
+        const auth = await (await request.post('/api/auth/login', {
+            data: { username: 'admin', password: PASSWORD },
+        })).json();
+        const headers = { Authorization: `Bearer ${auth.token}` };
+        const nurses: any[] = await (await request.get('/api/nurses', { headers })).json();
+        const nurse = (Array.isArray(nurses) ? nurses : []).find(x => x.username);
+        test.skip(!nurse, "Kirish nomi bor hamshira yo'q");
+
+        /* Navbatda kamida bitta bemor bo'lsin: bo'sh xaritada «tugma yo'q»
+           hech narsani isbotlamaydi. */
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const doctors: any[] = await (await request.get(`/api/doctors?clinicId=${auth.clinicId}`, { headers })).json();
+        const doc = doctors.find(d => d.status === 'Active' && d.departmentId);
+        test.skip(!doc, "Bo'limga biriktirilgan shifokor yo'q");
+        const n = uniq();
+        const patient = await (await request.post('/api/patients', {
+            headers,
+            data: { firstName: 'Sinov', lastName: `Hamshira${n}`, gender: 'Male', phone: `+99897${n.slice(0, 7)}`, force: true },
+        })).json();
+        const visit = await (await request.post('/api/visits', {
+            headers,
+            data: {
+                patientId: patient.id, date: today, departmentId: doc.departmentId, doctorId: doc.id,
+                doctorName: `Dr. ${doc.firstName} ${doc.lastName}`, status: 'Waiting',
+            },
+        })).json();
+        expect(visit.id, 'qabul ochildi').toBeTruthy();
+
+        await login(page, nurse.username);
+        await go(page, '/reception');
+        const map = page.locator('section[aria-labelledby="clinic-map-title"]');
+        await expect(map.getByRole('heading', { name: 'Bugun klinikada' })).toBeVisible({ timeout: 30_000 });
+
+        /* Bemor ko'rinadi (ismi kartani ochadi), lekin navbatni boshqarib bo'lmaydi. */
+        const seat = map.getByRole('button', { name: new RegExp(`^Hamshira${n}`) }).first();
+        for (let i = 0; i < 12 && !(await seat.isVisible()); i++) {
+            const more = page.getByRole('button', { name: /hammasini ko'rsatish/ }).first();
+            if (!(await more.count())) { await page.waitForTimeout(500); continue; }
+            await more.click();
+        }
+        await expect(seat).toBeVisible({ timeout: 15_000 });
+        for (const gone of [/: Chaqirish$/, /kabinetga kirdi deb belgilash/, /: Keldi$/, /: Navbatga qaytarish$/, /^Yangi qabul$/]) {
+            await expect(page.getByRole('button', { name: gone })).toHaveCount(0);
+        }
+        await expect(page.getByText(/Bugungi navbat|Bugunga yozilganlar/)).toHaveCount(0);
+
+        /* Uning ishi — Statsionarda: zona shu yerda, laboratoriya zonasi esa
+           yo'q (menyusida ham yo'q). */
+        const zones = await (await request.get('/api/today/zones', { headers })).json();
+        if (zones.inpatient) await expect(map.locator('section[aria-label="Statsionar"]')).toBeVisible();
+        await expect(map.locator('section[aria-label="Laboratoriya"]')).toHaveCount(0);
+    });
+
+    test("vaqti kelgan muolaja: zonadagi son «Dori varag'i»ni ochadi, tayinlovda jadval ko'rinadi", async ({ page, request }) => {
+        /* Tayinlovda soat yo'q — «har 2 soatda» matnidan jadval chiqariladi
+           (`shared/medSchedule.ts`): 06:00 dan 22:00 gacha o'n ikki vaqt. */
+        const auth = await (await request.post('/api/auth/login', {
+            data: { username: 'admin', password: PASSWORD },
+        })).json();
+        const headers = { Authorization: `Bearer ${auth.token}` };
+        const zones = async () => (await request.get('/api/today/zones', { headers })).json();
+        const bed = (await zones()).inpatient?.wards.flatMap((w: any) => w.beds).find((b: any) => b.admissionId);
+        test.skip(!bed, "Statsionarda yotgan bemor yo'q");
+
+        const n = uniq();
+        const order = await (await request.post(`/api/admissions/${bed.admissionId}/medications`, {
+            headers,
+            data: { name: `Jadval${n}`, dosage: '1 tab', route: 'Ichga', frequency: 'har 2 soatda' },
+        })).json();
+        expect(order.id, 'dori tayinlandi').toBeTruthy();
+
+        await login(page);
+        /* Toshkent vaqti bilan 06:00 dan keyin kamida bitta vaqt o'tgan bo'ladi.
+           Undan oldin son nol — u holda ro'yxat to'g'ridan-to'g'ri ochiladi. */
+        const tashkent = new Date(Date.now() + 5 * 3600e3);
+        const anyDue = tashkent.getUTCHours() >= 6;
+        if (anyDue) {
+            await go(page, '/reception');
+            const zone = page.locator('section[aria-label="Statsionar"]');
+            await expect(zone).toBeVisible({ timeout: 30_000 });
+            const due = (await zones()).inpatient.medsDue;
+            expect(due, 'vaqti kelgan tayinlov bor').toBeGreaterThan(0);
+            await zone.getByRole('button', { name: `${due} muolaja vaqti keldi` }).click();
+            await expect(page).toHaveURL(/#\/inpatient/, { timeout: 15_000 });
+        } else {
+            await go(page, '/inpatient?tab=meds');
+        }
+
+        await expect(page.getByText(new RegExp(`Jadval${n}`)).first()).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByText(/jadval: 06:00 · 07:27/).first()).toBeVisible();
+        if (anyDue) await expect(page.getByText(/^vaqti keldi$/i).first()).toBeVisible();
+    });
+
     test('xarita yig\'iladi va holatini eslab qoladi', async ({ page }) => {
         await login(page);
         await go(page, '/reception');
