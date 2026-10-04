@@ -135,7 +135,11 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
     };
 
     return (
-        <div className="min-h-screen bg-surface text-white p-6 lg:p-10">
+        /* TABLO HAR DOIM QORONG'I. U kutish zalidagi televizorda turadi: och
+           fon xonani yoritib yuboradi va uzoqdan raqam yomon o'qiladi. Ilova
+           yorug' mavzuda bo'lsa ham shu ekran `dark` sinfi bilan o'z
+           ranglarini oladi. */
+        <div className="dark min-h-screen bg-surface text-white p-6 lg:p-10">
             {/* Sarlavha */}
             <div className="flex items-center gap-4 mb-8">
                 <h1 className="text-3xl lg:text-4xl font-bold tracking-tight">{t('queueboard.navbat')}</h1>
@@ -205,8 +209,8 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                             <div key={`${e.queueNumber}-${e.calledAt}-${i}`}
                                 className="rounded-2xl p-6 border-2 animate-in overflow-hidden"
                                 style={{
-                                    borderColor: e.color || '#2563EB',
-                                    background: `linear-gradient(160deg, ${(e.color || '#2563EB')}22, transparent)`,
+                                    borderColor: e.color || '#005EB8',
+                                    background: `linear-gradient(160deg, ${(e.color || '#005EB8')}22, transparent)`,
                                 }}>
                                 <p className={`${size} font-black leading-none tabular-nums break-words`}>
                                     {ticket}

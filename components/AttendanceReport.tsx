@@ -39,8 +39,8 @@ const StatTile: React.FC<{ label: string; value: string; hint?: string; tone?: '
 /* Grafiklar `recharts` da — loyihada allaqachon shu ishlatiladi
    (Boshqaruv paneli, Shifokorlar tahlili, Moliya hisoboti). Yangi
    kutubxona qo'shish kerak emas va uslub bir xil bo'lib qoladi. */
-const AXIS = '#9ca3af';
-const GRID = '#374151';
+const AXIS = '#768692';
+const GRID = '#354550';
 
 /* Grafik ustidagi izoh oynasi. Recharts ning o'zinikisi oq fonli va
    to'q mavzuda o'qilmaydi, shuning uchun o'zimizniki. */
@@ -167,12 +167,12 @@ const AttendanceReport: React.FC<{
               <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} vertical={false} />
               <XAxis dataKey="label" stroke={AXIS} fontSize={10} tickLine={false} interval="preserveStartEnd" minTickGap={18} />
               <YAxis yAxisId="l" stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} width={32} />
-              <YAxis yAxisId="r" orientation="right" stroke="#059669" fontSize={10} tickLine={false} axisLine={false} width={44} />
+              <YAxis yAxisId="r" orientation="right" stroke="#009639" fontSize={10} tickLine={false} axisLine={false} width={44} />
               <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar yAxisId="l" dataKey="booked" name={tr('ui.yozilgan')} fill="#93B4F5" radius={[3, 3, 0, 0]} />
-              <Bar yAxisId="l" dataKey="arrived" name={tr('attendancereport.kelgan')} fill="#2563EB" radius={[3, 3, 0, 0]} />
-              <Line yAxisId="r" type="monotone" dataKey="revenueK" name={tr('attendancereport.tushum_ming')} stroke="#059669" strokeWidth={2} dot={false} />
+              <Bar yAxisId="l" dataKey="arrived" name={tr('attendancereport.kelgan')} fill="#005EB8" radius={[3, 3, 0, 0]} />
+              <Line yAxisId="r" type="monotone" dataKey="revenueK" name={tr('attendancereport.tushum_ming')} stroke="#009639" strokeWidth={2} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         )}
@@ -192,8 +192,8 @@ const AttendanceReport: React.FC<{
               <Bar dataKey="avgVisits" name={tr('attendancereport.kuniga_ortacha')} radius={[4, 4, 0, 0]}>
                 {wdChart.map((w: any) => (
                   <Cell key={w.weekday}
-                        fill={w.avgVisits >= maxWd * 0.85 ? '#059669'
-                            : w.avgVisits <= maxWd * 0.45 ? '#D97706' : '#2563EB'} />
+                        fill={w.avgVisits >= maxWd * 0.85 ? '#009639'
+                            : w.avgVisits <= maxWd * 0.45 ? '#C96F00' : '#005EB8'} />
                 ))}
               </Bar>
             </BarChart>
@@ -217,8 +217,8 @@ const AttendanceReport: React.FC<{
                 <YAxis stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} width={28} />
                 <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="arrived" name={tr('attendancereport.kelgan')} stackId="h" fill="#2563EB" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="kelmagan" name="Kelmagan" stackId="h" fill="#94A3B8" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="arrived" name={tr('attendancereport.kelgan')} stackId="h" fill="#005EB8" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="kelmagan" name="Kelmagan" stackId="h" fill="#768692" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -240,8 +240,8 @@ const AttendanceReport: React.FC<{
                      tickLine={false} axisLine={false} width={130} />
               <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="arrived" name={tr('attendancereport.kelgan')} stackId="d" fill="#2563EB" />
-              <Bar dataKey="noShow" name="Kelmagan" stackId="d" fill="#D97706" radius={[0, 3, 3, 0]} />
+              <Bar dataKey="arrived" name={tr('attendancereport.kelgan')} stackId="d" fill="#005EB8" />
+              <Bar dataKey="noShow" name="Kelmagan" stackId="d" fill="#C96F00" radius={[0, 3, 3, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}

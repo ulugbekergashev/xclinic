@@ -1185,7 +1185,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                     <button
                                         onClick={() => openMovement('Refund')}
                                         title={t('finance.cash.refundToPatient')}
-                                        className="flex items-center gap-1.5 px-3 py-2 bg-elevated hover:bg-surface text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
+                                        className="flex items-center gap-1.5 px-3 py-2 border border-line bg-surface hover:bg-elevated text-ink text-xs font-bold rounded-xl transition-all active:scale-95"
                                     >
                                         <Undo2 className="w-3.5 h-3.5" />
                                         {t('finance.cash.refund')}
@@ -1409,7 +1409,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                     >
                                                         <span
                                                             className="w-2 h-2 rounded-full"
-                                                            style={{ backgroundColor: PAYMENT_METHODS.find(m => m.key === row.method)?.color || '#9CA3AF' }}
+                                                            style={{ backgroundColor: PAYMENT_METHODS.find(m => m.key === row.method)?.color || '#768692' }}
                                                         />
                                                         {getPaymentMethodLabel(row.method)}
                                                     </span>

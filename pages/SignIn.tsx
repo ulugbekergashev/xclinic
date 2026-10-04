@@ -138,7 +138,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
     <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-4 font-sans">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Logo className="mx-auto w-16 h-16 shadow-lg rounded-2xl mb-4" />
+          <Logo className="mx-auto w-16 h-16 rounded-2xl mb-4" />
           {/* Sarlavhadagi bilan bir xil ikki rangli yozuv — brend ikki
               ekranda ikki xil ko'rinmasligi uchun. Nom tarjima qilinmaydi. */}
           <h1 className="text-3xl font-extrabold text-ink tracking-tight">
@@ -147,7 +147,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
           <p className="text-muted mt-2">{t('auth.subtitle')}</p>
         </div>
 
-        <Card className="p-8 shadow-xl border-t-4 border-t-primary-600">
+        <Card className="p-8 border-t-4 border-t-primary-600">
           {/* Demo nusxada login/parol maydonlari CHIZILMAYDI: ular
               ishlamaydi (server yo'q) va faqat chalkashtiradi. */}
           {!IS_DEMO_BUILD && (
@@ -210,7 +210,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
 
             <Button
               type="submit"
-              className="w-full py-2.5 text-base shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40 transition-all"
+              className="w-full py-2.5 text-base transition-all"
               disabled={isLoading}
             >
               {isLoading ? t('auth.checking') : t('auth.signIn')}
@@ -235,7 +235,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
                   /* Bosish hodisasi `keepRoute` ga tushib qolmasin —
                      tugmadan kirilganda rolning bosh sahifasi ochiladi. */
                   onClick={() => enterDemo()}
-                  className="w-full py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-base font-medium shadow-lg shadow-primary-500/30 transition-all"
+                  className="w-full py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-base font-medium transition-all"
                 >
                   {t('signin.demoga_kirish')}
                 </button>

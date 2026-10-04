@@ -143,8 +143,8 @@ const AppContent: React.FC = () => {
      bu yer esa o'sha qarorni takrorlaydi. */
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
-      return localStorage.getItem('xclinic_theme') !== 'light';
-    } catch { return true; }
+      return localStorage.getItem('xclinic_theme2') === 'dark';
+    } catch { return false; }
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -475,7 +475,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
     } else {
       document.documentElement.classList.remove('dark');
     }
-    try { localStorage.setItem('xclinic_theme', isDarkMode ? 'dark' : 'light'); } catch {}
+    try { localStorage.setItem('xclinic_theme2', isDarkMode ? 'dark' : 'light'); } catch {}
   }, [isDarkMode]);
 
   // --- Auth Actions ---
@@ -1562,7 +1562,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
           <div className="p-4 border-t border-line">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center overflow-hidden flex-1 mr-2">
-                <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-xs uppercase bg-gradient-to-br from-primary-500 to-primary-700">
+                <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-xs uppercase bg-primary-600">
                   {userName ? userName.slice(0, 2) : 'A'}
                 </div>
                 <div className="ml-3 truncate">
@@ -1793,9 +1793,10 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
           {userRole !== UserRole.NURSE && (
             <button
               onClick={() => setAiOpen(true)}
-              className="flex items-center gap-2 h-10 px-4 rounded-full text-sm font-bold text-white
-                         bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500
-                         transition-colors shrink-0"
+              className="flex items-center gap-2 h-10 px-4 rounded-full text-sm font-bold shrink-0
+                         border border-primary-200 dark:border-primary-800 bg-surface
+                         text-primary-600 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30
+                         transition-colors"
               title={t('ai.tab')}
             >
               <Sparkles className="w-4 h-4" />
@@ -1861,7 +1862,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
               <p className="text-sm font-bold text-ink max-w-[140px] truncate" title={userName}>{userName}</p>
               <p className="text-[11px] text-faint">{roleLabel}</p>
             </div>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm uppercase bg-gradient-to-br from-primary-500 to-primary-700">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm uppercase bg-primary-600">
               {userName ? userName.slice(0, 2) : 'A'}
             </div>
           </div>

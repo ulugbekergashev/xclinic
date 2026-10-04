@@ -32,8 +32,8 @@ interface Props {
 }
 
 // Pol naqshi — `ClinicMap` dagi bilan bir xil usul, zonaning o'z rangida
-const FLOOR_SKY: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(14,165,233,0.14) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
-const FLOOR_PINK: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(236,72,153,0.13) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
+const FLOOR_SKY: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(0,164,153,0.13) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
+const FLOOR_PINK: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(181,55,122,0.11) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
 
 const TAB = 'absolute -top-2.5 inline-flex items-center gap-1 h-[18px] px-2 rounded-md bg-surface text-[10.5px] font-extrabold uppercase tracking-wider whitespace-nowrap';
 

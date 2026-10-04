@@ -80,6 +80,7 @@
     }
   },
   "dependencies": {
+    "@fontsource/fira-sans": "^5.3.0",
     "@tailwindcss/vite": "^4.3.1",
     "lucide-react": "^0.554.0",
     "motion": "^12.42.0",

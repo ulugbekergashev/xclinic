@@ -22,8 +22,8 @@ interface Props {
 }
 
 const SERIES = [
-    { kind: 'Temp', label: tr('ui.harorat'), color: '#DC2626', unit: '°C', min: 35, max: 41 },
-    { kind: 'Pulse', label: tr('inp.pulsePh'), color: '#2563EB', unit: 'urish/min', min: 40, max: 140 },
+    { kind: 'Temp', label: tr('ui.harorat'), color: '#D5281B', unit: '°C', min: 35, max: 41 },
+    { kind: 'Pulse', label: tr('inp.pulsePh'), color: '#005EB8', unit: 'urish/min', min: 40, max: 140 },
 ];
 
 export const VitalsChart: React.FC<Props> = ({ vitals }) => {
@@ -83,7 +83,7 @@ export const VitalsChart: React.FC<Props> = ({ vitals }) => {
                         {(() => {
                             const s = SERIES[0];
                             const y = H - PAD - ((37 - s.min) / (s.max - s.min)) * (H - PAD * 2);
-                            return <line x1={0} y1={y} x2={W} y2={y} stroke="#9CA3AF" strokeWidth="0.2" strokeDasharray="1 1" />;
+                            return <line x1={0} y1={y} x2={W} y2={y} stroke="#768692" strokeWidth="0.2" strokeDasharray="1 1" />;
                         })()}
 
                         {SERIES.map(s => {

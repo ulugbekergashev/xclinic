@@ -13,10 +13,18 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Shrift: internetsiz ishlashi uchun tizim shriftlari ustuvor.
-     Inter kerak bo'lsa public/fonts/ ga woff2 qo'yib, @font-face qo'shing. */
-  --font-sans: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+  /* Shrift — Fira Sans: shifoxona yozuvlaridagi gumanist shriftlar oilasidan.
+     Fayllari bundle ichida (`@fontsource/fira-sans`, `index.tsx` da ulanadi) —
+     dastur internetsiz mashinada ham o'z shrifti bilan ochiladi. Lotin va
+     kirill to'plamlari, to'rt vazn: 400, 500, 600, 700. */
+  --font-sans: "Fira Sans", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
     "Helvetica Neue", Arial, sans-serif;
+  /* ENG YO'G'ON VAZN — 700. Kodda `font-extrabold` va `font-black` yuzlab
+     joyda turibdi (Inter davridan); Fira Sans da 800–900 qo'pol ko'rinadi va
+     tibbiy hujjat emas, afisha bo'lib qoladi. Ikkalasi 700 ga tushiriladi —
+     bitta joydan, komponentlarga tegmasdan. */
+  --font-weight-extrabold: 700;
+  --font-weight-black: 700;
   /* Raqamlar uchun — jadvalda ustunlar tekis turishi uchun tabular */
   --font-mono: "JetBrains Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
 
@@ -42,52 +50,280 @@
   --color-muted: var(--x-muted);        /* ikkilamchi matn */
   --color-faint: var(--x-faint);        /* uchinchi darajali matn, yorliqlar */
 
-  /* Yagona brend rangi (primary) — indigo.
-     Ilgari ko'k (#2563eb) edi; yangi qorong'i palitrada ko'k fon bilan
-     qo'shilib ketardi, indigo esa deyarli qora fonda ham ajralib turadi. */
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
-  --color-primary: var(--x-primary);
+  /* ═════════════════════════════════════════════════════════════════════
+     PALITRA — KLASSIK TIBBIY.
 
-  --color-success-50: #ecfdf5;
-  --color-success-100: #d1fae5;
-  --color-success-200: #a7f3d0;
-  --color-success-500: #10b981;
-  --color-success-600: #059669;
-  --color-success-700: #047857;
+     Ranglar to'qilmagan: Britaniya NHS dizayn tizimining ochiq to'plami —
+     shifoxona belgilari va tibbiy hujjatlarda o'n yillardan beri
+     ishlatiladi. Bitta chuqur ko'k (harakat), yashil–sariq–qizil faqat
+     holat uchun, zonalar esa xira, qog'oz tusida.
+
+     Ilgari primary indigo edi, holat ranglari esa Tailwind ning tayyor
+     to'plamlari (emerald, amber, red …) — yorqin, «neon». Komponentlarda
+     ular yuzlab joyda nomi bilan yozilgan (`bg-amber-50`,
+     `text-emerald-600`), shuning uchun bu yerda O'SHA NOMLAR qayta
+     ta'riflanadi: bitta fayl o'zgaradi, butun ilova yangi rangga o'tadi.
+
+       ko'k     primary, blue, indigo        tugma, havola, tanlangan
+       yashil   emerald, green               keldi, tayyor, to'landi
+       sariq    amber, yellow, orange        kutmoqda, vaqti keldi; kutish zali
+       qizil    red, rose                    kechikdi, muammo
+       zangori  sky, cyan, teal              laboratoriya zonasi
+       pushti   pink                         statsionar zonasi
+       binafsha purple, violet               natija kutmoqda
+     ═════════════════════════════════════════════════════════════════════ */
+  --color-primary-50: #edf4fb;
+  --color-primary-100: #e3eef9;
+  --color-primary-200: #b8d4ee;
+  --color-primary-300: #7fb2e1;
+  --color-primary-400: #3d8fd6;
+  --color-primary-500: #0072ce;
+  --color-primary-600: #005eb8;
+  --color-primary-700: #004c95;
+  --color-primary-800: #003d78;
+  --color-primary-900: #003087;
+  --color-primary-950: #001f5c;
+  --color-primary: var(--x-primary);
+  --color-blue-50: #edf4fb;
+  --color-blue-100: #e3eef9;
+  --color-blue-200: #b8d4ee;
+  --color-blue-300: #7fb2e1;
+  --color-blue-400: #3d8fd6;
+  --color-blue-500: #0072ce;
+  --color-blue-600: #005eb8;
+  --color-blue-700: #004c95;
+  --color-blue-800: #003d78;
+  --color-blue-900: #003087;
+  --color-blue-950: #001f5c;
+  --color-indigo-50: #edf4fb;
+  --color-indigo-100: #e3eef9;
+  --color-indigo-200: #b8d4ee;
+  --color-indigo-300: #7fb2e1;
+  --color-indigo-400: #3d8fd6;
+  --color-indigo-500: #0072ce;
+  --color-indigo-600: #005eb8;
+  --color-indigo-700: #004c95;
+  --color-indigo-800: #003d78;
+  --color-indigo-900: #003087;
+  --color-indigo-950: #001f5c;
+
+  --color-emerald-50: #edf7f0;
+  --color-emerald-100: #ddf1e4;
+  --color-emerald-200: #a9d5b9;
+  --color-emerald-300: #72bd8d;
+  --color-emerald-400: #36a563;
+  --color-emerald-500: #009639;
+  --color-emerald-600: #007f3b;
+  --color-emerald-700: #006b33;
+  --color-emerald-800: #00572b;
+  --color-emerald-900: #004523;
+  --color-emerald-950: #002e17;
+  --color-green-50: #edf7f0;
+  --color-green-100: #ddf1e4;
+  --color-green-200: #a9d5b9;
+  --color-green-300: #72bd8d;
+  --color-green-400: #36a563;
+  --color-green-500: #009639;
+  --color-green-600: #007f3b;
+  --color-green-700: #006b33;
+  --color-green-800: #00572b;
+  --color-green-900: #004523;
+  --color-green-950: #002e17;
+  --color-success-50: #edf7f0;
+  --color-success-100: #ddf1e4;
+  --color-success-200: #a9d5b9;
+  --color-success-300: #72bd8d;
+  --color-success-400: #36a563;
+  --color-success-500: #009639;
+  --color-success-600: #007f3b;
+  --color-success-700: #006b33;
+  --color-success-800: #00572b;
+  --color-success-900: #004523;
+  --color-success-950: #002e17;
   --color-success: var(--x-success);
 
-  --color-warning-50: #fffbeb;
-  --color-warning-100: #fef3c7;
-  --color-warning-200: #fde68a;
-  --color-warning-500: #f59e0b;
-  --color-warning-600: #d97706;
-  --color-warning-700: #b45309;
+  --color-amber-50: #fbf7ec;
+  --color-amber-100: #fff0d1;
+  --color-amber-200: #e3d3ad;
+  --color-amber-300: #f2bd5a;
+  --color-amber-400: #f0a22e;
+  --color-amber-500: #ed8b00;
+  --color-amber-600: #c96f00;
+  --color-amber-700: #a35700;
+  --color-amber-800: #7d4300;
+  --color-amber-900: #5c3200;
+  --color-amber-950: #3b2000;
+  --color-yellow-50: #fbf7ec;
+  --color-yellow-100: #fff0d1;
+  --color-yellow-200: #e3d3ad;
+  --color-yellow-300: #f2bd5a;
+  --color-yellow-400: #f0a22e;
+  --color-yellow-500: #ed8b00;
+  --color-yellow-600: #c96f00;
+  --color-yellow-700: #a35700;
+  --color-yellow-800: #7d4300;
+  --color-yellow-900: #5c3200;
+  --color-yellow-950: #3b2000;
+  --color-orange-50: #fbf7ec;
+  --color-orange-100: #fff0d1;
+  --color-orange-200: #e3d3ad;
+  --color-orange-300: #f2bd5a;
+  --color-orange-400: #f0a22e;
+  --color-orange-500: #ed8b00;
+  --color-orange-600: #c96f00;
+  --color-orange-700: #a35700;
+  --color-orange-800: #7d4300;
+  --color-orange-900: #5c3200;
+  --color-orange-950: #3b2000;
+  --color-warning-50: #fbf7ec;
+  --color-warning-100: #fff0d1;
+  --color-warning-200: #e3d3ad;
+  --color-warning-300: #f2bd5a;
+  --color-warning-400: #f0a22e;
+  --color-warning-500: #ed8b00;
+  --color-warning-600: #c96f00;
+  --color-warning-700: #a35700;
+  --color-warning-800: #7d4300;
+  --color-warning-900: #5c3200;
+  --color-warning-950: #3b2000;
   --color-warning: var(--x-warning);
 
-  --color-danger-50: #fef2f2;
-  --color-danger-100: #fee2e2;
-  --color-danger-200: #fecaca;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
-  --color-danger-700: #b91c1c;
+  --color-red-50: #fdf3f2;
+  --color-red-100: #fbe4e1;
+  --color-red-200: #f4c2bc;
+  --color-red-300: #ec958c;
+  --color-red-400: #e2604f;
+  --color-red-500: #da3d2f;
+  --color-red-600: #d5281b;
+  --color-red-700: #b01f14;
+  --color-red-800: #8a1910;
+  --color-red-900: #6b140d;
+  --color-red-950: #430b07;
+  --color-rose-50: #fdf3f2;
+  --color-rose-100: #fbe4e1;
+  --color-rose-200: #f4c2bc;
+  --color-rose-300: #ec958c;
+  --color-rose-400: #e2604f;
+  --color-rose-500: #da3d2f;
+  --color-rose-600: #d5281b;
+  --color-rose-700: #b01f14;
+  --color-rose-800: #8a1910;
+  --color-rose-900: #6b140d;
+  --color-rose-950: #430b07;
+  --color-danger-50: #fdf3f2;
+  --color-danger-100: #fbe4e1;
+  --color-danger-200: #f4c2bc;
+  --color-danger-300: #ec958c;
+  --color-danger-400: #e2604f;
+  --color-danger-500: #da3d2f;
+  --color-danger-600: #d5281b;
+  --color-danger-700: #b01f14;
+  --color-danger-800: #8a1910;
+  --color-danger-900: #6b140d;
+  --color-danger-950: #430b07;
   --color-danger: var(--x-danger);
 
-  --color-info-50: #f0f9ff;
-  --color-info-100: #e0f2fe;
-  --color-info-200: #bae6fd;
-  --color-info-500: #0ea5e9;
-  --color-info-600: #0284c7;
-  --color-info-700: #0369a1;
+  --color-sky-50: #eaf6f5;
+  --color-sky-100: #d6eeec;
+  --color-sky-200: #a7d8d5;
+  --color-sky-300: #74c3be;
+  --color-sky-400: #33ada6;
+  --color-sky-500: #00a499;
+  --color-sky-600: #00857c;
+  --color-sky-700: #006b64;
+  --color-sky-800: #00554f;
+  --color-sky-900: #00433f;
+  --color-sky-950: #002b28;
+  --color-cyan-50: #eaf6f5;
+  --color-cyan-100: #d6eeec;
+  --color-cyan-200: #a7d8d5;
+  --color-cyan-300: #74c3be;
+  --color-cyan-400: #33ada6;
+  --color-cyan-500: #00a499;
+  --color-cyan-600: #00857c;
+  --color-cyan-700: #006b64;
+  --color-cyan-800: #00554f;
+  --color-cyan-900: #00433f;
+  --color-cyan-950: #002b28;
+  --color-teal-50: #eaf6f5;
+  --color-teal-100: #d6eeec;
+  --color-teal-200: #a7d8d5;
+  --color-teal-300: #74c3be;
+  --color-teal-400: #33ada6;
+  --color-teal-500: #00a499;
+  --color-teal-600: #00857c;
+  --color-teal-700: #006b64;
+  --color-teal-800: #00554f;
+  --color-teal-900: #00433f;
+  --color-teal-950: #002b28;
+  --color-info-50: #edf4fb;
+  --color-info-100: #e3eef9;
+  --color-info-200: #b8d4ee;
+  --color-info-300: #7fb2e1;
+  --color-info-400: #3d8fd6;
+  --color-info-500: #0072ce;
+  --color-info-600: #005eb8;
+  --color-info-700: #004c95;
+  --color-info-800: #003d78;
+  --color-info-900: #003087;
+  --color-info-950: #001f5c;
   --color-info: var(--x-info);
+
+  --color-pink-50: #faf0f4;
+  --color-pink-100: #f5e1ea;
+  --color-pink-200: #e5c1d0;
+  --color-pink-300: #d597b3;
+  --color-pink-400: #c46793;
+  --color-pink-500: #b5377a;
+  --color-pink-600: #a3246c;
+  --color-pink-700: #861d58;
+  --color-pink-800: #6a1746;
+  --color-pink-900: #521237;
+  --color-pink-950: #330b22;
+  --color-purple-50: #f4f1f9;
+  --color-purple-100: #e8e1f2;
+  --color-purple-200: #d0c3e5;
+  --color-purple-300: #b19dd3;
+  --color-purple-400: #8f76bd;
+  --color-purple-500: #6f4fa3;
+  --color-purple-600: #5c3f8c;
+  --color-purple-700: #4a3272;
+  --color-purple-800: #3b285b;
+  --color-purple-900: #2e1f47;
+  --color-purple-950: #1c132c;
+  --color-violet-50: #f4f1f9;
+  --color-violet-100: #e8e1f2;
+  --color-violet-200: #d0c3e5;
+  --color-violet-300: #b19dd3;
+  --color-violet-400: #8f76bd;
+  --color-violet-500: #6f4fa3;
+  --color-violet-600: #5c3f8c;
+  --color-violet-700: #4a3272;
+  --color-violet-800: #3b285b;
+  --color-violet-900: #2e1f47;
+  --color-violet-950: #1c132c;
+  --color-gray-50: #f0f4f5;
+  --color-gray-100: #e8edee;
+  --color-gray-200: #d8dde0;
+  --color-gray-300: #aeb7bd;
+  --color-gray-400: #768692;
+  --color-gray-500: #4c6272;
+  --color-gray-600: #425563;
+  --color-gray-700: #354550;
+  --color-gray-800: #2b3840;
+  --color-gray-900: #212b32;
+  --color-gray-950: #161d22;
+  --color-slate-50: #f0f4f5;
+  --color-slate-100: #e8edee;
+  --color-slate-200: #d8dde0;
+  --color-slate-300: #aeb7bd;
+  --color-slate-400: #768692;
+  --color-slate-500: #4c6272;
+  --color-slate-600: #425563;
+  --color-slate-700: #354550;
+  --color-slate-800: #2b3840;
+  --color-slate-900: #212b32;
+  --color-slate-950: #161d22;
 
   /* Burchak radiusi — bitta joydan. Reference: katta, yumshoq burchak. */
   --radius-card: 1rem;      /* 16px — karta */
@@ -109,53 +345,67 @@
    Yorug' va qorong'i — BIR XIL nomlar, boshqa qiymatlar. Komponent
    `bg-surface` deb yozadi va qaysi temada ekanini bilishi shart emas.
 
-   Qorong'i tema ASOSIY (`index.tsx` da standart). Reference shundan
-   olingan: deyarli qora, biroz ko'kka moyil fon; kartalar fondan atigi
-   bir necha pog'ona yorug', ajralishi ramka orqali — soya bilan emas.
-   Qora fonda soya ko'rinmaydi, ramka esa ko'rinadi. */
+   Yorug' tema ASOSIY (`index.html` dagi skript va `App.tsx` da sukut).
+   Oq yuza, och kulrang sahifa; karta fondan ramka bilan ajraladi, soya
+   deyarli yo'q. */
 :root {
-  --x-canvas: #f5f6f9;
+  --x-canvas: #f0f4f5;
   --x-surface: #ffffff;
-  --x-elevated: #f1f3f7;
+  --x-elevated: #e8edee;
   --x-rail: #ffffff;
-  --x-line: #e4e7ee;
-  --x-line-soft: #eef0f5;
-  --x-ink: #111624;
-  --x-muted: #5d6577;
-  --x-faint: #8b93a5;
-  --x-primary: #4f46e5;
-  --x-success: #059669;
-  --x-warning: #d97706;
-  --x-danger: #dc2626;
-  --x-info: #0284c7;
+  --x-line: #d8dde0;
+  --x-line-soft: #e8edee;
+  --x-ink: #212b32;
+  --x-muted: #4c6272;
+  --x-faint: #768692;
+  --x-primary: #005eb8;
+  --x-success: #007f3b;
+  --x-warning: #c96f00;
+  --x-danger: #d5281b;
+  --x-info: #005eb8;
 }
 
-/* QORONG'I TEMA — TO'YINGAN EMAS, KO'KIMTIR.
+/* QORONG'I TEMA — O'SHA PALITRANING TUNGI KO'RINISHI.
 
-   Birinchi variant deyarli QORA (`#080b12`) va aksentlari juda to'yingan
-   edi (`#818cf8`, `#f87171`). Ekranda natija charchatadi: qora fon bilan
-   yorqin rang o'rtasidagi farq keskin, va har bir nishon ko'zga uriladi —
-   ya'ni HECH BIRI ajralib turmaydi.
-
-   Endi fon ko'kimtir-grafit (qora emas) va bir necha pog'ona yorug'roq,
-   aksentlar esa xromasi pasaytirilgan. Signal ranglari (ogohlantirish,
-   xato) ataylab OZGINA to'yingan qoldirildi: ularni butunlay so'ndirish
-   xavfli — qarz va muddat haqidagi xabar ko'rinishi SHART. */
+   Fon asosiy matn rangidan (#212b32) olingan ko'kimtir-kulrang, qora emas.
+   Aksentlar o'sha oilaning och pog'onalari (300–400): to'q fonda 600-pog'ona
+   ko'k o'qilmaydi. Signal ranglari (ogohlantirish, xato) ataylab biroz
+   to'yingan qoldirildi — qarz va muddat haqidagi xabar ko'rinishi SHART. */
 .dark {
-  --x-canvas: #101a2c;
-  --x-surface: #17233a;
-  --x-elevated: #202f4a;
-  --x-rail: #131e33;
-  --x-line: #2a3a55;
-  --x-line-soft: #202c43;
-  --x-ink: #dde4f0;
-  --x-muted: #8b97ae;
-  --x-faint: #66738b;
-  --x-primary: #8e99dd;
-  --x-success: #58c096;
-  --x-warning: #e0a94a;
-  --x-danger: #e8807f;
-  --x-info: #62a9dd;
+  --x-canvas: #12191d;
+  --x-surface: #1b252b;
+  --x-elevated: #243139;
+  --x-rail: #172026;
+  --x-line: #33424b;
+  --x-line-soft: #29363e;
+  --x-ink: #e8edee;
+  --x-muted: #a7b4bc;
+  --x-faint: #768692;
+  --x-primary: #5aa6e8;
+  --x-success: #4cbf7a;
+  --x-warning: #f0a534;
+  --x-danger: #f0796d;
+  --x-info: #5aa6e8;
+
+  /* Semantik tokenlar QAYTA e'lon qilinadi. `@theme` ularni `:root` da
+     `var(--x-…)` orqali ta'riflaydi va qiymat O'SHA YERDA hisoblanadi —
+     `.dark` sahifaning ichki bo'lagiga qo'yilsa (navbat tablosi: ilova
+     yorug', tablo doim qorong'i), yuqoridagi `--x-*` almashgani bilan
+     `bg-surface` baribir yorug' qiymatni meros olardi. */
+  --color-canvas: var(--x-canvas);
+  --color-surface: var(--x-surface);
+  --color-elevated: var(--x-elevated);
+  --color-rail: var(--x-rail);
+  --color-line: var(--x-line);
+  --color-line-soft: var(--x-line-soft);
+  --color-ink: var(--x-ink);
+  --color-muted: var(--x-muted);
+  --color-faint: var(--x-faint);
+  --color-primary: var(--x-primary);
+  --color-success: var(--x-success);
+  --color-warning: var(--x-warning);
+  --color-danger: var(--x-danger);
+  --color-info: var(--x-info);
 }
 
 

@@ -1,23 +1,27 @@
 // Grafiklar uchun yagona rang palitrasi (dizayn tokenlariga mos).
 // Recharts hex qiymatlarni talab qiladi, shuning uchun bu yerda markazlashtirilgan.
+/* Shifokor va xona ranglari — palitraning «halqa, nuqta va kalendar bloki»
+   uchun ajratilgan qatori (`index.css`, klassik tibbiy palitra). Xira,
+   bir-biridan aniq farq qiladi va oq yuzada ham, to'q fonda ham o'qiladi. */
 export const CHART_COLORS = [
-    '#2563EB', // primary
-    '#059669', // success
-    '#D97706', // warning
-    '#DC2626', // danger
-    '#0EA5E9', // info
-    '#7C3AED', // violet (qo'shimcha)
-    '#DB2777', // pink (qo'shimcha)
+    '#1D70B8', // ko'k
+    '#D5281B', // qizil
+    '#6F4FA3', // binafsha
+    '#B5377A', // pushti
+    '#C65D00', // to'q sariq
+    '#2E8540', // yashil
+    '#A8820A', // oltin
+    '#1A8CA8', // zangori
 ];
 
 export const CHART = {
-    primary: '#2563EB',
-    success: '#059669',
-    warning: '#D97706',
-    danger: '#DC2626',
-    info: '#0EA5E9',
-    grid: '#E5E7EB',
-    tooltipBg: '#1F2937',
+    primary: '#005EB8',
+    success: '#009639',
+    warning: '#ED8B00',
+    danger: '#D5281B',
+    info: '#00A499',
+    grid: '#D8DDE0',
+    tooltipBg: '#212B32',
 };
 
 /* ─── Shifokor rangi (S5.3, audit B-18) ─────────────────────────────────────

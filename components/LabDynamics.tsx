@@ -184,10 +184,10 @@ const Sparkline: React.FC<{ points: any[]; refLow?: number | null; refHigh?: num
                         <rect x={0} y={y(refHigh)} width={W} height={Math.max(0.5, y(refLow) - y(refHigh))}
                             fill="currentColor" className="text-emerald-500" opacity="0.12" />
                     )}
-                    <path d={d} fill="none" stroke="#2563EB" strokeWidth="0.7" vectorEffect="non-scaling-stroke" />
+                    <path d={d} fill="none" stroke="#005EB8" strokeWidth="0.7" vectorEffect="non-scaling-stroke" />
                     {points.map((p, i) => (
                         <circle key={i} cx={x(i)} cy={y(p.value)} r="0.9"
-                            fill={p.flag && p.flag !== 'Normal' ? '#DC2626' : '#2563EB'} />
+                            fill={p.flag && p.flag !== 'Normal' ? '#D5281B' : '#005EB8'} />
                     ))}
                 </svg>
             </div>

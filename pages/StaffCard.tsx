@@ -291,7 +291,7 @@ export const StaffCard: React.FC<Props> = ({
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4 min-w-0">
                     <div className="h-16 w-16 md:h-20 md:w-20 rounded-full flex items-center justify-center text-white text-xl md:text-2xl font-bold shrink-0"
-                        style={{ backgroundColor: row.color || '#94A3B8' }}>
+                        style={{ backgroundColor: row.color || '#768692' }}>
                         {(row.firstName || '?')[0]}{(row.lastName || '')[0]}
                     </div>
                     <div className="min-w-0">

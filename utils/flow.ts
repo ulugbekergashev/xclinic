@@ -208,7 +208,7 @@ export function buildClinicFlow(
 
         return {
             key, doctor, department,
-            color: doctor?.color || department?.color || '#4f46e5',
+            color: doctor?.color || department?.color || '#005eb8',
             chair,
             chairSince: chair ? chairSinceOf(chair) : null,
             chairOthers: seated.slice(1),

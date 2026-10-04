@@ -280,7 +280,7 @@ export const PatientHistoryPanel: React.FC<Props> = ({ patientId, canEdit, addTo
                                 {data.recentVisits.map((v: any) => (
                                     <div key={v.id} className="flex items-start gap-2 text-sm">
                                         <span className="w-2 h-2 rounded-full mt-1.5 shrink-0"
-                                            style={{ backgroundColor: v.color || '#9CA3AF' }} />
+                                            style={{ backgroundColor: v.color || '#768692' }} />
                                         <span className="text-xs text-faint shrink-0 w-20">{fmtDate(v.date)}</span>
                                         <div className="min-w-0 flex-1">
                                             <p className="text-ink truncate">

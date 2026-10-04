@@ -19,19 +19,19 @@ export interface PaymentMethodMeta {
 }
 
 export const PAYMENT_METHODS: PaymentMethodMeta[] = [
-    { key: 'Cash', label: tr('ui.naqd'), short: tr('ui.naqd'), isMoneyIn: true, isCashDrawer: true, color: '#10B981' },
-    { key: 'Card', label: tr('paymentmethods.karta_terminal'), short: tr('paymentmethods.karta'), isMoneyIn: true, isCashDrawer: false, color: '#3B82F6' },
-    { key: 'Click', label: 'Click / Payme', short: 'Click', isMoneyIn: true, isCashDrawer: false, color: '#06B6D4' },
-    { key: 'Transfer', label: tr('ui.otkazma'), short: tr('ui.otkazma'), isMoneyIn: true, isCashDrawer: false, color: '#6366F1' },
-    { key: 'Insurance', label: tr('paymentmethods.sugurta'), short: tr('paymentmethods.sugurta'), isMoneyIn: true, isCashDrawer: false, color: '#8B5CF6' },
+    { key: 'Cash', label: tr('ui.naqd'), short: tr('ui.naqd'), isMoneyIn: true, isCashDrawer: true, color: '#009639' },
+    { key: 'Card', label: tr('paymentmethods.karta_terminal'), short: tr('paymentmethods.karta'), isMoneyIn: true, isCashDrawer: false, color: '#005EB8' },
+    { key: 'Click', label: 'Click / Payme', short: 'Click', isMoneyIn: true, isCashDrawer: false, color: '#00A499' },
+    { key: 'Transfer', label: tr('ui.otkazma'), short: tr('ui.otkazma'), isMoneyIn: true, isCashDrawer: false, color: '#6F4FA3' },
+    { key: 'Insurance', label: tr('paymentmethods.sugurta'), short: tr('paymentmethods.sugurta'), isMoneyIn: true, isCashDrawer: false, color: '#B5377A' },
     // Avansdan yechish — bemor pulni ilgari to'lagan, bugun kassaga yangi pul kirmaydi.
-    { key: 'Balance', label: tr('finance.methods.balance'), short: tr('ui.avans'), isMoneyIn: false, isCashDrawer: false, color: '#F59E0B' },
+    { key: 'Balance', label: tr('finance.methods.balance'), short: tr('ui.avans'), isMoneyIn: false, isCashDrawer: false, color: '#ED8B00' },
     /* Qaytarish cheki. Kassaga PUL KIRMAYDI — aksincha chiqadi, lekin yashik
        hisobida uni `CashMovement` (type Refund) bajaradi. Chek esa qatorga
        bog'lash uchun kerak (ChargePayment.transactionId majburiy).
        Ikkisi ham daromad deb sanalsa, qaytarilgan pul kassada "qolib"
        ketardi: +40 000 tushum va −40 000 harakat bir-birini yo'q qilardi. */
-    { key: 'Refund', label: tr('finance.cash.refund'), short: tr('finance.cash.refund'), isMoneyIn: false, isCashDrawer: false, color: '#EF4444' },
+    { key: 'Refund', label: tr('finance.cash.refund'), short: tr('finance.cash.refund'), isMoneyIn: false, isCashDrawer: false, color: '#D5281B' },
 ];
 
 const META_BY_KEY = new Map<string, PaymentMethodMeta>(PAYMENT_METHODS.map(m => [m.key, m]));

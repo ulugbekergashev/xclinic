@@ -15,15 +15,15 @@ import { LabCatalogTab } from '../components/LabCatalogTab';
 
 /** Bo'lim rangi — navbat tablosi va kalendar shu ranglarni ishlatadi */
 const DEPT_COLORS = [
-   { name: "Ko'k", value: '#2563EB' },
-   { name: 'Qizil', value: '#DC2626' },
-   { name: 'Binafsha', value: '#7C3AED' },
-   { name: 'Pushti', value: '#DB2777' },
+   { name: "Ko'k", value: '#005EB8' },
+   { name: 'Qizil', value: '#D5281B' },
+   { name: 'Binafsha', value: '#6F4FA3' },
+   { name: 'Pushti', value: '#B5377A' },
    { name: 'Moviy', value: '#0891B2' },
-   { name: tr('ui.yashil'), value: '#059669' },
-   { name: tr('ui.sariq'), value: '#D97706' },
+   { name: tr('ui.yashil'), value: '#009639' },
+   { name: tr('ui.sariq'), value: '#C96F00' },
    { name: 'Feruza', value: '#0D9488' },
-   { name: 'Indigo', value: '#4F46E5' },
+   { name: 'Indigo', value: '#005EB8' },
    { name: 'Jigarrang', value: '#B45309' },
 ];
 
@@ -32,14 +32,14 @@ import { AccessControlTab } from '../components/AccessControlTab';
 import { EncounterTemplatesTab } from '../components/EncounterTemplatesTab';
 
 const DOCTOR_COLORS = [
-   { name: 'Ko\'k', value: '#3B82F6' },
-   { name: tr('ui.yashil'), value: '#10B981' },
-   { name: 'Binafsha', value: '#8B5CF6' },
-   { name: 'Qizil', value: '#F43F5E' },
-   { name: tr('ui.sariq'), value: '#F59E0B' },
-   { name: 'Havorang', value: '#06B6D4' },
-   { name: 'To\'q ko\'k', value: '#6366F1' },
-   { name: tr('ui.toq_sariq'), value: '#FB923C' },
+   { name: 'Ko\'k', value: '#005EB8' },
+   { name: tr('ui.yashil'), value: '#009639' },
+   { name: 'Binafsha', value: '#6F4FA3' },
+   { name: 'Qizil', value: '#D5281B' },
+   { name: tr('ui.sariq'), value: '#ED8B00' },
+   { name: 'Havorang', value: '#00A499' },
+   { name: 'To\'q ko\'k', value: '#005EB8' },
+   { name: tr('ui.toq_sariq'), value: '#C65D00' },
 ];
 
 
@@ -1432,7 +1432,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                           ? 'border-line'
                                           : 'border-line bg-elevated opacity-60'}`}>
                                     <span className="w-3 h-3 rounded-full shrink-0"
-                                       style={{ backgroundColor: d.color || '#9CA3AF' }} />
+                                       style={{ backgroundColor: d.color || '#768692' }} />
                                     <div className="min-w-0 flex-1">
                                        <div className="flex items-center gap-2 flex-wrap">
                                           <p className="text-sm font-semibold text-ink truncate">{d.name}</p>

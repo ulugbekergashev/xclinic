@@ -3,9 +3,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
   <defs>
     <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="4" y1="4" x2="44" y2="44">
-      <stop offset="0%" stop-color="#3B82F6"/>
-      <stop offset="55%" stop-color="#4F46E5"/>
-      <stop offset="100%" stop-color="#6366F1"/>
+      <stop offset="0%" stop-color="#0072CE"/>
+      <stop offset="55%" stop-color="#005EB8"/>
+      <stop offset="100%" stop-color="#003087"/>
     </linearGradient>
     <linearGradient id="s" gradientUnits="userSpaceOnUse" x1="24" y1="0" x2="24" y2="30">
       <stop offset="0%" stop-color="#fff" stop-opacity=".22"/>

@@ -2,6 +2,21 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
+/* Fira Sans — bundle ichida, internetsiz mashinada ham ochiladi. Faqat kerakli
+   to'plamlar: lotin (o'zbekcha) va kirill (ruscha), to'rt vazn. Qolgan
+   to'plamlar (yunon, vetnam) ulanmaydi — o'rnatuvchi shishmasin. */
+import '@fontsource/fira-sans/latin-400.css';
+import '@fontsource/fira-sans/latin-500.css';
+import '@fontsource/fira-sans/latin-600.css';
+import '@fontsource/fira-sans/latin-700.css';
+import '@fontsource/fira-sans/latin-ext-400.css';
+import '@fontsource/fira-sans/latin-ext-500.css';
+import '@fontsource/fira-sans/latin-ext-600.css';
+import '@fontsource/fira-sans/latin-ext-700.css';
+import '@fontsource/fira-sans/cyrillic-400.css';
+import '@fontsource/fira-sans/cyrillic-500.css';
+import '@fontsource/fira-sans/cyrillic-600.css';
+import '@fontsource/fira-sans/cyrillic-700.css';
 import './index.css';
 import { reloadOnServiceWorkerUpdate } from './utils/lazyWithReload';
 

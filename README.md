@@ -222,24 +222,60 @@ ortiq joyda, va nusxalar bir-biridan ajralib ketgandi: bir kartada
 Rangni bir joydan o'zgartirishning imkoni yo'q edi. Karta uchun `.card`,
 qolgani uchun yuqoridagi tokenlar.
 
-Aksent rangi — indigo (`primary`). Ikkita ish uchun ikkita qiymat:
+**Palitra — klassik tibbiy.** Ranglar to'qilmagan: Britaniya NHS dizayn
+tizimining ochiq to'plami (shifoxona belgilari va tibbiy hujjatlarda o'n
+yillardan beri ishlatiladi). Oq yuza, och kulrang sahifa, bitta chuqur ko'k;
+yashil–sariq–qizil faqat holat uchun; xaritadagi zonalar — xira, qog'oz
+tusida.
 
-* **to'ldirilgan tugma** → `bg-primary-600` (qat'iy `#4f46e5`, oq matn
+| Rang | Asosiy qiymat | Nima uchun | Tailwind nomlari |
+|---|---|---|---|
+| ko'k | `#005eb8` | tugma, havola, tanlangan holat | `primary`, `blue`, `indigo` |
+| yashil | `#009639` | keldi, tayyor, to'landi | `emerald`, `green` |
+| sariq | `#ed8b00` | kutmoqda, vaqti keldi; kutish zali | `amber`, `yellow`, `orange` |
+| qizil | `#d5281b` | kechikdi, muammo | `red`, `rose` |
+| zangori | `#00a499` | laboratoriya zonasi | `sky`, `cyan`, `teal` |
+| pushti | `#b5377a` | statsionar zonasi | `pink` |
+| binafsha | `#6f4fa3` | natija kutmoqda | `purple`, `violet` |
+
+Komponentlarda holat ranglari Tailwind nomi bilan yozilgan (`bg-amber-50`,
+`text-emerald-600`) — yuzlab joyda. Shuning uchun `index.css` dagi `@theme`
+o'sha NOMLARNI qayta ta'riflaydi: palitra bitta faylda, komponentga tegilmaydi.
+Yangi rang kerak bo'lsa — avval shu jadvaldan mosini oling; Tailwind ning
+boshqa tayyor to'plamini (`lime`, `fuchsia` …) qo'shmang, u «neon» bo'lib
+ajralib qoladi.
+
+Aksent rangi — ko'k (`primary`). Ikkita ish uchun ikkita qiymat:
+
+* **to'ldirilgan tugma** → `bg-primary-600` (qat'iy `#005eb8`, oq matn
   bilan kontrast 6,4:1 — ikkala temada ham yetarli);
 * **matn, ramka, tus** → `text-primary` / `border-primary-500/30`
   (temaga qarab o'zgaradi; qorong'ida ochroq).
 
 Buni chalkashtirmang: `bg-primary` + `text-white` qorong'i temada
-kontrast 2,9:1 beradi — o'qilmaydi.
+o'qilmaydi — u yerda `primary` och ko'k.
+
+**Qoidalar.** Ko'k — harakat: bir ekranda bitta to'ldirilgan ko'k tugma.
+Rang — ma'no: yashil, sariq, qizil bezak uchun ishlatilmaydi. Gradient va
+rangli soya (`shadow-primary-500/30`) yo'q.
 
 Holat nishonlari (`Badge`, stat kartalar) **to'ldirilmaydi, tuslanadi**:
 `bg-danger-500/12 text-danger border-danger-500/30`. Shaffof tus fon
 qanday bo'lsa shunga moslashadi va har rang uchun `dark:` juftlik
 yozishga hojat qolmaydi.
 
-Standart tema — **qorong'i**. Sinf `index.html` dagi kichik skript bilan
-React ishga tushishidan OLDIN qo'yiladi (birinchi kadrda oq chaqnamasin);
-`App.tsx` dagi boshlang'ich holat o'sha qaror bilan mos bo'lishi shart.
+**Shrift — Fira Sans**, bundle ichida (`@fontsource/fira-sans`, `index.tsx`
+da ulanadi): dastur internetsiz mashinada ham o'z shrifti bilan ochiladi.
+Eng yo'g'on vazn — 700: `font-extrabold` va `font-black` `index.css` da
+700 ga tushirilgan.
+
+Standart tema — **yorug'**; qorong'isi — o'sha palitraning tungi ko'rinishi,
+yuqori paneldagi tugma bilan yoqiladi. Sinf `index.html` dagi kichik skript
+bilan React ishga tushishidan OLDIN qo'yiladi (qorong'ini tanlagan odamda
+birinchi kadr oq chaqnamasin); `App.tsx` dagi boshlang'ich holat o'sha qaror
+bilan mos bo'lishi shart. Tanlov `xclinic_theme2` kalitida: eskisida
+(`xclinic_theme`) qorong'i sukut edi va dastur uni o'zi yozib qo'yardi.
+Navbat tablosi (`/board/:clinicId`) mavzuga qaramaydi — u doim qorong'i.
 
 ### Ma'lumotlar qayerda saqlanadi
 

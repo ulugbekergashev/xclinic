@@ -89,8 +89,8 @@ export default defineConfig(() => {
           scope: './',
           display: 'standalone',
           orientation: 'any',
-          background_color: '#f9fafb',
-          theme_color: '#2563eb',
+          background_color: '#f0f4f5',
+          theme_color: '#005eb8',
           icons: [
             { src: './logo-icon.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
             { src: './logo-icon.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

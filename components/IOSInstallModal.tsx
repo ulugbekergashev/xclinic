@@ -54,7 +54,7 @@ export const IOSInstallModal: React.FC<IOSInstallModalProps> = ({ isOpen, onClos
 
                     <button
                         onClick={onClose}
-                        className="w-full mt-8 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-semibold shadow-lg shadow-primary-600/20 transition-all active:scale-95"
+                        className="w-full mt-8 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-semibold transition-all active:scale-95"
                     >
                         Tushunarli
                     </button>

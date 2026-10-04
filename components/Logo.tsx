@@ -38,9 +38,9 @@ export const Logo: React.FC<Props> = ({ className = 'w-10 h-10', bare = false })
         <svg viewBox="0 0 48 48" className={className} role="img" aria-label="XClinic">
             <defs>
                 <linearGradient id={g} gradientUnits="userSpaceOnUse" x1="4" y1="4" x2="44" y2="44">
-                    <stop offset="0%" stopColor="#3B82F6" />
-                    <stop offset="55%" stopColor="#4F46E5" />
-                    <stop offset="100%" stopColor="#6366F1" />
+                    <stop offset="0%" stopColor="#0072CE" />
+                    <stop offset="55%" stopColor="#005EB8" />
+                    <stop offset="100%" stopColor="#003087" />
                 </linearGradient>
                 {/* Yuqoridan pastga so'nuvchi oq — plitkaga hajm beradi */}
                 <linearGradient id={s} gradientUnits="userSpaceOnUse" x1="24" y1="0" x2="24" y2="30">

@@ -45,14 +45,14 @@ export interface StaffRow {
 }
 
 export const DOCTOR_COLORS = [
-    { name: "Ko'k", value: '#3B82F6' },
-    { name: tr('ui.yashil'), value: '#10B981' },
-    { name: 'Binafsha', value: '#8B5CF6' },
-    { name: 'Qizil', value: '#F43F5E' },
-    { name: tr('ui.sariq'), value: '#F59E0B' },
-    { name: 'Havorang', value: '#06B6D4' },
-    { name: "To'q ko'k", value: '#6366F1' },
-    { name: tr('ui.toq_sariq'), value: '#FB923C' },
+    { name: "Ko'k", value: '#1D70B8' },
+    { name: tr('ui.yashil'), value: '#2E8540' },
+    { name: 'Binafsha', value: '#6F4FA3' },
+    { name: 'Qizil', value: '#D5281B' },
+    { name: tr('ui.sariq'), value: '#A8820A' },
+    { name: 'Havorang', value: '#1A8CA8' },
+    { name: "To'q ko'k", value: '#003087' },
+    { name: tr('ui.toq_sariq'), value: '#C65D00' },
 ];
 
 export const ROLES: {

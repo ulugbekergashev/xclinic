@@ -81,7 +81,7 @@ const monthStart = () => getCurrentMonthRange().startDate;
 const today = () => todayISO();
 
 // Bo'limlar diagrammasi uchun ranglar — bo'limning o'z rangi bo'lmasa shulardan
-const PALETTE = ['#0E5F55', '#2563EB', '#DC2626', '#7C3AED', '#0891B2', '#D97706', '#DB2777', '#059669'];
+const PALETTE = ['#0E5F55', '#005EB8', '#D5281B', '#6F4FA3', '#0891B2', '#C96F00', '#B5377A', '#009639'];
 
 
 /** Svod qatori — bitta o'lchov, izohi bilan */
@@ -681,16 +681,16 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart data={deptChart} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" vertical={false} />
-                                            <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-                                            <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8"
+                                            <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#768692" />
+                                            <YAxis tick={{ fontSize: 11 }} stroke="#768692"
                                                 tickFormatter={(v) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(v)} />
                                             <Tooltip formatter={(v: any) => `${fmt(Number(v))} UZS`}
                                                 contentStyle={{ background: 'rgba(17,24,39,.95)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
                                             <Legend wrapperStyle={{ fontSize: 12 }} />
                                             {/* Rang seriya bo'yicha: yashil — daromad, qizil — tannarx.
                                                 Bo'lim rangi quyidagi jadvaldagi nuqtada ko'rsatiladi. */}
-                                            <Bar dataKey="Daromad" fill="#10B981" radius={[4, 4, 0, 0]} />
-                                            <Bar dataKey="Tannarx" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="Daromad" fill="#009639" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="Tannarx" fill="#D5281B" radius={[4, 4, 0, 0]} />
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -775,14 +775,14 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     <ResponsiveContainer width="100%" height="100%">
                                         <LineChart data={data.daily} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" vertical={false} />
-                                            <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#94a3b8"
+                                            <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#768692"
                                                 tickFormatter={(d) => String(d).slice(5)} />
-                                            <YAxis tick={{ fontSize: 10 }} stroke="#94a3b8"
+                                            <YAxis tick={{ fontSize: 10 }} stroke="#768692"
                                                 tickFormatter={(v) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(v)} />
                                             <Tooltip formatter={(v: any) => `${fmt(Number(v))} UZS`}
                                                 contentStyle={{ background: 'rgba(17,24,39,.95)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
                                             <Line type="monotone" dataKey="revenue" name={t('ui.tushum')} stroke="#0E5F55" strokeWidth={2} dot={false} />
-                                            <Line type="monotone" dataKey="collected" name={t('financereport.olingan')} stroke="#2563EB" strokeWidth={2} dot={false} strokeDasharray="4 3" />
+                                            <Line type="monotone" dataKey="collected" name={t('financereport.olingan')} stroke="#005EB8" strokeWidth={2} dot={false} strokeDasharray="4 3" />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>

@@ -458,7 +458,7 @@ export const Calendar: React.FC<CalendarProps> = ({
               title={on ? t('calendar.filtrni_bekor_qilish') : fill(t('calendar.faqat_dr_x'), doc.lastName)}
               className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors
                 ${on
-                  ? 'border-line bg-surface text-white'
+                  ? 'border-primary-600 bg-primary-600 text-white'
                   : 'border-line text-muted hover:bg-elevated'}`}
             >
               <span className="w-3 h-3 rounded-full shadow-sm shrink-0"

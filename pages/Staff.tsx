@@ -291,7 +291,7 @@ export const Staff: React.FC<Props> = ({
                         {counts.archive > 0 && (
                             <button type="button" onClick={() => setRoleFilter('archive')}
                                 className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${roleFilter === 'archive'
-                                    ? 'bg-elevated text-white border-line'
+                                    ? 'bg-gray-600 text-white border-gray-600'
                                     : 'bg-surface border-line text-muted hover:border-line'}`}>
                                 {t('patients.filter.archived')} <span className="opacity-70">{counts.archive}</span>
                             </button>
@@ -336,7 +336,7 @@ export const Staff: React.FC<Props> = ({
                                                     <td className="py-3 px-4">
                                                         <div className="flex items-center gap-3">
                                                             <div className="h-9 w-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                                                                style={{ backgroundColor: row.color || '#94A3B8' }}>
+                                                                style={{ backgroundColor: row.color || '#768692' }}>
                                                                 {(row.firstName || '?')[0]}{(row.lastName || '')[0]}
                                                             </div>
                                                             <div className="min-w-0">

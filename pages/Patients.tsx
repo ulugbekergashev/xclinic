@@ -308,7 +308,7 @@ export const Patients: React.FC<PatientsProps> = ({
           </Button>
           
           <Button 
-            className="flex-1 lg:flex-none justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-500/25 transition-all active:scale-95 py-2.5 border-none"
+            className="flex-1 lg:flex-none justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white transition-all active:scale-95 py-2.5 border-none"
             onClick={() => setIsAddModalOpen(true)}
           >
             <Plus className="w-4 h-4" /> 
