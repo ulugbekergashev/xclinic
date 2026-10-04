@@ -94,7 +94,10 @@ va «o'chirish» tugmasi «bekor qilish»ga almashdi (7-bo'limga qarang).
 
 ## 4. Kalendar — ✅ ochiq ish yo'q
 
-## 5. Moliya — ✅ ochiq ish yo'q
+## 5. Kassa (ilgari «Moliya») — ✅ ochiq ish yo'q
+
+Menyuda «Kassa» (2026-10-04); modul nomi va manzil — `finance`. Bugungi
+ko'rinish: to'lov navbati → kassa oynasi (`components/PayQueue.tsx`).
 
 Yuqoridagi ikkita tuzatishga qarang: pul turi rad etilgan, `FinanceHub` ga
 o'zgartirish kerak emas.

@@ -83,6 +83,10 @@ test('to\'lanmagan bemor «Bugun» da ham, kassada ham ko\'rinadi', async ({ pag
        turishi kerak. Ilgari u ro'yxatdan butunlay tushib qolardi. */
     await go(page, '/finance');
     await page.waitForTimeout(3500);
-    await expect(page.getByText(/To'lov kutmoqda/).first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(surname).first()).toBeVisible({ timeout: 10_000 });
+    const queue = page.locator('section[aria-labelledby="pay-queue-title"]');
+    await expect(queue.getByText(/To'lov kutmoqda/).first()).toBeVisible({ timeout: 15_000 });
+    const row = queue.locator('li', { hasText: surname }).first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    // Qabul yopilgan — navbatdagi qator shuni aytadi: bemor ketishidan oldin
+    await expect(row).toContainText(/qabul yopildi/);
 });

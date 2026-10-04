@@ -91,6 +91,17 @@ async function openVisitAtReception(page: Page, surname: string, dept: RegExp) {
     await expect(page.getByText(/Qabul ochildi/).first()).toBeVisible();
 }
 
+/** Kassa: bemor to'lov navbatida turibdi → tanlanadi → hisobi kassa
+ *  oynasida chiqadi → «To'lovni qabul qilish» to'lov oynasini ochadi. */
+async function payFromQueue(page: Page, surname: string) {
+    const queue = page.locator('section[aria-labelledby="pay-queue-title"]');
+    const row = queue.locator('li', { hasText: surname }).first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.getByRole('button').click();
+    await expect(row.getByRole('button')).toHaveAttribute('aria-pressed', 'true');
+    await queue.getByRole('button', { name: /^To'lovni qabul qilish/ }).click();
+}
+
 /** Bemor kartasida qabul ochib, UZI buyuradi — to'lanmagan qator tug'iladi. */
 async function orderStudyInCard(page: Page, surname: string, studyName: string) {
     await page.getByText(surname).first().click();
@@ -153,10 +164,8 @@ test.describe('bir kompyuterda', () => {
         await addPatient(page, surname, n);
         await openVisitAtReception(page, surname, /^Terapiya$/);
 
-        await nav(page, /^Moliya$/);
-        const row = page.locator('li', { hasText: surname }).first();
-        await expect(row).toBeVisible();
-        await row.getByRole('button', { name: /^To'lash$/ }).click();
+        await nav(page, /^Kassa$/);
+        await payFromQueue(page, surname);
 
         /* Aynan shu joy yiqilardi: bemor ro'yxatda qarzi bilan turardi,
            oyna esa «To'lanmagan qator yo'q» derdi — qatorlar kirishda
@@ -216,15 +225,13 @@ test.describe('ikki kompyuterda', () => {
         const surname = `Ikki${n}`;
 
         const cashier = await secondScreen(browser, 'admin');
-        await nav(cashier.page, /^Moliya$/);
+        await nav(cashier.page, /^Kassa$/);
 
         await enter(page);
         await addPatient(page, surname, n);
         await openVisitAtReception(page, surname, /^Terapiya$/);
 
-        const row = cashier.page.locator('li', { hasText: surname }).first();
-        await expect(row).toBeVisible({ timeout: 15_000 });
-        await row.getByRole('button', { name: /^To'lash$/ }).click();
+        await payFromQueue(cashier.page, surname);
         await expect(cashier.page.getByText(/To'lanmagan qator yo'q/)).toHaveCount(0);
         await expect(cashier.page.getByText(/Terapevt konsultatsiyasi/).last()).toBeVisible();
         await stillSamePage(cashier.page);
@@ -269,10 +276,8 @@ test.describe('ikki kompyuterda', () => {
 
         // Kassir — boshqa kompyuterda, registrator hisobi bilan
         const cashier = await secondScreen(browser, 'zilola.reg');
-        await nav(cashier.page, /^Moliya$/);
-        const row = cashier.page.locator('li', { hasText: surname }).first();
-        await expect(row).toBeVisible({ timeout: 15_000 });
-        await row.getByRole('button', { name: /^To'lash$/ }).click();
+        await nav(cashier.page, /^Kassa$/);
+        await payFromQueue(cashier.page, surname);
         await cashier.page.getByRole('button', { name: /^\d[\d\s]* qabul qilish$/ }).click();
         await expect(cashier.page.getByText(/so'm qabul qilindi/).first()).toBeVisible();
 

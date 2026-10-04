@@ -53,19 +53,25 @@ export const NAVIGATION: NavItemDef[] = [
     { id: 'reception', path: '/reception', labelKey: 'nav.today', icon: LayoutDashboard, roles: ALL },
     { id: 'patients', path: '/patients', labelKey: 'nav.patients', icon: Users, roles: ALL },
     { id: 'calendar', path: '/calendar', labelKey: 'nav.calendar', icon: CalendarIcon, roles: [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST] },
-    /* MOLIYA — kassa. Hisobot va davomat bu yerda emas, «Hisobot» da. */
+    /* BO'LIMLAR — bemor qabuldan keyin boradigan joylar, shu tartibda:
+       tahlil, tekshiruv, palata. Laboratoriya va Diagnostika —
+       BAJARUVCHINING ish o'rni. Shifokor ularga bemor kartasidan yo'llanma
+       yuboradi va natijani o'sha yerda ko'radi; ish ro'yxati unga kerak
+       emas va menyuni shishiradi. */
+    { id: 'lab', path: '/lab', labelKey: 'nav.lab', icon: FlaskConical, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST, UserRole.LAB_TECHNICIAN] },
+    { id: 'diagnostics', path: '/diagnostics', labelKey: 'nav.diagnostics', icon: Scan, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
+    { id: 'inpatient', path: '/inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: ALL },
+    /* KASSA — to'lov navbati va kassa oynasi. Menyuda «Moliya» edi, lekin
+       bu yerda moliya yo'q: hisobot va davomat «Hisobot» da, ulush —
+       «Xodimlar» da. Qolgani — kassirning ishi, nomi ham shunday. Modul
+       nomi va manzil (`finance`) o'zgarmadi — «Ruxsatlar» sozlamasida,
+       F4 tugmasida va eski havolalarda shular turadi. */
     { id: 'finance', path: '/finance', labelKey: 'nav.finance', icon: Wallet, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
     /* HISOBOT — faqat egaga: davr bo'yicha foyda, qarz, davomat. Bugungi
        holat bu yerda emas, «Bugun» da. Modul nomi `dashboard` bo'lib qoldi
        (eski havolalar uchun), ekran esa `pages/Dashboard.tsx`. */
     { id: 'dashboard', path: '/dashboard', labelKey: 'nav.reports', icon: BarChart3, roles: [UserRole.CLINIC_ADMIN] },
     { id: 'inventory', path: '/inventory', labelKey: 'inventory.title', icon: Package, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-    /* Laboratoriya va Diagnostika — BAJARUVCHINING ish o'rni. Shifokor
-       ularga bemor kartasidan yo'llanma yuboradi va natijani o'sha yerda
-       ko'radi; ish ro'yxati unga kerak emas va menyuni shishiradi. */
-    { id: 'lab', path: '/lab', labelKey: 'nav.lab', icon: FlaskConical, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST, UserRole.LAB_TECHNICIAN] },
-    { id: 'diagnostics', path: '/diagnostics', labelKey: 'nav.diagnostics', icon: Scan, roles: [UserRole.CLINIC_ADMIN, UserRole.RECEPTIONIST] },
-    { id: 'inpatient', path: '/inpatient', labelKey: 'nav.inpatient', icon: BedDouble, roles: ALL },
     /* XABARLAR — MENYUGA QAYTDI.
 
        U Sozlamalar ichiga ko'chirilgan edi: «shablon va avtomatik qoida
@@ -120,6 +126,20 @@ export function visibleNavigation(role: UserRole, ac: AccessControl): NavItemDef
         && !isModuleHidden(ac, role, item.id)
         && (item.id !== 'finance' || canSeeFinance(ac, role)),
     );
+}
+
+/* TELEFONDAGI PASTKI PANEL — to'rtta joy.
+
+   Yon panelda tartib bemorning yo'li bo'yicha (qabul → bo'limlar → kassa),
+   telefonda esa joy to'rtta va u yerga ENG KO'P ochiladiganlari kerak:
+   registrator uchun kassa laboratoriyaning ish ro'yxatidan muhimroq.
+   Ro'yxatda yo'q yoki rolga yopiq punkt o'rnini menyudagi navbatdagisi
+   oladi (laborantda — laboratoriya, hamshirada — statsionar). */
+const PHONE_FIRST = ['reception', 'patients', 'calendar', 'finance'];
+export function phoneNavigation(items: NavItemDef[], slots = 4): NavItemDef[] {
+    const first = PHONE_FIRST.map(id => items.find(i => i.id === id)).filter((i): i is NavItemDef => !!i);
+    const rest = items.filter(i => !first.includes(i));
+    return [...first, ...rest].slice(0, slots);
 }
 
 /** Shu modulni ochish mumkinmi — marshrut qo'riqchisi shundan foydalanadi */

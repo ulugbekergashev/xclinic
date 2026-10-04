@@ -87,10 +87,10 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
 
     test('Kassa: qarzdor bemordan to\'lov qabul qilinadi', async ({ page }) => {
         await go(page, '/finance');
-        const panel = page.getByText(/Hozir klinikada/).locator('..');
+        const panel = page.locator('section[aria-labelledby="pay-queue-title"]');
         const before = (await panel.innerText()).replace(/\s+/g, ' ');
 
-        await page.getByRole('button', { name: "To'lash" }).last().click();
+        await panel.getByRole('button', { name: /^To'lovni qabul qilish/ }).click();
         await page.waitForTimeout(1200);
 
         const accept = page.getByRole('button', { name: /qabul qilish/i }).last();
@@ -101,7 +101,7 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         await page.waitForTimeout(2000);
         await noDemoError(page);
 
-        const after = (await page.getByText(/Hozir klinikada/).locator('..').innerText()).replace(/\s+/g, ' ');
+        const after = (await panel.innerText()).replace(/\s+/g, ' ');
         expect(after, 'to\'lovdan keyin qarz kamayishi kerak').not.toBe(before);
     });
 
@@ -281,13 +281,13 @@ test.describe("Demo: rol va xizmat ko'rsatish", () => {
         const roleSelect = page.locator('select[aria-label="Demo: rol"]');
         await expect(roleSelect).toBeVisible();
 
-        // Ega rejimida Moliya bor
-        await expect(page.getByRole('link', { name: 'Moliya' })).toBeVisible();
+        // Ega rejimida Kassa bor
+        await expect(page.getByRole('link', { name: 'Kassa' })).toBeVisible();
 
-        // Shifokorga o'tamiz — Moliya yo'qoladi
+        // Shifokorga o'tamiz — Kassa yo'qoladi
         await roleSelect.selectOption('DOCTOR');
         await page.waitForTimeout(2500);
-        await expect(page.getByRole('link', { name: 'Moliya' })).toHaveCount(0);
+        await expect(page.getByRole('link', { name: 'Kassa' })).toHaveCount(0);
         /* «Bugun» shifokorda ham shu nomda: bitta ekran — bitta nom. */
         await expect(page.getByRole('link', { name: 'Bugun' })).toBeVisible();
 
@@ -316,14 +316,17 @@ test.describe('Demo: o\'zgarish sahifa yangilangandan keyin ham turadi', () => {
     test('to\'lov qaytib kelmaydi', async ({ page }) => {
         await go(page, '/finance');
         const read = async () =>
-            (await page.getByText(/Hozir klinikada/).locator('..').innerText()).replace(/\s+/g, ' ');
+            (await page.locator('section[aria-labelledby="pay-queue-title"]').innerText()).replace(/\s+/g, ' ');
 
         const before = await read();
-        await page.getByRole('button', { name: "To'lash" }).last().click();
+        await page.getByRole('button', { name: /^To'lovni qabul qilish/ }).click();
         await page.waitForTimeout(1200);
-        await page.getByRole('button', { name: /qabul qilish/i }).last().click();
+        await page.getByRole('button', { name: /^\d[\d\s]* qabul qilish$/ }).click();
         await page.waitForTimeout(2000);
         const afterPay = await read();
+        /* Qarz ketdi VA pul keldi — ikkalasi bir paytda. Ilgari kun yakuni
+           faqat sahifadan chiqib qaytgandan keyin yangilanardi. */
+        expect(afterPay, 'to\'lov kun yakunida darhol ko\'rinishi kerak').toMatch(/2 ta to'lov/);
         expect(afterPay).not.toBe(before);
 
         /* Chek `DEMO_TRANSACTIONS` da saqlanadi. Hisob qatori saqlanmasa,

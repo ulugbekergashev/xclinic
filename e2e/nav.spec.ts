@@ -31,7 +31,7 @@ test.describe('Menyu va ruxsatlar', () => {
         void nav;
 
         // Qolganlari joyida
-        for (const stays of ['Bugun', 'Bemorlar', 'Kalendar', 'Moliya', 'Hisobot', 'Xodimlar', 'Sozlamalar']) {
+        for (const stays of ['Bugun', 'Bemorlar', 'Kalendar', 'Kassa', 'Hisobot', 'Xodimlar', 'Sozlamalar']) {
             await expect(page.getByRole('link', { name: stays }).first()).toBeVisible();
         }
     });

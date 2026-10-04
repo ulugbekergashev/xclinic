@@ -438,10 +438,27 @@ eski havolalar ishlayveradi.
 «Qabul ochish» formasini beradi: bo'lim, shifokor, xizmat. Navbat raqamini
 baribir server beradi, ya'ni tablo va navbat mantiqi buzilmaydi.
 
-### Moliya
+### Kassa va Hisobot
 
-Uchta tab: **Kassa** (pul harakati, smena), **Hisobot** (bo'limlar bo'yicha
-foyda) va **Davomat** (bemorlarning kelishi).
+Menyuda ikkita alohida punkt. **Kassa** (`/finance`, ilgari «Moliya» deb
+atalardi) — kassirning ish o'rni: pul harakati va smena. **Hisobot**
+(`/dashboard`, faqat ega) — bo'limlar bo'yicha foyda va **Davomat**.
+
+Kassaning bugungi ko'rinishi — bitta panel, «Bugun» xaritasining tilida
+(`components/PayQueue.tsx`):
+
+- **To'lov navbati** (chapda) — to'lashi kerak bo'lganlar: qabuli ochiq
+  bemorlar, qabuli yopilgan-u pul olinmaganlar («ketishidan oldin oling») va
+  alohida zonada statsionar hisoblari (koyka, dori).
+- **Kassa oynasi** (o'ngda) — tanlangan odamning hisobi qog'oz chek
+  ko'rinishida va bitta tugma. Tugma to'lov oynasini ochadi
+  (`ChargePaymentModal` — bemor kartasidagi bilan bir xil): qisman to'lov,
+  bir necha usul, chegirma, qarz o'sha yerda.
+- **Kun yakuni** (ostida) — kassaga tushgan pul usullar bo'yicha, yashikdagi
+  naqd.
+
+O'tgan kun ochilganda navbat yo'q — faqat kun yakuni va «To'lanmagan»
+ro'yxati. Oy ko'rinishi o'zgarmagan.
 
 > **Ulush va vedomost bu yerda emas.** Ular Xodimlar moduliga ko'chdi —
 > «kimga qancha hisoblandi» xodim haqidagi savol, kassa haqidagi emas.
@@ -528,7 +545,7 @@ shifokor uchun bitta sahifa, bitta nom. Qoida — **bir ish — bir joy**:
 - **«Yangi qabul»** — oyna: tugma, **F2** (istalgan sahifadan) yoki skaner.
   Bemor → bo'lim va shifokor → qabul ochiladi, talon chiqadi.
 - **Kunning puli** — sarlavhada bitta qator: egaga bugun kassaga tushgani,
-  pul oladiganlarga kim to'lashi kerakligi. Bosilsa Moliya (kassa) ochiladi.
+  pul oladiganlarga kim to'lashi kerakligi. Bosilsa Kassa ochiladi.
 - **«Bugun hal qilinsin»** — faqat egaga, xaritaning ostida: yopilmagan kassa
   smenasi, muddati o'tayotgan dori, natijasi kiritilmagan tahlil, tuzilmagan
   vedomost va hokazo. Har qator bosilganda o'sha ish bajariladigan ekran
@@ -545,8 +562,8 @@ shifokor uchun bitta sahifa, bitta nom. Qoida — **bir ish — bir joy**:
 - **Davomat** — kim keldi, kim kelmadi, qaysi kunlar gavjum.
 
 Bugungi holat «Hisobot» da takrorlanmaydi: «Bugun» — hozir, «Hisobot» —
-o'tgan kunlar. Hisobot va Davomat ilgari Moliyaning vkladkalari edi; Moliya
-endi faqat kassa — registratorning ish quroli. Raqamlar serverda sanaladi
+o'tgan kunlar. Hisobot va Davomat ilgari «Moliya»ning vkladkalari edi; u
+endi faqat kassa — registratorning ish quroli — va menyuda ham «Kassa». Raqamlar serverda sanaladi
 (`/api/reports/dashboard`, `/attention`), brauzerda emas.
 
 **Nol bo'lgan band ro'yxatga tushmaydi.** «0 ta muddati o'tgan dori»

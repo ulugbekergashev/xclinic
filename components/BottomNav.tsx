@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { MoreHorizontal } from 'lucide-react';
 import { UserRole, AccessControl } from '../types';
 import { useLanguage } from '../context/LanguageContext';
-import { visibleNavigation, navLabelKey, NavItemDef } from '../utils/navigation';
+import { visibleNavigation, phoneNavigation, navLabelKey, NavItemDef } from '../utils/navigation';
 
 interface BottomNavProps {
     userRole: UserRole;
@@ -27,11 +27,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
        va «Barchasi» tugmasi ham chiqmasdi. */
     const allowedItems = visibleNavigation(userRole, accessControl);
 
-    /* Beshtadan ko'p bo'lsa — birinchi to'rttasi va «Barchasi».
+    /* Beshtadan ko'p bo'lsa — to'rttasi (`phoneNavigation`) va «Barchasi».
        Bironta punkt yo'q bo'lsa ham «Barchasi» chiqadi: chiqish va til
        tanlash o'sha panelda. */
     const showMore = allowedItems.length > 5 || allowedItems.length === 0;
-    const visibleItems = showMore ? allowedItems.slice(0, 4) : allowedItems;
+    const visibleItems = showMore ? phoneNavigation(allowedItems) : allowedItems;
 
     const isActive = (item: NavItemDef) => {
         if (item.id === 'patients') return location.pathname.startsWith('/patients');

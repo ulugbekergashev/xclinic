@@ -334,7 +334,11 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
         setCurrentClinic(DEMO_CLINIC);
         setPatients(DEMO_PATIENTS);
         setAppointments(DEMO_APPOINTMENTS);
-        setTransactions(DEMO_TRANSACTIONS);
+        /* NUSXA, massivning o'zi emas. Demo to'lovi `DEMO_TRANSACTIONS` ga
+           joyida yoziladi; holatda o'sha massivning o'zi tursa, yangilash
+           «eski» bilan «yangi»ni solishtirganda ikkalasi bitta narsa bo'lib
+           chiqadi va kassadagi kun yakuni to'lovdan keyin qimirlamaydi. */
+        setTransactions([...DEMO_TRANSACTIONS]);
         setExpenses(DEMO_EXPENSES);
         setServices(DEMO_SERVICES);
         setCategories(DEMO_CATEGORIES);

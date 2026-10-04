@@ -9,10 +9,11 @@ import {
 import { Card, Button, Modal, Input, Select } from '../components/Common';
 import { ServicePaymentModal } from '../components/ServicePaymentModal';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
+import { PayQueue, PayGroup } from '../components/PayQueue';
 import {
     Transaction, Expense, ExpenseCategory, Doctor, Clinic, Patient, Appointment,
     CashRegisterDay, CashMovement, CashMovementType, CashAuditLog, PaymentMethod,
-    EXPENSE_CATEGORY_LABELS, CASH_MOVEMENT_LABELS, VisitCharge, Department, Service,
+    EXPENSE_CATEGORY_LABELS, CASH_MOVEMENT_LABELS, VisitCharge, PendingPatient, Department, Service,
 } from '../types';
 import { ReceiptModal } from '../components/ReceiptModal';
 import {
@@ -60,7 +61,7 @@ interface CashBookProps {
     canReopen?: boolean;
     onCloseDay?: (payload: CashCloseArgs) => Promise<any>;
     onReopenDay?: (date: string, shift?: number) => Promise<void>;
-    /** Moliya bo'limi ichida tab sifatida ochilganda — o'z sarlavhasini ko'rsatmaydi */
+    /** `FinanceHub` ichida ochilganda — o'z sarlavhasini ko'rsatmaydi */
     embedded?: boolean;
     // Kassaga pul kiritish / chiqarish
     patients?: Patient[];
@@ -914,6 +915,79 @@ export const CashBook: React.FC<CashBookProps> = ({
        registrator xarajatni yozdim deb o'ylab qolardi. */
     const canEditExpenses = userRole === 'CLINIC_ADMIN';
 
+    /* TO'LOV NAVBATI — faqat bugun. Uch manba, bitta ro'yxat:
+
+         1. server bergan «hozir klinikada» va «to'lov kutmoqda» guruhlari
+            (qabuli bugun ochilgan yoki yopilgan bemorlar);
+         2. bugungi boshqa to'lanmagan qatorlar — qabulsiz yozilganlar;
+         3. statsionar hisoblari (koyka, dori) — ularda qabul yo'q, shuning
+            uchun server ro'yxatiga tushmaydi; kuni ham muhim emas: koyka
+            haqi har kuni qo'shiladi va bemor chiqishda hammasini to'laydi.
+
+       O'tgan kun ochilganda navbat ko'rsatilmaydi: «oynada kim turibdi»
+       savoli faqat bugunga tegishli. */
+    const dayOf = (c: VisitCharge) => c.visit?.date || c.createdAt.split('T')[0];
+    const restOf = (c: VisitCharge) => c.total - (c.paidAmount || 0);
+    const payGroups = useMemo<PayGroup[] | null>(() => {
+        if (view !== 'day' || date !== today) return null;
+        /* Bir xil qatorlar chekda BITTA satr. Koyka haqi har kun uchun
+           alohida qator bo'lib yoziladi («Koyka (2026-10-04)») — uch
+           haftalik yotishda chek yigirma besh satrga cho'zilardi va jami
+           ekrandan chiqib ketardi. Sana olib tashlanadi, soni yoziladi. */
+        const lines = (list: VisitCharge[]) => {
+            const byName = new Map<string, { id: string; base: string; count: number; amount: number }>();
+            for (const c of list) {
+                const base = c.name.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '');
+                const row = byName.get(base) || { id: c.id, base, count: 0, amount: 0 };
+                row.count += c.quantity || 1;
+                row.amount += restOf(c);
+                byName.set(base, row);
+            }
+            return [...byName.values()].map(r => ({ id: r.id, name: r.count > 1 ? `${r.base} × ${r.count}` : r.base, amount: r.amount }));
+        };
+        const out: PayGroup[] = [];
+        const listed = new Set<string>();
+        for (const g of hereNow as PendingPatient[]) {
+            const state = g.state || (g.here ? 'here' : 'old');
+            if (state === 'old') continue;
+            for (const c of g.items || []) listed.add(c.id);
+            out.push({
+                key: `due:${g.patientId || g.patientName}`, zone: 'due',
+                patientId: g.patientId || undefined, patientName: g.patientName,
+                due: g.due, state, queueNumber: g.queueNumber,
+                items: lines(g.items || []),
+            });
+        }
+        const rest = new Map<string, { group: PayGroup; charges: VisitCharge[] }>();
+        for (const c of charges) {
+            if (c.status !== 'Unpaid' || listed.has(c.id)) continue;
+            const stay = !!c.admissionId;
+            if (!stay && dayOf(c) !== today) continue;
+            const key = `${stay ? 'stay' : 'due'}:${c.patientId || c.patientName}`;
+            let r = rest.get(key);
+            if (!r) {
+                r = {
+                    group: {
+                        key: out.some(x => x.key === key) ? `${key}:rest` : key,
+                        zone: stay ? 'stay' : 'due', patientId: c.patientId || undefined,
+                        patientName: c.patientName, due: 0, state: stay ? 'stay' : 'other', items: [],
+                    },
+                    charges: [],
+                };
+                rest.set(key, r);
+            }
+            r.group.due += restOf(c);
+            r.charges.push(c);
+        }
+        return [...out, ...[...rest.values()].map(r => ({ ...r.group, items: lines(r.charges) }))];
+    }, [view, date, today, hereNow, charges]);
+
+    /* Navbat ko'rsatilganda statsionar qatorlari allaqachon o'sha yerda —
+       «boshqa kunlardan qolgan qarz» ga ikkinchi marta qo'shilmaydi. */
+    const olderDueShown = payGroups
+        ? charges.filter(c => c.status === 'Unpaid' && !c.admissionId && dayOf(c) !== date).reduce((s, c) => s + restOf(c), 0)
+        : olderDue;
+
     const openChargePayment = (patientName: string, patientId?: string) => {
         setPayingPatient({ name: patientName, patientId });
     };
@@ -1240,8 +1314,26 @@ export const CashBook: React.FC<CashBookProps> = ({
                 />
             )}
 
-            <SummaryTiles totals={totals} drawer={view === 'day' ? drawerNow : undefined} />
-            <MethodStrip totals={totals} />
+            {/* KUN — navbat va kassa oynasi; OY — davr yakuni plitkalarda.
+                Kun ko'rinishida plitkalar yo'q: ulardagi olti raqamning
+                hammasi panelda bor (tushum va usullar — pastki qatorda,
+                yashikdagi naqd — kassa oynasida, olinmagan pul — navbatning
+                o'zi, xarajat — o'z ro'yxatida). */}
+            {view === 'day' ? (
+                <PayQueue
+                    groups={payGroups}
+                    totals={totals}
+                    drawer={drawerNow}
+                    clinicName={currentClinic?.name}
+                    olderDue={olderDueShown}
+                    onPay={g => openChargePayment(g.patientName, g.patientId)}
+                />
+            ) : (
+                <>
+                    <SummaryTiles totals={totals} />
+                    <MethodStrip totals={totals} />
+                </>
+            )}
 
             {view === 'day' ? (
                 <>
@@ -1463,7 +1555,11 @@ export const CashBook: React.FC<CashBookProps> = ({
                     </Card>
 
 
-                    {/* ── To'lanmaganlar: kimdan pul olinmadi ── */}
+                    {/* ── To'lanmaganlar: kimdan pul olinmadi ──
+                        Faqat O'TGAN kun uchun. Bugungi to'lanmaganlar —
+                        yuqoridagi to'lov navbatining o'zi; ikkinchi ro'yxat
+                        o'sha odamlarni qator-qator takrorlardi. */}
+                    {!payGroups && (
                     <Card className="overflow-hidden">
                         <div className="px-5 py-4 border-b border-line-soft flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
@@ -1512,6 +1608,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                             </ul>
                         )}
                     </Card>
+                    )}
 
                     {/* ── Kunlik xarajatlar ── */}
                     <Card className="overflow-hidden">
@@ -1682,72 +1779,6 @@ export const CashBook: React.FC<CashBookProps> = ({
                             </div>
                         )}
                     </Card>
-
-                    {/* ── Hozir klinikada: kim oynada turishi mumkin ────────
-                        Kassir ro'yxatning boshiga qaraydi va oynadagi odamni
-                        navbat raqami bo'yicha topadi. */}
-                    {/* IKKI GURUH, BITTA RO'YXAT EMAS.
-
-                        «Hozir klinikada» — qabuli ochiq, odam kutmoqda.
-                        «To'lov kutmoqda» — qabul YOPILDI, lekin pul
-                        olinmagan. Ilgari ikkinchi guruh umuman yo'q edi:
-                        shifokor «Yakunlash» ni bosishi bilan bemor bu
-                        ro'yxatdan yo'qolib, butun klinikaning qarzdorlari
-                        orasiga tushardi. Kassir signal olmasdi va eng oson
-                        qaytariladigan pul — hali binodagi odamning puli —
-                        e'tibordan chetda qolardi.
-
-                        Guruhlar ajratilgan, chunki kassirning harakati
-                        boshqacha: birinchisida u odamni kutadi, ikkinchisida
-                        chiqib ketishidan oldin ushlab qolishi kerak. */}
-                    {(['here', 'waiting'] as const).map(group => {
-                        const rows = hereNow.filter((g: any) => (g.state || (g.here ? 'here' : 'old')) === group);
-                        if (rows.length === 0) return null;
-                        const isWaiting = group === 'waiting';
-                        return (
-                            <Card key={group} className="overflow-hidden">
-                                <div className={`px-5 py-3 border-b border-line-soft flex items-center gap-2 ${isWaiting ? 'bg-amber-500/8' : ''}`}>
-                                    <Users className={`w-4 h-4 shrink-0 ${isWaiting ? 'text-amber-500' : 'text-primary-500'}`} />
-                                    <h2 className="text-sm font-bold text-ink">
-                                        {isWaiting ? t('finance.cash.awaitingPayment') : t('finance.cash.nowInClinic')}
-                                    </h2>
-                                    <span className="text-xs text-faint">
-                                        ({rows.length} {isWaiting ? t('cashbook.ta_ketishdan_oldin') : t('cashbook.ta_tolovsiz')})
-                                    </span>
-                                    <span className={`ml-auto text-sm font-black tabular-nums ${isWaiting
-                                        ? 'text-amber-600 dark:text-amber-400'
-                                        : 'text-primary-600 dark:text-primary-400'}`}>
-                                        {num(rows.reduce((s: number, g: any) => s + (g.due || 0), 0))} UZS
-                                    </span>
-                                </div>
-                                <ul className="divide-y divide-line">
-                                    {rows.map((g: any) => (
-                                        <li key={g.patientId || g.patientName} className="px-5 py-3 flex flex-wrap items-center gap-3">
-                                            {g.queueNumber != null && (
-                                                <span className={`w-9 h-9 rounded-lg grid place-items-center font-bold text-sm shrink-0 ${isWaiting
-                                                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                                                    : 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'}`}>
-                                                    {g.queueNumber}
-                                                </span>
-                                            )}
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-medium text-ink truncate">{g.patientName}</p>
-                                                <p className="text-[11px] text-faint">
-                                                    {(g.items || []).length} {t('cashbook.ta_xizmat')}
-                                                    {(g.items || []).length > 0 ? ` · ${g.items.map((i: any) => i.name).join(', ').slice(0, 60)}` : ''}
-                                                </p>
-                                            </div>
-                                            <span className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 shrink-0">
-                                                {num(g.due)}
-                                            </span>
-                                            <button onClick={() => openChargePayment(g.patientName, g.patientId)}
-                                                className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700">{t('finance.cash.pay')}</button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </Card>
-                        );
-                    })}
 
                     {/* ── Smena holati ──────────────────────────────────────
                         Kim kassada turgani. Majburiy emas: ochmasdan ham

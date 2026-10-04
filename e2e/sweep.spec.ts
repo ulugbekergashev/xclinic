@@ -35,7 +35,7 @@ const ROUTES: { path: string; name: string }[] = [
     { path: '/myqueue', name: 'Mening navbatim (eski manzil)' },
     { path: '/patients', name: 'Bemorlar' },
     { path: '/calendar', name: 'Kalendar' },
-    { path: '/finance', name: 'Moliya' },
+    { path: '/finance', name: 'Kassa' },
     { path: '/cashbook', name: 'Kassa daftari' },
     { path: '/cashier', name: 'Kassir' },
     { path: '/inventory', name: 'Ombor' },

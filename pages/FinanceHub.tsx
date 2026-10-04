@@ -6,10 +6,11 @@ import { UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
 import type { CashCloseArgs } from './CashBook';
 import { useLanguage } from '../context/LanguageContext';
 
-/* Moliya — KASSA. Kassaga qancha pul kirdi va qancha qoldi (faktik pul
-   harakati). Shifokor buyurgan xizmatlarning to'lanmagan qatorlari shu
-   yerdagi «To'lanmagan» ro'yxatiga tushadi — alohida ekran QURILMAGAN,
-   chunki CashBook allaqachon to'lov qabul qiladi va qarz yopadi.
+/* KASSA (menyuda ilgari «Moliya»; modul nomi va manzil — `finance`).
+   Kassaga qancha pul kirdi va qancha qoldi (faktik pul harakati). Shifokor
+   buyurgan xizmatlarning to'lanmagan qatorlari shu yerdagi to'lov
+   navbatiga tushadi (`components/PayQueue.tsx`) — alohida ekran
+   QURILMAGAN, chunki CashBook allaqachon to'lov qabul qiladi va qarz yopadi.
 
    HISOBOT VA DAVOMAT BU YERDA EMAS (2026-09-16). Ular Moliyaning
    vkladkalari edi — faqat egaga ko'rinadigan, kassaning yonida. Endi ular
