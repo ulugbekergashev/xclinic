@@ -107,7 +107,7 @@ async function orderStudyInCard(page: Page, surname: string, studyName: string) 
     await page.getByText(surname).first().click();
     await page.locator('select').first().selectOption({ index: 1 });
     await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
-    await expect(page.getByText('Joriy qabul')).toBeVisible();
+    await expect(page.getByText('Bugungi qabul')).toBeVisible();
     await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
     await page.getByPlaceholder(/Masalan: Qorin/).fill(studyName);
     await page.getByPlaceholder(/^Narx$/).fill('90000');
@@ -192,10 +192,12 @@ test.describe('bir kompyuterda', () => {
         await page.getByText(surname).first().click();
         await page.locator('select').first().selectOption({ index: 1 });
         await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
-        await expect(page.getByText('Joriy qabul')).toBeVisible();
+        await expect(page.getByText('Bugungi qabul')).toBeVisible();
 
         await page.getByRole('button', { name: /^Tahlilga$/ }).click();
-        await page.locator('label', { has: page.locator('input[type="checkbox"]') }).first().click();
+        /* Tanlov qutisining O'ZIDAN: varaqda boshqa belgilash katakchalari ham bor
+           (tashxisdagi «surunkali», ko'rik shablonidagi maydonlar). */
+        await page.getByRole('group', { name: 'Qaysi tahlillar?' }).locator('label').first().click();
         await page.getByRole('button', { name: /^Laboratoriyaga yuborish$/ }).click();
         await page.waitForTimeout(1500);
 

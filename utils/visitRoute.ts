@@ -63,6 +63,75 @@ export function routeProgress(v: Visit): { done: number; total: number } | null 
     return { done: stops.filter(s => s.done).length, total: stops.length };
 }
 
+/* ─── BEMOR KARTASIDAGI MARSHRUT ─────────────────────────────────────────────
+   Talon va xaritaga «qayerga, qaysi tartibda» yetarli. Kartada esa shifokor
+   va registrator bemor HOZIR qayerda ekanini ko'rishi kerak, shuning uchun
+   har bekat holat bilan keladi va kassa ham bekat bo'ladi.
+
+   KASSA O'RNI. To'langan bo'lsa — birinchi: pul odatda registraturada,
+   xizmatdan oldin olinadi. Qarz bo'lsa — oxirida: bemor tashrif so'ngida
+   kassaga boradi va shifokor qo'shgan yangi yo'llanma ham shu yerga tushadi. */
+
+export type StopState = 'done' | 'now' | 'next';
+
+export interface ProfileStop {
+    kind: RouteStop['kind'] | 'cashier';
+    state: StopState;
+    services: string[];
+    modality?: Modality;
+    /** Bekatdagi oxirgi voqea vaqti (natija tayyor bo'ldi, qabul boshlandi) */
+    at?: string | null;
+    /** Faqat kassa: hisob jami va qolgan qarz */
+    total?: number;
+    due?: number;
+}
+
+const latest = (times: (string | null | undefined)[]): string | null =>
+    times.filter((x): x is string => !!x).sort().pop() || null;
+
+export function profileRoute(v: Visit, money?: { total: number; due: number }): ProfileStop[] {
+    const closed = v.status === 'Completed' || v.status === 'Cancelled';
+    const withDoctor = v.status === 'In Progress' || v.status === 'Called';
+    const orders = (v.labOrders || []).filter(o => o.status !== 'Cancelled');
+    const studies = (v.studies || []).filter(s => s.status !== 'Cancelled');
+    let studyIndex = 0;
+
+    /* Laboratoriya bekati bitta, yo'llanmalar esa bir nechta bo'lishi mumkin.
+       Hammasi tayyor — oxirgi natija vaqti. Aks holda — hali tayyor
+       BO'LMAGANLARIDAN olingan proba vaqti: tayyor bo'lgan yo'llanmaning
+       vaqtini «proba olindi» deb ko'rsatsak, tegilmagan tahlil ham
+       boshlangandek ko'rinardi. */
+    const labAt = orders.every(o => o.status === 'Completed')
+        ? latest(orders.map(o => o.completedAt))
+        : latest(orders.filter(o => o.status !== 'Completed').map(o => o.sampleCollectedAt));
+
+    const stops: ProfileStop[] = routeOfVisit(v).map(s => {
+        const at = s.kind === 'lab' ? labAt
+            : s.kind === 'study' ? (studies[studyIndex++]?.performedAt || null)
+                : (v.startedAt || v.calledAt || null);
+        return { kind: s.kind, state: s.done ? 'done' : 'next', services: s.services, modality: s.modality, at };
+    });
+
+    /* «Hozir» — bitta bekat. Shifokor chaqirgan yoki qabul qilayotgan bo'lsa
+       shifokor; aks holda bemor yurishi kerak bo'lgan birinchi bekat. */
+    if (!closed) {
+        const current = withDoctor
+            ? stops.find(s => s.kind === 'doctor')
+            : stops.find(s => s.state !== 'done');
+        if (current) current.state = 'now';
+    }
+
+    if (!money || money.total <= 0) return stops;
+    if (money.due <= 0) {
+        return [{ kind: 'cashier', state: 'done', services: [], total: money.total, due: 0 }, ...stops];
+    }
+    const nothingElseLeft = !stops.some(s => s.state === 'now');
+    return [...stops, {
+        kind: 'cashier', state: nothingElseLeft && v.status !== 'Cancelled' ? 'now' : 'next',
+        services: [], total: money.total, due: money.due,
+    }];
+}
+
 /* Prayslistdagi diagnostika xizmatida TUR (UZI, EKG …) yo'q — faqat nom.
    Tekshiruv yozuvida esa tur majburiy (`DiagnosticStudy.modality`): diagnost
    ro'yxatni shu bo'yicha saralaydi. Kartada shifokor turni qo'lda tanlaydi;

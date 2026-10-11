@@ -129,7 +129,7 @@ test.describe('«Bugun klinikada» xaritasi', () => {
            va karta ochiladi. */
         await map.getByRole('button', { name: `Oziniki${n} Sinov: Qabulni boshlash` }).click();
         await expect(page).toHaveURL(/#\/patients\/[^?]+\?visit=/, { timeout: 15_000 });
-        await expect(page.getByText('Joriy qabul')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('Bugungi qabul')).toBeVisible({ timeout: 15_000 });
         const started = await (await request.get(`/api/visits/${mine.id}`, { headers })).json();
         expect(started.status).toBe('In Progress');
     });

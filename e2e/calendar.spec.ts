@@ -52,8 +52,13 @@ test.describe('Kalendar', () => {
         await expect(header).not.toContainText(/Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec/);
 
         // ── «Hozir» chizig'i: hafta ko'rinishida bitta, bugungi ustunda ──
-        const hour = now.getHours();
-        if (hour >= 8 && hour <= 20) await expect(page.locator('span.border-red-500.border-t-2')).toHaveCount(1);
+        /* Chiziq faqat ISH SOATLARIDA chiziladi, ish soatlari esa klinika va
+           shifokorlar jadvalidan olinadi. Ilgari bu yerda «8 dan 20 gacha»
+           deb qotirilgan edi va sinov kechqurun (to'r 18:00 da tugaganda)
+           yiqilardi. Endi to'rning o'zidan so'raladi: hozirgi soat qatori
+           bormi? */
+        const hourRow = page.getByText(`${now.getHours()}:00`, { exact: true });
+        await expect(page.locator('span.border-red-500.border-t-2')).toHaveCount((await hourRow.count()) > 0 ? 1 : 0);
 
         // ── Yon panel: shifokor — filtr ─────────────────────────────────
         const mine = side.getByRole('button', { name: new RegExp(`^Dr\\. ${doc.lastName}`) });

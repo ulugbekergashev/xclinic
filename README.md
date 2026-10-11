@@ -479,14 +479,70 @@ Registratura  «Bugun» -> «Yangi qabul» (F2): bemor -> bo'lim -> shifokor ->
 Kassa         har buyurtma alohida hisob qatori: to'lanmagan -> to'langan
      |
 Shifokor      «Bugun» («Mening kabinetim») -> «Qabulni boshlash» -> BEMOR KARTASI
-              chapda: allergiya, tashxislar, qabullar, tahlil dinamikasi,
-                      retseptlar, to'lovlar, hujjatlar
-              o'ngda: joriy qabul — bayon · tashxis · xizmat · tahlilga ·
-                      diagnostikaga · boshqa shifokorga · retsept ·
-                      yo'llanma · yakunlash
+              tepada: kim · allergiya va surunkali kasallik · bugungi marshrut
+              chapda: tarix — bitta lenta (qabul, tahlil, tekshiruv, statsionar)
+              o'ngda: qabul varag'i — natijalar · shikoyat · ko'rik · tashxis ·
+                      tayinlov · xizmat · yo'llanma · yakunlash
      |
 Lab/Diag      shifokordan kelgan yo'llanmalar -> natija -> kartaga qaytadi
 ```
+
+### Bemor kartasi uch qismdan iborat
+
+**Sarlavha** (`components/patient/ProfileHeader.tsx`) — bitta qator: ism,
+yosh, telefon; allergiya, surunkali kasallik va qarz nishonlari doim
+ko'rinadi. Tahrirlash, xabar, shifokorni o'zgartirish, vipiska va rasm —
+kuniga bir marta kerak bo'ladigan amallar — «⋯» ostida. Ostida bugungi
+**marshrut**: kassa, laboratoriya, tekshiruv va shifokor bekatlari «o'tildi /
+hozir / keyin» holati bilan (`profileRoute`, `utils/visitRoute.ts`). To'langan
+kassa birinchi turadi, qarz bo'lsa — oxirida.
+
+**Tarix** (`components/patient/PatientTimeline.tsx`, qoida —
+`utils/patientTimeline.ts`) — qabul, tahlil, tekshiruv va statsionar bitta
+vaqt o'qida; yozuv bosilganda shu yerda ochiladi. Tepasida doim ko'rinadigan
+faktlar (`PinnedFacts`): allergiya (shu yerda kiritiladi), surunkali
+kasallik, doimiy dori, me'yordan chiqqan natijalar. To'lovlar lentada yo'q —
+ular «To'lovlar» daftarida. **Daftarlar** (tashxislar, retseptlar, tahlil
+dinamikasi, rasmlar, yozuvlar, to'lovlar, bo'lib to'lash, materiallar,
+hujjatlar, anamnez) lenta ostidagi tugmalardan **oynada** ochiladi; ilgari
+ular sahifaning eng pastida, qabul paneli ostida ochilardi.
+
+**Qabul varag'i** (`components/VisitPanel.tsx`, bo'laklari —
+`components/visit/`) shifokor ishlaydigan tartibda o'qiladi. Shu qabulning
+tahlil natijalari varaqning tepasida, me'yor yo'lakchasi bilan
+(`utils/labRange.ts`). Natijani «Ko'rdim» deb belgilash yakunlangan qabulda
+ham ishlaydi — natija ko'pincha bemor ketgandan keyin keladi.
+
+**«Saqlash» tugmasi yo'q**: shikoyat va ko'rik o'zi saqlanadi
+(`hooks/useVisitAutosave.ts`) — oxirgi harfdan 2 soniya keyin, maydondan
+chiqilganda, «Yakunlash» oldidan, boshqa qabulga o'tilganda va oyna
+yopilayotganda. Uch qoida:
+
+- qoralama o'z qabulining id si bilan turadi — ketmay qolgan matn boshqa
+  qabulga yozilib ketmaydi;
+- yozuvlar navbat bilan ketadi, «Yakunlash» shu navbatni kutadi;
+- holat faqat «Kutmoqda → Qabulda» o'tishida va bir marta yuboriladi.
+
+Chegaradan tashqari ko'rsatkich (500 °C) saqlanmaydi va qabulni yopishga
+qo'ymaydi, lekin qolgan maydonlar yozilaveradi. Yoza olmaydigan odamga
+(registrator, hamshira, yakunlangan qabul) ko'rik bo'sh maydonlar emas,
+yozilgan matn bo'lib ko'rinadi. Pastda bitta «Hisob» qatori; to'lovni
+registrator shu yerdan qabul qiladi (shifokorda bu tugma yo'q).
+
+**Yopilgan qabul serverda himoyalangan** (`PUT /api/visits/:id`,
+`VISIT_CLOSED`, 409): yakunlangan yoki bekor qilingan qabulning holati va
+bayoni o'zgarmaydi. Sabab — varaq o'zi saqlanadi: ochiq turgan kartaning
+kechikkan yozuvi boshqa kompyuterda yopilgan qabulni qayta ochib qo'ymasin.
+
+**Shifokorga o'zining qabuli ochiladi.** Bemorning bugun boshqa shifokorda
+ochiq qabuli bo'lsa, u kartada o'z-o'zidan ochilmaydi (bitta harf begona
+qabulga yozilib ketardi) — tarix lentasidan ataylab ochiladi. Ega va
+registratorga birinchi ochiq qabul ochilaveradi.
+
+**«Yo'q» va «bilmaymiz» — ikki boshqa narsa.** Allergiya ma'lumoti
+yuklanmasa, karta «ma'lumot yo'q» deb yozmaydi: sarlavhada «allergiya:
+ma'lumot yuklanmadi» nishoni, tarixda xato va «Qayta urinish» chiqadi;
+oldin yuklangani esa ekranda qoladi.
 
 ### Nima uchun karta ichida
 

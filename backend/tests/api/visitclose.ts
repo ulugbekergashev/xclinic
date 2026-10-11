@@ -220,6 +220,25 @@ async function main() {
         const back = await call('PUT', `/visits/${v3.data.id}`, { status: 'Waiting' }, token);
         ok('navbatga qaytarilganda vaqt tozalandi', back.status === 200 && back.data?.startedAt === null,
             `status: ${back.status}, ${back.data?.startedAt}`);
+
+        console.log('\n═══ 7. YOPILGAN QABUL QAYTA OCHILMAYDI ════════════');
+        /* Bemor kartasidagi varaq o'zi saqlanadi. Qabul boshqa kompyuterda
+           yopilgan bo'lsa, ochiq turgan kartaning kechikkan yozuvi uni
+           jimgina qayta ochmasligi va bayonini o'zgartirmasligi kerak. */
+        const cancelled = await call('PUT', `/visits/${v3.data.id}`, { status: 'Cancelled' }, token);
+        ok('qabul bekor qilindi', cancelled.status === 200 && cancelled.data?.status === 'Cancelled',
+            `status: ${cancelled.status}`);
+        const reopen = await call('PUT', `/visits/${v3.data.id}`, { status: 'In Progress' }, token);
+        ok('bekor qilingan qabul «Qabulda» ga qaytmaydi (409)',
+            reopen.status === 409 && reopen.data?.code === 'VISIT_CLOSED', `status: ${reopen.status}, ${reopen.data?.code}`);
+        const lateText = await call('PUT', `/visits/${v3.data.id}`, { examData: '{"anamnesis":"kechikkan"}', complaints: 'kechikkan' }, token);
+        ok('yopilgan qabulning bayoni o\'zgarmaydi (409)',
+            lateText.status === 409 && lateText.data?.code === 'VISIT_CLOSED', `status: ${lateText.status}, ${lateText.data?.code}`);
+        const after = await call('GET', `/visits/${v3.data.id}`, undefined, token);
+        ok('holat va matn joyida', after.data?.status === 'Cancelled' && !after.data?.examData && !after.data?.complaints,
+            `${after.data?.status}, ${after.data?.examData}, ${after.data?.complaints}`);
+        const same = await call('PUT', `/visits/${v3.data.id}`, { status: 'Cancelled' }, token);
+        ok('o\'sha holatning o\'zi qayta yuborilsa — o\'tadi', same.status === 200, `status: ${same.status}`);
     }
 
     await lockedVisit(token, tag);

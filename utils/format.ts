@@ -86,6 +86,15 @@ export function formatDateLong(v: Date | string | null | undefined, lang: Lang =
     return `${d.getDate()} ${MONTHS_UZ[d.getMonth()]} ${d.getFullYear()}, ${WEEKDAYS_UZ[d.getDay()]}`;
 }
 
+/** `28 avgust 2026` — hafta kunisiz: tarix lentasi kabi zich ro'yxatlar uchun. */
+export function formatDateMedium(v: Date | string | null | undefined, lang: Lang = 'uz'): string {
+    const d = toDate(v);
+    if (!d) return '';
+    return lang === 'ru'
+        ? `${d.getDate()} ${MONTHS_RU[d.getMonth()]} ${d.getFullYear()}`
+        : `${d.getDate()} ${MONTHS_UZ[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 /** `28 avg` — diagramma o'qi va tor ustunlar uchun. */
 export function formatDateShort(v: Date | string | null | undefined, lang: Lang = 'uz'): string {
     const d = toDate(v);

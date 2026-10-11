@@ -35,7 +35,7 @@ test('bemor keldi → tashxis → UZI → qarz kassada → yakunlandi', async ({
     await page.locator('select').first().selectOption({ index: 1 });
     await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
     await page.waitForTimeout(2500);
-    await expect(page.getByText('Joriy qabul')).toBeVisible();
+    await expect(page.getByText('Bugungi qabul')).toBeVisible();
 
     // ── 3. Tashxis ─────────────────────────────────────────────────────
     await page.getByPlaceholder(/Kod yoki kasallik nomi/).fill('gipert');

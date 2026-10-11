@@ -168,11 +168,29 @@ const demoClinicalSummary = (patientId: string) => {
             diagnosis: (a as any).notes || '',
         }));
 
+    /* Me'yordan chiqqan natijalar — tayyor yo'llanmalardan (server ham shunday
+       yig'adi). Ilgari bu yerda bo'sh ro'yxat turardi. */
+    const abnormalResults = DEMO_LAB_ORDERS
+        .filter(o => o.patientId === patientId && o.status === 'Completed')
+        .flatMap(o => demoLabResults(o.id).items.flatMap(i => i.parameters.map(r => ({ ...r, at: o.completedAt || null }))))
+        .filter(r => r.flag === 'High' || r.flag === 'Low')
+        .map(r => ({ name: r.name, value: r.value, unit: r.unit, flag: r.flag, refLow: r.refLow, refHigh: r.refHigh, at: r.at }));
+
     return {
         allergies: DEMO_ALLERGIES.filter(a => a.patientId === patientId),
-        chronic: DEMO_DIAGNOSES.filter((d: any) => d.patientId === patientId),
+        /* FAQAT surunkali tashxislar va serverdagi shaklda (`name` bilan).
+           Ilgari bemorning HAMMA tashxisi qaytardi va nomi yo'q edi. */
+        chronic: DEMO_DIAGNOSES
+            .filter(d => d.patientId === patientId && (d.isChronic || d.status === 'Chronic'))
+            .map(d => ({ id: d.id, code: d.code, name: d.icd10?.name || d.code, date: d.date })),
         recentVisits,
-        abnormalResults: [],
+        abnormalResults,
+        activeMedications: DEMO_PRESCRIPTIONS
+            .filter(p => p.patientId === patientId && p.status === 'Active')
+            .flatMap(p => (p.items || []).map(i => ({ name: i.name || '', dosage: i.dosage || null, frequency: i.frequency || null, date: p.date }))),
+        admissions: DEMO_ADMISSIONS
+            .filter(a => a.patientId === patientId)
+            .map(a => ({ id: a.id, admittedAt: a.admittedAt, dischargedAt: a.dischargedAt || null, status: a.status, diagnosis: a.diagnosis || null })),
         due: pending.reduce((s, t) => s + (t.amount || 0), 0),
     };
 };
@@ -688,6 +706,10 @@ const demoFlag = (value: string, refLow?: number, refHigh?: number): 'Low' | 'Hi
 /** Yo'llanmaning to'liq ko'rinishi — natija oynasi shu shaklni kutadi. */
 const demoLabResults = (orderId: string) => {
     const order = DEMO_LAB_ORDERS.find(o => o.id === orderId);
+    if (!DEMO_ORDER_ITEMS[orderId] && order?.items?.length) {
+        // Yo'llanma tahlillari bilan yozilgan (kartadan, registraturadan) — o'shalar
+        DEMO_ORDER_ITEMS[orderId] = order.items.map(i => ({ id: i.id, testId: i.testId }));
+    }
     if (!DEMO_ORDER_ITEMS[orderId]) {
         /* Yo'llanmada tahlil ro'yxati yo'q — katalogdan ikkitasi
            BARQAROR tanlanadi (id dan hisoblanadi, tasodifiy emas). */
@@ -934,7 +956,11 @@ const demoPendingPatients = (): PendingPatient[] => {
 
 /** Bitta qabulning hisob qatorlari va yakuni. */
 const demoVisitCharges = (visitId: string) => {
-    const charges = DEMO_CHARGES.filter(c => c.visitId === visitId);
+    /* Server xizmat qatorining `sourceId` siga muolaja id sini yozadi. Demoda
+       muolaja alohida saqlanmaydi — qatorning o'zi muolaja (`demoVisitFull`),
+       shuning uchun varaq ularni bir-biriga bog'lay olishi uchun id bir xil. */
+    const charges = DEMO_CHARGES.filter(c => c.visitId === visitId)
+        .map(c => (c.source === 'Service' ? { ...c, sourceId: c.id } : c));
     const total = charges.reduce((s, c) => s + c.total, 0);
     const paid = charges.reduce((s, c) => s + c.paidAmount, 0);
     return {
@@ -945,6 +971,24 @@ const demoVisitCharges = (visitId: string) => {
         } as ChargeSummary,
     };
 };
+
+/* ── DEMO: QABUL — ICHIDAGILARI BILAN ────────────────────────────────────
+   Server qabulni tashxis, xizmat, yo'llanma va retseptlari bilan qaytaradi
+   (`include`). Demoda ular alohida to'plamlarda yotadi; shu yerda
+   bog'lanmasa bemor kartasidagi varaqda yozilgan narsa ko'rinmasdi:
+   «tahlil buyurdim — hech narsa o'zgarmadi». Har safar YANGI obyekt
+   qaytadi, ya'ni ekran o'zgarishni ko'radi. */
+const demoVisitFull = (v: Visit): Visit => ({
+    ...v,
+    department: DEMO_DEPARTMENTS.find(d => d.id === v.departmentId),
+    diagnoses: DEMO_DIAGNOSES.filter(d => d.visitId === v.id),
+    procedures: DEMO_CHARGES
+        .filter(c => c.visitId === v.id && c.source === 'Service' && c.status !== 'Cancelled')
+        .map(c => ({ id: c.id, visitId: v.id, procedureName: c.name, finalPrice: c.total }) as NonNullable<Visit['procedures']>[number]),
+    labOrders: DEMO_LAB_ORDERS.filter(o => o.visitId === v.id),
+    studies: DEMO_STUDIES.filter(s => s.visitId === v.id),
+    prescriptions: DEMO_PRESCRIPTIONS.filter(p => p.visitId === v.id),
+});
 
 /* ── DEMO: SHU FAYLDAGI TO'PLAMLARNI SAQLASH ─────────────────────────────
    `demoData.ts` dagi ro'yxatlar (bemor, qabul, chek, ombor) brauzerda
@@ -1020,6 +1064,116 @@ const saveDemoState = () => {
         if (s.orderItems) Object.assign(DEMO_ORDER_ITEMS, s.orderItems);
         if (s.resultValues) Object.assign(DEMO_RESULT_VALUES, s.resultValues);
     } catch { try { localStorage.removeItem(DEMO_STATE_KEY); } catch { /* ignore */ } }
+})();
+
+/* ── DEMO: BITTA BEMORNING TO'LIQ KARTASI ────────────────────────────────
+   Namoyishda bemor kartasi birinchi ochiladigan ekranlardan. Qabullar faqat
+   bugungi sana bilan yasalgani uchun u deyarli bo'sh ko'rinardi: tarix yo'q,
+   natija yo'q, marshrut yo'q — karta nimaga yarashi ko'rinmasdi.
+
+   Shu sababli birinchi bemorga to'liq hikoya beriladi: bugun tahlil
+   topshirgan (natija tayyor, ikkitasi me'yordan chetda), rentgenga
+   yo'llangan (hali to'lanmagan), surunkali kasalligi, allergiyasi va oldingi
+   tashriflari bor.
+
+   Tiklashdan KEYIN ishlaydi. Yo'llanma va tekshiruv har yuklanishda yangidan
+   yoziladi (qabullar ham shunday — vaqtlar «hozir»dan sanaladi); hisob
+   qatori, tashxis va retsept esa faqat bo'lmasa qo'shiladi — foydalanuvchi
+   namoyishda to'lagan pul qaytib «to'lanmagan» bo'lib qolmasin. */
+(function seedDemoPatientCard() {
+    const patientId = 'demo-patient-1';
+    const visit = DEMO_VISITS.find(v => v.patientId === patientId);
+    if (!visit) return;
+
+    const clinicId = 'demo-clinic-1';
+    const patientName = demoName(patientId);
+    const minsAgo = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+    const put = <T extends { id: string }>(list: T[], row: T) => {
+        const i = list.findIndex(x => x.id === row.id);
+        if (i === -1) list.push(row); else list[i] = row;
+    };
+    const addOnce = <T extends { id: string }>(list: T[], row: T) => {
+        if (!list.some(x => x.id === row.id)) list.push(row);
+    };
+
+    // ── Bugun: tahlil natijasi tayyor
+    const orderId = 'demo-order-card-1';
+    put(DEMO_LAB_ORDERS, {
+        id: orderId, clinicId, patientId, patientName, visitId: visit.id,
+        doctorName: visit.doctorName || '', status: 'Completed', priority: 'Normal',
+        orderedAt: minsAgo(70), sampleCollectedAt: minsAgo(62), completedAt: minsAgo(24),
+        totalPrice: 75000,
+        items: [
+            { id: `${orderId}-i1`, orderId, testId: 'demo-lt-1', testName: 'Umumiy qon tahlili', price: 45000, status: 'Completed' },
+            { id: `${orderId}-i2`, orderId, testId: 'demo-lt-2', testName: 'Qandli diabet (glyukoza)', price: 30000, status: 'Completed' },
+        ],
+    } as LabOrder);
+    DEMO_ORDER_ITEMS[orderId] = [{ id: `${orderId}-i1`, testId: 'demo-lt-1' }, { id: `${orderId}-i2`, testId: 'demo-lt-2' }];
+    Object.assign(DEMO_RESULT_VALUES, {
+        [`${orderId}-i1:demo-lt-1-p1`]: { value: '108' },   // gemoglobin — past
+        [`${orderId}-i1:demo-lt-1-p2`]: { value: '4.1' },
+        [`${orderId}-i1:demo-lt-1-p3`]: { value: '6.2' },
+        [`${orderId}-i1:demo-lt-1-p4`]: { value: '250' },
+        [`${orderId}-i1:demo-lt-1-p5`]: { value: '12' },
+        [`${orderId}-i2:demo-lt-2-p1`]: { value: '7.8' },   // glyukoza — baland
+    });
+
+    // ── Bugun: rentgenga yo'llangan, hali bajarilmagan
+    put(DEMO_STUDIES, {
+        id: 'demo-study-card-1', clinicId, patientId, patientName, visitId: visit.id,
+        departmentId: 'demo-diag', modality: 'RENTGEN', name: 'Panoramik rentgen (OPG)',
+        status: 'Ordered', orderedByName: visit.doctorName || null, performedByName: null,
+        orderedAt: minsAgo(8), performedAt: null, price: 180000,
+    } as DiagnosticStudy);
+
+    const charge = (id: string, source: VisitCharge['source'], sourceId: string, name: string, total: number, paid: boolean): VisitCharge => ({
+        id, clinicId, visitId: visit.id, patientId, patientName, source, sourceId, name,
+        quantity: 1, unitPrice: total, discount: 0, total,
+        status: paid ? 'Paid' : 'Unpaid', paidAmount: paid ? total : 0, paidAt: paid ? minsAgo(68) : null,
+        createdAt: minsAgo(70), createdByName: 'Registratura',
+        visit: { id: visit.id, date: visit.date, queueNumber: visit.queueNumber, departmentId: visit.departmentId },
+    });
+    /* Shu qabulga avtomatik yasalgan «Tahlil: …» qatori hech qaysi yo'llanmaga
+       bog'lanmagan (`sourceId` yo'q): hisobda bor, varaqda esa ko'rinmaydi —
+       jami bilan qatorlar yig'indisi mos kelmay qolardi. Uning o'rnida
+       haqiqiy yo'llanmaning qatori turadi. */
+    for (let i = DEMO_CHARGES.length - 1; i >= 0; i--) {
+        const c = DEMO_CHARGES[i];
+        if (c.visitId === visit.id && c.source === 'Lab' && !c.sourceId) DEMO_CHARGES.splice(i, 1);
+    }
+    addOnce(DEMO_CHARGES, charge('demo-charge-card-lab', 'Lab', orderId, 'Umumiy qon tahlili, glyukoza', 75000, true));
+    addOnce(DEMO_CHARGES, charge('demo-charge-card-study', 'Study', 'demo-study-card-1', 'Panoramik rentgen (OPG)', 180000, false));
+
+    // ── Doimiy holat: surunkali kasallik, uning dorisi, allergiya
+    addOnce(DEMO_DIAGNOSES, {
+        id: 'demo-dx-card-chronic', patientId, clinicId, code: 'I10', date: dayShift(-400).slice(0, 10),
+        notes: '', status: 'Chronic', isChronic: true, icd10: DEMO_ICD10.find(c => c.code === 'I10'),
+    } as PatientDiagnosis);
+    addOnce(DEMO_PRESCRIPTIONS, {
+        id: 'demo-rx-card-1', clinicId, patientId, patientName, doctorName: visit.doctorName || null,
+        date: dayShift(-120).slice(0, 10), status: 'Active',
+        items: [{ id: 'demo-rx-card-1-i1', prescriptionId: 'demo-rx-card-1', name: 'Lizinopril', dosage: '10 mg', frequency: 'kuniga 1 mahal' }],
+    } as Prescription);
+    addOnce(DEMO_ALLERGIES, { id: 'demo-allergy-card-1', patientId, substance: 'Lidokain', reaction: 'Toshma, qichishish', severity: 'Severe' });
+
+    // ── Oldingi tashriflar (qabullar har yuklanishda yasaladi — bular ham)
+    const past = [
+        { id: 'demo-visit-card-1', days: 34, complaint: "Yo'tal, tomoq og'rig'i, harorat 37,6", code: 'J06.9' },
+        { id: 'demo-visit-card-2', days: 120, complaint: "Bosh og'rig'i, qon bosimi ko'tarilishi", code: 'I10' },
+        { id: 'demo-visit-card-3', days: 300, complaint: "Ovqatdan keyin oshqozonda og'riq", code: 'K29.5' },
+    ];
+    for (const p of past) {
+        const at = dayShift(-p.days);
+        put(DEMO_VISITS, {
+            ...visit, id: p.id, date: at.slice(0, 10), checkInTime: at, checkOutTime: at,
+            status: 'Completed', complaints: p.complaint, queueNumber: null,
+            calledAt: at, startedAt: at, awaitingSince: null,
+        } as Visit);
+        addOnce(DEMO_DIAGNOSES, {
+            id: `demo-dx-${p.id}`, patientId, clinicId, visitId: p.id, code: p.code, date: at.slice(0, 10),
+            notes: '', status: 'Active', icd10: DEMO_ICD10.find(c => c.code === p.code),
+        } as PatientDiagnosis);
+    }
 })();
 
 /* NAVBAT TABLOSI — demo ma'lumotining O'ZIDAN.
@@ -2660,7 +2814,7 @@ export const api = {
                 && (!params?.date || v.date === params.date)
                 && (!params?.departmentId || v.departmentId === params.departmentId)
                 && (!params?.status || v.status === params.status)
-            ));
+            ).sort((a, b) => b.date.localeCompare(a.date)).map(demoVisitFull));
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
@@ -2669,7 +2823,7 @@ export const api = {
         getById: (id: string) =>
             isDemoMode()
                 ? (DEMO_VISITS.find(v => v.id === id)
-                    ? demoRead<Visit>(DEMO_VISITS.find(v => v.id === id)!)
+                    ? demoRead<Visit>(demoVisitFull(DEMO_VISITS.find(v => v.id === id)!))
                     : demoMissing<Visit>('bu qabul'))
                 : fetchJson<Visit>(`/visits/${id}`),
         /** `force` — bugun shu bo'limda qabul ochilgan bo'lsa ham ataylab
@@ -2749,7 +2903,9 @@ export const api = {
             }
             return fetchJson<{ success: true }>(`/visit-procedures/${procedureId}`, { method: 'DELETE' });
         },
-        update: (id: string, data: Partial<Visit>) => {
+        /** `init.keepalive` — sahifa yopilayotganda ketadigan yozuv (o'zi
+         *  saqlanadigan varaq): brauzer so'rovni oxiriga yetkazadi. */
+        update: (id: string, data: Partial<Visit>, init?: Pick<RequestInit, 'keepalive'>) => {
             if (isDemoMode()) {
                 const v = DEMO_VISITS.find(x => x.id === id);
                 if (v) {
@@ -2762,7 +2918,7 @@ export const api = {
                 }
                 return demoWrote<Visit>(v as Visit);
             }
-            return fetchJson<Visit>(`/visits/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+            return fetchJson<Visit>(`/visits/${id}`, { method: 'PUT', body: JSON.stringify(data), ...init });
         },
         delete: (id: string) => {
             if (isDemoMode()) {
@@ -2944,7 +3100,7 @@ export const api = {
        `summary` — shifokorning ish stolidagi "avval nima bo'lgan" paneli.
        Bitta so'rov: allergiya, surunkali, oldingi qabullar, tahlillar, dorilar. */
     /* Bemor kartasidagi klinik qatlam. Demo qoplamasi ALOHIDA muhim:
-       `PatientHistoryPanel` bemor kartasining ICHIDA turadi, ya'ni bu
+       sarlavha va tarix (`PinnedFacts`) bemor kartasining ICHIDA turadi, ya'ni bu
        yerdagi xato namoyishning eng asosiy oqimida — «bemor qo'shdim,
        kartasini ochdim» — ko'rinib qoladi. */
     clinical: {
@@ -4111,7 +4267,7 @@ export const api = {
                 if (study.price) {
                     DEMO_CHARGES.push({
                         id: demoId('demo-charge'), clinicId: 'demo-clinic-1',
-                        visitId: null, patientId: study.patientId || null,
+                        visitId: study.visitId || null, patientId: study.patientId || null,
                         patientName: study.patientName,
                         source: 'Study', sourceId: study.id, name: study.name,
                         quantity: 1, unitPrice: study.price, discount: 0, total: study.price,
@@ -5249,8 +5405,22 @@ export const api = {
                     items: picked.map((x, i) => ({ id: `${id}-i${i}`, orderId: id, testId: x.id, testName: x.name, price: x.price, status: 'Pending' })),
                 };
                 DEMO_LAB_ORDERS.push(newOrder);
+                /* Tahlil PULLIK — hisob qatori ham yaratiladi (server ham shunday
+                   qiladi). Busiz kartadagi hisob va marshrutdagi kassa bekati
+                   yangi yo'llanmani «ko'rmasdi». */
+                if (newOrder.totalPrice) {
+                    DEMO_CHARGES.push({
+                        id: demoId('demo-charge'), clinicId: 'demo-clinic-1',
+                        visitId: data.visitId || null, patientId: data.patientId || null,
+                        patientName: data.patientName || '',
+                        source: 'Lab', sourceId: id, name: picked.map(x => x.name).join(', '),
+                        quantity: 1, unitPrice: newOrder.totalPrice, discount: 0, total: newOrder.totalPrice,
+                        status: 'Unpaid', paidAmount: 0, paidAt: null,
+                        createdAt: demoNow(), createdByName: 'Demo Admin',
+                    });
+                }
                 saveDemoData();
-                return demoWrote(newOrder);
+                return demoDone(newOrder);
             }
             return fetchJson<any>('/lab-orders', {
                 method: 'POST',

@@ -1,38 +1,50 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-    FlaskConical, Scan, Pill, Plus, Trash2, CheckCircle, AlertCircle,
-    Printer, Stethoscope, Loader2, Wallet, UserPlus, Clock, XCircle, Play,
+    FlaskConical, Scan, Pill, Trash2, AlertCircle,
+    Printer, Stethoscope, Loader2, XCircle, Play, Undo2,
 } from 'lucide-react';
 import {
     Visit, Department, EncounterTemplate, LabTest, Service, Doctor, Patient,
-    Modality, MODALITY_LABELS, ICD10Code, VisitCharge, ChargeSummary, UserRole,
+    MODALITY_LABELS, ICD10Code, VisitCharge, ChargeSummary, UserRole,
     Prescription, InventoryItem,
 } from '../types';
 import { api } from '../services/api';
 import { useResourceSync } from '../hooks/useDataSync';
+import { useVisitAutosave } from '../hooks/useVisitAutosave';
 import { useLanguage, fill } from '../context/LanguageContext';
-import { EncounterForm } from '../components/EncounterForm';
+import { EncounterForm, EncounterSummary } from '../components/EncounterForm';
 import { printReferral, printPrescription } from '../utils/printForms';
-import { formatNumber } from '../utils/format';
+import { formatDate, formatNumber, formatTime } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { calcAge, todayISO } from '../utils/dateUtils';
-import { pickableDoctors } from './DoctorPicker';
+import { OpenVisitForm } from './visit/OpenVisitForm';
+import { VisitResults } from './visit/VisitResults';
+import { AddButton, ItemRow, SheetLabel } from './visit/sheetParts';
+import { DiagnosisBlock } from './visit/DiagnosisBlock';
+import { VisitBill, VisitFinishRow, lightBtn } from './visit/VisitFooter';
+import {
+    ConsultDraft, ConsultPicker, LabPicker, RxDraft, RxForm, ServicePicker, StudyDraft, StudyPicker,
+} from './visit/VisitPickers';
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   JORIY QABUL — bemor kartasining o'ng ustuni.
+   QABUL VARAG'I — bemor kartasining o'ng ustuni.
 
    Ilgari bu alohida sahifa edi (`/visit/:id`) va bemor kartasidan unga
    yo'l YO'Q edi: tashxis faqat o'sha sahifada qo'yilardi, tarix esa faqat
-   kartada ko'rinardi. Shifokor ikkalasini birga ko'ra olmasdi.
+   kartada ko'rinardi. Keyin panel kartaga ko'chdi, lekin ichi «tugmalar
+   to'plami» bo'lib qoldi: beshta amal tugmasi, har biri alohida quti ochadi,
+   bayon alohida kartada o'zining «Saqlash» tugmasi bilan, yozilgan narsalar
+   esa pastdagi to'rtta ro'yxatda.
 
-   Endi panel karta ichida turadi: chapda tarix, o'ngda shu qabul. Bemor
-   baribir bir marta — registraturada yoki shu yerdagi «Qabul ochish»
-   tugmasi bilan — tanlanadi, qolgan hamma narsa shu paneldan bajariladi.
+   Endi bu BITTA VARAQ va u shifokor ishlaydigan tartibda o'qiladi:
+   natijalar → shikoyat → ko'rik → tashxis → tayinlov → xizmat → yo'llanma →
+   keyingi tashrif. Har bo'limda yozilgani ham, «+ qo'shish» ham o'z joyida.
+   Matn o'zi saqlanadi.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
     patient: Patient;
-    /** Panelda ochilgan qabul. `null` — bugun ochiq qabul yo'q. */
+    /** Varaqda ochilgan qabul. `null` — bugun ochiq qabul yo'q. */
     visitId: string | null;
     departments: Department[];
     services: Service[];
@@ -44,13 +56,23 @@ interface Props {
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
     /** Qabul ochildi/yakunlandi/bekor qilindi — karta ro'yxatini yangilaydi */
     onVisitChanged: (visitId: string | null) => void;
-    onGoToCashier?: () => void;
+    /** Varaqdagi qabul va uning hisobi — karta sarlavhasidagi marshrut shundan chiziladi */
+    onState?: (state: VisitSheetState) => void;
+    /** Tarixdan eski qabul ochilgan — bugungisiga qaytish */
+    onShowToday?: () => void;
+    /** Bemorning eng yaqin kelajakdagi yozuvi */
+    nextAppointment?: { date: string; time: string; doctorName?: string } | null;
+    onSchedule?: () => void;
+    /** To'lov oynasi — kassadagi bilan bir xil */
+    onTakePayment?: () => void;
 }
 
-const fmt = (n: number) => formatNumber(n);
-const MODALITIES: Modality[] = ['UZI', 'EKG', 'RENTGEN', 'ENDOSKOPIYA', 'MRT', 'KT'];
+export interface VisitSheetState { visit: Visit | null; money: ChargeSummary }
 
-const inputCls = 'w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
+type Panel = null | 'dx' | 'rx' | 'service' | 'lab' | 'study' | 'consult';
+
+const fmt = (n: number) => formatNumber(n);
+const NO_MONEY: ChargeSummary = { total: 0, paid: 0, due: 0, unpaidCount: 0 };
 
 /** Holat -> tarjima kaliti. Shablon satr (`visit.status.${x}`) yaramaydi:
     `t()` kalitlari qat'iy turlangan, «In Progress» dagi bo'shliq esa
@@ -74,7 +96,7 @@ const STATUS_TONE: Record<string, string> = {
     'Cancelled': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
-/** Shu manzillarga yozilsa ochiq qabul paneli eskiradi */
+/** Shu manzillarga yozilsa ochiq qabul varag'i eskiradi */
 const VISIT_RESOURCES = [
     'visits', 'visit-procedures', 'lab-orders', 'studies', 'prescriptions',
     'diagnoses', 'referrals', 'payments', 'charges',
@@ -82,7 +104,8 @@ const VISIT_RESOURCES = [
 
 export const VisitPanel: React.FC<Props> = ({
     patient, visitId, departments, services, doctors, currentUserName, userRole,
-    loggedDoctorId, addToast, onVisitChanged, onGoToCashier,
+    loggedDoctorId, addToast, onVisitChanged, onState, onShowToday,
+    nextAppointment, onSchedule, onTakePayment,
 }) => {
     const { t } = useLanguage();
 
@@ -90,68 +113,75 @@ export const VisitPanel: React.FC<Props> = ({
     const [templates, setTemplates] = useState<EncounterTemplate[]>([]);
     const [labTests, setLabTests] = useState<LabTest[]>([]);
     const [charges, setCharges] = useState<VisitCharge[]>([]);
-    const [money, setMoney] = useState<ChargeSummary>({ total: 0, paid: 0, due: 0, unpaidCount: 0 });
+    const [money, setMoney] = useState<ChargeSummary>(NO_MONEY);
     const [loading, setLoading] = useState(!!visitId);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
-
-    const [panel, setPanel] = useState<null | 'lab' | 'study' | 'rx' | 'service' | 'consult'>(null);
-
-    const [labPick, setLabPick] = useState<string[]>([]);
-    const [studyForm, setStudyForm] = useState({ modality: 'UZI' as Modality, name: '', price: '', serviceId: '' });
-    const [rxItems, setRxItems] = useState([{ name: '', dosage: '', frequency: '', durationDays: '' }]);
-    const [svcPick, setSvcPick] = useState<number | ''>('');
-    const [consultForm, setConsultForm] = useState({ departmentId: '', doctorId: '', reason: '' });
-    const [icdQuery, setIcdQuery] = useState('');
-    const [icdResults, setIcdResults] = useState<ICD10Code[]>([]);
-    const [icdChronic, setIcdChronic] = useState(false);
-
-    // Shikoyatni joyida tahrirlash
-    const [editingComplaint, setEditingComplaint] = useState(false);
-    const [complaintDraft, setComplaintDraft] = useState('');
-
-    // Yangi qabul ochish formasi
-    const [openForm, setOpenForm] = useState({ departmentId: '', doctorId: '', serviceId: '', complaints: '' });
-    const [openBusy, setOpenBusy] = useState(false);
-
     const [refBusy, setRefBusy] = useState(false);
+
+    /** Qaysi «+» ochiq. Bir vaqtda bittasi: varaq uzayib ketmasin. */
+    const [panel, setPanel] = useState<Panel>(null);
     /* Retseptdagi dorilar ombordan taklif qilinadi. Erkin matn ham
        qoladi: omborda yo'q dorini yozish mumkin bo'lishi kerak. */
     const [meds, setMeds] = useState<InventoryItem[]>([]);
 
+    /* Shikoyat va ko'rik o'zi saqlanadi — qoidalari `useVisitAutosave` da. */
+    const autosave = useVisitAutosave({
+        visit, visitId,
+        onError: message => addToast('error', message || t('ui.saqlanmadi')),
+    });
+    const visitIdRef = useRef(visitId);
+    visitIdRef.current = visitId;
+
     const reload = useCallback(async () => {
-        if (!visitId) { setVisit(null); setCharges([]); setMoney({ total: 0, paid: 0, due: 0, unpaidCount: 0 }); setLoading(false); return; }
+        if (!visitId) { setVisit(null); setCharges([]); setMoney(NO_MONEY); setLoading(false); return; }
         try {
-            const [v, c] = await Promise.all([
-                api.visits.getById(visitId),
-                api.charges.byVisit(visitId).catch(() => ({
-                    charges: [] as VisitCharge[], summary: { total: 0, paid: 0, due: 0, unpaidCount: 0 },
-                })),
-            ]);
-            setVisit(v);
-            setCharges(c.charges);
-            setMoney(c.summary);
-            setError('');
+            /* O'ZIMIZNING YOZUVDAN OLDINGI JAVOB — ESKIRGAN. So'rov ketgan,
+               shu orada matn saqlangan bo'lsa, javobda eski matn keladi va u
+               hozirgina yozilganining o'rniga tushardi. Bunday javob
+               tashlanadi va qabul qayta o'qiladi. */
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const epoch = autosave.writeEpoch.current;
+                const [v, c] = await Promise.all([
+                    api.visits.getById(visitId),
+                    api.charges.byVisit(visitId).catch(() => ({ charges: [] as VisitCharge[], summary: NO_MONEY })),
+                ]);
+                // Javob kelguncha boshqa qabul ochilgan — bu javob endi kerak emas
+                if (visitIdRef.current !== visitId) return;
+                if (epoch !== autosave.writeEpoch.current && attempt < 2) continue;
+                setVisit(v);
+                setCharges(c.charges);
+                setMoney(c.summary);
+                setError('');
+                break;
+            }
         } catch (e: any) {
-            setError(e?.message || t('ui.qabulni_ochib_bolmadi'));
-        } finally { setLoading(false); }
+            if (visitIdRef.current === visitId) setError(e?.message || t('ui.qabulni_ochib_bolmadi'));
+        } finally {
+            /* Faqat O'Z qabuli uchun: eski so'rov kech tugab, yangi qabul hali
+               yuklanmagan paytda yuklanish belgisini o'chirsa, varaq eski
+               qabulni yangi manzil ostida ko'rsatib qo'yardi. */
+            if (visitIdRef.current === visitId) setLoading(false);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visitId]);
 
-    useEffect(() => { setLoading(!!visitId); reload(); }, [reload, visitId]);
+    useEffect(() => { setLoading(!!visitId); setPanel(null); reload(); }, [reload, visitId]);
 
     /* Karta ochiq turganda boshqa kompyuterda biror narsa o'zgarsa —
        kassir pulni oldi, laborant natija kiritdi, registrator xizmat
-       qo'shdi — panel o'zi yangilanadi. Ilgari shifokor buni ko'rish
-       uchun kartadan chiqib qayta kirardi. Yozilayotgan matn buzilmaydi:
-       forma faqat serverdagi qiymat O'ZGARGANDA qayta to'ladi. */
+       qo'shdi — varaq o'zi yangilanadi. Yozilayotgan matn buzilmaydi:
+       saqlanmagan qiymat serverdagidan ustun (pastda va `EncounterForm` da). */
     useResourceSync(VISIT_RESOURCES, reload, !!visitId);
+
+    useEffect(() => { onState?.({ visit, money }); }, [visit, money, onState]);
 
     useEffect(() => {
         api.encounterTemplates.getAll().then(setTemplates).catch(() => { });
         api.labTests.getAll().then(setLabTests).catch(() => { });
     }, []);
 
-    /* Dorilar ro'yxati faqat retsept paneli ochilganda yuklanadi —
+    /* Dorilar ro'yxati faqat retsept formasi ochilganda yuklanadi —
        har karta ochilishida ombor so'rovi yuborishning ma'nosi yo'q. */
     useEffect(() => {
         if (panel !== 'rx' || meds.length || !patient.clinicId) return;
@@ -160,38 +190,17 @@ export const VisitPanel: React.FC<Props> = ({
             .catch(() => { });
     }, [panel, patient.clinicId, meds.length]);
 
-    /* Kirgan shifokor o'zi standart bo'lib turadi: o'z bemorini qabul
-       qilayotgan odam har safar ro'yxatdan o'zini qidirib o'tirmasin. */
-    useEffect(() => {
-        if (visitId || !loggedDoctorId) return;
-        const me = doctors.find(d => d.id === loggedDoctorId);
-        if (!me || !me.departmentId) return;
-        setOpenForm(f => (f.departmentId || f.doctorId)
-            ? f
-            : { ...f, doctorId: me.id, departmentId: me.departmentId as string });
-    }, [visitId, loggedDoctorId, doctors]);
-
-    /* Bo'limlar: qabul ochish uchun faqat KLINIK va DIAGNOSTIK bo'limlar.
-       Laboratoriya va dorixona navbat olmaydi — ularga yo'llanma bilan
-       boriladi (Registratura bilan bir xil qoida). */
     const bookableDepts = useMemo(
         () => departments.filter(d => d.isActive && (d.type === 'CLINICAL' || d.type === 'DIAGNOSTIC')),
         [departments],
     );
-    const diagDeptIds = useMemo(
-        () => new Set(departments.filter(d => d.type === 'DIAGNOSTIC').map(d => d.id)),
-        [departments],
-    );
     /* Diagnostika xizmatlari — tekshiruv narxi QO'LDA yozilmasin.
        Ilgari shifokor narxni o'zi kiritardi va u prayslistdan farq qilardi. */
-    const diagServices = useMemo(
-        () => services.filter(s => s.departmentId && diagDeptIds.has(s.departmentId)),
-        [services, diagDeptIds],
-    );
+    const diagServices = useMemo(() => {
+        const diagIds = new Set(departments.filter(d => d.type === 'DIAGNOSTIC').map(d => d.id));
+        return services.filter(s => s.departmentId && diagIds.has(s.departmentId));
+    }, [services, departments]);
 
-    const dept = useMemo(() => departments.find(d => d.id === visit?.departmentId), [departments, visit]);
-    const age = calcAge(patient.dob);
-    const isDone = visit?.status === 'Completed' || visit?.status === 'Cancelled';
     const patientName = `${patient.lastName || ''} ${patient.firstName || ''}`.trim();
 
     const chargeOf = useCallback(
@@ -207,17 +216,6 @@ export const VisitPanel: React.FC<Props> = ({
         catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
         finally { setBusy(false); }
     };
-
-    const saveEncounter = (data: Record<string, any>, templateId?: string) =>
-        guard(() => api.visits.update(visit!.id, {
-            examData: JSON.stringify(data), templateId,
-            status: visit!.status === 'Waiting' ? 'In Progress' : visit!.status,
-        }), t('visit.encounterSaved'));
-
-    const saveComplaint = () => guard(
-        () => api.visits.update(visit!.id, { complaints: complaintDraft.trim() }),
-        t('visit.complaintSaved'),
-    ).then(() => setEditingComplaint(false));
 
     /* Natijani "ko'rdim" deb belgilash. Tugma, avtomatik emas: kim va qachon
        tanishgani jurnalda qolishi kerak.
@@ -265,31 +263,31 @@ export const VisitPanel: React.FC<Props> = ({
         } finally { setRefBusy(false); }
     };
 
-    const sendToLab = () => guard(() => api.labOrders.create({
+    const sendToLab = (testIds: string[]) => guard(() => api.labOrders.create({
         patientId: visit!.patientId,
         patientName,
         visitId: visit!.id,
         doctorName: visit!.doctorName || currentUserName || '',
-        testIds: labPick,
-    }), t('visit.sentToLab')).then(() => setLabPick([]));
+        testIds,
+    }), t('visit.sentToLab'));
 
-    const sendToDiagnostics = () => guard(() => api.studies.create({
+    const sendToDiagnostics = (draft: StudyDraft) => guard(() => api.studies.create({
         patientId: visit!.patientId,
         patientName,
         visitId: visit!.id,
-        modality: studyForm.modality,
-        name: studyForm.name.trim(),
-        price: Number(studyForm.price) || 0,
-        ...(studyForm.serviceId ? { serviceId: Number(studyForm.serviceId) } : {}),
+        modality: draft.modality,
+        name: draft.name.trim(),
+        price: Number(draft.price) || 0,
+        ...(draft.serviceId ? { serviceId: Number(draft.serviceId) } : {}),
         orderedByName: visit!.doctorName || currentUserName || null,
-    }), t('visit.sentToDiag')).then(() => setStudyForm({ modality: 'UZI', name: '', price: '', serviceId: '' }));
+    }), t('visit.sentToDiag'));
 
-    const writePrescription = () => guard(() => api.prescriptions.create({
+    const writePrescription = (items: RxDraft[]) => guard(() => api.prescriptions.create({
         patientId: visit!.patientId,
         patientName,
         visitId: visit!.id,
         doctorName: visit!.doctorName || currentUserName || null,
-        items: rxItems.filter(i => i.name.trim()).map(i => {
+        items: items.filter(i => i.name.trim()).map(i => {
             /* Nom ombordagi dori bilan mos kelsa — bog'laymiz. Bunsiz
                retsept ombordan butunlay uzilgan matn bo'lib qolardi. */
             const hit = meds.find(m => m.name.trim().toLowerCase() === i.name.trim().toLowerCase());
@@ -299,26 +297,26 @@ export const VisitPanel: React.FC<Props> = ({
                 ...(hit ? { medicationId: hit.id } : {}),
             };
         }),
-    }), t('visit.rxSaved')).then(() => setRxItems([{ name: '', dosage: '', frequency: '', durationDays: '' }]));
+    }), t('visit.rxSaved'));
 
-    const addService = () => guard(
-        () => api.visits.addProcedure(visit!.id, { serviceId: Number(svcPick) }),
+    const addService = (serviceId: number) => guard(
+        () => api.visits.addProcedure(visit!.id, { serviceId }),
         t('visit.serviceAdded'),
-    ).then(() => setSvcPick(''));
+    );
 
     /* BOSHQA SHIFOKORGA YUBORISH. Bemor o'sha bo'limning navbatiga tushadi
        va qo'lida yo'llanma qoladi — ilgari bu og'zaki edi. */
-    const sendToConsult = async () => {
-        if (!visit || !consultForm.departmentId) return;
+    const sendToConsult = async (draft: ConsultDraft) => {
+        if (!visit || !draft.departmentId) return;
         setBusy(true);
         try {
-            const doc = doctors.find(d => d.id === consultForm.doctorId);
+            const doc = doctors.find(d => d.id === draft.doctorId);
             await api.visits.create({
                 patientId: visit.patientId,
-                departmentId: consultForm.departmentId,
-                doctorId: consultForm.doctorId || undefined,
+                departmentId: draft.departmentId,
+                doctorId: draft.doctorId || undefined,
                 doctorName: doc ? `${doc.firstName} ${doc.lastName}`.trim() : undefined,
-                complaints: consultForm.reason || visit.complaints,
+                complaints: draft.reason || visit.complaints,
                 date: todayISO(),
                 status: 'Waiting',
             } as any);
@@ -327,7 +325,7 @@ export const VisitPanel: React.FC<Props> = ({
                     patientId: visit.patientId,
                     visitId: visit.id,
                     kind: 'Consult',
-                    targetDepartmentId: consultForm.departmentId,
+                    targetDepartmentId: draft.departmentId,
                     items: [],
                 } as any);
                 const full = await api.referrals.get(ref.id);
@@ -335,18 +333,17 @@ export const VisitPanel: React.FC<Props> = ({
             } catch { /* yo'llanma ixtiyoriy — navbat allaqachon ochildi */ }
             addToast('success', t('visit.consultSent'));
             setPanel(null);
-            setConsultForm({ departmentId: '', doctorId: '', reason: '' });
             onVisitChanged(visitId);
         } catch (e: any) {
             addToast('error', e?.data?.error || e?.message || t('ui.xatolik'));
         } finally { setBusy(false); }
     };
 
-    const addDiagnosis = (code: ICD10Code) => guard(() => api.diagnoses.add({
+    const addDiagnosis = (code: ICD10Code, isChronic: boolean) => guard(() => api.diagnoses.add({
         patientId: visit!.patientId, code: code.code, date: visit!.date,
         notes: '', status: 'Active', clinicId: visit!.clinicId, visitId: visit!.id,
-        isChronic: icdChronic,
-    } as any), t('visit.diagnosisAdded')).then(() => setIcdChronic(false));
+        isChronic,
+    } as any), t('visit.diagnosisAdded'));
 
     const removeDiagnosis = async (id: string) => {
         if (!await confirmAction({ title: t('visit.diagnosisRemove'), body: t('visit.diagnosisRemoveBody'), confirmLabel: t('common.delete') })) return;
@@ -364,15 +361,25 @@ export const VisitPanel: React.FC<Props> = ({
         guard(() => api.prescriptions.delete(rx.id), t('visit.rxRemoved'));
     };
 
+    const removeProcedure = async (procedureId: string) => {
+        try { await api.visits.removeProcedure(procedureId); reload(); onVisitChanged(visitId); }
+        catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
+    };
+
     /* QABULNI YAKUNLASH — NAZORAT BILAN.
        Server tashxis, qarz va kelmagan natijalarni tekshiradi; kamchilik
        bo'lsa 409 va sabablar. Taqiq emas, tanlov: shifokor BILIB yopadi va
        sabab qabul izohiga yozilib qoladi. */
     const complete = async () => {
+        if (autosave.isExamInvalid()) { addToast('error', t('visit.invalidNotSaved')); return; }
         setBusy(true);
         try {
+            /* Avval yozilgan matn ketadi: forma o'zi saqlanadi, lekin oxirgi
+               harflar hali taymerda yoki yo'lda turgan bo'lishi mumkin.
+               Saqlanmasa yakunlamaymiz — yopilgan qabulga yozib bo'lmaydi. */
+            if (!(await autosave.flush())) return;
             await api.visits.update(visit!.id, { status: 'Completed' });
-            /* Yakunlangan qabul PANELDA QOLADI. Ilgari u darhol tozalanardi
+            /* Yakunlangan qabul VARAQDA QOLADI. Ilgari u darhol tozalanardi
                va o'rniga «Ochiq qabul yo'q» chiqardi — shifokor endigina
                nima yopganini ko'ra olmasdi va «bosildimi?» degan savol
                qolardi. Endi u faqat o'qish uchun ko'rinadi; keyingi bemor
@@ -422,622 +429,270 @@ export const VisitPanel: React.FC<Props> = ({
         finally { setBusy(false); }
     };
 
-    const searchIcd = async (q: string) => {
-        setIcdQuery(q);
-        if (q.trim().length < 2) { setIcdResults([]); return; }
-        try { setIcdResults(await api.diagnoses.searchCodes(q.trim())); } catch { setIcdResults([]); }
-    };
-
-    /* ── YANGI QABUL OCHISH ──────────────────────────────────────────────────
-       Registraturaga bormasdan. Shifokor o'z bo'limida bemorni qabul qila
-       oladi; navbat raqamini baribir server beradi, ya'ni tablo va navbat
-       mantiqi buzilmaydi. */
-    const openVisit = async () => {
-        if (!openForm.departmentId) { addToast('error', t('visit.pickDept')); return; }
-        setOpenBusy(true);
-        try {
-            const doc = doctors.find(d => d.id === openForm.doctorId);
-            const created = await api.visits.create({
-                patientId: patient.id,
-                departmentId: openForm.departmentId,
-                doctorId: openForm.doctorId || undefined,
-                doctorName: doc ? `${doc.firstName} ${doc.lastName}`.trim() : undefined,
-                complaints: openForm.complaints.trim() || undefined,
-                date: todayISO(),
-                status: 'Waiting',
-            } as any);
-            if (openForm.serviceId) {
-                try { await api.visits.addProcedure(created.id, { serviceId: Number(openForm.serviceId) }); }
-                catch (e: any) { addToast('info', t('visit.serviceNotAdded')); }
-            }
-            addToast('success', t('visit.opened'));
-            setOpenForm({ departmentId: '', doctorId: '', serviceId: '', complaints: '' });
-            onVisitChanged(created.id);
-        } catch (e: any) {
-            /* Bugun shu bo'limda qabul bor — yangisini ochish o'rniga
-               mavjudini ochamiz. Ikki marta ro'yxatga tushish xato. */
-            const existing = e?.data?.visitId;
-            if (existing) { addToast('info', t('visit.alreadyOpen')); onVisitChanged(existing); }
-            else addToast('error', e?.data?.error || e?.message || t('ui.xatolik'));
-        } finally { setOpenBusy(false); }
-    };
-
     // ── Ko'rinish ───────────────────────────────────────────────────────────
 
     if (loading) return (
-        <div className="bg-surface rounded-xl border border-line p-10 flex items-center justify-center">
+        <div className="bg-surface rounded-[20px] border border-line p-10 flex items-center justify-center">
             <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
         </div>
     );
 
-    /* Ochiq qabul yo'q — panel o'rniga qabul ochish formasi */
+    /* Ochiq qabul yo'q — varaq o'rniga qabul ochish formasi */
     if (!visit) {
-        /* Yagona qoida (`pickableDoctors`): faqat FAOL shifokorlar, kerak
-           bo'lsa bo'lim bo'yicha. Ilgari bu yerda holat umuman
-           tekshirilmasdi va ta'tildagi shifokorga qabul ochib bo'lardi. */
-        const formDoctors = pickableDoctors(doctors, openForm.departmentId || null, openForm.doctorId);
-        const formServices = services.filter(s => !openForm.departmentId || !s.departmentId || s.departmentId === openForm.departmentId);
         return (
-            <div className="bg-surface rounded-xl border border-line p-5">
-                <h3 className="flex items-center gap-2 font-semibold text-ink">
-                    <Stethoscope className="w-5 h-5 text-primary-600" /> {t('visit.noOpen')}
-                </h3>
-                <p className="mt-1 text-sm text-muted">{t('visit.noOpenHint')}</p>
-                {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
-
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="block">
-                        <span className="block text-xs font-medium text-muted mb-1">{t('visit.department')}</span>
-                        <select className={inputCls} value={openForm.departmentId}
-                            onChange={e => setOpenForm(f => ({ ...f, departmentId: e.target.value, doctorId: '', serviceId: '' }))}>
-                            <option value="">{t('common.choose')}</option>
-                            {bookableDepts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                        </select>
-                    </label>
-                    <label className="block">
-                        <span className="block text-xs font-medium text-muted mb-1">{t('visit.doctor')}</span>
-                        <select className={inputCls} value={openForm.doctorId} disabled={!openForm.departmentId}
-                            onChange={e => setOpenForm(f => ({ ...f, doctorId: e.target.value }))}>
-                            <option value="">{t('common.choose')}</option>
-                            {formDoctors.map(d => <option key={d.id} value={d.id}>{d.firstName} {d.lastName}</option>)}
-                        </select>
-                    </label>
-                    <label className="block">
-                        <span className="block text-xs font-medium text-muted mb-1">{t('visit.serviceOptional')}</span>
-                        <select className={inputCls} value={openForm.serviceId} disabled={!openForm.departmentId}
-                            onChange={e => setOpenForm(f => ({ ...f, serviceId: e.target.value }))}>
-                            <option value="">{t('common.choose')}</option>
-                            {formServices.map(s => <option key={s.id} value={s.id}>{s.name} — {fmt(s.price)}</option>)}
-                        </select>
-                    </label>
-                    <label className="block">
-                        <span className="block text-xs font-medium text-muted mb-1">{t('visit.complaintLabel')}</span>
-                        <input className={inputCls} value={openForm.complaints}
-                            onChange={e => setOpenForm(f => ({ ...f, complaints: e.target.value }))}
-                            placeholder={t('visit.complaintPh')} />
-                    </label>
-                </div>
-                <button onClick={openVisit} disabled={openBusy || !openForm.departmentId}
-                    className="mt-4 w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                    {openBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('visit.openNew')}
-                </button>
-            </div>
+            <OpenVisitForm patient={patient} departments={departments} doctors={doctors} services={services}
+                loggedDoctorId={loggedDoctorId} error={error} addToast={addToast} onOpened={onVisitChanged} />
         );
     }
 
+    const dept = departments.find(d => d.id === visit.departmentId);
+    const room = doctors.find(d => d.id === visit.doctorId)?.room;
+    const isClosed = visit.status === 'Completed' || visit.status === 'Cancelled';
+    /* Qabulga faqat ega, shifokor va registrator yoza oladi
+       (`backend/permissions.ts`). Hamshira va laborantga varaq yopiq qabul
+       kabi ko'rinadi — tugmalar bosilsa server baribir 403 qaytarardi. */
+    const canAct = userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.DOCTOR || userRole === UserRole.RECEPTIONIST;
+    const isDone = isClosed || !canAct;
+    const isToday = visit.date === todayISO();
     const deptServices = services.filter(s => !s.departmentId || s.departmentId === visit.departmentId);
     const canCancelVisit = userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST;
     /* Bayon va tashxis — shifokorniki: server registratorga ularni 403 bilan rad etadi
        (backend/multiprofile.ts, CLINICAL_FIELDS_DENIED). Shikoyat esa qabulxonada ham yoziladi. */
     const clinicalReadOnly = isDone || userRole === UserRole.RECEPTIONIST;
+    const startNewVisit = isClosed && isToday && canAct ? () => onVisitChanged(null) : undefined;
+
+    const diagnoses = visit.diagnoses || [];
+    const prescriptions = visit.prescriptions || [];
+    const procedures = visit.procedures || [];
+    const labOrders = (visit.labOrders || []).filter(o => o.status !== 'Cancelled');
+    const studies = (visit.studies || []).filter(s => s.status !== 'Cancelled');
+    const toggle = (key: Exclude<Panel, null>) => setPanel(p => (p === key ? null : key));
+
+    const title = [
+        isToday ? t('visit.panelTitle') : fill(t('visit.panelTitlePast'), formatDate(visit.date)),
+        [visit.doctorName || dept?.name || t('visit.noDept'), room ? fill(t('visit.room'), room) : ''].filter(Boolean).join(', '),
+    ].join(' · ');
+
+    const { save } = autosave;
+    const saveLabel = isDone ? ''
+        : autosave.examInvalid ? t('visit.invalidNotSaved')
+            : save.state === 'saving' ? t('visit.saving')
+                : save.state === 'saved' ? fill(t('visit.savedAt'), formatTime(save.at))
+                    : save.state === 'error' ? t('visit.saveFailed')
+                        : t('visit.autosave');
+    const saveTone = autosave.examInvalid || save.state === 'error' ? 'text-red-600 dark:text-red-400' : 'text-muted';
+
+    const orderStatus = (done: boolean, seen: boolean) =>
+        done ? (seen ? t('visit.resultSeen') : t('visit.resultReady')) : t('visit.pending');
 
     return (
-        <div className="space-y-4">
-            {/* ── Sarlavha ────────────────────────────────────────────────── */}
-            <div className="bg-surface rounded-xl border border-line p-4">
-                <div className="flex flex-wrap items-center gap-3">
-                    <span className="w-10 h-10 rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 grid place-items-center font-bold shrink-0">
-                        {visit.queueNumber ?? '—'}
-                    </span>
-                    <div className="min-w-0">
-                        <h3 className="font-semibold text-ink truncate">{t('visit.panelTitle')}</h3>
-                        <p className="text-xs text-muted truncate">
-                            {dept?.name || t('visit.noDept')}
-                            {visit.doctorName ? ` · ${visit.doctorName}` : ''}
-                            {visit.date ? ` · ${visit.date}` : ''}
-                        </p>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${STATUS_TONE[visit.status] || STATUS_TONE['Waiting']}`}>
-                        {t(VISIT_STATUS_KEY[visit.status] || 'visit.status.Waiting')}
-                    </span>
-                    <div className="ml-auto flex flex-wrap items-center gap-2">
-                        {visit.status === 'AwaitingResults' && (
-                            <button onClick={resume} disabled={busy}
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 hover:bg-amber-200 disabled:opacity-50">
-                                <Play className="w-4 h-4" /> {t('visit.continue')}
-                            </button>
-                        )}
-                        {!isDone && canCancelVisit && (
-                            <button onClick={cancelVisit} disabled={busy} title={t('visit.cancelVisit')}
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-line text-muted hover:border-red-400 hover:text-red-600 disabled:opacity-50">
-                                <XCircle className="w-4 h-4" />
-                            </button>
-                        )}
-                        {isDone ? (
-                            <span className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium ${STATUS_TONE[visit.status]}`}>
-                                <CheckCircle className="w-4 h-4" /> {t(VISIT_STATUS_KEY[visit.status] || 'visit.status.Completed')}
-                            </span>
-                        ) : (
-                            <button onClick={complete} disabled={busy}
-                                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
-                                <CheckCircle className="w-4 h-4" /> {t('visit.complete')}
-                            </button>
-                        )}
-                    </div>
-                </div>
+        <section aria-labelledby="visit-title"
+            className="bg-surface rounded-[20px] border border-line p-4 sm:p-5 flex flex-col gap-[22px] min-w-0">
 
-                {/* Shikoyat — joyida tahrirlanadi. Ilgari faqat o'qish uchun edi
-                    va registraturada xato yozilgan bo'lsa tuzatib bo'lmasdi. */}
-                <div className="mt-3 pt-3 border-t border-line">
-                    {editingComplaint ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                            <input autoFocus className={`${inputCls} flex-1 min-w-[200px]`} value={complaintDraft}
-                                onChange={e => setComplaintDraft(e.target.value)}
-                                placeholder={t('visit.complaintPh')} />
-                            <button onClick={saveComplaint} disabled={busy}
-                                className="px-3 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                {t('common.save')}
-                            </button>
-                            <button onClick={() => setEditingComplaint(false)}
-                                className="px-3 py-2 text-sm text-muted hover:text-muted">
-                                {t('common.cancel')}
-                            </button>
-                        </div>
-                    ) : (
-                        <p className="text-sm text-muted">
-                            <span className="font-medium">{t('visit.complaint')}</span>{' '}
-                            {visit.complaints || <span className="text-faint">{t('visit.noComplaint')}</span>}
-                            {!isDone && (
-                                <button onClick={() => { setComplaintDraft(visit.complaints || ''); setEditingComplaint(true); }}
-                                    className="ml-2 text-xs text-primary-600 dark:text-primary-400 hover:underline">
-                                    {t('common.edit')}
-                                </button>
+            {/* ── Sarlavha ────────────────────────────────────────────────── */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <h2 id="visit-title" className="min-w-0 text-base font-bold text-ink">{title}</h2>
+                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${STATUS_TONE[visit.status] || STATUS_TONE['Waiting']}`}>
+                    {t(VISIT_STATUS_KEY[visit.status] || 'visit.status.Waiting')}
+                </span>
+                <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                    {saveLabel && (
+                        <span role="status" className={`text-xs font-semibold ${saveTone}`}>
+                            {saveLabel}
+                            {save.state === 'error' && (
+                                <button type="button" onClick={() => { void autosave.flush(); }}
+                                    className="ml-1.5 font-bold underline">{t('ui.qayta_urinish')}</button>
                             )}
-                        </p>
+                        </span>
                     )}
-                </div>
+                    {visit.status === 'AwaitingResults' && (
+                        <button type="button" onClick={resume} disabled={busy}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 hover:bg-amber-200 disabled:opacity-50">
+                            <Play className="w-3.5 h-3.5" /> {t('visit.continue')}
+                        </button>
+                    )}
+                    {!isToday && onShowToday && (
+                        <button type="button" onClick={onShowToday} className={lightBtn}>
+                            <Undo2 className="w-3.5 h-3.5" /> {t('visit.showToday')}
+                        </button>
+                    )}
+                    {!isDone && canCancelVisit && (
+                        <button type="button" onClick={cancelVisit} disabled={busy}
+                            title={t('visit.cancelVisit')} aria-label={t('visit.cancelVisit')}
+                            className="w-8 h-8 grid place-items-center rounded-lg border border-line text-muted hover:border-red-400 hover:text-red-600 disabled:opacity-50">
+                            <XCircle className="w-4 h-4" />
+                        </button>
+                    )}
+                </span>
             </div>
 
             {error && (
-                <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
                     <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                     <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
                 </div>
             )}
 
-            {/* To'lanmagan buyurtma — ogohlantirish, blok emas */}
-            {money.due > 0 && (
-                <div className="flex flex-wrap items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                    <Wallet className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <p className="text-sm text-amber-800 dark:text-amber-200">
-                        <b>{fmt(money.due)} {t('ui.som')}</b> {t('visit.unpaidHint')}
-                        {money.unpaidCount > 1 ? ` (${money.unpaidCount})` : ''}
-                    </p>
-                    <button onClick={issueReferral} disabled={refBusy}
-                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-surface border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50">
-                        <Printer className="w-4 h-4" /> {t('visit.printReferral')}
-                    </button>
-                    {onGoToCashier && (
-                        <button onClick={onGoToCashier} className="text-sm font-medium text-amber-800 dark:text-amber-200 hover:underline">
-                            {t('visit.goCashier')}
-                        </button>
-                    )}
+            <VisitResults visit={visit} busy={busy} onMarkSeen={markSeen}
+                canMark={userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN} />
+
+            {/* ── Shikoyat ────────────────────────────────────────────────── */}
+            {/* Qabulxonada ham yoziladi, shuning uchun registratorga ochiq. */}
+            <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted">{t('visit.complaintLabel')}</span>
+                <textarea rows={2} value={autosave.complaint} disabled={isDone}
+                    placeholder={isDone ? t('visit.noComplaint') : t('visit.complaintPh')}
+                    onChange={e => autosave.onComplaintChange(e.target.value)}
+                    onBlur={autosave.onComplaintBlur}
+                    className="w-full px-3 py-2.5 rounded-xl border border-line bg-canvas text-ink text-sm leading-relaxed resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:text-muted" />
+            </label>
+
+            {/* ── Ko'rik ──────────────────────────────────────────────────── */}
+            {clinicalReadOnly ? (
+                /* Yoza olmaydigan odamga (yakunlangan qabul, registrator)
+                   bo'sh maydonlar to'ri emas, YOZILGANI ko'rsatiladi. */
+                <div className="flex flex-col gap-2">
+                    <SheetLabel>{t('ui.qabul_bayoni')}</SheetLabel>
+                    <EncounterSummary template={templates.find(x => x.id === visit.templateId)} value={visit.examData} />
                 </div>
+            ) : (
+                /* Bemor jinsi va yoshi UZATILADI: mos kelmaydigan shablon
+                   (masalan homiladorlik) erkak bemorga ochilmasin. */
+                <EncounterForm
+                    templates={templates.filter(x => x.departmentId === visit.departmentId)}
+                    patientGender={patient.gender === 'Male' || patient.gender === 'Female' ? patient.gender : null}
+                    patientAge={calcAge(patient.dob)}
+                    departmentId={visit.departmentId || undefined}
+                    templateId={visit.templateId || undefined}
+                    /* `|| {}` YO'Q. Bo'sh qabulda u har renderda YANGI obyekt
+                       berardi va forma o'zini har safar qayta to'ldirardi. Matn
+                       (yoki `undefined`) esa o'zgarmaguncha bir xil qoladi. */
+                    value={visit.examData}
+                    onChange={autosave.onExamChange}
+                />
             )}
 
-            {/* ── Amal tugmalari ──────────────────────────────────────────── */}
-            {!isDone && (
-                <div className="flex flex-wrap gap-2">
-                    {([
-                        ['lab', FlaskConical, t('visit.sendLab')],
-                        ['study', Scan, t('visit.sendStudy')],
-                        ['consult', UserPlus, t('visit.sendConsult')],
-                        ['rx', Pill, t('visit.writeRx')],
-                        ['service', Plus, t('visit.addSvc')],
-                    ] as const).map(([key, Icon, label]) => (
-                        <button key={key} onClick={() => setPanel(panel === key ? null : key)}
-                            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors ${panel === key
-                                ? 'bg-primary-600 text-white border-primary-600'
-                                : 'bg-surface border-line text-muted hover:border-primary-400'}`}>
-                            <Icon className="w-4 h-4" /> {label}
-                        </button>
-                    ))}
-                </div>
-            )}
+            <DiagnosisBlock diagnoses={diagnoses} readOnly={clinicalReadOnly} busy={busy}
+                pickerOpen={panel === 'dx'} onTogglePicker={() => toggle('dx')}
+                onAdd={addDiagnosis} onRemove={removeDiagnosis} />
 
-            {/* ── Tahlil ──────────────────────────────────────────────────── */}
-            {panel === 'lab' && (
-                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-ink mb-3">{t('visit.whichTests')}</h4>
-                    {labTests.filter(x => x.isActive).length === 0 ? (
-                        <p className="text-sm text-muted">{t('visit.labCatalogEmpty')}</p>
-                    ) : (
-                        <>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-                                {labTests.filter(x => x.isActive).map(x => {
-                                    const on = labPick.includes(x.id);
-                                    return (
-                                        <label key={x.id} className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer ${on
-                                            ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                                            : 'border-line hover:bg-elevated'}`}>
-                                            <input type="checkbox" checked={on} className="w-4 h-4 rounded text-primary-600"
-                                                onChange={() => setLabPick(p => on ? p.filter(y => y !== x.id) : [...p, x.id])} />
-                                            <span className="flex-1 min-w-0">
-                                                <span className="block text-sm text-ink truncate">{x.name}</span>
-                                                <span className="block text-xs text-faint">{x.sampleType} · {x.turnaroundHours} {t('visit.hours')}</span>
-                                            </span>
-                                            <span className="text-sm tabular-nums text-muted">{fmt(x.price)}</span>
-                                        </label>
-                                    );
-                                })}
-                            </div>
-                            <div className="flex items-center gap-3 mt-4 pt-3 border-t border-line">
-                                <span className="text-sm text-muted">
-                                    {t('common.total')}: <b className="text-ink tabular-nums">
-                                        {fmt(labTests.filter(x => labPick.includes(x.id)).reduce((s, x) => s + x.price, 0))} {t('ui.som')}
-                                    </b>
-                                </span>
-                                <button onClick={sendToLab} disabled={busy || labPick.length === 0}
-                                    className="ml-auto px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                                    {t('visit.sendLabBtn')}
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-
-            {/* ── Diagnostika ─────────────────────────────────────────────── */}
-            {panel === 'study' && (
-                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-ink mb-3">{t('visit.whichStudy')}</h4>
-                    {/* Prayslistdan tanlash — nom va narx o'zi to'ladi. Qo'lda
-                        yozish ham qoldi: prayslistda yo'q tekshiruv bo'lishi mumkin. */}
-                    {diagServices.length > 0 && (
-                        <select className={`${inputCls} mb-3`} value={studyForm.serviceId}
-                            onChange={e => {
-                                const id = e.target.value;
-                                const s = diagServices.find(x => String(x.id) === id);
-                                setStudyForm(f => ({
-                                    ...f, serviceId: id,
-                                    name: s ? s.name : f.name,
-                                    price: s ? String(s.price) : f.price,
-                                }));
-                            }}>
-                            <option value="">{t('visit.pickFromPrice')}</option>
-                            {diagServices.map(s => <option key={s.id} value={s.id}>{s.name} — {fmt(s.price)}</option>)}
-                        </select>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <select value={studyForm.modality} onChange={e => setStudyForm(f => ({ ...f, modality: e.target.value as Modality }))} className={inputCls}>
-                            {MODALITIES.map(m => <option key={m} value={m}>{MODALITY_LABELS[m]}</option>)}
-                        </select>
-                        <input value={studyForm.name} onChange={e => setStudyForm(f => ({ ...f, name: e.target.value, serviceId: '' }))}
-                            className={`${inputCls} sm:col-span-2`} placeholder={t('visit.studyNamePh')} />
-                    </div>
-                    <div className="flex items-center gap-3 mt-3">
-                        <input type="number" value={studyForm.price} onChange={e => setStudyForm(f => ({ ...f, price: e.target.value }))}
-                            className={`${inputCls} max-w-[160px]`} placeholder={t('visit.price')} />
-                        <button onClick={sendToDiagnostics} disabled={busy || !studyForm.name.trim()}
-                            className="ml-auto px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                            {t('visit.sendStudyBtn')}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* ── Boshqa shifokorga ───────────────────────────────────────── */}
-            {panel === 'consult' && (
-                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-ink mb-1">{t('visit.consultTitle')}</h4>
-                    <p className="text-xs text-muted mb-3">{t('visit.consultHint')}</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <select className={inputCls} value={consultForm.departmentId}
-                            onChange={e => setConsultForm(f => ({ ...f, departmentId: e.target.value, doctorId: '' }))}>
-                            <option value="">{t('visit.department')}</option>
-                            {bookableDepts.filter(d => d.id !== visit.departmentId).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                        </select>
-                        <select className={inputCls} value={consultForm.doctorId} disabled={!consultForm.departmentId}
-                            onChange={e => setConsultForm(f => ({ ...f, doctorId: e.target.value }))}>
-                            <option value="">{t('visit.anyDoctor')}</option>
-                            {pickableDoctors(doctors, consultForm.departmentId || null, consultForm.doctorId)
-                                .map(d => <option key={d.id} value={d.id}>{d.firstName} {d.lastName}</option>)}
-                        </select>
-                    </div>
-                    <div className="flex items-center gap-3 mt-3">
-                        <input className={inputCls} value={consultForm.reason}
-                            onChange={e => setConsultForm(f => ({ ...f, reason: e.target.value }))}
-                            placeholder={t('visit.consultReasonPh')} />
-                        <button onClick={sendToConsult} disabled={busy || !consultForm.departmentId}
-                            className="shrink-0 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                            {t('visit.sendConsultBtn')}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* ── Retsept ─────────────────────────────────────────────────── */}
-            {panel === 'rx' && (
-                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-ink mb-3">{t('visit.prescription')}</h4>
-                    <datalist id="xc-rx-meds">
-                        {meds.map(m => <option key={m.id} value={m.name} />)}
-                    </datalist>
-                    <div className="space-y-2">
-                        {rxItems.map((it, i) => (
-                            <div key={i} className="grid grid-cols-12 gap-2">
-                                <input value={it.name} list="xc-rx-meds"
-                                    onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
-                                    className={`${inputCls} col-span-12 sm:col-span-4`} placeholder={t('visit.medName')} />
-                                <input value={it.dosage} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, dosage: e.target.value } : x))}
-                                    className={`${inputCls} col-span-4 sm:col-span-3`} placeholder={t('visit.dose')} />
-                                <input value={it.frequency} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, frequency: e.target.value } : x))}
-                                    className={`${inputCls} col-span-5 sm:col-span-3`} placeholder={t('visit.frequencyPh')} />
-                                <input type="number" value={it.durationDays} onChange={e => setRxItems(r => r.map((x, j) => j === i ? { ...x, durationDays: e.target.value } : x))}
-                                    className={`${inputCls} col-span-3 sm:col-span-2`} placeholder={t('visit.days')} />
-                            </div>
-                        ))}
-                    </div>
-                    <div className="flex items-center gap-3 mt-3">
-                        <button onClick={() => setRxItems(r => [...r, { name: '', dosage: '', frequency: '', durationDays: '' }])}
-                            className="text-sm text-primary-600 dark:text-primary-400 hover:underline">{t('visit.oneMoreMed')}</button>
-                        <button onClick={writePrescription} disabled={busy || !rxItems.some(i => i.name.trim())}
-                            className="ml-auto px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                            {t('visit.saveRx')}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* ── Xizmat ──────────────────────────────────────────────────── */}
-            {panel === 'service' && (
-                <div className="bg-surface rounded-xl border border-primary-300 dark:border-primary-700 p-4">
-                    <h4 className="font-semibold text-ink mb-3">{t('visit.addService')}</h4>
-                    <div className="flex flex-wrap gap-3">
-                        <select value={svcPick} onChange={e => setSvcPick(e.target.value ? Number(e.target.value) : '')} className={`${inputCls} max-w-md`}>
-                            <option value="">{t('common.choose')}</option>
-                            {deptServices.map(s => <option key={s.id} value={s.id}>{s.name} — {fmt(s.price)}</option>)}
-                        </select>
-                        <button onClick={addService} disabled={busy || !svcPick}
-                            className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
-                            {t('common.add')}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* ── Qabul bayoni ────────────────────────────────────────────── */}
-            {/* Bemor jinsi va yoshi UZATILADI: mos kelmaydigan shablon
-                (masalan homiladorlik) erkak bemorga ochilmasin. Ilgari bu
-                ekranda uzatilmasdi — faqat kartadagi nusxada bor edi. */}
-            <EncounterForm
-                departments={departments}
-                templates={templates.filter(x => x.departmentId === visit.departmentId)}
-                patientGender={patient.gender === 'Male' || patient.gender === 'Female' ? patient.gender : null}
-                patientAge={age}
-                departmentId={visit.departmentId || undefined}
-                templateId={visit.templateId || undefined}
-                /* `|| {}` YO'Q. Bo'sh qabulda u har renderda YANGI obyekt
-                   berardi, forma esa `value` o'zgarganda o'zini qayta
-                   to'ldiradi — ya'ni panel har qayta chizilganda (shifokor
-                   «Tahlilga» ni bosdi, boshqa kompyuterdan yangilanish
-                   keldi) saqlanmagan ko'rik matni o'chib ketardi. Matn
-                   (yoki `undefined`) esa o'zgarmaguncha bir xil qoladi. */
-                value={visit.examData}
-                readOnly={clinicalReadOnly}
-                onSave={saveEncounter}
-            />
-
-            {/* ── Tashxis ─────────────────────────────────────────────────── */}
-            <div className="bg-surface rounded-xl border border-line p-4">
-                <h4 className="font-semibold text-ink mb-3">{t('visit.diagnosisTitle')}</h4>
-                {!!visit.diagnoses?.length && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                        {visit.diagnoses.map(d => (
-                            <span key={d.id} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-elevated text-sm text-ink">
-                                <b>{d.code}</b>{d.icd10?.name ? ` — ${d.icd10.name}` : ''}
-                                {d.isChronic && (
-                                    <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-bold uppercase">
-                                        {t('visit.chronic')}
-                                    </span>
-                                )}
-                                {!clinicalReadOnly && (
-                                    <button onClick={() => removeDiagnosis(d.id)} aria-label={t('common.delete')}
-                                        className="p-0.5 text-faint hover:text-red-500 rounded">
-                                        <Trash2 className="w-3.5 h-3.5" />
+            {/* ── Tayinlov ────────────────────────────────────────────────── */}
+            {(prescriptions.length > 0 || !isDone) && (
+                <div className="flex flex-col gap-2">
+                    <SheetLabel>{t('visit.rxTitle')}</SheetLabel>
+                    {prescriptions.length > 0 && (
+                        <ul className="flex flex-col gap-1.5">
+                            {prescriptions.map(rx => (
+                                <li key={rx.id} className="flex items-start gap-3 pl-3 pr-2 py-2.5 rounded-xl border border-line bg-canvas">
+                                    <Pill className="w-4 h-4 mt-0.5 shrink-0 text-primary-600 dark:text-primary-400" aria-hidden="true" />
+                                    <ul className="min-w-0 flex-1 flex flex-col gap-1">
+                                        {(rx.items || []).map((item, index) => (
+                                            <li key={item.id || index} className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                                                <b className="text-[13.5px] font-bold text-ink">{item.name}</b>
+                                                <span className="text-[12.5px] text-muted">{[item.dosage, item.frequency].filter(Boolean).join(' · ')}</span>
+                                                {item.durationDays ? (
+                                                    <span className="px-1.5 py-0.5 rounded-md bg-elevated text-[10.5px] font-bold text-muted">
+                                                        {item.durationDays} {t('visit.days')}
+                                                    </span>
+                                                ) : null}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <button type="button" onClick={() => printPrescription({ ...rx, patient }, undefined)}
+                                        title={t('common.print')} aria-label={t('common.print')}
+                                        className="w-7 h-7 grid place-items-center rounded-md text-faint hover:text-primary-600 hover:bg-surface shrink-0">
+                                        <Printer className="w-3.5 h-3.5" />
                                     </button>
-                                )}
-                            </span>
-                        ))}
-                    </div>
-                )}
-                {!clinicalReadOnly && (
-                    <>
-                        <div className="flex flex-wrap items-center gap-3">
-                            <input value={icdQuery} onChange={e => searchIcd(e.target.value)} className={`${inputCls} flex-1 min-w-[200px]`}
-                                placeholder={t('visit.icdSearchPh')} />
-                            <label className="flex items-center gap-2 text-sm text-muted whitespace-nowrap">
-                                <input type="checkbox" checked={icdChronic} onChange={e => setIcdChronic(e.target.checked)}
-                                    className="w-4 h-4 rounded text-primary-600" />
-                                {t('visit.chronicMark')}
-                            </label>
+                                    {!isDone && (
+                                        <button type="button" onClick={() => removePrescription(rx)} aria-label={t('ui.ochirish')}
+                                            className="w-7 h-7 grid place-items-center rounded-md text-faint hover:text-red-600 hover:bg-surface shrink-0">
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {!isDone && (
+                        <div><AddButton label={t('visit.addRx')} open={panel === 'rx'} onClick={() => toggle('rx')} /></div>
+                    )}
+                    {!isDone && panel === 'rx' && <RxForm meds={meds} busy={busy} onSave={writePrescription} />}
+                </div>
+            )}
+
+            {/* ── Xizmatlar ───────────────────────────────────────────────── */}
+            {(procedures.length > 0 || !isDone) && (
+                <div className="flex flex-col gap-2">
+                    <SheetLabel>{t('visit.tabServices')}</SheetLabel>
+                    {procedures.length > 0 && (
+                        <ul className="flex flex-col gap-1.5">
+                            {procedures.map(p => (
+                                <ItemRow key={p.id} icon={Stethoscope} main={p.procedureName}
+                                    right={fill(t('ui.x_som'), fmt(p.finalPrice))}
+                                    charge={chargeOf('Service', p.id)}
+                                    onDelete={isDone ? undefined : () => removeProcedure(p.id)} />
+                            ))}
+                        </ul>
+                    )}
+                    {!isDone && (
+                        <div><AddButton label={t('visit.addSvcShort')} open={panel === 'service'} onClick={() => toggle('service')} /></div>
+                    )}
+                    {!isDone && panel === 'service' && <ServicePicker services={deptServices} busy={busy} onAdd={addService} />}
+                </div>
+            )}
+
+            {/* ── Yo'llanma ───────────────────────────────────────────────── */}
+            {(labOrders.length > 0 || studies.length > 0 || !isDone) && (
+                <div className="flex flex-col gap-2">
+                    <SheetLabel hint={isDone ? undefined : t('visit.referHint')}>{t('visit.referTitle')}</SheetLabel>
+                    {!isDone && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <AddButton solid label={t('visit.sendLab')} open={panel === 'lab'} onClick={() => toggle('lab')} />
+                            <AddButton solid label={t('visit.sendStudy')} open={panel === 'study'} onClick={() => toggle('study')} />
+                            <AddButton solid label={t('visit.sendConsult')} open={panel === 'consult'} onClick={() => toggle('consult')} />
                         </div>
-                        {icdResults.length > 0 && (
-                            <div className="mt-2 border border-line rounded-lg divide-y divide-line max-h-48 overflow-y-auto">
-                                {icdResults.slice(0, 12).map(c => (
-                                    <button key={c.code} onClick={() => { addDiagnosis(c); setIcdQuery(''); setIcdResults([]); }}
-                                        className="w-full text-left p-2.5 text-sm hover:bg-elevated">
-                                        <b className="text-ink">{c.code}</b>
-                                        <span className="text-muted"> — {c.name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </>
-                )}
-            </div>
-
-            {/* ── Qabulga biriktirilganlar ────────────────────────────────── */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <Section title={t('visit.tabServices')} icon={Stethoscope} empty={t('visit.noServices')}>
-                    {(visit.procedures || []).map(p => (
-                        <Row key={p.id} main={p.procedureName} right={fill(t('ui.x_som'), fmt(p.finalPrice))}
-                            charge={chargeOf('Service', p.id)}
-                            onDelete={isDone ? undefined : async () => {
-                                try { await api.visits.removeProcedure(p.id); reload(); onVisitChanged(visitId); }
-                                catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
-                            }} />
-                    ))}
-                </Section>
-
-                <Section title={t('visit.tabLab')} icon={FlaskConical} empty={t('visit.noLabs')}>
-                    {(visit.labOrders || []).map(o => {
-                        const ch = chargeOf('Lab', o.id);
-                        return (
-                            <Row key={o.id} main={(o.items || []).map(i => i.testName).join(', ') || t('visit.tabLab')}
-                                sub={o.status === 'Completed'
-                                    ? (o.seenByDoctorAt ? t('visit.resultSeen') : t('visit.resultReady'))
-                                    : t('visit.pending')}
-                                right={fill(t('ui.x_som'), fmt(o.totalPrice))}
-                                charge={ch}
-                                tone={o.status === 'Completed' ? 'ok' : 'wait'}
-                                onDelete={isDone || o.status === 'Completed' ? undefined
-                                    : () => cancelOrder('lab', o.id, !!ch && ch.status === 'Paid')}
-                                action={o.status === 'Completed' && !o.seenByDoctorAt ? (
-                                    <button onClick={() => markSeen('lab', o.id)} disabled={busy}
-                                        className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200">
-                                        {t('visit.sawIt')}
-                                    </button>
-                                ) : undefined} />
-                        );
-                    })}
-                </Section>
-
-                <Section title={t('visit.tabDiag')} icon={Scan} empty={t('visit.noStudies')}>
-                    {(visit.studies || []).map(s => {
-                        const ch = chargeOf('Study', s.id);
-                        return (
-                            <Row key={s.id} main={`${MODALITY_LABELS[s.modality] || s.modality} — ${s.name}`}
-                                sub={s.conclusion || (s.status === 'Completed'
-                                    ? (s.seenByDoctorAt ? t('visit.resultSeen') : t('visit.resultReady'))
-                                    : t('visit.pending'))}
-                                right={fill(t('ui.x_som'), fmt(s.price))}
-                                charge={ch}
-                                tone={s.status === 'Completed' ? 'ok' : 'wait'}
-                                onDelete={isDone || s.status === 'Completed' ? undefined
-                                    : () => cancelOrder('study', s.id, !!ch && ch.status === 'Paid')}
-                                action={s.status === 'Completed' && !s.seenByDoctorAt ? (
-                                    <button onClick={() => markSeen('study', s.id)} disabled={busy}
-                                        className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200">
-                                        {t('visit.sawIt')}
-                                    </button>
-                                ) : undefined} />
-                        );
-                    })}
-                </Section>
-
-                <Section title={t('visit.tabRx')} icon={Pill} empty={t('visit.noRx')}>
-                    {(visit.prescriptions || []).map(rx => (
-                        <Row key={rx.id}
-                            main={(rx.items || []).map(i => i.name).filter(Boolean).join(', ') || t('visit.prescription')}
-                            sub={rx.date}
-                            onDelete={isDone ? undefined : () => removePrescription(rx)}
-                            action={
-                                <button onClick={() => printPrescription({ ...rx, patient }, undefined)}
-                                    title={t('common.print')} aria-label={t('common.print')}
-                                    className="shrink-0 p-1 text-faint hover:text-primary-600 rounded">
-                                    <Printer className="w-3.5 h-3.5" />
-                                </button>
-                            } />
-                    ))}
-                </Section>
-            </div>
-
-            {/* ── Pul yakuni ──────────────────────────────────────────────── */}
-            <div className="bg-surface rounded-xl border border-line p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-                <span className="text-sm text-muted">
-                    {t('common.total')}: <b className="text-ink tabular-nums">{fmt(money.total)}</b>
-                </span>
-                <span className="text-sm text-muted">
-                    {t('visit.paid')}: <b className="text-emerald-600 dark:text-emerald-400 tabular-nums">{fmt(money.paid)}</b>
-                </span>
-                <span className="text-sm text-muted">
-                    {t('visit.due')}: <b className={`tabular-nums ${money.due > 0 ? 'text-red-600 dark:text-red-400' : 'text-ink'}`}>{fmt(money.due)}</b>
-                </span>
-                {visit.checkInTime && (
-                    <span className="ml-auto flex items-center gap-1.5 text-xs text-faint">
-                        <Clock className="w-3.5 h-3.5" /> {new Date(visit.checkInTime).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                )}
-            </div>
-        </div>
-    );
-};
-
-/* ─── Kichik yordamchi komponentlar ─────────────────────────────────────── */
-
-const Section: React.FC<{ title: string; icon: React.ElementType; empty: string; children: React.ReactNode }> =
-    ({ title, icon: Icon, empty, children }) => {
-        const has = React.Children.count(children) > 0;
-        return (
-            <div className="bg-surface rounded-xl border border-line p-4">
-                <h4 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
-                    <Icon className="w-4 h-4 text-faint" /> {title}
-                </h4>
-                {has ? <div className="space-y-2">{children}</div>
-                    : <p className="text-sm text-faint">{empty}</p>}
-            </div>
-        );
-    };
-
-const PaidBadge: React.FC<{ charge?: VisitCharge }> = ({ charge }) => {
-    const { t } = useLanguage();
-    if (!charge) return null;
-    const paid = charge.status === 'Paid';
-    return (
-        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide shrink-0 ${paid
-            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-            {paid ? t('visit.paidShort') : t('visit.unpaidShort')}
-        </span>
-    );
-};
-
-const Row: React.FC<{
-    main: string; sub?: string; right?: string;
-    tone?: 'ok' | 'wait'; onDelete?: () => void; charge?: VisitCharge;
-    action?: React.ReactNode;
-}> = ({ main, sub, right, tone, onDelete, charge, action }) => {
-    const { t } = useLanguage();
-    return (
-    <div className="flex items-center gap-3 text-sm">
-        <div className="min-w-0 flex-1">
-            <p className="text-ink truncate">{main}</p>
-            {sub && (
-                <p className={`text-xs truncate ${tone === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
-                    : tone === 'wait' ? 'text-amber-600 dark:text-amber-400' : 'text-faint'}`}>
-                    {sub}
-                </p>
+                    )}
+                    {!isDone && panel === 'lab' && <LabPicker tests={labTests} busy={busy} onSend={sendToLab} />}
+                    {!isDone && panel === 'study' && <StudyPicker services={diagServices} busy={busy} onSend={sendToDiagnostics} />}
+                    {!isDone && panel === 'consult' && (
+                        <ConsultPicker departments={bookableDepts.filter(d => d.id !== visit.departmentId)}
+                            doctors={doctors} busy={busy} onSend={sendToConsult} />
+                    )}
+                    {(labOrders.length > 0 || studies.length > 0) && (
+                        <ul className="flex flex-col gap-1.5">
+                            {labOrders.map(o => {
+                                const ch = chargeOf('Lab', o.id);
+                                const done = o.status === 'Completed';
+                                return (
+                                    <ItemRow key={o.id} icon={FlaskConical}
+                                        main={(o.items || []).map(i => i.testName).join(', ') || t('visit.tabLab')}
+                                        sub={orderStatus(done, !!o.seenByDoctorAt)} tone={done ? 'ok' : 'wait'}
+                                        right={fill(t('ui.x_som'), fmt(o.totalPrice))} charge={ch}
+                                        onDelete={isDone || done ? undefined : () => cancelOrder('lab', o.id, !!ch && ch.status === 'Paid')} />
+                                );
+                            })}
+                            {studies.map(s => {
+                                const ch = chargeOf('Study', s.id);
+                                const done = s.status === 'Completed';
+                                return (
+                                    <ItemRow key={s.id} icon={Scan}
+                                        main={`${MODALITY_LABELS[s.modality] || s.modality} — ${s.name}`}
+                                        sub={orderStatus(done, !!s.seenByDoctorAt)} tone={done ? 'ok' : 'wait'}
+                                        right={fill(t('ui.x_som'), fmt(s.price))} charge={ch}
+                                        onDelete={isDone || done ? undefined : () => cancelOrder('study', s.id, !!ch && ch.status === 'Paid')} />
+                                );
+                            })}
+                        </ul>
+                    )}
+                </div>
             )}
-        </div>
-        {action}
-        <PaidBadge charge={charge} />
-        {right && <span className="tabular-nums text-muted shrink-0">{right}</span>}
-        {onDelete && (
-            <button aria-label={t('ui.ochirish')} onClick={onDelete} className="p-1 text-faint hover:text-red-500 shrink-0">
-                <Trash2 className="w-3.5 h-3.5" />
-            </button>
-        )}
-    </div>
+
+            <VisitFinishRow visit={visit} locked={isDone} busy={busy} nextAppointment={nextAppointment} onSchedule={onSchedule}
+                onNewVisit={startNewVisit}
+                onPrintRx={prescriptions.length > 0 ? () => printPrescription({ ...prescriptions[0], patient }, undefined) : undefined}
+                onComplete={complete} />
+
+            <VisitBill money={money} referralBusy={refBusy} onPrintReferral={issueReferral} onTakePayment={onTakePayment} />
+        </section>
     );
 };

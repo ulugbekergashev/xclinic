@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { ClipboardList, Save, ChevronDown } from 'lucide-react';
-import type { Department, EncounterTemplate, EncounterField } from '../types';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { ChevronDown } from 'lucide-react';
+import type { EncounterTemplate, EncounterField } from '../types';
 import { useLanguage, fill } from '../context/LanguageContext';
 import {
     validateEncounterField, rangeForField, isVitalAbnormal, calcBmi, bmiLabel,
@@ -14,10 +14,15 @@ import {
    hech narsani qattiq kodlamaydi: bo'lim shabloni qanday maydonlar bersa,
    shularni chizadi. Shuning uchun kardiolog, ginekolog va pediatr bir xil
    komponentdan foydalanadi — farq faqat shablonda.
+
+   SAQLASH TUGMASI YO'Q. Forma qabul varag'ining bir qismi va o'zi saqlanadi:
+   har o'zgarish `onChange` orqali varaqqa beriladi, varaq uni bir oz kutib
+   serverga yozadi (`VisitPanel`). Ilgari bu yerda «Saqlash» tugmasi bor edi
+   va shifokor uni bosmay «Qabulni yakunlash» ni bossa, ko'rik yozilmay
+   qolardi.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
-    departments: Department[];
     templates: EncounterTemplate[];
     /** Bemor jinsi — mos kelmaydigan shablonni yashirish uchun (B-09) */
     patientGender?: 'Male' | 'Female' | null;
@@ -28,9 +33,8 @@ interface Props {
     /** Saqlangan qiymatlar (JSON matn yoki obyekt) */
     value?: string | Record<string, any> | null;
     readOnly?: boolean;
-    onChange?: (data: Record<string, any>, templateId: string | undefined) => void;
-    onSave?: (data: Record<string, any>, templateId: string | undefined) => void;
-    onDepartmentChange?: (departmentId: string) => void;
+    /** Har o'zgarishda. `invalidKeys` — chegaradan chiqqan maydonlar: ular saqlanmaydi */
+    onChange?: (data: Record<string, any>, templateId: string | undefined, invalidKeys: string[]) => void;
 }
 
 const parseValue = (v: Props['value']): Record<string, any> => {
@@ -39,23 +43,53 @@ const parseValue = (v: Props['value']): Record<string, any> => {
     try { return JSON.parse(v) || {}; } catch { return {}; }
 };
 
+/* Chegaradan chiqqan maydon — saqlashga to'siq. */
+const fieldProblem = (key: string, value: any): string | null => {
+    const r = validateEncounterField(key, value);
+    return r.ok === true ? null : (r as any).error;
+};
+
+/* Normadan chiqqan, lekin fiziologik mumkin — ogohlantirish, to'siq emas. */
+const fieldAbnormal = (key: string, value: any): boolean => {
+    const kind = ENCOUNTER_FIELD_TO_VITAL[key];
+    if (!kind || value === '' || value === null || value === undefined) return false;
+    const n = Number(value);
+    return Number.isFinite(n) && isVitalAbnormal(kind, n);
+};
+
+const INPUT_CLASS =
+    'w-full px-3 py-2 border border-line rounded-xl bg-canvas ' +
+    'text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ' +
+    'disabled:text-muted';
+
 export const EncounterForm: React.FC<Props> = ({
-    departments, templates, departmentId, templateId, patientGender, patientAge,
-    value, readOnly = false, onChange, onSave, onDepartmentChange,
+    templates, departmentId, templateId, patientGender, patientAge,
+    value, readOnly = false, onChange,
 }) => {
     const { t } = useLanguage();
     const [data, setData] = useState<Record<string, any>>(() => parseValue(value));
     const [activeTemplateId, setActiveTemplateId] = useState<string | undefined>(templateId);
-    const [dirty, setDirty] = useState(false);
+    /* Yozilgan, lekin server hali tasdiqlamagan o'zgarish bormi. Holat emas,
+       `ref`: pastdagi effekt uni o'qiydi, lekin unga qarab qayta ishlamasligi
+       kerak. */
+    const dirty = useRef(false);
+    const dataRef = useRef(data);
+    dataRef.current = data;
 
-    // Tashqaridan boshqa bemor/qabul kelsa, formani qayta yuklaymiz
-    useEffect(() => { setData(parseValue(value)); setDirty(false); }, [value]);
+    /* SERVERDAN YANGI QIYMAT KELDI. Uch holat:
+         - yozilgani bilan bir xil → saqlandi, forma «toza»;
+         - forma toza              → serverdagini olamiz (boshqa kompyuterda
+                                     o'zgargan yoki boshqa qabul ochilgan);
+         - forma «iflos»           → TEGMAYMIZ. Forma o'zi saqlanadi, ya'ni
+           javob shifokor keyingi harfni yozib ulgurganda keladi; eski javobni
+           olsak o'sha harflar o'chib ketardi. */
+    useEffect(() => {
+        const incoming = parseValue(value);
+        if (JSON.stringify(incoming) === JSON.stringify(dataRef.current)) { dirty.current = false; return; }
+        if (dirty.current) return;
+        setData(incoming);
+    }, [value]);
     useEffect(() => { setActiveTemplateId(templateId); }, [templateId]);
-
-    const clinicalDepartments = useMemo(
-        () => departments.filter(d => d.isActive && d.type === 'CLINICAL'),
-        [departments],
-    );
 
     /* BEMORGA MOS SHABLONLAR (audit B-09).
      *
@@ -69,34 +103,32 @@ export const EncounterForm: React.FC<Props> = ({
      * Endi ikki qatlam: server bemor bo'yicha filtrlaydi (`?patientId=`),
      * bu yerda esa yana bir bor tekshiriladi — ro'yxat keshdan yoki
      * filtrsiz kelgan bo'lishi mumkin. */
-    const fitsPatient = (t: EncounterTemplate) => {
-        if (t.gender && patientGender && t.gender !== patientGender) return false;
-        /* Yosh noma'lum bo'lsa chegara QO'LLANMAYDI: tug'ilgan sanasi
-           kiritilmagan bemorda hamma shablon yopilib qolsa, shifokor hech
-           narsa yoza olmaydi. */
-        if (patientAge === null || patientAge === undefined) return true;
-        if (t.minAge != null && patientAge < t.minAge) return false;
-        if (t.maxAge != null && patientAge > t.maxAge) return false;
-        return true;
-    };
-
-    const deptTemplates = useMemo(
-        () => templates
-            .filter(t => !departmentId || t.departmentId === departmentId)
-            .filter(fitsPatient),
-        [templates, departmentId, patientGender, patientAge],
-    );
+    const deptTemplates = useMemo(() => {
+        const fitsPatient = (x: EncounterTemplate) => {
+            if (x.gender && patientGender && x.gender !== patientGender) return false;
+            /* Yosh noma'lum bo'lsa chegara QO'LLANMAYDI: tug'ilgan sanasi
+               kiritilmagan bemorda hamma shablon yopilib qolsa, shifokor hech
+               narsa yoza olmaydi. */
+            if (patientAge === null || patientAge === undefined) return true;
+            if (x.minAge != null && patientAge < x.minAge) return false;
+            if (x.maxAge != null && patientAge > x.maxAge) return false;
+            return true;
+        };
+        return templates
+            .filter(x => !departmentId || x.departmentId === departmentId)
+            .filter(fitsPatient);
+    }, [templates, departmentId, patientGender, patientAge]);
 
     // Shablon tanlanmagan bo'lsa — bo'limning standart shabloni
     const template = useMemo(() => {
         if (activeTemplateId) {
-            const chosen = deptTemplates.find(t => t.id === activeTemplateId);
+            const chosen = deptTemplates.find(x => x.id === activeTemplateId);
             /* Tanlangan shablon bemorga mos kelmasa, unga QAYTMAYMIZ:
                ilgari `|| deptTemplates[0]` shu yerda ham turardi va
                mos kelmaydigan tanlovni jimgina boshqasiga almashtirardi. */
             if (chosen) return chosen;
         }
-        return deptTemplates.find(t => t.isDefault) || deptTemplates[0];
+        return deptTemplates.find(x => x.isDefault) || deptTemplates[0];
     }, [deptTemplates, activeTemplateId]);
 
     // Maydonlarni guruhlarga ajratamiz — bitta uzun ro'yxat o'qib bo'lmaydigan bo'ladi
@@ -111,29 +143,13 @@ export const EncounterForm: React.FC<Props> = ({
         return Array.from(map.entries());
     }, [template]);
 
-    /* Chegaradan chiqqan maydon — saqlashga to'siq. */
-    const fieldProblem = (key: string, value: any): string | null => {
-        const r = validateEncounterField(key, value);
-        return r.ok === true ? null : (r as any).error;
-    };
-
-    /* Normadan chiqqan, lekin fiziologik mumkin — ogohlantirish, to'siq emas. */
-    const fieldAbnormal = (key: string, value: any): boolean => {
-        const kind = ENCOUNTER_FIELD_TO_VITAL[key];
-        if (!kind || value === '' || value === null || value === undefined) return false;
-        const n = Number(value);
-        return Number.isFinite(n) && isVitalAbnormal(kind, n);
-    };
-
-    /* Barcha chegara xatolari — saqlash tugmasi uchun. */
-    const problems = useMemo(() => {
-        const list: string[] = [];
-        for (const f of (template?.fields || [])) {
-            const p = fieldProblem(f.key, data[f.key]);
-            if (p) list.push(p);
-        }
-        return list;
-    }, [template, data]);
+    /* Chegaradan chiqqan qiymat SAQLANMAYDI: server ham uni rad etadi, va
+       «saqlandi» deb o'ylab qolish eng yomon holat. Varaqqa qaysi maydonlar
+       xato ekani beriladi — u o'shalarni tashlab, qolganini yozadi; sabab
+       esa shu yerda, maydon ostida ko'rinadi. */
+    const invalidKeysOf = (values: Record<string, any>): string[] =>
+        (template?.fields || []).filter(f => fieldProblem(f.key, values[f.key])).map(f => f.key);
+    const problemCount = useMemo(() => invalidKeysOf(data).length, [template, data]);
 
     /* VKI — bo'y va vazndan avtomatik (audit B-10: «hisoblanmaydi»).
        Saqlanmaydi, hisoblanadi: ikkala manba ham shu formada turibdi. */
@@ -146,19 +162,15 @@ export const EncounterForm: React.FC<Props> = ({
     const update = (key: string, v: any) => {
         const next = { ...data, [key]: v };
         setData(next);
-        setDirty(true);
-        onChange?.(next, template?.id);
+        dirty.current = true;
+        onChange?.(next, template?.id, invalidKeysOf(next));
     };
 
-    const handleSave = () => {
-        onSave?.(data, template?.id);
-        setDirty(false);
+    const pickTemplate = (id: string) => {
+        setActiveTemplateId(id);
+        dirty.current = true;
+        onChange?.(data, id, invalidKeysOf(data));
     };
-
-    const inputClass =
-        'w-full px-3 py-2 border border-line rounded-lg bg-surface ' +
-        'text-ink text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ' +
-        'disabled:bg-elevated disabled:text-muted';
 
     const renderField = (f: EncounterField) => {
         const v = data[f.key] ?? '';
@@ -166,13 +178,13 @@ export const EncounterForm: React.FC<Props> = ({
             case 'textarea':
                 return (
                     <textarea
-                        className={inputClass} rows={3} value={v} disabled={readOnly}
+                        className={`${INPUT_CLASS} resize-y leading-relaxed`} rows={2} value={v} disabled={readOnly}
                         onChange={e => update(f.key, e.target.value)}
                     />
                 );
             case 'select':
                 return (
-                    <select className={inputClass} value={v} disabled={readOnly}
+                    <select className={INPUT_CLASS} value={v} disabled={readOnly}
                         onChange={e => update(f.key, e.target.value)}>
                         <option value="">—</option>
                         {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
@@ -180,12 +192,12 @@ export const EncounterForm: React.FC<Props> = ({
                 );
             case 'checkbox':
                 return (
-                    <label className="flex items-center gap-2 py-2">
+                    <span className="flex items-center gap-2 py-2">
                         <input type="checkbox" checked={!!v} disabled={readOnly}
                             onChange={e => update(f.key, e.target.checked)}
                             className="w-4 h-4 rounded border-line text-primary-600 focus:ring-primary-500" />
                         <span className="text-sm text-muted">Ha</span>
-                    </label>
+                    </span>
                 );
             case 'number': {
                 /* FIZIOLOGIK CHEGARA (S3.2, audit B-10).
@@ -204,132 +216,90 @@ export const EncounterForm: React.FC<Props> = ({
                 const abnormal = !problem && fieldAbnormal(f.key, v);
                 const range = rangeForField(f.key);
                 return (
-                    <div>
-                        <div className="relative">
+                    <>
+                        <span className="relative">
                             <input type="number" value={v} disabled={readOnly}
                                 min={range?.min} max={range?.max} step="any"
-                                className={`${inputClass} ${problem ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : abnormal ? 'border-amber-500' : ''}`}
+                                className={`${INPUT_CLASS} ${problem ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : abnormal ? 'border-amber-500' : ''}`}
                                 onChange={e => update(f.key, e.target.value)} />
                             {f.unit && (
                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint pointer-events-none">
                                     {f.unit}
                                 </span>
                             )}
-                        </div>
-                        {problem && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{problem}</p>}
-                        {abnormal && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('encounterform.normadan_tashqarida')}</p>}
-                    </div>
+                        </span>
+                        {problem && <span className="text-xs text-red-600 dark:text-red-400">{problem}</span>}
+                        {abnormal && <span className="text-xs text-amber-600 dark:text-amber-400">{t('encounterform.normadan_tashqarida')}</span>}
+                    </>
                 );
             }
             default:
                 return (
-                    <input type="text" className={inputClass} value={v} disabled={readOnly}
+                    <input type="text" className={INPUT_CLASS} value={v} disabled={readOnly}
                         onChange={e => update(f.key, e.target.value)} />
                 );
         }
     };
 
-    return (
-        <div className="bg-surface rounded-xl border border-line">
-            {/* Sarlavha: bo'lim va shablon tanlash */}
-            <div className="p-4 border-b border-line flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 mr-auto">
-                    <ClipboardList className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                    <h3 className="font-semibold text-ink">{t('ui.qabul_bayoni')}</h3>
-                </div>
-
-                {onDepartmentChange && (
-                    <div className="relative">
-                        <select
-                            value={departmentId || ''} disabled={readOnly}
-                            onChange={e => onDepartmentChange(e.target.value)}
-                            className={`${inputClass} pr-8 appearance-none min-w-[180px]`}
-                        >
-                            <option value="">{t('encounterform.bolimni_tanlang')}</option>
-                            {clinicalDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                        </select>
-                        <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-                    </div>
-                )}
-
-                {deptTemplates.length > 1 && (
-                    <div className="relative">
-                        <select
-                            value={template?.id || ''} disabled={readOnly}
-                            onChange={e => setActiveTemplateId(e.target.value)}
-                            className={`${inputClass} pr-8 appearance-none min-w-[180px]`}
-                        >
-                            {deptTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
-                        <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-                    </div>
-                )}
+    if (!template) {
+        return (
+            <div className="rounded-xl border border-dashed border-line px-4 py-5 text-center">
+                <p className="text-muted text-sm">
+                    {departmentId ? t('encounterform.bu_bolim_uchun_shablon') : t('ui.bolimni_tanlang')}
+                </p>
+                <p className="text-faint text-xs mt-1">{t('encounterform.shablonlar_sozlamalar_bolimlar_bolimida')}</p>
             </div>
+        );
+    }
 
-            {/* Maydonlar */}
-            {!template ? (
-                <div className="p-8 text-center">
-                    <p className="text-muted text-sm">
-                        {departmentId
-                            ? t('encounterform.bu_bolim_uchun_shablon')
-                            : t('ui.bolimni_tanlang')}
-                    </p>
-                    <p className="text-faint text-xs mt-1">
-                        {t('encounterform.shablonlar_sozlamalar_bolimlar_bolimida')}
-                    </p>
+    return (
+        <div className="flex flex-col gap-4">
+            {groups.map(([groupName, fields], index) => (
+                <div key={groupName} role="group" aria-label={groupName} className="flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted">{groupName}</span>
+                        {/* Shablon tanlovi — birinchi guruh sarlavhasida, alohida qator emas */}
+                        {index === 0 && deptTemplates.length > 1 && (
+                            <span className="relative">
+                                <select
+                                    value={template.id} disabled={readOnly}
+                                    aria-label={t('ui.qabul_bayoni')}
+                                    onChange={e => pickTemplate(e.target.value)}
+                                    className="h-7 pl-2 pr-7 rounded-lg border border-line bg-surface text-xs font-semibold text-muted appearance-none"
+                                >
+                                    {deptTemplates.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                                </select>
+                                <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
+                            </span>
+                        )}
+                    </div>
+                    {/* Matn maydonlari yarim kenglikda: ko'rik shabloni uzun bo'ladi va
+                        to'liq kenglikdagi qatorlar tashxisni ekrandan pastga surib yuborardi. */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2.5">
+                        {fields.map(f => (
+                            <label key={f.key}
+                                className={`flex flex-col gap-1 min-w-0 ${f.type === 'textarea' || f.type === 'text' ? 'col-span-2' : ''}`}>
+                                <span className="text-xs font-semibold text-muted truncate">{f.label}</span>
+                                {renderField(f)}
+                            </label>
+                        ))}
+                    </div>
                 </div>
-            ) : (
-                <div className="p-4 space-y-6">
-                    {groups.map(([groupName, fields]) => (
-                        <div key={groupName}>
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-3">
-                                {groupName}
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {fields.map(f => (
-                                    <div key={f.key} className={f.type === 'textarea' ? 'sm:col-span-2 lg:col-span-3' : ''}>
-                                        <label className="block text-sm font-medium text-muted mb-1.5">
-                                            {f.label}
-                                        </label>
-                                        {renderField(f)}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
+            ))}
 
-                    {/* VKI — bo'y va vazn kiritilgan bo'lsa avtomatik.
-                        Audit: «Bo'y va vazndan VKI ham hisoblanmaydi». */}
-                    {bmi !== null && (
-                        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-elevated border border-line">
-                            <span className="text-xs uppercase tracking-wide text-muted">VKI</span>
-                            <span className="text-lg font-bold tabular-nums text-ink">{bmi}</span>
-                            <span className="text-sm text-muted">{bmiLabel(bmi)}</span>
-                        </div>
-                    )}
+            {/* VKI — bo'y va vazn kiritilgan bo'lsa avtomatik.
+                Audit: «Bo'y va vazndan VKI ham hisoblanmaydi». */}
+            {bmi !== null && (
+                <p className="self-start inline-flex items-center gap-2 h-7 px-2.5 rounded-md bg-elevated text-xs font-bold text-ink">
+                    VKI <span className="tabular-nums">{bmi}</span>
+                    <span className="font-semibold text-muted">{bmiLabel(bmi)}</span>
+                </p>
+            )}
 
-                    {!readOnly && onSave && (
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2 border-t border-line">
-                            {problems.length > 0 && (
-                                <p className="text-xs text-red-600 dark:text-red-400 flex-1">
-                                    {problems.length === 1 ? problems[0] : fill(t('encounterform.x_ta_korsatkich_chegaradan'), problems.length)}
-                                </p>
-                            )}
-                            <button
-                                onClick={handleSave}
-                                /* Chegaradan chiqqan qiymat bilan SAQLASH YO'Q:
-                                   server ham uni rad etadi, va «saqladim» deb
-                                   o'ylab qolish eng yomon holat. */
-                                disabled={!dirty || problems.length > 0}
-                                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium
-                                           hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                <Save className="w-4 h-4" />
-                                {dirty ? t('ui.saqlash') : 'Saqlangan'}
-                            </button>
-                        </div>
-                    )}
-                </div>
+            {!readOnly && problemCount > 1 && (
+                <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-400">
+                    {fill(t('encounterform.x_ta_korsatkich_chegaradan'), problemCount)}
+                </p>
             )}
         </div>
     );

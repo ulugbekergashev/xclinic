@@ -4,7 +4,7 @@
  * xaritadagi «1/3» belgisi bir xil tartib va bir xil sanoqdan o'qiydi.
  */
 import { describe, it, expect } from 'vitest';
-import { routeOfVisit, routeProgress, modalityOfName } from '../../utils/visitRoute';
+import { routeOfVisit, routeProgress, modalityOfName, profileRoute } from '../../utils/visitRoute';
 
 const visit = (over: any = {}): any => ({
     id: 'v1', status: 'AwaitingResults', doctorId: 'd1', doctorName: 'Rahimova N.',
@@ -75,5 +75,101 @@ describe('modalityOfName — tur nomdan', () => {
 
     it('tanilmagan nom — UZI (diagnost o\'z ekranida tuzatadi)', () => {
         expect(modalityOfName('Denситометрия')).toBe('UZI');
+    });
+});
+
+/* BEMOR KARTASIDAGI MARSHRUT — bekatning HOLATI bilan («o'tildi», «hozir»,
+   «keyin») va kassa bekati bilan. Talon va xaritadagi tartib o'zgarmaydi. */
+describe('profileRoute — kartadagi marshrut', () => {
+    it('shifokor qabulida: tahlil o\'tilgan, shifokor «hozir», tekshiruv «keyin»', () => {
+        const v = visit({
+            status: 'In Progress',
+            labOrders: [lab('Completed', 'UQT')],
+            studies: [study('Ordered', 'EKG', 'EKG')],
+        });
+        const stops = profileRoute(v);
+        expect(stops.map(s => [s.kind, s.state])).toEqual([
+            ['lab', 'done'], ['study', 'next'], ['doctor', 'now'],
+        ]);
+    });
+
+    it('navbatda: birinchi o\'tilmagan bekat «hozir»; hammasi tayyor bo\'lsa — shifokor', () => {
+        const waiting = visit({ status: 'Waiting', labOrders: [lab('Ordered', 'UQT')] });
+        expect(profileRoute(waiting).map(s => s.state)).toEqual(['now', 'next']);
+
+        const ready = visit({ status: 'AwaitingResults', labOrders: [lab('Completed', 'UQT')] });
+        expect(profileRoute(ready).map(s => s.state)).toEqual(['done', 'now']);
+    });
+
+    it('to\'langan kassa — birinchi va o\'tilgan; qarz bo\'lsa — oxirida', () => {
+        const v = visit({ status: 'In Progress' });
+        expect(profileRoute(v, { total: 100000, due: 0 }).map(s => [s.kind, s.state]))
+            .toEqual([['cashier', 'done'], ['doctor', 'now']]);
+        expect(profileRoute(v, { total: 100000, due: 40000 }).map(s => [s.kind, s.state]))
+            .toEqual([['doctor', 'now'], ['cashier', 'next']]);
+    });
+
+    it('qabul yakunlangan, qarz qolgan — endi kassaga: kassa «hozir»', () => {
+        const v = visit({ status: 'Completed' });
+        const stops = profileRoute(v, { total: 100000, due: 100000 });
+        expect(stops.map(s => [s.kind, s.state])).toEqual([['doctor', 'done'], ['cashier', 'now']]);
+        expect(stops[1].due).toBe(100000);
+    });
+
+    it('hisob yo\'q — kassa bekati ham yo\'q; bekor qilingan qabulda «hozir» bo\'lmaydi', () => {
+        expect(profileRoute(visit({ status: 'In Progress' }), { total: 0, due: 0 }).map(s => s.kind)).toEqual(['doctor']);
+        const cancelled = visit({ status: 'Cancelled', labOrders: [lab('Ordered', 'UQT')] });
+        expect(profileRoute(cancelled).some(s => s.state === 'now')).toBe(false);
+    });
+
+    it('bekat vaqti: natija tayyor bo\'lgan payt, qabul boshlangan payt', () => {
+        const v = visit({
+            status: 'In Progress', startedAt: '2026-10-11T08:20:00Z',
+            labOrders: [{ ...lab('Completed', 'UQT'), completedAt: '2026-10-11T06:58:00Z' }],
+        });
+        const [labStop, doctor] = profileRoute(v);
+        expect(labStop.at).toBe('2026-10-11T06:58:00Z');
+        expect(doctor.at).toBe('2026-10-11T08:20:00Z');
+    });
+});
+
+describe('profileRoute — laboratoriya bekatining vaqti', () => {
+    const order = (status: string, over: any = {}) => ({ ...lab(status, 'UQT'), ...over });
+
+    it('bitta yo\'llanma tayyor, ikkinchisiga tegilmagan — «proba olindi» vaqti chiqmaydi', () => {
+        /* Tayyor bo'lgan yo'llanmaning vaqti butun bekatniki qilib ko'rsatilsa,
+           tegilmagan tahlil ham boshlangandek ko'rinardi. */
+        const v = visit({
+            status: 'AwaitingResults',
+            labOrders: [
+                order('Completed', { sampleCollectedAt: '2026-10-11T06:00:00Z', completedAt: '2026-10-11T06:58:00Z' }),
+                order('Ordered'),
+            ],
+        });
+        const [labStop] = profileRoute(v);
+        expect(labStop.state).toBe('now');
+        expect(labStop.at).toBeNull();
+    });
+
+    it('tayyor bo\'lmaganidan proba olingan bo\'lsa — o\'sha vaqt', () => {
+        const v = visit({
+            status: 'AwaitingResults',
+            labOrders: [
+                order('Completed', { completedAt: '2026-10-11T06:58:00Z' }),
+                order('In-Progress', { sampleCollectedAt: '2026-10-11T07:10:00Z' }),
+            ],
+        });
+        expect(profileRoute(v)[0].at).toBe('2026-10-11T07:10:00Z');
+    });
+
+    it('hammasi tayyor — oxirgi natija vaqti', () => {
+        const v = visit({
+            status: 'AwaitingResults',
+            labOrders: [
+                order('Completed', { completedAt: '2026-10-11T06:58:00Z' }),
+                order('Completed', { completedAt: '2026-10-11T07:40:00Z' }),
+            ],
+        });
+        expect(profileRoute(v)[0].at).toBe('2026-10-11T07:40:00Z');
     });
 });

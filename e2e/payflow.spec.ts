@@ -39,7 +39,7 @@ test('to\'lanmagan bemor «Bugun» da ham, kassada ham ko\'rinadi', async ({ pag
     await page.locator('select').first().selectOption({ index: 1 });
     await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
     await page.waitForTimeout(2500);
-    await expect(page.getByText('Joriy qabul')).toBeVisible();
+    await expect(page.getByText('Bugungi qabul')).toBeVisible();
 
     // ── 2. To'lanmagan xizmat ──────────────────────────────────────────
     await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();

@@ -602,6 +602,28 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             }
         }
 
+        /* YOPILGAN QABUL JIMGINA QAYTA OCHILMAYDI VA QAYTA YOZILMAYDI.
+
+           Qabul varag'i endi o'zi saqlanadi: shifokorning ochiq turgan
+           kartasi qabul boshqa kompyuterda yakunlangani yoki bekor
+           qilinganini hali bilmasligi mumkin. Uning kechikkan yozuvi
+           holatni «Qabulda» ga qaytarsa, bekor qilingan qabul (hisob
+           qatorlari allaqachon bekor) yana navbatga chiqardi; bayonni
+           o'zgartirsa — yopilgan hujjat orqadan tahrirlanardi.
+
+           Ilovada yopilgan qabulni qayta ochadigan yo'l yo'q, ya'ni bu
+           to'siq hech qaysi mavjud oqimni buzmaydi. Holatning O'ZI qayta
+           yuborilsa (yakunlangan → yakunlangan) — o'tadi. */
+        const closedNow = current.status === 'Completed' || current.status === 'Cancelled';
+        if (closedNow && (clinicalSent.length || (status !== undefined && status !== current.status))) {
+            return res.status(409).json({
+                error: current.status === 'Completed'
+                    ? "Qabul yakunlangan — uni o'zgartirib bo'lmaydi"
+                    : "Qabul bekor qilingan — uni o'zgartirib bo'lmaydi",
+                code: 'VISIT_CLOSED',
+            });
+        }
+
         /* KO'RIK BAYONIDAGI KO'RSATKICHLAR (S3.2, audit B-10).
 
            Auditdagi 500 °C harorat va −40 puls AYNAN shu yo'ldan kirgan:
