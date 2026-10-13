@@ -10,7 +10,7 @@ import {
     FlaskConical, BellRing, CalendarClock, Tv, Wallet, BedDouble,
 } from 'lucide-react';
 import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment, Admission, LabTest, MODALITY_LABELS, TodayZones as Zones } from '../types';
-import { routeOfVisit, modalityOfName } from '../utils/visitRoute';
+import { visitWork, modalityOfName } from '../utils/visitWork';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { maskPhone } from '../utils/accessControl';
@@ -408,9 +408,16 @@ export const Reception: React.FC<Props> = ({
     const pickedStudies = useMemo(() => diagServices.filter(x => studyPick.includes(x.id!)), [diagServices, studyPick]);
     const hasExtras = pickedTests.length > 0 || pickedStudies.length > 0;
 
-    /* BEKATLAR — tartibni registrator emas, qoida qo'yadi (`utils/visitRoute.ts`):
-       laboratoriya → diagnostika → shifokor (oxirida, natijalar bilan). */
-    const routePlan = useMemo(() => {
+    /* TAYINLOVLAR RO'YXATI — TARTIB EMAS.
+
+       Ro'yxatdagi izoh ilgari «tartibni registrator emas, qoida qo'yadi»
+       derdi va o'sha qoida koddan kelardi: laboratoriya → diagnostika →
+       shifokor. Bu taxmin edi, haqiqat emas.
+
+       Registraturada hali HECH NARSA bo'lmagan — vaqt ham yo'q. Shuning
+       uchun bu yerda halol gap bitta: bemorga shular tayinlandi va jami
+       shuncha turadi. Qayerdan boshlashni registrator o'zi aytadi. */
+    const assignedPlan = useMemo(() => {
         const stops: { key: string; place: string; services: string; sum: number }[] = [];
         if (pickedTests.length) {
             stops.push({ key: 'lab', place: t('nav.lab'), services: pickedTests.map(x => x.name).join(' · '), sum: pickedTests.reduce((n, x) => n + (x.price || 0), 0) });
@@ -429,7 +436,7 @@ export const Reception: React.FC<Props> = ({
         return stops;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pickedTests, pickedStudies, departmentId, doctorId, selectedService, departments, doctors]);
-    const routeTotal = routePlan.reduce((n, x) => n + x.sum, 0);
+    const assignedTotal = assignedPlan.reduce((n, x) => n + x.sum, 0);
 
     /* Qidiruv SERVERDA. Ilgari bu yerda brauzerdagi massiv filtrlanardi va
        faqat ism + telefon bo'yicha — ya'ni KARTA RAQAMI bo'yicha bemorni
@@ -772,17 +779,26 @@ export const Reception: React.FC<Props> = ({
         const dept = departments.find(d => d.id === v.departmentId);
         // Kabinet raqami — bemor qaysi xonaga borishini bilishi kerak
         const room = doctors.find(d => d.id === v.doctorId)?.room || '';
-        /* MARSHRUT — bemor qo'lidagi qog'ozda: qayerga, qaysi tartibda. Bitta
-           bekatli qabulda (faqat shifokor) ro'yxat chiqmaydi. */
-        const stops = routeOfVisit(v);
-        const placeOf = (st: ReturnType<typeof routeOfVisit>[number]) => (
+        /* TALONDA TAYINLOVLAR — TARTIB EMAS.
+
+           Bu yerda ilgari bekatlar `1. 2. 3.` deb RAQAMLANARDI, ya'ni bemor
+           qo'liga kod o'ylab topgan ketma-ketlik chiqardi: laboratoriya →
+           diagnostika → shifokor. Haqiqatda tartib klinikadan klinikaga ham,
+           bemordan bemorga ham farq qiladi — shifokor avval ko'rib, keyin
+           tahlilga yuborishi ham mumkin.
+
+           Talon endi faqat NIMA tayinlanganini aytadi. Qayerdan boshlashni
+           registrator bemorga o'zi aytadi: u klinikaning tartibini biladi,
+           kod bilmaydi. */
+        const stops = visitWork(v);
+        const placeOf = (st: ReturnType<typeof visitWork>[number]) => (
             st.kind === 'lab' ? t('nav.lab')
                 : st.kind === 'study' ? (st.modality ? MODALITY_LABELS[st.modality] : t('nav.diagnostics'))
                     : `${v.doctorName || dept?.name || ''}${room ? ` · ${fill(t('reception.ticketRoom'), room)}` : ''}`
         );
         const routeHtml = stops.length > 1
-            ? `<div class="s"></div><div class="c">${esc(t('route.ticket'))}</div>` + stops.map((st, i) =>
-                `<div class="r"><b>${i + 1}. ${esc(placeOf(st))}</b>${st.services.length ? `<br>${esc(st.services.join(', '))}` : ''}</div>`).join('')
+            ? `<div class="s"></div><div class="c">${esc(t('ticket.assigned'))}</div>` + stops.map((st) =>
+                `<div class="r"><b>${esc(placeOf(st))}</b>${st.services.length ? `<br>${esc(st.services.join(', '))}` : ''}</div>`).join('')
             : '';
         const w = window.open('', '_blank', 'width=380,height=520');
         if (!w) { addToast('error', t('print.popupBlocked')); return; }
@@ -1349,13 +1365,19 @@ ${routeHtml}
                         </div>
                     )}
 
-                    {/* Marshrut — ikki va undan ko'p bekat bo'lsa */}
-                    {routePlan.length > 1 && (
-                        <ol aria-label={t('route.ticket')} className="bg-surface rounded-xl border border-line p-4 flex flex-col gap-2">
-                            <li className="text-sm font-semibold text-ink">{fill(t('route.title'), routePlan.length)}</li>
-                            {routePlan.map((st, i) => (
+                    {/* TAYINLOVLAR — RAQAMLANMAGAN RO'YXAT.
+
+                        Ilgari bu `<ol>` edi va har qator oldida 1, 2, 3 degan
+                        doira turardi: ekran bemorga qaysi tartibda yurishni
+                        aytardi. Tartibni esa kod o'ylab topgandi.
+
+                        Endi `<ul>` — to'plam, ketma-ketlik emas. */}
+                    {assignedPlan.length > 1 && (
+                        <ul aria-label={t('ticket.assigned')} className="bg-surface rounded-xl border border-line p-4 flex flex-col gap-2">
+                            <li className="text-sm font-semibold text-ink">{fill(t('ticket.assignedCount'), assignedPlan.length)}</li>
+                            {assignedPlan.map((st) => (
                                 <li key={st.key} className="flex items-center gap-3">
-                                    <span aria-hidden="true" className="shrink-0 w-7 h-7 rounded-full border-2 border-primary-300 dark:border-primary-700 text-primary-600 dark:text-primary-300 text-xs font-bold inline-flex items-center justify-center tabular-nums">{i + 1}</span>
+                                    <span aria-hidden="true" className="shrink-0 w-2 h-2 rounded-full bg-primary-400 dark:bg-primary-500" />
                                     <span className="min-w-0 flex-1 leading-snug">
                                         <span className="block text-sm font-bold text-ink truncate">{st.place}</span>
                                         <span className="block text-xs text-muted truncate">{st.services}</span>
@@ -1363,7 +1385,7 @@ ${routeHtml}
                                     <span className="shrink-0 text-sm font-bold text-ink tabular-nums">{fmt(st.sum)}</span>
                                 </li>
                             ))}
-                        </ol>
+                        </ul>
                     )}
 
                     {/* 4. Qabulni ochish */}
@@ -1371,7 +1393,7 @@ ${routeHtml}
                         <div>
                             <p className="text-sm text-muted">{t('reception.toPay')}</p>
                             <p className="text-2xl font-bold text-ink tabular-nums">
-                                {fmt(routeTotal)} <span className="text-base font-normal">{t('ui.som')}</span>
+                                {fmt(assignedTotal)} <span className="text-base font-normal">{t('ui.som')}</span>
                             </p>
                         </div>
                         {/* NIMA YETISHMAYOTGANI aytiladi. Ilgari tugma jimgina

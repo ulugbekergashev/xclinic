@@ -12,7 +12,7 @@ import {
     buildClinicFlow, FlowLane, flowIdOfAppointment, flowIdOfVisit, initialsOf, minutesOf,
     shortName, spreadPositions, visitLabel, visitName, waitedMinutes,
 } from '../utils/flow';
-import { routeProgress } from '../utils/visitRoute';
+import { workProgress } from '../utils/visitWork';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    «BUGUN KLINIKADA» — klinikaning jonli xaritasi: yo'l → kutish zali →
@@ -608,7 +608,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
             <span className="mt-1 flex flex-wrap items-center gap-1">
                 {shown.map(v => {
                     const name = visitName(v);
-                    const p = routeProgress(v);
+                    const p = workProgress(v);
                     const label = `${name}: ${t('flow.away')}${p ? ` · ${p.done}/${p.total}` : ''}`;
                     const cls = 'inline-flex items-center gap-1 h-5 pl-1.5 pr-1.5 rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/30 text-[10.5px] font-bold text-purple-700 dark:text-purple-300';
                     const body = <>{initialsOf(name)}{p && <span className="tabular-nums opacity-80">{p.done}/{p.total}</span>}</>;

@@ -7,7 +7,7 @@ import type { TranslationKey } from '../../i18n/translations';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../../utils/dateUtils';
 import { formatNumber, formatTime } from '../../utils/format';
 import { maskPhone } from '../../utils/accessControl';
-import { profileRoute, ProfileStop } from '../../utils/visitRoute';
+import { visitWork, VisitWork } from '../../utils/visitWork';
 import type { VisitSheetState } from '../VisitPanel';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -22,8 +22,16 @@ import type { VisitSheetState } from '../VisitPanel';
    Endi bitta qator: kim, nimaga e'tibor berish kerak, bugun qayerda.
    Kam ishlatiladigan amallar «⋯» ostida.
 
-   MARSHRUT — bugungi qabulning bekatlari (`utils/visitRoute.ts`): bemor
-   qayerda bo'lgan, hozir qayerda, yana qayerga borishi kerak.
+   BUGUNGI ISHLAR — marshrut EMAS (`utils/visitWork.ts`).
+
+   Bu yerda ilgari bekatlar raqamlangan yo'l bo'lib chizilardi: 1 → 2 → 3,
+   orasida chiziq. Tartibni esa kod o'ylab topardi (laboratoriya →
+   diagnostika → shifokor), holbuki u klinikadan klinikaga ham, bemordan
+   bemorga ham farq qiladi.
+
+   Endi bu TO'PLAM: nima buyurilgan, nimasi bajarilgan, va har birining
+   yonida O'Z VAQTI. Tartib faqat vaqtdan chiqadi, ya'ni tekshirsa
+   bo'ladi — ekran hech narsani da'vo qilmaydi.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
@@ -126,7 +134,10 @@ export const ProfileHeader: React.FC<Props> = ({
     };
 
     const visit = sheet?.visit && sheet.visit.date === todayISO() ? sheet.visit : null;
-    const stops = visit ? profileRoute(visit, sheet?.money) : [];
+    /* Pul bu ro'yxatga KIRMAYDI. Kassa bekat emas — u hisob blokida turadi.
+       Ilgari u to'langaniga qarab boshiga yoki oxiriga qo'yilardi, ya'ni
+       yana bir o'ylab topilgan qoida edi. */
+    const work = visit ? visitWork(visit) : [];
     const clock = visit ? clockOf(visit, now, t) : null;
 
     const age = calcAge(patient.dob);
@@ -140,23 +151,26 @@ export const ProfileHeader: React.FC<Props> = ({
         visitCount > 0 ? fill(t('card.visitsCount'), visitCount) : '',
     ].filter(Boolean).join(' · ');
 
-    const stopName = (s: ProfileStop): string =>
-        s.kind === 'cashier' ? t('nav.finance')
-            : s.kind === 'lab' ? t('nav.lab')
-                : s.kind === 'study' ? (s.modality ? MODALITY_LABELS[s.modality] : t('nav.diagnostics'))
-                    : `${visit?.doctorName || visit?.department?.name || t('common.doctor')}${room ? ` · ${room}` : ''}`;
+    const workName = (s: VisitWork): string =>
+        s.kind === 'lab' ? t('nav.lab')
+            : s.kind === 'study' ? (s.modality ? MODALITY_LABELS[s.modality] : t('nav.diagnostics'))
+                : `${visit?.doctorName || visit?.department?.name || t('common.doctor')}${room ? ` · ${room}` : ''}`;
 
-    const stopNote = (s: ProfileStop): string => {
-        const at = s.at ? ` · ${formatTime(s.at)}` : '';
-        if (s.kind === 'cashier') {
-            return s.state === 'done' ? fill(t('card.stop.paid'), formatNumber(s.total)) : fill(t('card.stop.due'), formatNumber(s.due));
-        }
+    /* Izoh HAR DOIM vaqt bilan tugaydi, vaqt bo'lsa. Aynan shu narsa
+       ro'yxatni tekshiriladigan qiladi: «natija tayyor · 19:42» deган
+       yozuvni foydalanuvchi o'zi solishtira oladi. */
+    const workNote = (s: VisitWork): string => {
+        const at = s.doneAt ? ` · ${formatTime(s.doneAt)}` : '';
         if (s.kind === 'lab') {
             if (s.state === 'done') return `${t('card.stop.ready')}${at}`;
-            return s.at ? `${t('card.stop.sampled')}${at}` : s.services.join(', ');
+            if (s.state === 'active') return `${t('card.stop.sampled')}${at}`;
+            return s.services.join(', ');
         }
-        if (s.kind === 'study') return s.state === 'done' ? `${t('card.stop.performed')}${at}` : s.services.join(', ');
-        if (s.state === 'done') return t('card.stop.finished');
+        if (s.kind === 'study') {
+            if (s.state === 'done') return `${t('card.stop.performed')}${at}`;
+            return s.services.join(', ');
+        }
+        if (s.state === 'done') return `${t('card.stop.finished')}${at}`;
         if (visit?.status === 'In Progress') return `${t('card.stop.now')}${at}`;
         if (visit?.status === 'Called') return t('card.clock.called');
         return visit?.queueNumber ? fill(t('card.stop.queue'), visit.queueNumber) : t('card.stop.later');
@@ -269,46 +283,42 @@ export const ProfileHeader: React.FC<Props> = ({
                     </div>
                 </div>
 
-                {/* Bitta bekatli qabul marshrut emas — yo'l chizilmaydi */}
-                {stops.length > 1 && (
-                    <div className="mt-5 flex flex-col lg:flex-row lg:items-stretch gap-x-4 gap-y-3">
-                        <p className="lg:w-32 shrink-0 flex lg:flex-col lg:justify-center items-center lg:items-start gap-x-2 gap-y-0.5">
-                            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted">
-                                <Footprints className="w-4 h-4" aria-hidden="true" />{t('route.ticket')}
-                            </span>
-                            <span className="text-xs font-semibold text-muted">{fill(t('card.routeToday'), stops.length)}</span>
+                {/* Bitta ishli qabulda ko'rsatadigan ro'yxat yo'q */}
+                {work.length > 1 && (
+                    <div className="mt-5 flex flex-col lg:flex-row lg:items-start gap-x-4 gap-y-2">
+                        <p className="lg:w-32 shrink-0 inline-flex items-center gap-1.5 lg:pt-1.5 text-[11px] font-bold uppercase tracking-wider text-muted">
+                            <Footprints className="w-4 h-4" aria-hidden="true" />{t('card.workToday')}
                         </p>
-                        <ol aria-label={t('route.ticket')} className="flex-1 min-w-0 flex gap-2 overflow-x-auto pt-1.5 pb-1">
-                            {stops.map((s, index) => {
-                                const isLast = index === stops.length - 1;
-                                return (
-                                    <li key={`${s.kind}-${index}`} aria-current={s.state === 'now' ? 'step' : undefined}
-                                        className="relative flex-1 basis-0 min-w-[112px] flex flex-col items-center text-center">
-                                        {!isLast && (
-                                            <span aria-hidden="true"
-                                                className={`absolute top-[21px] left-1/2 w-[calc(100%+0.5rem)] border-t-2 ${s.state === 'done' ? 'border-emerald-300 dark:border-emerald-800' : 'border-dashed border-line'}`} />
-                                        )}
-                                        <span className={`relative w-11 h-11 rounded-full bg-surface grid place-items-center text-sm font-bold ${s.state === 'done'
-                                            ? 'border-[2.5px] border-emerald-600 text-emerald-700 dark:text-emerald-400'
-                                            : s.state === 'now' ? 'border-[3px] border-primary-600 text-ink'
-                                                : 'border-2 border-dashed border-line text-muted'}`}>
-                                            {s.state === 'done' ? <Check className="w-5 h-5" aria-hidden="true" /> : index + 1}
-                                            {s.state === 'now' && (
-                                                <span aria-hidden="true" className="absolute -inset-1.5 rounded-full border-2 border-primary-500 animate-pulse" />
-                                            )}
+                        {/* `<ul>` — TO'PLAM. Ilgari `<ol>` edi va raqamlar bemorga
+                            qaysi tartibda yurishni aytardi. */}
+                        <ul aria-label={t('card.workToday')} className="flex-1 min-w-0 flex flex-wrap gap-2">
+                            {work.map((s, index) => (
+                                <li key={`${s.kind}-${index}`}
+                                    aria-current={s.state === 'active' ? 'step' : undefined}
+                                    className={`min-w-0 inline-flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border ${s.state === 'done'
+                                        ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40'
+                                        : s.state === 'active'
+                                            ? 'border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40'
+                                            : 'border-dashed border-line bg-surface'}`}>
+                                    <span aria-hidden="true" className={`shrink-0 w-6 h-6 rounded-full grid place-items-center ${s.state === 'done'
+                                        ? 'bg-emerald-600 text-white'
+                                        : s.state === 'active'
+                                            ? 'border-[2.5px] border-primary-600'
+                                            : 'border-2 border-dashed border-line'}`}>
+                                        {s.state === 'done' && <Check className="w-3.5 h-3.5" />}
+                                    </span>
+                                    <span className="min-w-0 leading-tight">
+                                        <span className={`block text-[12.5px] font-bold truncate ${s.state === 'open' ? 'text-muted' : 'text-ink'}`}>
+                                            {workName(s)}
                                         </span>
-                                        <span className={`mt-1.5 max-w-full px-1 text-[12.5px] font-bold truncate ${s.state === 'next' ? 'text-muted' : 'text-ink'}`}>
-                                            {stopName(s)}
+                                        <span className={`block text-[11px] font-semibold truncate ${s.state === 'active'
+                                            ? 'text-primary-700 dark:text-primary-300' : 'text-muted'}`}>
+                                            {workNote(s)}
                                         </span>
-                                        <span className={`max-w-full px-1 text-[11px] font-semibold truncate ${s.state === 'now'
-                                            ? (s.kind === 'cashier' ? 'text-amber-700 dark:text-amber-400' : 'text-primary-700 dark:text-primary-300')
-                                            : 'text-muted'}`}>
-                                            {stopNote(s)}
-                                        </span>
-                                    </li>
-                                );
-                            })}
-                        </ol>
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 )}
             </section>
