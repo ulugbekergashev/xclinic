@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { formatDate, formatFullName, formatNumber } from '../utils/format';
 import {
@@ -24,6 +24,7 @@ import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
 const LIVE_EVENTS: LiveEventType[] = ['admission.changed', 'charge.paid'];
 import { Clinic } from '../types';
 import { printDischarge } from '../utils/printForms';
+import { AdmissionBill } from '../components/AdmissionBill';
 import { VitalsChart } from '../components/VitalsChart';
 import { todayISO } from '../utils/dateUtils';
 import { DoctorPicker } from '../components/DoctorPicker';
@@ -59,11 +60,12 @@ interface Props {
    qo'yardi («160 000») — bitta ilovada ikki xil ko'rinish. */
 const fmt = (n: number) => formatNumber(n);
 
-/** Hisob qatorlarining manbasi — "nima uchun bunday summa" savoliga javob */
-const SOURCE_LABEL: Record<string, string> = {
-    Bed: tr('inp.bed'), Medication: tr('inpatient.dorilar'), Service: tr('inpatient.xizmatlar'),
-    Lab: tr('inpatient.tahlillar'), Study: tr('patienthistorypanel.tekshiruvlar'), Other: tr('inpatient.boshqa'),
-};
+/** Yotish hisobiga qo'lda qator yoza oladiganlar — serverdagi qoida bilan bir xil
+ *  (`backend/permissions.ts`, `POST /api/admissions/:id/charges`). */
+const BILL_WRITERS = ['NURSE', 'DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN'];
+/** Qatorni bekor qila oladiganlar (`DELETE /api/charges/:id`) — hamshira va laborant yo'q */
+const BILL_REMOVERS = ['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN'];
+
 const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
 /** Yotgan kunlar soni — kunlik hisobni ko'rsatish uchun */
@@ -87,6 +89,9 @@ export const Inpatient: React.FC<Props> = ({
 
     const [admitBed, setAdmitBed] = useState<{ bed: Bed; ward: Ward } | null>(null);
     const [detail, setDetail] = useState<Admission | null>(null);
+    /** Hozir ochiq turgan yotish — kechikkan javoblar shunga solishtiriladi */
+    const detailIdRef = useRef<string | null>(null);
+    detailIdRef.current = detail?.id ?? null;
     const [showWard, setShowWard] = useState(false);
 
     const [admitForm, setAdmitForm] = useState({ patientId: '', doctorId: '', reason: '', diagnosis: '' });
@@ -829,50 +834,22 @@ export const Inpatient: React.FC<Props> = ({
                                 narsa. Depozit alohida sxema emas: u avans
                                 (`Patient.balance`), qaror В7. */}
                             {billing && (
-                                <div className="p-3 rounded-lg bg-canvas/40 border border-line">
-                                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                                        <span className="flex items-center gap-1.5 text-sm text-muted">
-                                            <Wallet className="w-4 h-4 text-faint" />
-                                            {t('inpatient.yozilgan')} <b className="tabular-nums">{fmt(billing.accrued)}</b>
-                                        </span>
-                                        <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                                            {t('inpatient.tolangan')} <b className="tabular-nums">{fmt(billing.paid)}</b>
-                                        </span>
-                                        <span className={`text-sm ${billing.due > 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-faint'}`}>
-                                            {t('inpatient.qarz')} <b className="tabular-nums">{fmt(billing.due)}</b>
-                                        </span>
-                                        {billing.advance > 0 && (
-                                            <span className="text-sm text-primary-600 dark:text-primary-400">
-                                                Avansda: <b className="tabular-nums">{fmt(billing.advance)}</b>
-                                            </span>
-                                        )}
-                                        {detail.status === 'Active' && detail.dailyRate > 0 && (
-                                            <span className="text-xs text-faint ml-auto">
-                                                {t('inpatient.koyka')} {fmt(detail.dailyRate)}/kun
-                                                {bedDays && bedDays.charged > 0 ? fill(t('inpatient.x_kun_yozildi'), bedDays.charged) : ''}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {/* Nima uchun bunday summa: koyka, dori, xizmat */}
-                                    {Object.keys(billing.bySource || {}).length > 0 && (
-                                        <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-line">
-                                            {Object.entries(billing.bySource).map(([src, v]: any) => (
-                                                <span key={src} className="text-[11px] text-muted">
-                                                    {SOURCE_LABEL[src] || src}: <b className="tabular-nums">{fmt(v.total)}</b>
-                                                    {v.paid > 0 && v.paid < v.total ? fill(t('inpatient.tolandi_x'), fmt(v.paid)) : ''}
-                                                    {v.count > 1 ? fill(t('inpatient.x_ta'), v.count) : ''}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {billing.due > 0 && billing.advance > 0 && (
-                                        <p className="text-[11px] text-primary-700 dark:text-primary-300 mt-2">
-                                            {t('inpatient.bemorning_avansi_bor_kassada')}
-                                        </p>
-                                    )}
-                                </div>
+                                <AdmissionBill
+                                    admission={detail}
+                                    billing={billing}
+                                    bedDays={bedDays}
+                                    clinic={currentClinic}
+                                    canAdd={BILL_WRITERS.includes(userRole || '')}
+                                    canRemove={BILL_REMOVERS.includes(userRole || '')}
+                                    onChanged={async () => {
+                                        /* Javob kelguncha boshqa bemor kartasi ochilgan
+                                           bo'lishi mumkin — begona hisob unga yozilmasin.
+                                           Xato yutilmaydi: blok o'zi aytadi. */
+                                        const id = detail.id;
+                                        const fresh = await api.admissions.billing(id);
+                                        if (detailIdRef.current === id) setBilling(fresh);
+                                    }}
+                                />
                             )}
 
                             {/* ── Bugungi obxod ─────────────────────────────

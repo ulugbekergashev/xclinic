@@ -98,8 +98,97 @@ async function main() {
     if (again.data?.id) await call('POST', `/admissions/${again.data.id}/discharge`, { confirmDebt: true }, token);
 
     await bedDaysOnDischarge(token);
+    await manualCharges(token);
 
     finish();
+}
+
+/* HISOBGA QO'LDA QATOR — nom va summa (`POST /admissions/:id/charges`).
+
+   Klinika so'rovi: yotgan bemorga berilgan dori summasini oddiy kiritish va
+   chiqishda hammasini chek qilib berish. Sinov uch narsani isbotlaydi:
+   qator AYNAN shu yotish hisobiga tushadi; hamshira yoza oladi, laborant
+   yo'q; chiqarilgan bemorga va noto'g'ri summaga yozilmaydi. */
+async function manualCharges(token: string) {
+    console.log('\n═══ 9. HISOBGA QO\'LDA QATOR ═══════════════════════════');
+    const t9 = String(Date.now()).slice(-6);
+    const p = (await call('POST', '/patients', {
+        firstName: 'Hisob', lastName: `Qator${t9}`, gender: 'Male', phone: uniquePhone(), force: true,
+    }, token)).data;
+    const adm = await call('POST', '/admissions', {
+        patientId: p?.id, patientName: `${p?.lastName} ${p?.firstName}`, dailyRate: 0,
+    }, token);
+    ok('bemor yotqizildi', adm.status === 200 && !!adm.data?.id, `status ${adm.status}`);
+    if (!adm.data?.id) return;
+    const path = `/admissions/${adm.data.id}/charges`;
+    const billing = async () => (await call('GET', `/admissions/${adm.data.id}/billing`, undefined, token)).data;
+
+    const added = await call('POST', path, { name: 'Dorilar', amount: 150000, source: 'Medication' }, token);
+    ok('qator yozildi', added.status === 200 && Math.round(added.data?.total || 0) === 150000,
+        `status ${added.status}: ${JSON.stringify(added.data).slice(0, 120)}`);
+    ok('qator shu yotishga va bemorga bog\'landi',
+        added.data?.admissionId === adm.data.id && added.data?.patientId === p.id);
+    ok('kim yozgani saqlandi', !!added.data?.createdByName, String(added.data?.createdByName));
+    /* Qator ombor yoki tayinlov bilan tasdiqlanmagan — faqat odam yozgan
+       summa. Shuning uchun u kassa jurnalida turishi shart. */
+    const trail = (await call('GET', '/cash-audit', undefined, token)).data;
+    const entry = (Array.isArray(trail) ? trail : []).find((x: any) => x.entityId === added.data?.id);
+    ok('kassa jurnaliga yozildi', entry?.action === 'Create' && /150000/.test(entry?.summary || ''),
+        JSON.stringify(entry || null).slice(0, 140));
+
+    const b1 = await billing();
+    ok('hisobda ko\'rindi: yozilgan 150 000, qarz 150 000',
+        Math.round(b1?.accrued) === 150000 && Math.round(b1?.due) === 150000, `accrued ${b1?.accrued}, due ${b1?.due}`);
+    ok('manba — Dorilar', b1?.bySource?.Medication?.count === 1, JSON.stringify(b1?.bySource));
+
+    /* Noto'g'ri kiritish — hech narsa yozilmaydi */
+    const bad: [string, any][] = [
+        ['nomsiz', { name: '  ', amount: 1000 }],
+        ['nol summa', { name: 'Dori', amount: 0 }],
+        ['manfiy summa', { name: 'Dori', amount: -5000 }],
+        ['son emas', { name: 'Dori', amount: 'abc' }],
+        ['haddan katta summa', { name: 'Dori', amount: 5_000_000_000 }],
+    ];
+    for (const [label, body] of bad) {
+        const r = await call('POST', path, body, token);
+        ok(`${label} — 400`, r.status === 400, `status ${r.status}`);
+    }
+    /* Koyka qatorini qo'lda «yasab» bo'lmaydi — manba «Boshqa» ga tushadi */
+    const forged = await call('POST', path, { name: 'Soxta koyka', amount: 1000, source: 'Bed' }, token);
+    ok('begona manba qabul qilinmaydi (Other bo\'ladi)', forged.status === 200 && forged.data?.source === 'Other',
+        `source ${forged.data?.source}`);
+    const b2 = await billing();
+    ok('xato urinishlar hisobni o\'zgartirmadi', Math.round(b2?.accrued) === 151000, `accrued ${b2?.accrued}`);
+
+    /* ROLLAR: hamshira — ha, laborant — yo'q. Loginlar bazadagi xodimlardan. */
+    const usernameOf = async (endpoint: string) => {
+        const rows = (await call('GET', endpoint, undefined, token)).data;
+        return (Array.isArray(rows) ? rows : rows?.items || []).find((x: any) => x?.username)?.username || null;
+    };
+    const loginAs = async (username: string | null) => username
+        ? (await call('POST', '/auth/login', { username, password: 'testpass123' })).data?.token || null
+        : null;
+    const nurseToken = await loginAs(await usernameOf('/nurses'));
+    if (nurseToken) {
+        const byNurse = await call('POST', path, { name: 'Sistema', amount: 30000, source: 'Service' }, nurseToken);
+        ok('hamshira yoza oladi', byNurse.status === 200, `status ${byNurse.status}: ${JSON.stringify(byNurse.data).slice(0, 100)}`);
+        const general = await call('POST', '/charges', { patientId: p.id, name: 'Sinov', unitPrice: 1000 }, nurseToken);
+        ok('umumiy /charges hamshiraga yopiq qoldi (403)', general.status === 403, `status ${general.status}`);
+    } else {
+        console.log('  ⚠️  bazada hamshira logini yo\'q — rol tekshiruvi o\'tkazib yuborildi');
+    }
+    const labToken = await loginAs(await usernameOf('/lab-technicians'));
+    if (labToken) {
+        const byLab = await call('POST', path, { name: 'Sinov', amount: 1000 }, labToken);
+        ok('laborant yoza olmaydi (403)', byLab.status === 403, `status ${byLab.status}`);
+    }
+
+    const foreign = await call('POST', '/admissions/yoq-bunday-yotish/charges', { name: 'Dori', amount: 1000 }, token);
+    ok('yo\'q yotish — 404', foreign.status === 404, `status ${foreign.status}`);
+
+    await call('POST', `/admissions/${adm.data.id}/discharge`, { confirmDebt: true }, token);
+    const late = await call('POST', path, { name: 'Dori', amount: 1000 }, token);
+    ok('chiqarilgan bemorga yozilmaydi (409)', late.status === 409, `status ${late.status}`);
 }
 
 /* KOYKA HAQI CHIQARISHDA — ROLDAN QAT'I NAZAR, TAKRORSIZ.

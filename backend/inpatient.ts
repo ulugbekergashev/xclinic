@@ -33,7 +33,7 @@ import { writeOffCore, withRetry } from './inventory';
 import { randomUUID } from 'crypto';
 import { emitEvent } from './events';
 import { validateVital, VITAL_KINDS as SHARED_VITAL_KINDS } from '../shared/validation';
-import { createCharge } from './billing';
+import { createCharge, writeAuditFor } from './billing';
 import bcrypt from 'bcryptjs';
 
 type Deps = {
@@ -45,6 +45,14 @@ type Deps = {
 /* Pul — BUTUN so'm, `money.ts` dagi yagona qoida. Ilgari bu yerda
    o'zining nusxasi turardi va modullar orasida aniqlik farq qilardi. */
 const round = som;
+
+/* Hisobga QO'LDA yoziladigan qator chegaralari (`POST /admissions/:id/charges`).
+   Manba faqat shu uchtasi: koyka va tahlil qatorlarini o'z marshrutlari
+   yaratadi va ularni qo'lda «yasash» hisobotni chalkashtirardi. */
+const MANUAL_CHARGE_SOURCES = ['Medication', 'Service', 'Other'];
+const MANUAL_CHARGE_NAME_MAX = 200;
+/** Bitta qatorga yozib bo'ladigan eng katta summa — xato terilgan nollardan himoya */
+const MANUAL_CHARGE_AMOUNT_MAX = 100_000_000;
 
 /** 'YYYY-MM-DD' ni bir kun oldinga suradi */
 function nextDay(date: string): string {
@@ -281,6 +289,86 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
             bySource,
             charges,
         });
+    });
+
+    /* ═══ HISOBGA QO'LDA QATOR ════════════════════════════════════════════════
+
+       Klinikadan kelgan so'rov: «bemorni oddiy kiritib qo'yish, berilgan
+       dorilar summasini kiritish va bemor ketayotgan kuni shu summalarni
+       chek qilib chiqarish».
+
+       Yotish hisobiga qator shu paytgacha faqat IKKI yo'l bilan tushardi:
+       koyka haqi (o'zi hisoblanadi) va dori varag'i — u esa shifokor
+       tayinlovi, ombordagi partiya va narxni talab qiladi. Omborni
+       yuritmaydigan klinikada yotgan bemorga sarflangan dorini hisobga
+       yozishning iloji yo'q edi.
+
+       Bu yo'l ataylab SODDA: nom va summa. Ombordan hech narsa yechilmaydi —
+       omborni yuritadigan klinika dori varag'idan foydalanaveradi.
+
+       HAMSHIRAGA HAM OCHIQ, va faqat shu yerda. Umumiy `POST /api/charges`
+       unga yopiq qoladi (istalgan bemorga pul yozish huquqi). Bu marshrut
+       esa FAOL YOTISHGA bog'langan: hamshira dori varag'i orqali shu hisobga
+       baribir qator yozadi, bu — o'sha ishning qo'lda shakli. Kim yozgani
+       qatorda qoladi (`createdByName`). */
+    route('post', '/api/admissions/:id/charges', async (req, res, clinicId) => {
+        if (!hasRole(req, 'NURSE', 'DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN')) {
+            return res.status(403).json({ error: "Ruxsat yo'q" });
+        }
+        const adm = await ownAdmission(req.params.id, clinicId);
+        if (!adm) return res.status(404).json({ error: 'Yotish topilmadi' });
+        if (adm.status === 'Discharged') return res.status(409).json({ error: 'Bemor chiqarilgan' });
+
+        const name = String(req.body?.name ?? '').trim().slice(0, MANUAL_CHARGE_NAME_MAX);
+        if (!name) return res.status(400).json({ error: 'Nomini kiriting' });
+
+        const rawAmount = Number(req.body?.amount);
+        if (!Number.isFinite(rawAmount) || rawAmount <= 0 || rawAmount > MANUAL_CHARGE_AMOUNT_MAX) {
+            return res.status(400).json({ error: "Summa noto'g'ri" });
+        }
+        const amount = round(rawAmount);
+        if (amount <= 0) return res.status(400).json({ error: "Summa noto'g'ri" });
+
+        const source = MANUAL_CHARGE_SOURCES.includes(req.body?.source) ? req.body.source : 'Other';
+        const user = (req as any).user;
+
+        /* Qator va yotishdagi yig'indi birga: biri yozilib, ikkinchisi
+           yozilmay qolmasin (dori varag'idagi bilan bir xil qoida). */
+        const charge = await prisma.$transaction(async (tx: any) => {
+            const row = await createCharge(tx, {
+                clinicId,
+                patientId: adm.patientId,
+                patientName: adm.patientName,
+                source,
+                admissionId: adm.id,
+                name,
+                unitPrice: amount,
+                quantity: 1,
+                createdByName: user?.name || null,
+                doctorId: adm.doctorId,
+                doctorName: adm.doctorName,
+            });
+            if (row) {
+                await tx.admission.update({
+                    where: { id: adm.id },
+                    data: { totalCharges: { increment: row.total } },
+                });
+            }
+            return row;
+        });
+        if (!charge) return res.status(400).json({ error: "Summa noto'g'ri" });
+
+        /* Kassa izi — commit dan KEYIN (to'lovdagi bilan bir xil sabab:
+           jurnal xatosi qatorni to'xtatmasin). Bu qator ombor yoki tayinlov
+           bilan tasdiqlanmagan — faqat odam yozgan summa, shuning uchun kim
+           va qancha yozgani jurnalda turishi shart. */
+        await writeAuditFor(prisma, {
+            clinicId, date: tashkentDateStr(), action: 'Create', entityType: 'VisitCharge',
+            entityId: charge.id,
+            summary: `${adm.patientName}, statsionar hisobiga: ${name} — ${Math.round(charge.total)}`,
+            byName: user?.name || null,
+        });
+        res.json(charge);
     });
 
     // ═══ DORI BERILISHI (MAR) ════════════════════════════════════════════════

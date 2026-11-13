@@ -1400,6 +1400,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                patient={patient}
                services={services}
                receivedByName={myDoctor ? formatDoctorName(myDoctor) : undefined}
+               clinic={currentClinic}
                addToast={(type, msg) => type === 'error' ? toast.error(msg) : toast.success(msg)}
                onDone={() => reloadClinical()}
             />

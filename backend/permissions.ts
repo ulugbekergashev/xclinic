@@ -207,6 +207,10 @@ export const RULES: Rule[] = [
     { method: 'POST', path: '/api/admissions/:id/rounds', roles: owner(D, N) },
     { method: 'POST', path: '/api/admissions/:id/medications', roles: owner(D) },
     { method: 'POST', path: '/api/admissions/:id/charge-bed-days', roles: owner(R) },
+    /* Yotish hisobiga qo'lda qator (nom + summa). Hamshiraga ham ochiq:
+       u dori varag'i orqali shu hisobga baribir yozadi. Umumiy
+       `/api/charges` esa unga yopiq qoladi. */
+    { method: 'POST', path: '/api/admissions/:id/charges', roles: owner(D, R, N) },
     { method: 'POST', path: '/api/medication-orders/:id/administer', roles: owner(N, D) },
     { method: 'POST', path: '/api/vitals', roles: owner(N, D, R) },
     { method: 'POST', path: '/api/beds/:id/ready', roles: owner(N, R) },

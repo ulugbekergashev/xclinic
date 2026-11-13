@@ -1933,6 +1933,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                 patient={advancePatient}
                 services={services}
                 receivedByName={currentUserName}
+                clinic={currentClinic}
                 addToast={addToast}
                 onDone={() => onChargesChanged?.()}
             />

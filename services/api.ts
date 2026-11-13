@@ -4518,6 +4518,21 @@ export const api = {
             }>(`/admissions/${id}/billing`);
         },
 
+        /** Hisobga qo'lda qator: nom + summa (dori, muolaja, boshqa).
+         *  Ombordan hech narsa yechilmaydi — bu faqat hisob. */
+        addCharge: (id: string, data: { name: string; amount: number; source?: 'Medication' | 'Service' | 'Other' }) => {
+            if (isDemoMode()) {
+                const a = DEMO_ADMISSIONS.find(x => x.id === id);
+                if (!a) return Promise.reject(new Error('Yotish topilmadi'));
+                a.totalCharges = (a.totalCharges || 0) + data.amount;
+                return demoDone({
+                    id: demoId('demo-charge'), name: data.name, total: data.amount,
+                    paidAmount: 0, quantity: 1, status: 'Unpaid', source: data.source || 'Other',
+                } as unknown as VisitCharge);
+            }
+            return fetchJson<VisitCharge>(`/admissions/${id}/charges`, { method: 'POST', body: JSON.stringify(data) });
+        },
+
         /** Kunlik dori varag'i: tayinlovlar + shu kundagi belgilar */
         mar: (id: string, date?: string) => {
             if (isDemoMode()) {

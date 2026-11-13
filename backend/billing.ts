@@ -258,7 +258,7 @@ export async function findBalanceMismatches(prisma: any, patientWhere: any) {
 
 /** Kassa izi. Ilgari to'lov va qator bekor qilinishi jurnalga TUSHMASDI —
  *  bu kassa dasturidagi eng klassik teshik (GAP-ANALYSIS, A19). */
-async function writeAuditFor(prisma: any, input: {
+export async function writeAuditFor(prisma: any, input: {
     clinicId: string; date: string; action: string; entityType: string;
     entityId?: string | null; summary: string; byName?: string | null;
 }) {

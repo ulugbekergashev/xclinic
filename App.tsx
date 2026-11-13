@@ -2059,6 +2059,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                   showInpatientZone={canOpenModule(userRole, accessControl, 'inpatient')}
                   onCreatePatient={addPatient}
                   onPatientAdded={rememberPatient}
+                  currentUserName={userName}
                   addToast={addToast}
                 />
               )} />

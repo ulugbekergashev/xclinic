@@ -20,6 +20,7 @@ import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
 import { useLiveUpdates, useLiveHealthy, LiveEventType } from '../hooks/useLiveUpdates';
 import { useResourceSync } from '../hooks/useDataSync';
 import { PatientFormModal } from '../components/PatientFormModal';
+import { ServicePaymentModal } from '../components/ServicePaymentModal';
 import { Modal } from '../components/Common';
 import { ClinicMap } from '../components/ClinicMap';
 import { AttentionList, AttentionItem } from '../components/AttentionList';
@@ -97,6 +98,8 @@ interface Props {
        ishlamasdi: «abcdefg!!!» telefon sifatida o'tib ketardi. */
     onCreatePatient: (data: Omit<Patient, 'id' | 'clinicId'>) => Promise<Patient | void>;
     onPatientAdded: (p: Patient) => void;
+    /** Kim ishlayapti — chekka «Kassir» bo'lib yoziladi */
+    currentUserName?: string;
     addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
@@ -111,7 +114,7 @@ export const Reception: React.FC<Props> = ({
     clinicId, patients, doctors, departments, services, currentClinic,
     userRole, doctorId: myDoctorId, showPatientPhone = true,
     showLabZone = true, showInpatientZone = true,
-    onCreatePatient, onPatientAdded, addToast,
+    onCreatePatient, onPatientAdded, currentUserName, addToast,
 }) => {
     const showPhone = (v?: string) => showPatientPhone ? formatUzPhone(v || '') : maskPhone(v);
     const navigate = useNavigate();
@@ -147,6 +150,12 @@ export const Reception: React.FC<Props> = ({
 
     const [showNewPatient, setShowNewPatient] = useState(false);
     const [showIntake, setShowIntake] = useState(false);
+    /* QABULSIZ TO'LOV — ukol, muolaja, bog'lam. Bunday bemor shifokor
+       navbatiga kirmaydi: unga talon ham, bo'lim ham kerak emas, faqat
+       chek. Ilgari buning uchun Moliya bo'limiga o'tish kerak edi; kun bo'yi
+       shu ekranda o'tiradigan xodim uchun tugma shu yerda. Oyna kassadagi
+       bilan AYNAN BITTA — pul yo'li ko'paymaydi. */
+    const [showPayment, setShowPayment] = useState(false);
     /* Takroriy qabul: mavjudini ochish yoki ataylab yangisini yaratish */
     const [duplicate, setDuplicate] = useState<{ visitId: string; queueNumber: number | null; status: string } | null>(null);
 
@@ -1047,6 +1056,12 @@ ${routeHtml}
                         yonma-yon navbat ro'yxatini ham takrorlardi. F2 ham,
                         skaner ham shu oynani ochadi. */}
                     {canRegister && (
+                        <button type="button" onClick={() => setShowPayment(true)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border border-line text-ink hover:border-primary-400">
+                            <Wallet className="w-4 h-4" /> {t('payment.title')}
+                        </button>
+                    )}
+                    {canRegister && (
                         <button type="button" onClick={openIntake} title="F2"
                             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700">
                             <Plus className="w-4 h-4" /> {t('today.newVisit')}
@@ -1411,6 +1426,20 @@ ${routeHtml}
                     </div>
                 </div>
             </Modal>
+        )}
+
+        {canRegister && (
+            <ServicePaymentModal
+                isOpen={showPayment}
+                onClose={() => setShowPayment(false)}
+                patient={null}
+                services={services}
+                receivedByName={currentUserName}
+                clinic={currentClinic}
+                addToast={addToast}
+                onPatientCreated={onPatientAdded}
+                onDone={() => { loadDue(); loadOwner(); }}
+            />
         )}
 
         {/* Yangi bemor — YAGONA forma (`PatientFormModal`).
