@@ -621,6 +621,26 @@ const DEMO_BATCHES: InventoryBatch[] = Array.from({ length: 6 }, (_, i) => {
 const demoId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 const demoNow = () => new Date().toISOString();
 
+/** `YYYY-MM-DD` — brauzerning mahalliy kuni (demo koyka kunlari uchun) */
+const demoLocalDay = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/* Yotishga bog'langan hisob qatori — demo. Server (`backend/inpatient.ts`)
+   bilan bir xil: bemor va shifokor yotishning o'zidan olinadi, qator
+   `DEMO_CHARGES` ga tushadi — ya'ni kassaning «to'lanmagan» ro'yxatida ham,
+   statsionar hisobida ham bir xil ko'rinadi. */
+const demoAdmissionCharge = (a: Admission, x: {
+    source: VisitCharge['source']; sourceId?: string | null; name: string; amount: number;
+}): VisitCharge => ({
+    id: demoId('demo-charge'), clinicId: 'demo-clinic-1', visitId: null,
+    patientId: a.patientId, patientName: a.patientName,
+    source: x.source, sourceId: x.sourceId ?? null, name: x.name,
+    quantity: 1, unitPrice: x.amount, discount: 0, total: x.amount,
+    status: 'Unpaid', paidAmount: 0, paidAt: null,
+    createdAt: demoNow(), createdByName: 'Demo Admin',
+    doctorId: a.doctorId ?? null, doctorName: a.doctorName ?? null, admissionId: a.id,
+});
+
 /** Nomi bo'yicha ombor mahsuloti — jurnal qatoriga nom yozish uchun. */
 const demoItem = (itemId: string) => DEMO_INVENTORY.find(i => i.id === itemId);
 
@@ -4482,14 +4502,28 @@ export const api = {
            ochilganda chaqirish xavfsiz. */
         chargeBedDays: (id: string) => {
             if (isDemoMode()) {
+                /* Server bilan bir xil: har kun — alohida qator (`sourceId`
+                   = yotish:kun), bor kun qayta yozilmaydi. Ilgari demo bu yerda
+                   SUMMANI «kun» deb qaytarardi («+450000 kun yozildi») va
+                   qator yaratmasdi — hisob va chek soxta raqamdan chiqardi. */
                 const a = DEMO_ADMISSIONS.find(x => x.id === id);
-                const days = a ? Math.max(1, Math.round((Date.now() - new Date(a.admittedAt).getTime()) / 86400000)) : 0;
-                const total = days * (a?.dailyRate || 0);
-                if (a) a.totalCharges = total;
-                return demoRead({
-                    charged: total, from: a?.admittedAt ?? null,
-                    to: new Date().toISOString(), total,
-                });
+                if (!a || !(a.dailyRate > 0)) return demoRead({ charged: 0, from: null, to: null, total: 0 });
+                const end = a.dischargedAt ? new Date(a.dischargedAt) : new Date();
+                const day = new Date(a.admittedAt);
+                day.setHours(0, 0, 0, 0);
+                const days: string[] = [];
+                let total = 0;
+                for (let guard = 0; day <= end && guard < 400; guard++, day.setDate(day.getDate() + 1)) {
+                    const d = demoLocalDay(day);
+                    const sourceId = `${a.id}:${d}`;
+                    if (DEMO_CHARGES.some(c => c.source === 'Bed' && c.sourceId === sourceId)) continue;
+                    DEMO_CHARGES.push(demoAdmissionCharge(a, { source: 'Bed', sourceId, name: `Koyka (${d})`, amount: a.dailyRate }));
+                    days.push(d);
+                    total += a.dailyRate;
+                }
+                if (days.length === 0) return demoRead({ charged: 0, from: null, to: null, total: 0 });
+                a.totalCharges = (a.totalCharges || 0) + total;
+                return demoDone({ charged: days.length, from: days[0], to: days[days.length - 1], total });
             }
             return fetchJson<{
                 charged: number; from: string | null; to: string | null; total: number; skipped?: string;
@@ -4499,16 +4533,25 @@ export const api = {
         /** Yotish hisobi: yozilgan, to'langan, qarz, avans (depozit) */
         billing: (id: string) => {
             if (isDemoMode()) {
+                /* Hisob QATORLARDAN — server (`GET /admissions/:id/billing`)
+                   bilan bir xil. Ilgari demo «to'langan = 60%» deb o'ylab
+                   topardi va qo'shilgan dori hisobda ham, chekda ham chiqmasdi. */
                 const a = DEMO_ADMISSIONS.find(x => x.id === id);
-                const accrued = a?.totalCharges || 0;
-                const paid = Math.round(accrued * 0.6);
+                if (!a) return Promise.reject(new Error('Yotish topilmadi'));
+                const charges = DEMO_CHARGES.filter(c => c.admissionId === id && c.status !== 'Cancelled');
+                const accrued = charges.reduce((s, c) => s + (c.total || 0), 0);
+                const paid = charges.reduce((s, c) => s + (c.paidAmount || 0), 0);
+                const bySource: Record<string, { count: number; total: number; paid: number }> = {};
+                for (const c of charges) {
+                    const k = String(c.source);
+                    const cur = bySource[k] || { count: 0, total: 0, paid: 0 };
+                    bySource[k] = { count: cur.count + 1, total: cur.total + (c.total || 0), paid: cur.paid + (c.paidAmount || 0) };
+                }
+                const patient = DEMO_PATIENTS.find(p => p.id === a.patientId);
                 return demoRead({
-                    accrued, paid, due: accrued - paid, advance: 0,
-                    bySource: { 'Koyka haqi': { count: 1, total: accrued, paid } },
-                    charges: accrued > 0 ? [{
-                        id: `demo-charge-${id}`, name: 'Koyka haqi',
-                        date: a?.admittedAt, total: accrued, paid, source: 'Koyka haqi',
-                    }] : [],
+                    accrued, paid, due: accrued - paid,
+                    advance: Math.max(0, (patient as any)?.balance || 0),
+                    bySource, charges,
                 });
             }
             return fetchJson<{
@@ -4522,13 +4565,22 @@ export const api = {
          *  Ombordan hech narsa yechilmaydi — bu faqat hisob. */
         addCharge: (id: string, data: { name: string; amount: number; source?: 'Medication' | 'Service' | 'Other' }) => {
             if (isDemoMode()) {
+                /* Tekshiruvlar server bilan bir xil (`POST /admissions/:id/charges`) */
                 const a = DEMO_ADMISSIONS.find(x => x.id === id);
                 if (!a) return Promise.reject(new Error('Yotish topilmadi'));
-                a.totalCharges = (a.totalCharges || 0) + data.amount;
-                return demoDone({
-                    id: demoId('demo-charge'), name: data.name, total: data.amount,
-                    paidAmount: 0, quantity: 1, status: 'Unpaid', source: data.source || 'Other',
-                } as unknown as VisitCharge);
+                if (a.status === 'Discharged') return Promise.reject(new Error('Bemor chiqarilgan'));
+                const name = String(data.name || '').trim().slice(0, 200);
+                const amount = Math.round(Number(data.amount));
+                if (!name) return Promise.reject(new Error('Nomini kiriting'));
+                if (!Number.isFinite(amount) || amount <= 0 || amount > 100_000_000) {
+                    return Promise.reject(new Error("Summa noto'g'ri"));
+                }
+                const source = (['Medication', 'Service', 'Other'] as const).includes(data.source as any)
+                    ? data.source as VisitCharge['source'] : 'Other';
+                const row = demoAdmissionCharge(a, { source, name, amount });
+                DEMO_CHARGES.push(row);
+                a.totalCharges = (a.totalCharges || 0) + amount;
+                return demoDone(row);
             }
             return fetchJson<VisitCharge>(`/admissions/${id}/charges`, { method: 'POST', body: JSON.stringify(data) });
         },
