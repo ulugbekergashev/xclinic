@@ -17,6 +17,9 @@ import { printReferral, printPrescription } from '../utils/printForms';
 import { formatDate, formatNumber, formatTime } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { calcAge, todayISO } from '../utils/dateUtils';
+import {
+    recentDiagnoses, recentPrescriptions, rememberDiagnosis, rememberPrescriptions,
+} from '../utils/recentPicks';
 import { OpenVisitForm } from './visit/OpenVisitForm';
 import { VisitResults } from './visit/VisitResults';
 import { AddButton, ItemRow, SheetLabel } from './visit/sheetParts';
@@ -125,6 +128,12 @@ export const VisitPanel: React.FC<Props> = ({
        qoladi: omborda yo'q dorini yozish mumkin bo'lishi kerak. */
     const [meds, setMeds] = useState<InventoryItem[]>([]);
 
+    /* Tez tugmalar — shu kompyuterdagi shifokorning odati (`utils/recentPicks`).
+       Shifokor bo'lmagan kirgan odam (klinika egasi) uchun umumiy ro'yxat. */
+    const quickOwner = loggedDoctorId || 'any';
+    const [recentRx, setRecentRx] = useState(() => recentPrescriptions(quickOwner));
+    const [recentDx, setRecentDx] = useState(() => recentDiagnoses(quickOwner));
+
     /* Shikoyat va ko'rik o'zi saqlanadi — qoidalari `useVisitAutosave` da. */
     const autosave = useVisitAutosave({
         visit, visitId,
@@ -210,10 +219,11 @@ export const VisitPanel: React.FC<Props> = ({
     );
 
     // ── Amallar ─────────────────────────────────────────────────────────────
-    const guard = async (fn: () => Promise<any>, okMsg: string) => {
+    /** Yozish + varaqni yangilash. `true` — yozildi (tez tugmalar shundagina eslab qolinadi). */
+    const guard = async (fn: () => Promise<any>, okMsg: string): Promise<boolean> => {
         setBusy(true);
-        try { await fn(); await reload(); onVisitChanged(visitId); addToast('success', okMsg); setPanel(null); }
-        catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); }
+        try { await fn(); await reload(); onVisitChanged(visitId); addToast('success', okMsg); setPanel(null); return true; }
+        catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); return false; }
         finally { setBusy(false); }
     };
 
@@ -282,7 +292,14 @@ export const VisitPanel: React.FC<Props> = ({
         orderedByName: visit!.doctorName || currentUserName || null,
     }), t('visit.sentToDiag'));
 
-    const writePrescription = (items: RxDraft[]) => guard(() => api.prescriptions.create({
+    const writePrescription = async (items: RxDraft[]) => {
+        const ok = await savePrescription(items);
+        if (!ok) return;
+        rememberPrescriptions(quickOwner, items.filter(i => i.name.trim()));
+        setRecentRx(recentPrescriptions(quickOwner));
+    };
+
+    const savePrescription = (items: RxDraft[]) => guard(() => api.prescriptions.create({
         patientId: visit!.patientId,
         patientName,
         visitId: visit!.id,
@@ -339,11 +356,16 @@ export const VisitPanel: React.FC<Props> = ({
         } finally { setBusy(false); }
     };
 
-    const addDiagnosis = (code: ICD10Code, isChronic: boolean) => guard(() => api.diagnoses.add({
-        patientId: visit!.patientId, code: code.code, date: visit!.date,
-        notes: '', status: 'Active', clinicId: visit!.clinicId, visitId: visit!.id,
-        isChronic,
-    } as any), t('visit.diagnosisAdded'));
+    const addDiagnosis = async (code: ICD10Code, isChronic: boolean) => {
+        const ok = await guard(() => api.diagnoses.add({
+            patientId: visit!.patientId, code: code.code, date: visit!.date,
+            notes: '', status: 'Active', clinicId: visit!.clinicId, visitId: visit!.id,
+            isChronic,
+        } as any), t('visit.diagnosisAdded'));
+        if (!ok) return;
+        rememberDiagnosis(quickOwner, code);
+        setRecentDx(recentDiagnoses(quickOwner));
+    };
 
     const removeDiagnosis = async (id: string) => {
         if (!await confirmAction({ title: t('visit.diagnosisRemove'), body: t('visit.diagnosisRemoveBody'), confirmLabel: t('common.delete') })) return;
@@ -572,7 +594,7 @@ export const VisitPanel: React.FC<Props> = ({
                 />
             )}
 
-            <DiagnosisBlock diagnoses={diagnoses} readOnly={clinicalReadOnly} busy={busy}
+            <DiagnosisBlock diagnoses={diagnoses} recent={recentDx} readOnly={clinicalReadOnly} busy={busy}
                 pickerOpen={panel === 'dx'} onTogglePicker={() => toggle('dx')}
                 onAdd={addDiagnosis} onRemove={removeDiagnosis} />
 
@@ -616,7 +638,7 @@ export const VisitPanel: React.FC<Props> = ({
                     {!isDone && (
                         <div><AddButton label={t('visit.addRx')} open={panel === 'rx'} onClick={() => toggle('rx')} /></div>
                     )}
-                    {!isDone && panel === 'rx' && <RxForm meds={meds} busy={busy} onSave={writePrescription} />}
+                    {!isDone && panel === 'rx' && <RxForm meds={meds} recent={recentRx} busy={busy} onSave={writePrescription} />}
                 </div>
             )}
 

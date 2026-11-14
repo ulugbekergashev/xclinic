@@ -46,6 +46,9 @@ test('bemor keldi → tashxis → UZI → qarz kassada → yakunlandi', async ({
     // ── 4. Tekshiruvga yuborish — pul qatori yaratiladi ────────────────
     await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
     await page.waitForTimeout(800);
+    /* Prayslist tugma bo'lib turadi; prayslistda yo'q tekshiruv — «qo'lda yozish» orqali */
+    const manualStudy = page.getByRole('button', { name: /qo'lda yozish/ });
+    if (await manualStudy.isVisible()) await manualStudy.click();
     await page.getByPlaceholder(/Masalan: Qorin/).fill(`UZI ${n}`);
     await page.getByPlaceholder(/^Narx$/).fill('90000');
     await page.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();

@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { ICD10Code, PatientDiagnosis } from '../../types';
 import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
-import { AddButton, PickerBox, SheetLabel, inputCls } from './sheetParts';
+import { AddButton, ChipButton, PickerBox, SheetLabel, inputCls } from './sheetParts';
 
 /* Varaqdagi «Tashxis» bo'limi: qo'yilganlari nishon bo'lib turadi, yangisi
    MKB-10 bo'yicha qidiruvdan tanlanadi.
@@ -13,6 +13,8 @@ import { AddButton, PickerBox, SheetLabel, inputCls } from './sheetParts';
 
 interface Props {
     diagnoses: PatientDiagnosis[];
+    /** Shifokor ko'p qo'yadigan tashxislar — qidirmasdan bir bosishda */
+    recent?: ICD10Code[];
     /** Yozib bo'lmaydi: yakunlangan qabul yoki registrator */
     readOnly: boolean;
     /** «+ tashxis» bosilgan */
@@ -24,7 +26,7 @@ interface Props {
 }
 
 export const DiagnosisBlock: React.FC<Props> = ({
-    diagnoses, readOnly, pickerOpen, busy, onTogglePicker, onAdd, onRemove,
+    diagnoses, recent = [], readOnly, pickerOpen, busy, onTogglePicker, onAdd, onRemove,
 }) => {
     const { t } = useLanguage();
     const [query, setQuery] = useState('');
@@ -32,6 +34,9 @@ export const DiagnosisBlock: React.FC<Props> = ({
     const [chronic, setChronic] = useState(false);
 
     const open = !readOnly && (pickerOpen || diagnoses.length === 0);
+    /* Shu qabulda allaqachon qo'yilgani tugma bo'lib qayta chiqmaydi */
+    const placed = new Set(diagnoses.map(d => d.code));
+    const quick = recent.filter(c => !placed.has(c.code));
 
     const search = async (q: string) => {
         setQuery(q);
@@ -74,6 +79,19 @@ export const DiagnosisBlock: React.FC<Props> = ({
             )}
             {open && (
                 <PickerBox>
+                    {quick.length > 0 && (
+                        <div className="mb-3">
+                            <p className="mb-1.5 text-xs font-semibold text-muted">{t('visit.recentDx')}</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {quick.map(c => (
+                                    <ChipButton key={c.code} disabled={busy} onClick={() => add(c)} title={c.name}>
+                                        <b className="text-primary-700 dark:text-primary-300">{c.code}</b>
+                                        <span className="max-w-[220px] truncate">{c.name}</span>
+                                    </ChipButton>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-3">
                         <input value={query} onChange={e => search(e.target.value)} className={`${inputCls} flex-1 min-w-[200px]`}
                             aria-label={t('visit.diagnosisTitle')} placeholder={t('visit.icdSearchPh')} />

@@ -33,6 +33,19 @@ export const AddButton: React.FC<{
     </button>
 );
 
+/** Kichik tanlov tugmasi: mahal, kun, tez dori yoki tez tashxis.
+    `on` — tanlangan holat (masalan, shu qatorda «2×» belgilangan). */
+export const ChipButton: React.FC<{
+    on?: boolean; disabled?: boolean; onClick: () => void; title?: string; children: React.ReactNode;
+}> = ({ on, disabled, onClick, title, children }) => (
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={on} title={title}
+        className={`inline-flex items-center gap-1 min-h-[30px] px-2.5 rounded-lg border text-[12.5px] font-semibold transition-colors disabled:opacity-50 ${on
+            ? 'border-primary-600 bg-primary-600 text-white'
+            : 'border-line bg-surface text-ink hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20'}`}>
+        {children}
+    </button>
+);
+
 /** Tanlov qutisi: qidiruv, ro'yxat, forma — «+» ostida ochiladi */
 export const PickerBox: React.FC<{ title?: string; children: React.ReactNode }> = ({ title, children }) => (
     <div role="group" aria-label={title} className="rounded-xl border border-primary-200 dark:border-primary-800 bg-canvas p-3">

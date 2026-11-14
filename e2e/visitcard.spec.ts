@@ -118,8 +118,11 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await page.waitForTimeout(800);
 
         await expect(page.getByText('Qaysi tekshiruv?')).toBeVisible();
-        /* Narx maydoni bor, lekin u YAGONA yo'l bo'lmasligi kerak:
-           prayslistdan tanlash nom va narxni o'zi to'ldiradi. */
+        /* Prayslist tugma bo'lib turadi — tanlash nom va narxni o'zi
+           to'ldiradi. Qo'lda yozish esa prayslistda yo'q tekshiruv uchun
+           qoladi va alohida bosib ochiladi. */
+        const manual = page.getByRole('button', { name: /qo'lda yozish/ });
+        if (await manual.isVisible()) await manual.click();
         await expect(page.getByPlaceholder(/Masalan: Qorin/)).toBeVisible();
     });
 
@@ -160,6 +163,9 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         /* Tekshiruv buyuramiz — server unga `VisitCharge` qatori yaratadi. */
         await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
         await page.waitForTimeout(800);
+        /* Prayslist tugma bo'lib turadi; prayslistda yo'q tekshiruv — «qo'lda yozish» orqali */
+        const manualStudy = page.getByRole('button', { name: /qo'lda yozish/ });
+        if (await manualStudy.isVisible()) await manualStudy.click();
         await page.getByPlaceholder(/Masalan: Qorin/).fill('Sinov UZI');
         await page.getByPlaceholder(/^Narx$/).fill('75000');
         await page.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();

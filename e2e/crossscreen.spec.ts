@@ -109,6 +109,9 @@ async function orderStudyInCard(page: Page, surname: string, studyName: string) 
     await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
     await expect(page.getByText('Bugungi qabul')).toBeVisible();
     await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
+    /* Prayslist tugma bo'lib turadi; prayslistda yo'q tekshiruv — «qo'lda yozish» orqali */
+    const manualStudy = page.getByRole('button', { name: /qo'lda yozish/ });
+    if (await manualStudy.isVisible()) await manualStudy.click();
     await page.getByPlaceholder(/Masalan: Qorin/).fill(studyName);
     await page.getByPlaceholder(/^Narx$/).fill('90000');
     await page.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();
