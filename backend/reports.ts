@@ -186,7 +186,11 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
         }
 
         const grossProfit = round(revenue - materialCost);
-        const netProfit = round(grossProfit - doctorShare - otherExpenses);
+        /* SOF FOYDA = TUSHUM − XARAJAT (egasining qoidasi, 2026-11-14).
+           Material tannarxi bu yerda AYIRILMAYDI: ombor xaridi baribir
+           `Inventory` xarajati bo'lib yoziladi va ikki marta ayirilardi.
+           `/reports/compare` dagi «Foyda» ham aynan shu formula bilan. */
+        const netProfit = round(revenue - doctorShare - otherExpenses);
 
         const deptList = Array.from(byDept.values()).map(d => ({
             ...d,
@@ -654,7 +658,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 }),
                 prisma.expense.findMany({
                     where: { clinicId, date: { gte: a, lte: b } },
-                    select: { amount: true },
+                    select: { amount: true, category: true },
                 }),
                 prisma.chargePayment.findMany({
                     where: { clinicId, createdAt: { gte: start, lte: end } },
@@ -665,7 +669,11 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
 
             const revenue = round(charges.reduce((s: number, c: any) => s + c.total, 0));
             const collected = round(payments.reduce((s: number, p: any) => s + (p.amount || 0), 0));
-            const expense = round(expenses.reduce((s: number, e: any) => s + (e.amount || 0), 0));
+            /* Xarajat — «Sof foyda» dagi bilan bir xil: eski stomatologik
+               «Lab» yozuvlari sanalmaydi (`isCountedExpense`). */
+            const expense = round(expenses
+                .filter((e: any) => isCountedExpense(e.category))
+                .reduce((s: number, e: any) => s + (e.amount || 0), 0));
             const patients = new Set(charges.map((c: any) => c.patientId).filter(Boolean)).size;
 
             return {
@@ -674,7 +682,8 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 collected,
                 due: round(revenue - charges.reduce((s: number, c: any) => s + (c.paidAmount || 0), 0)),
                 expense,
-                profit: round(collected - expense),
+                /* SOF FOYDA = TUSHUM − XARAJAT — `/reports/summary` bilan bir xil */
+                profit: round(revenue - expense),
                 visits,
                 patients,
                 avgCheck: charges.length > 0 ? round(revenue / charges.length) : 0,

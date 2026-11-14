@@ -7,11 +7,12 @@ import {
     LineChart, Line,
 } from 'recharts';
 import {
-    TrendingUp, TrendingDown, Wallet, AlertCircle, RefreshCw, Users,
+    TrendingUp, TrendingDown, Wallet, AlertCircle, Users,
     Building2, Package, Percent, X, Activity, Download,
 } from 'lucide-react';
 import { Department } from '../types';
 import { api } from '../services/api';
+import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
 import { useLanguage, tr, fill, TranslationKey } from '../context/LanguageContext';
 /* SERVER NOMLARI. Hisobot manba turini («Xizmatlar», «Dorilar» …) va
    bo'limsiz qatorni («Bo'limsiz») o'zbekcha nom bilan qaytaradi. Ekranda
@@ -28,6 +29,12 @@ const sourceLabel = (reason: string, fallback: string) => (SOURCE_KEYS[reason] ?
 const deptName = (n: string) => (n === "Bo'limsiz" ? tr('visit.noDept') : n);
 
 import { exportReportToExcel } from '../utils/reportExport';
+
+/* Hisobot raqamlarini o'zgartiradigan hodisalar: to'lov, yangi qabul,
+   ombordan chiqim. `data.changed` esa har qanday yozuvda keladi — undan
+   faqat pulga tegishli manzillar olinadi. */
+const REPORT_EVENTS: LiveEventType[] = ['charge.paid', 'charge.changed', 'visit.created', 'stock.changed', 'data.changed'];
+const MONEY_RESOURCES = new Set(['transactions', 'expenses', 'cash-movements', 'cash-register', 'installments', 'inventory']);
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Moliyaviy hisobot — ko'p profilli klinika uchun.
@@ -191,6 +198,41 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
 
     useEffect(() => { loadExtra(); }, [loadExtra]);
 
+    /* Hisobot O'ZI yangilanadi: pulga tegishli narsa o'zgarsa, ochiq vkladka
+       jimgina qayta so'raladi — skeleton chiqmaydi, raqamlar joyida almashadi.
+       Ilgari buning uchun «Yangilash» tugmasi turardi. Jim yangilash xato
+       bersa, eski raqamlar qoladi: xato faqat qo'lda ochilganda ko'rsatiladi. */
+    const refreshSilently = useCallback(async () => {
+        try {
+            if (view === 'summary') {
+                const [summary, compare] = await Promise.all([
+                    api.reports.summary(from, to),
+                    api.reports.compare(from, to).catch(() => null),
+                ]);
+                setData(summary);
+                setCmp(compare);
+                return;
+            }
+            if (view === 'labshift') {
+                const res = await api.reports.labShift(to);
+                setExtra(prev => ({ ...prev, labshift: res }));
+                return;
+            }
+            const fn = view === 'doctors' ? api.reports.doctors
+                : view === 'departments' ? api.reports.departmentsReport
+                    : api.reports.writeoffs;
+            const res = await fn(from, to);
+            setExtra(prev => ({ ...prev, [view]: res }));
+        } catch {
+            /* tarmoq uzilgan bo'lishi mumkin — keyingi hodisada yana uriniladi */
+        }
+    }, [view, from, to]);
+
+    useLiveUpdates(REPORT_EVENTS, (payload) => {
+        if (payload?.resource && !MONEY_RESOURCES.has(payload.resource)) return;
+        refreshSilently();
+    });
+
     /** Jadval sarlavhasi — uch hisobotda bir xil ko'rinish */
     const Th: React.FC<{ children: React.ReactNode; right?: boolean }> = ({ children, right }) => (
         <th className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-muted ${right ? 'text-right' : 'text-left'}`}>
@@ -257,7 +299,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             {/* Davr */}
             <div className="flex flex-wrap items-end gap-3">
                 {!embedded && <h2 className="text-xl font-bold text-ink mr-auto">{t('finance.report.report')}</h2>}
-                <div className={embedded ? 'mr-auto flex items-end gap-3' : 'flex items-end gap-3'}>
+                <div className="flex items-end gap-3">
                     <div>
                         <label className="block text-[11px] text-muted mb-1">{t('finance.report.from')}</label>
                         <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputCls} />
@@ -272,9 +314,6 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     title={t('finance.report.exportHint')}>
                     <Download className="w-4 h-4" /> {exporting ? '...' : 'Excel'}
                 </button>
-                <button aria-label={t('finance.report.refresh')} onClick={load} className="p-2 text-faint hover:text-muted" title={t('finance.report.refresh')}>
-                    <RefreshCw className="w-5 h-5" />
-                </button>
             </div>
 
             {error && (
@@ -286,7 +325,11 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
             )}
 
             {/* ── Kesim tanlash ─────────────────────────────────────────────── */}
-            <div className="flex gap-1 border-b border-line overflow-x-auto">
+            {/* Chiziq tashqi qutida, aylantirish ichkisida: `overflow-x-auto`
+                bitta qutida bo'lsa, `-mb-px` tufayli 1px tik aylantirgich
+                paydo bo'lardi — vkladkalar o'ng chetidagi kulrang tayoqcha. */}
+            <div className="border-b border-line">
+            <div className="flex gap-1 overflow-x-auto overflow-y-hidden -mb-px">
                 {([
                     ['summary', t('ui.umumiy_tab')],
                     ['doctors', t('ui.shifokorlar')],
@@ -301,6 +344,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                         {label}
                     </button>
                 ))}
+            </div>
             </div>
 
             {/* ── SHIFOKORLAR ───────────────────────────────────────────────── */}
@@ -592,7 +636,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     ['revenue', t('ui.tushum'), true],
                                     ['collected', t('ui.olingan_pul'), true],
                                     ['expense', t('ui.xarajat'), true],
-                                    ['profit', t('finance.report.profit'), true],
+                                    ['profit', t('finance.report.netProfit'), true],
                                     ['visits', t('ui.qabullar'), false],
                                     ['avgCheck', t('finance.report.avgCheck'), true],
                                 ] as const).map(([key, label, money]) => {
@@ -637,8 +681,12 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                         </div>
                     )}
 
-                    {/* Asosiy raqamlar */}
-                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+                    {/* Asosiy raqamlar: 6 ta yoki «Umumiy qarz» bilan 7 ta.
+                        Ilgari `xl:grid-cols-6` da yettinchisi — «Sof foyda» —
+                        ikkinchi qatorda yolg'iz qolardi. Endi 4 + 3, juda keng
+                        ekranda (2xl) esa hammasi bitta qatorda. 1280 da bitta
+                        qatorga sig'dirilsa «−6 900 000» ikki qatorga bo'linardi. */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 2xl:grid-cols-none 2xl:grid-flow-col 2xl:auto-cols-fr gap-3">
                         <Tile label={t('finance.report.revenue')} value={fmt(totals.revenue)} unit="UZS" icon={TrendingUp}
                             hint={fill(t('financereport.olindi_x'), fmt(totals.collected))} />
                         <Tile label={t('finance.report.periodDebt')} value={fmt(totals.due)} unit="UZS" icon={AlertCircle}

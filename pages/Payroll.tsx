@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatDate, formatFullName, formatNumber } from '../utils/format';
 import {
     Percent, Plus, X, AlertCircle, Check, Loader2, Trash2,
-    FileText, Wallet, CheckCircle, ChevronDown, ChevronUp, RefreshCw,
+    FileText, Wallet, CheckCircle, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Doctor } from '../types';
 import { api } from '../services/api';
@@ -198,10 +198,6 @@ export const Payroll: React.FC<Props> = ({ doctors = [], clinicId = '', addToast
                                 <label className="block text-[11px] text-muted mb-1">{t('payroll.davr_oxiri')}</label>
                                 <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} />
                             </div>
-                            <button aria-label={t('payroll.qayta_hisoblash')} onClick={loadPreview} disabled={previewLoading}
-                                className="p-2 text-faint hover:text-muted" title={t('payroll.qayta_hisoblash')}>
-                                <RefreshCw className={`w-5 h-5 ${previewLoading ? 'animate-spin' : ''}`} />
-                            </button>
                             <button onClick={createRun} disabled={busy || !preview || (preview.lines || []).length === 0}
                                 className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}

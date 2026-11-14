@@ -181,26 +181,34 @@ export const ProfileHeader: React.FC<Props> = ({
 
     return (
         <>
-            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
-                <button type="button" onClick={onBack}
-                    className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
-                    <ChevronLeft className="w-4 h-4" aria-hidden="true" />{t('common.back')}
-                </button>
-                <h1 className="text-xl font-bold text-ink">{t('patients.details.title')}</h1>
-            </div>
-
-            <section aria-labelledby="pt-name" className="bg-surface border border-line rounded-[28px] p-5 sm:p-6">
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-4">
-                    <span className="shrink-0 w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full bg-surface border-[3px] border-primary-500 grid place-items-center overflow-hidden text-lg sm:text-[22px] font-bold text-ink">
+            {/* «Orqaga · Bemor kartasi» alohida qatori YO'Q: u kartochka
+                ustida bo'sh joy egallardi, sarlavhasi esa bemor ismini
+                takrorlardi. «Orqaga» — kartochka ichida, ism yonida. */}
+            <section aria-labelledby="pt-name" className="bg-surface border border-line rounded-[24px] px-4 py-3.5 sm:px-5 sm:py-4">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+                    <button type="button" onClick={onBack} aria-label={t('common.back')} title={t('common.back')}
+                        className="shrink-0 -ml-1 w-9 h-9 grid place-items-center rounded-xl text-muted hover:text-ink hover:bg-elevated">
+                        <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+                    </button>
+                    {/* Portret — o'zi rasm yuklash tugmasi. Ilgari bu «…» menyusida
+                        «Rasm yuklash» punkti edi va hech kim uni portret bilan
+                        bog'lamasdi. Sichqoncha ustiga kelganda kamera chiqadi. */}
+                    <button type="button" onClick={() => photoInputRef.current?.click()}
+                        aria-label={t('card.menuPhoto')} title={t('card.menuPhoto')}
+                        className="group relative shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-surface border-[3px] border-primary-500 grid place-items-center overflow-hidden text-base sm:text-lg font-bold text-ink focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
                         {patient.avatarUrl
                             ? <img src={getFileUrl('patient-avatar', patient.id)} alt="" className="w-full h-full object-cover" />
                             : `${patient.lastName?.[0] || ''}${patient.firstName?.[0] || ''}`.toUpperCase()}
-                    </span>
+                        <span aria-hidden="true"
+                            className="absolute inset-0 grid place-items-center bg-black/45 text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
+                            <Camera className="w-5 h-5" />
+                        </span>
+                    </button>
 
-                    <div className="flex-1 basis-48 sm:basis-80 min-w-0 flex flex-col gap-1.5">
-                        <h2 id="pt-name" className="text-xl sm:text-2xl leading-tight font-bold tracking-tight text-ink">
+                    <div className="flex-1 basis-48 sm:basis-80 min-w-0 flex flex-col gap-1">
+                        <h1 id="pt-name" className="text-xl sm:text-2xl leading-tight font-bold tracking-tight text-ink">
                             {patient.lastName} {patient.firstName}
-                        </h2>
+                        </h1>
                         <p className="text-[13px] text-muted" title={patient.dob ? formatDobDDMMYYYY(patient.dob) : undefined}>{meta}</p>
                         <div className="flex flex-wrap gap-1.5">
                             {allergies.length > 0 && (
@@ -263,13 +271,6 @@ export const ProfileHeader: React.FC<Props> = ({
                                     </button>
                                     <button type="button" role="menuitem" className={menuItem} onClick={run(onPrintCard)}>
                                         <Printer className="w-4 h-4 text-muted" />{t('patientdetails.karta_vipiska')}
-                                    </button>
-                                    {/* Tugma, `<label>` emas: yashirin fayl maydoni klaviaturadan
-                                        topilmaydi. Maydonning o'zi menyudan tashqarida — menyu
-                                        yopilgach ham tanlangan faylni qabul qila olsin. */}
-                                    <button type="button" role="menuitem" className={menuItem}
-                                        onClick={run(() => photoInputRef.current?.click())}>
-                                        <Camera className="w-4 h-4 text-muted" />{t('card.menuPhoto')}
                                     </button>
                                 </div>
                             )}

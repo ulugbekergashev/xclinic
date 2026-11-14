@@ -107,6 +107,23 @@ async function main() {
         Math.abs(s.period.due - (s.period.charged - s.period.collected)) < 1,
         `${s.period.due} vs ${s.period.charged - s.period.collected}`);
 
+    console.log('\n═══ 4b. SOF FOYDA BITTA ═══════════════════════════');
+    /* Hisobot ekranida ikki «foyda» bor edi: solishtirish kartasida
+       «olingan − xarajat», pastda «tushum − material − xarajat». Egasining
+       qoidasi: SOF FOYDA = TUSHUM − XARAJAT. Ikkalasi bir xil bo'lishi shart. */
+    const cmp = await call('GET', `/reports/compare?from=${monthStart}&to=${today}`, undefined, token);
+    ok('compare javob berdi', cmp.status === 200, `status: ${cmp.status}`);
+    const tot = summ.data?.totals || {};
+    ok('sof foyda: summary === compare',
+        Math.abs((tot.netProfit ?? NaN) - (cmp.data?.current?.profit ?? NaN)) < 1,
+        `${tot.netProfit} vs ${cmp.data?.current?.profit}`);
+    ok('sof foyda = tushum − xarajat',
+        Math.abs(tot.netProfit - (tot.revenue - tot.doctorShare - tot.otherExpenses)) < 1,
+        `${tot.netProfit} vs ${tot.revenue} − ${tot.doctorShare} − ${tot.otherExpenses}`);
+    ok('xarajat: summary === compare',
+        Math.abs((tot.doctorShare + tot.otherExpenses) - (cmp.data?.current?.expense ?? NaN)) < 1,
+        `${tot.doctorShare + tot.otherExpenses} vs ${cmp.data?.current?.expense}`);
+
     console.log('\n═══ 5. DAVR CHEGARASI HURMAT QILINADI ═════════════');
     /* Qarz davrga bog'liq EMAS — bir kunlik oraliqda ham o'zgarmasligi
        kerak. Tushum esa bog'liq. */

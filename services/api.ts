@@ -230,6 +230,76 @@ const demoSnapshot = (from?: string, to?: string): Snapshot => {
         },
     };
 };
+/* HISOBOT (reports.summary) — demo to'plamidan, server shaklida.
+   Tannarx demoda yo'q (xizmat retseptlari to'ldirilmagan) — 0. */
+const demoReportSummary = (from?: string, to?: string) => {
+    const tx = DEMO_TRANSACTIONS.filter(t => inRange(t.date as any, from, to));
+    const exps = DEMO_EXPENSES.filter(e => inRange(e.date as any, from, to));
+    const deptOfDoctor = (doctorId?: string) =>
+        DEMO_DOCTORS.find(d => d.id === doctorId)?.departmentId || null;
+
+    const byDept = new Map<string, any>();
+    const byDoctor = new Map<string, any>();
+    const daily = new Map<string, { date: string; revenue: number; collected: number }>();
+    let revenue = 0, collected = 0;
+
+    for (const t of tx) {
+        const total = t.amount || 0;
+        const paid = t.status === 'Paid' ? total : 0;
+        revenue += total; collected += paid;
+
+        const dId = deptOfDoctor((t as any).doctorId);
+        const dKey = dId || 'none';
+        if (!byDept.has(dKey)) byDept.set(dKey, {
+            departmentId: dId,
+            name: dId ? (DEMO_DEPARTMENTS.find(d => d.id === dId)?.name || "Noma'lum") : "Bo'limsiz",
+            revenue: 0, collected: 0, due: 0, cost: 0, count: 0,
+        });
+        const d = byDept.get(dKey);
+        d.revenue += total; d.collected += paid; d.due += total - paid; d.count++;
+
+        if (t.doctorName) {
+            if (!byDoctor.has(t.doctorName)) byDoctor.set(t.doctorName, { doctorName: t.doctorName, revenue: 0, count: 0 });
+            const dr = byDoctor.get(t.doctorName);
+            dr.revenue += total; dr.count++;
+        }
+
+        const day = String(t.date).slice(0, 10);
+        if (!daily.has(day)) daily.set(day, { date: day, revenue: 0, collected: 0 });
+        const dd = daily.get(day)!;
+        dd.revenue += total; dd.collected += paid;
+    }
+
+    let doctorShare = 0, otherExpenses = 0, legacyLabExpense = 0;
+    const expenseByCategory = new Map<string, number>();
+    for (const e of exps) {
+        const amt = e.amount || 0;
+        if (e.category === 'DoctorShare') { doctorShare += amt; continue; }
+        if (e.category === 'Lab') { legacyLabExpense += amt; continue; }
+        otherExpenses += amt;
+        expenseByCategory.set(e.category, (expenseByCategory.get(e.category) || 0) + amt);
+    }
+
+    return {
+        period: { from: from || '', to: to || '' },
+        openDebt: demoSnapshot(from, to).debt,
+        totals: {
+            revenue, collected, due: revenue - collected, materialCost: 0,
+            grossProfit: revenue, doctorShare, otherExpenses,
+            netProfit: revenue - doctorShare - otherExpenses, legacyLabExpense,
+        },
+        byDepartment: Array.from(byDept.values())
+            .map(d => ({ ...d, margin: d.revenue, marginPercent: d.revenue > 0 ? 100 : 0 }))
+            .sort((a, b) => b.revenue - a.revenue),
+        bySource: tx.length ? [{ source: 'Visit', label: 'Qabul', revenue, count: tx.length }] : [],
+        byDoctor: Array.from(byDoctor.values()).sort((a, b) => b.revenue - a.revenue),
+        expenseByCategory: Array.from(expenseByCategory.entries())
+            .map(([category, amount]) => ({ category, amount }))
+            .sort((a, b) => b.amount - a.amount),
+        daily: Array.from(daily.values()).sort((a, b) => a.date.localeCompare(b.date)),
+    };
+};
+
 /* QARZDORLAR — DEMO TO'PLAMIDAN, BEMOR KESIMIDA.
 
    Bitta joyda, chunki uni IKKI joy o'qiydi: `reports.dashboard` (Qarz
@@ -3603,16 +3673,11 @@ export const api = {
     reports: {
         // Bo'lim, manba va tannarx kesimida — server tomonda hisoblanadi
         summary: (from?: string, to?: string) => {
-            // Demo rejimda hisobot bo'sh ko'rinadi — xato emas
-            if (isDemoMode()) return demoRead<any>({
-                period: { from: from || '', to: to || '' },
-                totals: {
-                    revenue: 0, collected: 0, due: 0, materialCost: 0, grossProfit: 0,
-                    doctorShare: 0, otherExpenses: 0, netProfit: 0, legacyLabExpense: 0,
-                },
-                byDepartment: [], bySource: [], byDoctor: [],
-                expenseByCategory: [], daily: [],
-            });
+            /* Demo: «Oldingi davrga nisbatan» kartasi (`compare`) bilan BIR XIL
+               manbadan — `DEMO_TRANSACTIONS` va `DEMO_EXPENSES`. Ilgari bu yerda
+               nollar qaytarilardi va bitta ekranda «Tushum 4 800 000» ostida
+               «Tushum 0» turardi. Hisob `backend/reports.ts` dagi kabi. */
+            if (isDemoMode()) return demoRead<any>(demoReportSummary(from, to));
             const q = new URLSearchParams();
             if (from) q.set('from', from);
             if (to) q.set('to', to);
@@ -3785,7 +3850,7 @@ export const api = {
                         (new Date(b).getTime() - new Date(a).getTime()) / 86400000
                     ) + 1);
                     const expense = DEMO_EXPENSES
-                        .filter(e => inRange(e.date as any, a, b))
+                        .filter(e => inRange(e.date as any, a, b) && e.category !== 'Lab')
                         .reduce((s, e) => s + (e.amount || 0), 0);
                     const patients = new Set(
                         DEMO_TRANSACTIONS
@@ -3798,7 +3863,8 @@ export const api = {
                         collected: snap.period.collected,
                         due: snap.period.due,
                         expense,
-                        profit: snap.period.collected - expense,
+                        /* SOF FOYDA = TUSHUM − XARAJAT — serverdagi bilan bir xil */
+                        profit: snap.period.charged - expense,
                         visits: snap.period.visits,
                         patients,
                         avgCheck: snap.period.avgCheck,

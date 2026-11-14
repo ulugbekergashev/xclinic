@@ -6,7 +6,7 @@ import { esc } from '../utils/printDocument';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     UserPlus, Search, ArrowRight, Printer, Plus,
-    CheckCircle, AlertCircle, X, Phone, RefreshCw,
+    CheckCircle, AlertCircle, X, Phone,
     FlaskConical, BellRing, CalendarClock, Tv, Wallet, BedDouble,
 } from 'lucide-react';
 import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointment, Admission, LabTest, MODALITY_LABELS, TodayZones as Zones } from '../types';
@@ -1048,10 +1048,6 @@ ${routeHtml}
                     </button>
                 )}
                 <div className="ml-auto flex items-center gap-2">
-                    <button onClick={loadToday} aria-label={t('reception.refresh')} title={t('reception.refresh')}
-                        className="p-2 text-faint hover:text-muted rounded-lg">
-                        <RefreshCw className="w-4 h-4" />
-                    </button>
                     {canRegister && (
                         <button onClick={() => navigate('/board')}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-line text-muted hover:border-primary-400">

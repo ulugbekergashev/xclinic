@@ -4,7 +4,6 @@ import { BarChart3, CalendarCheck } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
 import { Department } from '../types';
-import { formatDateLong } from '../utils/format';
 import { AttendanceTab } from '../components/AttendanceReport';
 import { FinanceReport } from './FinanceReport';
 
@@ -41,7 +40,7 @@ interface Props {
 }
 
 export const Dashboard: React.FC<Props> = ({ departments }) => {
-    const { t, language } = useLanguage();
+    const { t } = useLanguage();
 
     /* Vkladka manzilda (`?tab=davomat`) — Xodimlar va Moliya bilan bir xil
        odat: yangilanganda o'sha vkladka qoladi, havolani ulashib bo'ladi. */
@@ -56,14 +55,9 @@ export const Dashboard: React.FC<Props> = ({ departments }) => {
     return (
         <div className="space-y-5 animate-fade-in">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-ink">{t('nav.reports')}</h1>
-                    {/* Sana loyihaning O'Z formatlagichidan: `toLocaleDateString('uz-UZ')`
-                        Chrome da «M09 6, Sun» beradi — `uz` lokali to'liq emas. */}
-                    <p className="text-sm text-muted">
-                        {formatDateLong(new Date(), language === 'ru' ? 'ru' : 'uz')}
-                    </p>
-                </div>
+                {/* Bugungi sana bu yerda ATAYLAB yo'q: hisobot davr bo'yicha,
+                    davr esa pastda «Boshlanish — Tugash» da turibdi. */}
+                <h1 className="text-2xl font-bold text-ink">{t('nav.reports')}</h1>
 
                 <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl" role="tablist">
                     {TABS.map(x => {
