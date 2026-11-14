@@ -132,6 +132,13 @@ export const Reception: React.FC<Props> = ({
     /** Butun klinika xaritasini ko'radiganlar. Hamshira — ko'radi, boshqarmaydi */
     const seesClinic = canRegister || isNurse;
 
+    /* Qabulni qayerda ochish. Shifokor uchun — to'g'ri qabul manzili
+       (`/visit/:id`): u bemorni ko'rish uchun ochadi, karta orqali yana
+       bir «Ochish» bosishi kerak bo'lmasin. Boshqalar (registrator,
+       kassir, ega) kartaga tushadi — ular uchun karta bemorning hujjati. */
+    const visitPath = (patientId: string, visitId: string) =>
+        isDoctor ? `/visit/${visitId}` : `/patients/${patientId}?visit=${visitId}`;
+
     const [search, setSearch] = useState('');
     const [patient, setPatient] = useState<Patient | null>(null);
     const [departmentId, setDepartmentId] = useState('');
@@ -317,7 +324,7 @@ export const Reception: React.FC<Props> = ({
         if (v.status === 'Waiting' || v.status === 'Called') {
             try { await api.visits.update(v.id, { status: 'In Progress' }); } catch { /* ochilaversin */ }
         }
-        navigate(`/patients/${v.patientId}?visit=${v.id}`);
+        navigate(visitPath(v.patientId, v.id));
     };
 
     /* Ikkinchi registrator qabul ochsa — bugungi navbat DARHOL yangilanadi.
@@ -867,7 +874,7 @@ ${routeHtml}
             <div className="space-y-2">
                 {readyUnseen.map(r => (
                     <button key={r.visitId}
-                        onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
+                        onClick={() => navigate(visitPath(r.patientId, r.visitId))}
                         className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-900/20 hover:border-purple-400 transition-colors">
                         <FlaskConical className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
                         <div className="min-w-0 flex-1">
@@ -899,7 +906,7 @@ ${routeHtml}
             <div className="space-y-2">
                 {stillWaiting.map(r => (
                     <button key={r.visitId}
-                        onClick={() => navigate(`/patients/${r.patientId}?visit=${r.visitId}`)}
+                        onClick={() => navigate(visitPath(r.patientId, r.visitId))}
                         className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg border border-line hover:border-primary-400 transition-colors">
                         <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-ink truncate">{r.patientName}</p>
@@ -931,7 +938,7 @@ ${routeHtml}
             </h3>
             <div className="space-y-1.5">
                 {groups.done.map(v => (
-                    <button key={v.id} onClick={() => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
+                    <button key={v.id} onClick={() => navigate(visitPath(v.patientId, v.id))}
                         className="w-full text-left flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-elevated">
                         <span className="text-xs tabular-nums text-faint w-6 shrink-0">{v.queueNumber ?? '—'}</span>
                         <span className="text-sm text-muted truncate flex-1">
@@ -1125,7 +1132,7 @@ ${routeHtml}
                 collapsible={isOwner}
                 dueOf={canRegister ? (id) => dueByPatient.get(id)?.due || 0 : undefined}
                 onPatientClick={(id) => navigate(`/patients/${id}`)}
-                onOpenVisit={(v) => navigate(`/patients/${v.patientId}?visit=${v.id}`)}
+                onOpenVisit={(v) => navigate(visitPath(v.patientId, v.id))}
                 onArrived={canRegister ? markArrived : undefined}
                 onNoShow={canRegister ? markNoShow : undefined}
                 onCall={canRegister ? callVisit : undefined}

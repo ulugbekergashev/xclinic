@@ -91,6 +91,16 @@ test('Demo: qo\'yilgan tashxis qidirmasdan bir bosishda qayta qo\'yiladi', async
     await expect(s.getByRole('button', { name: "O'chirish: I10" })).toBeVisible({ timeout: 10_000 });
 });
 
+test('Demo: vrach navbatda «Ochish» bosganda qabul varag\'i darhol ochiq', async ({ page }) => {
+    await go(page, '/reception');
+    await page.locator('select[aria-label="Demo: rol"]').selectOption('DOCTOR');
+    await page.waitForTimeout(2500);
+
+    /* Kabinetdagi bemor — bitta bosish, karta orqali yana «Ochish» yo'q */
+    await page.getByRole('button', { name: /qabul kartasini ochish$/ }).first().click();
+    await expect(sheet(page).getByRole('button', { name: /^dori$/ })).toBeVisible({ timeout: 15_000 });
+});
+
 test('Demo: xizmat ro\'yxatdan emas, tugmadan qo\'shiladi', async ({ page }) => {
     await openVisitSheet(page, 3);
     const s = sheet(page);
