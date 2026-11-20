@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XClinic — klinika uchun dastur</title>
+<meta name="description" content="Qabul, navbat, kassa, statsionar, laboratoriya va ombor — bitta dasturda. Internet uzilsa ham ishlaydi. Bepul namoyishga yoziling.">
+<meta property="og:title" content="XClinic — klinikangizni bitta dasturda boshqaring">
+<meta property="og:description" content="Qabul, navbat, kassa, statsionar, laboratoriya va ombor — bitta joyda. Bepul namoyishga yoziling.">
+<meta name="theme-color" content="#005EB8">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #005EB8;
+    --blue-dark: #003087;
+    --blue-soft: #E8F1FB;
+    --ink: #0F1B2D;
+    --muted: #5A6B80;
+    --line: #DCE4EE;
+    --bg: #F6F9FC;
+    --card: #FFFFFF;
+    --ok: #0E8A4F;
+    --err: #C62828;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  a { color: var(--blue); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+  /* Shapka */
+  header { padding: 14px 0; }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; color: var(--ink); text-decoration: none; }
+  .brand img { width: 34px; height: 34px; }
+  .lang { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--card); }
+  .lang button {
+    border: 0; background: transparent; padding: 7px 14px; font: inherit; font-size: 14px; font-weight: 600;
+    color: var(--muted); cursor: pointer; min-height: 36px;
+  }
+  .lang button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+
+  /* Asosiy blok */
+  .hero { padding: 20px 0 40px; }
+  .hero .wrap { display: grid; gap: 28px; align-items: start; }
+  @media (min-width: 900px) {
+    .hero { padding: 48px 0 64px; }
+    .hero .wrap { grid-template-columns: 1.1fr 0.9fr; gap: 48px; }
+  }
+  .eyebrow {
+    display: inline-block; background: var(--blue-soft); color: var(--blue); font-weight: 600; font-size: 13px;
+    padding: 5px 12px; border-radius: 999px; margin-bottom: 14px;
+  }
+  h1 { font-size: clamp(28px, 6vw, 46px); line-height: 1.12; margin: 0 0 14px; letter-spacing: -0.02em; text-wrap: balance; }
+  .lead-text { font-size: 18px; color: var(--muted); margin: 0 0 22px; max-width: 34em; }
+  .points { list-style: none; padding: 0; margin: 0 0 22px; display: grid; gap: 10px; }
+  .points li { display: flex; gap: 10px; align-items: flex-start; font-weight: 500; }
+  .points svg { flex: none; margin-top: 3px; }
+  .demo-link { font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .demo-link:hover { text-decoration: underline; }
+
+  /* Forma */
+  .form-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 22px;
+    box-shadow: 0 12px 40px rgba(0, 48, 135, 0.08);
+  }
+  .form-card h2 { font-size: 22px; margin: 0 0 6px; }
+  .form-card .sub { color: var(--muted); margin: 0 0 18px; font-size: 15px; }
+  .field { margin-bottom: 14px; }
+  label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  label .opt { color: var(--muted); font-weight: 400; }
+  input, select {
+    width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: #fff;
+    border: 1.5px solid var(--line); border-radius: 10px; padding: 12px 14px; min-height: 48px; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0, 94, 184, 0.15); }
+  .phone { display: flex; align-items: stretch; }
+  .phone span {
+    display: flex; align-items: center; padding: 0 12px; border: 1.5px solid var(--line); border-right: 0;
+    border-radius: 10px 0 0 10px; background: var(--bg); font-weight: 600; color: var(--muted);
+  }
+  .phone input { border-radius: 0 10px 10px 0; }
+  .invalid { border-color: var(--err) !important; }
+  .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+  .submit {
+    width: 100%; border: 0; border-radius: 12px; background: var(--blue); color: #fff; font: inherit; font-size: 17px;
+    font-weight: 700; padding: 15px; min-height: 54px; cursor: pointer; margin-top: 4px;
+    transition: background .15s, transform .05s;
+  }
+  .submit:hover { background: var(--blue-dark); }
+  .submit:active { transform: translateY(1px); }
+  .submit[disabled] { opacity: .7; cursor: wait; }
+  .msg { margin: 12px 0 0; font-size: 14px; min-height: 1em; }
+  .msg.err { color: var(--err); }
+  .note { color: var(--muted); font-size: 12.5px; margin: 12px 0 0; text-align: center; }
+  .done { text-align: center; padding: 18px 4px; }
+  .done .tick {
+    width: 64px; height: 64px; border-radius: 50%; background: #E6F6EE; display: grid; place-items: center; margin: 0 auto 14px;
+  }
+  .done h2 { margin-bottom: 8px; }
+
+  /* Imkoniyatlar */
+  .features { padding: 8px 0 56px; }
+  .features h2 { font-size: clamp(22px, 4vw, 30px); margin: 0 0 20px; text-align: center; }
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 620px) { .grid { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 900px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  .feat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .feat .ic { width: 40px; height: 40px; border-radius: 10px; background: var(--blue-soft); display: grid; place-items: center; margin-bottom: 10px; }
+  .feat h3 { margin: 0 0 4px; font-size: 17px; }
+  .feat p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .cta-band { background: var(--blue-dark); color: #fff; padding: 36px 0; text-align: center; }
+  .cta-band h2 { margin: 0 0 14px; font-size: clamp(20px, 4vw, 28px); }
+  .cta-band a {
+    display: inline-block; background: #fff; color: var(--blue-dark); font-weight: 700; text-decoration: none;
+    padding: 14px 26px; border-radius: 12px; min-height: 48px;
+  }
+  footer { padding: 22px 0; color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="/logo.svg" alt="" width="34" height="34">XClinic</a>
+    <div class="lang" role="group" aria-label="Til / Язык">
+      <button type="button" data-lang="uz" aria-pressed="true">UZ</button>
+      <button type="button" data-lang="ru" aria-pressed="false">RU</button>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow" data-i18n="eyebrow">Klinikalar uchun dastur</span>
+      <h1 data-i18n="title">Klinikangizni bitta dasturda boshqaring</h1>
+      <p class="lead-text" data-i18n="subtitle">Qabul, navbat, kassa, statsionar, laboratoriya va ombor — hammasi bir joyda. Siz esa klinikada nima bo'layotganini telefondan ko'rib turasiz.</p>
+      <ul class="points">
+        <li><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#E6F6EE"/><path d="M6 10.5l2.6 2.5L14 7.5" fill="none" stroke="#0E8A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="p1">Internet uzilsa ham ishlaydi — dastur klinika kompyuterida turadi</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#E6F6EE"/><path d="M6 10.5l2.6 2.5L14 7.5" fill="none" stroke="#0E8A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="p2">Kassa va kunlik tushum har doim aniq</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#E6F6EE"/><path d="M6 10.5l2.6 2.5L14 7.5" fill="none" stroke="#0E8A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="p3">O'zbek va rus tilida, o'rnatib, o'rgatib beramiz</span></li>
+      </ul>
+      <a class="demo-link" href="https://xclinic-alpha.vercel.app" target="_blank" rel="noopener" data-i18n="demo">Dasturni hoziroq ochib ko'ring →</a>
+    </div>
+
+    <div class="form-card" id="form">
+      <form id="leadForm" novalidate>
+        <h2 data-i18n="formTitle">Bepul namoyishga yoziling</h2>
+        <p class="sub" data-i18n="formSub">Qo'ng'iroq qilib, dasturni klinikangiz misolida ko'rsatib beramiz.</p>
+
+        <div class="field">
+          <label for="name" data-i18n="fName">Ismingiz</label>
+          <input id="name" name="name" autocomplete="name" maxlength="80" required>
+        </div>
+        <div class="field">
+          <label for="phone" data-i18n="fPhone">Telefon raqam</label>
+          <div class="phone">
+            <span>+998</span>
+            <input id="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="90 123 45 67" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="clinic"><span data-i18n="fClinic">Klinika nomi</span> <span class="opt" data-i18n="optional">(ixtiyoriy)</span></label>
+          <input id="clinic" name="clinic" autocomplete="organization" maxlength="120">
+        </div>
+        <div class="hp" aria-hidden="true">
+          <label for="website">Website</label>
+          <input id="website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <button class="submit" type="submit" data-i18n="send">Ariza qoldirish</button>
+        <p class="msg" id="msg" role="alert"></p>
+        <p class="note" data-i18n="privacy">Ma'lumotlaringiz faqat siz bilan bog'lanish uchun ishlatiladi.</p>
+      </form>
+
+      <div class="done" id="done" hidden>
+        <div class="tick"><svg width="32" height="32" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10.5l3.2 3L15 6.5" fill="none" stroke="#0E8A4F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h2 data-i18n="thanksTitle">Rahmat! Arizangiz qabul qilindi</h2>
+        <p class="sub" data-i18n="thanksText">Tez orada siz bilan bog'lanamiz. Shu orada dasturni o'zingiz ham ochib ko'rishingiz mumkin.</p>
+        <a class="demo-link" href="https://xclinic-alpha.vercel.app" target="_blank" rel="noopener" data-i18n="demo">Dasturni hoziroq ochib ko'ring →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="features">
+  <div class="wrap">
+    <h2 data-i18n="featTitle">Klinikaning kundalik ishi — bitta oynada</h2>
+    <div class="grid">
+      <div class="feat">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <h3 data-i18n="f1t">Qabul va navbat</h3>
+        <p data-i18n="f1d">Bemor yozuvi, shifokorlar navbati va kalendar — registrator bir necha bosishda ishlaydi.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg></div>
+        <h3 data-i18n="f2t">Kassa va hisobot</h3>
+        <p data-i18n="f2d">Xizmat tanlanadi, to'lov olinadi, chek chiqadi. Kunlik tushum va foyda hisobotda.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4v16M2 8h18a2 2 0 0 1 2 2v10M2 17h20M6 8v9"/></svg></div>
+        <h3 data-i18n="f3t">Statsionar</h3>
+        <p data-i18n="f3d">Palatalar xaritasi, yotgan bemorlar va chiqishda to'lanadigan summa.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v6L4 18a2 2 0 0 0 1.8 3h12.4A2 2 0 0 0 20 18l-5-10V2M8 2h8M7 14h10"/></svg></div>
+        <h3 data-i18n="f4t">Laboratoriya</h3>
+        <p data-i18n="f4d">Tahlillar, natijalar va bosma blankalar — bemor kartasida saqlanadi.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+        <h3 data-i18n="f5t">Ombor</h3>
+        <p data-i18n="f5d">Dori va materiallar qoldig'i, kirim-chiqim — nima tugayotganini oldindan ko'rasiz.</p>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#005EB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+        <h3 data-i18n="f6t">Telefondan nazorat</h3>
+        <p data-i18n="f6d">Klinikadan tashqarida ham dasturga kirasiz, Telegram'ga xabarlar va zaxira nusxa keladi.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-band">
+  <div class="wrap">
+    <h2 data-i18n="ctaTitle">Klinikangizda qanday ishlashini ko'rsatib beramiz</h2>
+    <a href="#form" data-i18n="ctaBtn">Bepul namoyishga yozilish</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">© <span id="year"></span> XClinic</div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var TEXT = {
+    uz: {
+      eyebrow: 'Klinikalar uchun dastur',
+      title: 'Klinikangizni bitta dasturda boshqaring',
+      subtitle: "Qabul, navbat, kassa, statsionar, laboratoriya va ombor — hammasi bir joyda. Siz esa klinikada nima bo'layotganini telefondan ko'rib turasiz.",
+      p1: 'Internet uzilsa ham ishlaydi — dastur klinika kompyuterida turadi',
+      p2: 'Kassa va kunlik tushum har doim aniq',
+      p3: "O'zbek va rus tilida, o'rnatib, o'rgatib beramiz",
+      demo: "Dasturni hoziroq ochib ko'ring →",
+      formTitle: 'Bepul namoyishga yoziling',
+      formSub: "Qo'ng'iroq qilib, dasturni klinikangiz misolida ko'rsatib beramiz.",
+      fName: 'Ismingiz', fPhone: 'Telefon raqam', fClinic: 'Klinika nomi', optional: '(ixtiyoriy)',
+      send: 'Ariza qoldirish', sending: 'Yuborilmoqda…',
+      privacy: "Ma'lumotlaringiz faqat siz bilan bog'lanish uchun ishlatiladi.",
+      thanksTitle: 'Rahmat! Arizangiz qabul qilindi',
+      thanksText: "Tez orada siz bilan bog'lanamiz. Shu orada dasturni o'zingiz ham ochib ko'rishingiz mumkin.",
+      featTitle: 'Klinikaning kundalik ishi — bitta oynada',
+      f1t: 'Qabul va navbat', f1d: 'Bemor yozuvi, shifokorlar navbati va kalendar — registrator bir necha bosishda ishlaydi.',
+      f2t: 'Kassa va hisobot', f2d: "Xizmat tanlanadi, to'lov olinadi, chek chiqadi. Kunlik tushum va foyda hisobotda.",
+      f3t: 'Statsionar', f3d: "Palatalar xaritasi, yotgan bemorlar va chiqishda to'lanadigan summa.",
+      f4t: 'Laboratoriya', f4d: 'Tahlillar, natijalar va bosma blankalar — bemor kartasida saqlanadi.',
+      f5t: 'Ombor', f5d: "Dori va materiallar qoldig'i, kirim-chiqim — nima tugayotganini oldindan ko'rasiz.",
+      f6t: 'Telefondan nazorat', f6d: "Klinikadan tashqarida ham dasturga kirasiz, Telegram'ga xabarlar va zaxira nusxa keladi.",
+      ctaTitle: "Klinikangizda qanday ishlashini ko'rsatib beramiz",
+      ctaBtn: 'Bepul namoyishga yozilish',
+      errName: 'Ismingizni yozing', errPhone: "Telefon raqamni to'liq yozing: 90 123 45 67",
+      errRate: "Juda ko'p urinish. Birozdan keyin qayta yuboring.",
+      errSend: "Yuborib bo'lmadi. Internetni tekshirib, qayta urinib ko'ring."
+    },
+    ru: {
+      eyebrow: 'Программа для клиник',
+      title: 'Управляйте клиникой в одной программе',
+      subtitle: 'Регистратура, очередь, касса, стационар, лаборатория и склад — всё в одном месте. А вы видите, что происходит в клинике, прямо с телефона.',
+      p1: 'Работает даже без интернета — программа стоит на компьютере клиники',
+      p2: 'Касса и дневная выручка всегда точные',
+      p3: 'На узбекском и русском, установим и обучим',
+      demo: 'Открыть программу прямо сейчас →',
+      formTitle: 'Запишитесь на бесплатный показ',
+      formSub: 'Позвоним и покажем программу на примере вашей клиники.',
+      fName: 'Ваше имя', fPhone: 'Номер телефона', fClinic: 'Название клиники', optional: '(необязательно)',
+      send: 'Оставить заявку', sending: 'Отправляем…',
+      privacy: 'Ваши данные используются только для связи с вами.',
+      thanksTitle: 'Спасибо! Заявка принята',
+      thanksText: 'Скоро свяжемся с вами. А пока можете сами открыть программу и посмотреть.',
+      featTitle: 'Вся ежедневная работа клиники — в одном окне',
+      f1t: 'Регистратура и очередь', f1d: 'Запись пациентов, очередь к врачам и календарь — регистратор работает в несколько кликов.',
+      f2t: 'Касса и отчёты', f2d: 'Выбрали услугу, приняли оплату, распечатали чек. Выручка и прибыль за день — в отчёте.',
+      f3t: 'Стационар', f3d: 'Карта палат, лежащие пациенты и сумма к оплате при выписке.',
+      f4t: 'Лаборатория', f4d: 'Анализы, результаты и бланки для печати — всё хранится в карте пациента.',
+      f5t: 'Склад', f5d: 'Остатки лекарств и материалов, приход и расход — видно заранее, что заканчивается.',
+      f6t: 'Контроль с телефона', f6d: 'Заходите в программу и вне клиники, уведомления и резервная копия приходят в Telegram.',
+      ctaTitle: 'Покажем, как это будет работать в вашей клинике',
+      ctaBtn: 'Записаться на бесплатный показ',
+      errName: 'Напишите ваше имя', errPhone: 'Введите номер полностью: 90 123 45 67',
+      errRate: 'Слишком много попыток. Попробуйте чуть позже.',
+      errSend: 'Не удалось отправить. Проверьте интернет и попробуйте ещё раз.'
+    }
+  };
+
+  var params = new URLSearchParams(location.search);
+  var lang = params.get('lang') === 'ru' ? 'ru' : 'uz';
+  try { if (!params.get('lang') && localStorage.getItem('xc_lang') === 'ru') lang = 'ru'; } catch (e) { /* xotira yopiq */ }
+
+  var form = document.getElementById('leadForm');
+  var msg = document.getElementById('msg');
+  var submitBtn = form.querySelector('.submit');
+
+  function t(key) { return TEXT[lang][key]; }
+
+  function applyLang(next) {
+    lang = next;
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var value = TEXT[lang][el.getAttribute('data-i18n')];
+      if (value) el.textContent = value;
+    });
+    document.querySelectorAll('.lang button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === lang));
+    });
+    msg.textContent = '';
+    try { localStorage.setItem('xc_lang', lang); } catch (e) { /* xotira yopiq */ }
+  }
+
+  document.querySelectorAll('.lang button').forEach(function (b) {
+    b.addEventListener('click', function () { applyLang(b.getAttribute('data-lang')); });
+  });
+
+  // Telefon: faqat raqam, "90 123 45 67" ko'rinishida guruhlanadi.
+  var phoneInput = document.getElementById('phone');
+  phoneInput.addEventListener('input', function () {
+    var d = phoneInput.value.replace(/\D/g, '');
+    if (d.length > 9 && d.indexOf('998') === 0) d = d.slice(3);
+    d = d.slice(0, 9);
+    var parts = [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean);
+    phoneInput.value = parts.join(' ');
+  });
+
+  function cookie(name) {
+    var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  // Meta piksel: ID Vercel sozlamasidan keladi; sozlanmagan bo'lsa piksel yuklanmaydi.
+  function loadPixel(pixelId) {
+    /* eslint-disable */
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+    document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    /* eslint-enable */
+    window.fbq('init', pixelId);
+    window.fbq('track', 'PageView');
+  }
+  fetch('/api/config').then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (cfg) { if (cfg && cfg.pixelId) loadPixel(cfg.pixelId); })
+    .catch(function () { /* piksel majburiy emas */ });
+
+  function markInvalid(id, on) { document.getElementById(id).classList.toggle('invalid', on); }
+
+  function validate(data) {
+    var digits = data.phone.replace(/\D/g, '');
+    var checks = [
+      ['name', data.name.trim().length >= 2, 'errName'],
+      ['phone', digits.length === 9, 'errPhone']
+    ];
+    var firstError = null;
+    checks.forEach(function (c) {
+      markInvalid(c[0], !c[1]);
+      if (!c[1] && !firstError) firstError = c;
+    });
+    if (firstError) {
+      msg.className = 'msg err';
+      msg.textContent = t(firstError[2]);
+      document.getElementById(firstError[0]).focus();
+      return false;
+    }
+    return true;
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var fd = new FormData(form);
+    var data = {
+      name: String(fd.get('name') || ''),
+      phone: String(fd.get('phone') || ''),
+      clinic: String(fd.get('clinic') || ''),
+      website: String(fd.get('website') || ''),
+      lang: lang,
+      pageUrl: location.href,
+      eventId: 'lead-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10),
+      fbp: cookie('_fbp'),
+      fbc: cookie('_fbc') || (params.get('fbclid') ? 'fb.1.' + Date.now() + '.' + params.get('fbclid') : '')
+    };
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach(function (k) {
+      if (params.get(k)) data[k] = params.get(k);
+    });
+
+    if (!validate(data)) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = t('sending');
+    msg.className = 'msg';
+    msg.textContent = '';
+
+    fetch('/api/lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); })
+      .then(function (res) {
+        if (res.ok && res.body.success) {
+          if (window.fbq) window.fbq('track', 'Lead', {}, { eventID: data.eventId });
+          form.hidden = true;
+          document.getElementById('done').hidden = false;
+          return;
+        }
+        var key = res.status === 429 ? 'errRate'
+          : res.body.error === 'phone' ? 'errPhone'
+          : res.body.error === 'name' ? 'errName' : 'errSend';
+        throw new Error(key);
+      })
+      .catch(function (err) {
+        msg.className = 'msg err';
+        msg.textContent = t(TEXT[lang][err.message] ? err.message : 'errSend');
+        submitBtn.disabled = false;
+        submitBtn.textContent = t('send');
+      });
+  });
+
+  document.getElementById('year').textContent = new Date().getFullYear();
+  applyLang(lang);
+})();
+</script>
+</body>
+</html>

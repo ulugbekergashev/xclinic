@@ -36,3 +36,6 @@ playwright.demo.config.ts
 # Registrator ALOHIDA loyihada joylanadi (scripts/deploy-registrar.mjs).
 # Demo saytda uning sozlanmagan ikkinchi nusxasi bo'lmasin.
 api/
+
+# Landing alohida Vercel loyihasi (xclinic-landing) — demo saytga tushmasin.
+landing/

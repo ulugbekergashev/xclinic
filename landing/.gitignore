@@ -1,0 +1,4 @@
+.vercel
+.env*
+# Ildizdagi .gitignore "_*" ni yashiradi — bu fayl kod, kerak.
+!api/_lead.js
