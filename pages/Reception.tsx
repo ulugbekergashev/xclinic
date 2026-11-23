@@ -1147,8 +1147,10 @@ ${routeHtml}
 
             Shifokorning amali registratornikidan farq qiladi: u bemorni
             kabinetga «kiritmaydi», qabulni BOSHLAYDI — holat «Qabulda» ga
-            o'tadi va karta ochiladi (`openVisitCard`). Ismni bosish ham
-            shuni qiladi. Pul va «Kelmadi» bu yerda yo'q: registratorning ishi. */}
+            o'tadi va karta ochiladi (`openVisitCard`). Ismni bosish esa
+            faqat kartani ochadi — qabul o'zidan boshlanmaydi, kartada
+            «Qabulni boshlash» tugmasi turadi (2026-11-21).
+            Pul va «Kelmadi» bu yerda yo'q: registratorning ishi. */}
         {isDoctor && (
             <ClinicMap
                 title={me ? t('today.myCabinet') : undefined}
@@ -1159,7 +1161,7 @@ ${routeHtml}
                 departments={departments}
                 services={services}
                 onPatientClick={(id) => navigate(`/patients/${id}`)}
-                onOpenVisit={openVisitCard}
+                onOpenVisit={(v) => navigate(visitPath(v.patientId, v.id))}
                 onArrived={markArrived}
                 onCall={callVisit}
                 onEnter={openVisitCard}

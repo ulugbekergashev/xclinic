@@ -6,7 +6,7 @@ import { Card, Button, Input, Modal, Select } from '../components/Common';
 import { InventoryItem, UserRole } from '../types';
 import {
     Package, Plus, Trash2, AlertCircle, ArrowDownToLine, ArrowUpFromLine,
-    History, ClipboardCheck, CalendarClock, RefreshCw, AlertTriangle, ArrowLeftRight, Pencil,
+    History, ClipboardCheck, CalendarClock, AlertTriangle, ArrowLeftRight, Pencil,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { todayISO } from '../utils/dateUtils';
@@ -24,14 +24,20 @@ import { todayISO } from '../utils/dateUtils';
    FEFO bo'yicha, farq inventarizatsiya bilan. Eski endpoint o'z joyida qoldi
    (ishlayotgan narsani buzmaymiz), lekin interfeys undan foydalanmaydi.
 
-   To'rt bo'lim to'rt savolga javob beradi:
-     Qoldiqlar      — nima bor
-     Harakatlar     — qayerga ketdi
-     Partiya/muddat — nima muddati o'tgan
+   Uch bo'lim uch savolga javob beradi:
+     Qoldiqlar        — nima bor (muddati o'tgan / yaqin / kam — shu yerning
+                        tepasida; alohida «Partiya va muddat» bo'limi
+                        2026-11-20 da olib tashlandi, u shu ro'yxatni takrorlardi)
+     Harakatlar       — qayerga ketdi
      Inventarizatsiya — hisob va haqiqat farqi
+
+   Qatorda faqat ikki so'zli tugma: «Kirim» va «Chiqim» — hamshira kuniga
+   qiladigan ish. Tahrirlash, ko'chirish, o'chirish va tarix — mahsulot
+   NOMINI bosganda ochiladigan oynada. Ilgari har qatorda oltita nomsiz
+   belgi turardi (10 mahsulot = 60 tugma) va o'chirish so'roqsiz edi.
    ───────────────────────────────────────────────────────────────────────────── */
 
-type Tab = 'stock' | 'movements' | 'batches' | 'audit';
+type Tab = 'stock' | 'movements' | 'audit';
 
 interface InventoryProps {
     items: InventoryItem[];
@@ -141,7 +147,7 @@ export const Inventory: React.FC<InventoryProps> = ({
     }, []);
 
     useEffect(() => { if (tab === 'movements') loadMovements(); }, [tab, loadMovements]);
-    useEffect(() => { if (tab === 'batches') loadAlerts(); }, [tab, loadAlerts]);
+    useEffect(() => { if (tab === 'stock') loadAlerts(); }, [tab, loadAlerts]);
 
     // ─── Amallar ────────────────────────────────────────────────────────────
 
@@ -173,7 +179,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             setInTarget(null);
             reloadItems();
             if (tab === 'movements') loadMovements();
-            if (tab === 'batches') loadAlerts();
+            if (tab === 'stock') loadAlerts();
         } catch (e: any) {
             setError(e?.message || t('inventory.kirim_yozilmadi'));
         } finally { setBusy(false); }
@@ -230,7 +236,7 @@ export const Inventory: React.FC<InventoryProps> = ({
             setOutTarget(null);
             reloadItems();
             if (tab === 'movements') loadMovements();
-            if (tab === 'batches') loadAlerts();
+            if (tab === 'stock') loadAlerts();
         };
 
         try {
@@ -273,6 +279,16 @@ export const Inventory: React.FC<InventoryProps> = ({
         } catch (e: any) {
             setError(e?.message || t('inventory.kochirish_yozilmadi'));
         } finally { setBusy(false); }
+    };
+
+    const askDelete = async (item: InventoryItem) => {
+        const ok = await confirmAction({
+            title: fill(t('inventory.deleteItemConfirm'), item.name),
+            danger: true, confirmLabel: t('ui.ochirish_2'),
+        });
+        if (!ok) return;
+        setHistoryItem(null);
+        onDeleteItem(item.id);
     };
 
     const openHistory = async (item: InventoryItem) => {
@@ -368,11 +384,20 @@ export const Inventory: React.FC<InventoryProps> = ({
        Brauzerda partiyalar ro'yxati yo'q, ya'ni buni bu yerda hisoblab
        bo'lmasdi — shuning uchun audit B-25 da belgi umuman ko'rinmasdi. */
     const expiredItems = items.filter((i) => (i.expiredQuantity || 0) > 0);
+    /* Muddati YAQIN (hali o'tmagan) partiyalar — ilgari alohida bo'limda
+       edi. Endi qoldiqlar tepasida bitta qator: nomi va sanasi. */
+    const today = todayISO();
+    const expiringSoon = (alerts?.expiring || [])
+        .filter((b: any) => !(b.expired || (b.expiryDate && String(b.expiryDate).slice(0, 10) < today)))
+        .map((b: any) => ({
+            id: b.id,
+            name: b.item?.name || items.find((i) => i.id === b.itemId)?.name || '—',
+            date: String(b.expiryDate || '').split('-').reverse().join('.'),
+        }));
 
     const TABS: { id: Tab; name: string; icon: React.ElementType }[] = [
         { id: 'stock', name: t('ui.qoldiqlar'), icon: Package },
         { id: 'movements', name: t('common.actions'), icon: History },
-        { id: 'batches', name: t('inventory.partiya_va_muddat'), icon: CalendarClock },
         { id: 'audit', name: t('inventory.inventarizatsiya'), icon: ClipboardCheck },
     ];
 
@@ -427,6 +452,16 @@ export const Inventory: React.FC<InventoryProps> = ({
                         </div>
                     )}
 
+                    {expiringSoon.length > 0 && (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-start gap-2">
+                            <CalendarClock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <p className="text-sm text-amber-800 dark:text-amber-200">
+                                {t('inventory.expiringSoon')}{' '}
+                                {expiringSoon.map((b) => `${b.name} (${b.date})`).join(', ')}
+                            </p>
+                        </div>
+                    )}
+
                     {lowStock.length > 0 && (
                         <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center gap-2">
                             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -450,7 +485,11 @@ export const Inventory: React.FC<InventoryProps> = ({
                                     <div key={it.id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-3">
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <p className="text-sm font-semibold text-ink truncate">{it.name}</p>
+                                                <button type="button" onClick={() => openHistory(it)}
+                                                    title={t('inventory.openItem')}
+                                                    className="text-sm font-semibold text-ink truncate text-left hover:text-primary-600 hover:underline focus-visible:underline">
+                                                    {it.name}
+                                                </button>
                                                 {it.isMedication && (
                                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
                                                         {t('inventory.dori')}
@@ -484,40 +523,16 @@ export const Inventory: React.FC<InventoryProps> = ({
                                             </p>
                                             <p className="text-xs text-faint">{it.unit}</p>
                                         </div>
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                            {!readOnly && (
-                                                <>
-                                                    <Button variant="secondary" size="sm" onClick={() => openIn(it)} title={t('inventory.ui.stockIn')}>
-                                                        <ArrowDownToLine className="w-4 h-4" />
-                                                    </Button>
-                                                    <Button variant="secondary" size="sm" onClick={() => openOut(it)} title={t('inventory.ui.stockOut')}>
-                                                        <ArrowUpFromLine className="w-4 h-4" />
-                                                    </Button>
-                                                    {departments.length > 0 && (
-                                                        <Button variant="secondary" size="sm" title={t('ui.kochirish')}
-                                                            onClick={() => {
-                                                                setMoveForm({ quantity: '', fromDepartmentId: '', toDepartmentId: '', note: '' });
-                                                                setMoveTarget(it);
-                                                            }}>
-                                                            <ArrowLeftRight className="w-4 h-4" />
-                                                        </Button>
-                                                    )}
-                                                </>
-                                            )}
-                                            {!readOnly && (
-                                                <Button variant="secondary" size="sm" onClick={() => openEdit(it)} title={t('inventory.ui.edit')}>
-                                                    <Pencil className="w-4 h-4" />
+                                        {!readOnly && (
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <Button variant="secondary" size="sm" onClick={() => openIn(it)}>
+                                                    <ArrowDownToLine className="w-4 h-4 mr-1.5" />{t('inventory.ui.stockIn')}
                                                 </Button>
-                                            )}
-                                            <Button variant="secondary" size="sm" onClick={() => openHistory(it)} title={t('inventory.ui.history')}>
-                                                <History className="w-4 h-4" />
-                                            </Button>
-                                            {!readOnly && (
-                                                <Button variant="secondary" size="sm" onClick={() => onDeleteItem(it.id)} title={t('ui.ochirish')}>
-                                                    <Trash2 className="w-4 h-4 text-red-500" />
+                                                <Button variant="secondary" size="sm" onClick={() => openOut(it)}>
+                                                    <ArrowUpFromLine className="w-4 h-4 mr-1.5" />{t('inventory.ui.stockOut')}
                                                 </Button>
-                                            )}
-                                        </div>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -529,15 +544,16 @@ export const Inventory: React.FC<InventoryProps> = ({
             {/* ═══ HARAKATLAR ══════════════════════════════════════════════ */}
             {tab === 'movements' && (
                 <Card className="p-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+                    {/* Filtr o'zgarishi bilan ro'yxat o'zi yangilanadi
+                        (`loadMovements` → useEffect), shuning uchun
+                        alohida «Ko'rsatish» tugmasi olib tashlandi. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                         <Select value={movFilter.itemId} onChange={(e: any) => setMovFilter(f => ({ ...f, itemId: e.target.value }))}>
                             <option value="">{t('inventory.ui.allItems')}</option>
                             {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                         </Select>
                         <Input type="date" value={movFilter.from} onChange={(e: any) => setMovFilter(f => ({ ...f, from: e.target.value }))} />
                         <Input type="date" value={movFilter.to} onChange={(e: any) => setMovFilter(f => ({ ...f, to: e.target.value }))} />
-                        <Button variant="secondary" onClick={loadMovements} disabled={movLoading}>
-                            <RefreshCw className="w-4 h-4 mr-1.5" />{t('inventory.ui.show')}</Button>
                     </div>
 
                     {movLoading && movements.length === 0 ? (
@@ -570,76 +586,6 @@ export const Inventory: React.FC<InventoryProps> = ({
                                     <span className="text-xs text-faint shrink-0 hidden sm:block">{fmtWhen(m.createdAt)}</span>
                                 </div>
                             ))}
-                        </div>
-                    )}
-                </Card>
-            )}
-
-            {/* ═══ PARTIYA VA MUDDAT ═══════════════════════════════════════ */}
-            {tab === 'batches' && (
-                <Card className="p-4">
-                    {alertsLoading && !alerts ? (
-                        <div className="space-y-2">
-                            {[0, 1, 2].map((i) => <div key={i} className="h-12 bg-elevated rounded animate-pulse" />)}
-                        </div>
-                    ) : !alerts || (alerts.expiring.length === 0 && alerts.lowStock.length === 0) ? (
-                        <div className="text-center py-10">
-                            <CalendarClock className="w-8 h-8 mx-auto text-faint mb-2" />
-                            <p className="text-sm text-muted">{t('inventory.ui.noAlerts')}</p>
-                            <p className="text-xs text-faint mt-1">
-                                {t('inventory.partiyalar_kirim_paytida_yaroqlilik')}
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="space-y-5">
-                            {alerts.expiring.length > 0 && (
-                                <div>
-                                    <h3 className="text-sm font-semibold text-ink mb-2">
-                                        {t('inventory.muddati_otgan_va_yaqinlashgan')}{alerts.expiring.length})
-                                    </h3>
-                                    <div className="space-y-1.5">
-                                        {alerts.expiring.map((b: any) => (
-                                            <div key={b.id}
-                                                className={`flex items-center gap-3 p-2.5 rounded-lg border
-                                                    ${b.expired
-                                                        ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20'
-                                                        : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20'}`}>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-ink truncate">
-                                                        {b.item?.name || '—'}
-                                                    </p>
-                                                    <p className="text-xs text-muted">
-                                                        {b.batchNumber ? fill(t('inventory.partiya_x_2'), b.batchNumber) : ''}
-                                                        {t('inventory.muddat')} {b.expiryDate}
-                                                        {b.expired ? t('inventory.muddati_otgan_3') : ''}
-                                                    </p>
-                                                </div>
-                                                <span className="text-sm font-bold tabular-nums shrink-0">
-                                                    {fmt(b.quantity)} {b.item?.unit || ''}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {alerts.lowStock.length > 0 && (
-                                <div>
-                                    <h3 className="text-sm font-semibold text-ink mb-2">
-                                        {t('inventory.minimal_qoldiqdan_tushgan')}{alerts.lowStock.length})
-                                    </h3>
-                                    <div className="space-y-1.5">
-                                        {alerts.lowStock.map((r: any) => (
-                                            <div key={r.id} className="flex items-center gap-3 p-2.5 border border-line rounded-lg">
-                                                <p className="text-sm text-ink flex-1 truncate">{r.name}</p>
-                                                <span className="text-sm tabular-nums text-amber-600 dark:text-amber-400">
-                                                    {fmt(r.quantity)} / {fmt(r.minQuantity)} {r.unit}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     )}
                 </Card>
@@ -867,25 +813,57 @@ export const Inventory: React.FC<InventoryProps> = ({
 
             {/* ─── Tarix ──────────────────────────────────────────────────── */}
             {historyItem && (
-                <Modal isOpen={true} onClose={() => setHistoryItem(null)} title={fill(t('inventory.tarix_x'), historyItem.name)}>
-                    {historyRows.length === 0 ? (
-                        <p className="text-sm text-faint py-6 text-center">{t('inventory.ui.noMoves')}</p>
-                    ) : (
-                        <div className="space-y-1.5 max-h-96 overflow-y-auto">
-                            {historyRows.map((m) => (
-                                <div key={m.id} className="flex items-center gap-3 text-sm">
-                                    <span className={`w-16 font-bold tabular-nums shrink-0 ${m.quantity >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                        {m.quantity >= 0 ? '+' : ''}{fmt(m.quantity)}
-                                    </span>
-                                    <span className="flex-1 min-w-0 truncate text-muted">
-                                        {MOVEMENT_LABEL[m.type] || m.type} · {REASON_LABEL[m.reason] || m.reason}
-                                        {m.note ? ` · ${m.note}` : ''}
-                                    </span>
-                                    <span className="text-xs text-faint shrink-0">{fmtWhen(m.createdAt)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                <Modal isOpen={true} onClose={() => setHistoryItem(null)} title={historyItem.name}>
+                    <div className="space-y-4">
+                        <p className="text-sm text-muted">
+                            {t('inventory.ui.history')} · {t('inventory.minimal')} {fmt(historyItem.minQuantity || 0)} {historyItem.unit}
+                        </p>
+                        {historyRows.length === 0 ? (
+                            <p className="text-sm text-faint py-6 text-center">{t('inventory.ui.noMoves')}</p>
+                        ) : (
+                            <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                                {historyRows.map((m) => (
+                                    <div key={m.id} className="flex items-center gap-3 text-sm">
+                                        <span className={`w-16 font-bold tabular-nums shrink-0 ${m.quantity >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                            {m.quantity >= 0 ? '+' : ''}{fmt(m.quantity)}
+                                        </span>
+                                        <span className="flex-1 min-w-0 truncate text-muted">
+                                            {MOVEMENT_LABEL[m.type] || m.type} · {REASON_LABEL[m.reason] || m.reason}
+                                            {m.note ? ` · ${m.note}` : ''}
+                                        </span>
+                                        <span className="text-xs text-faint shrink-0">{fmtWhen(m.createdAt)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Kam ishlatiladigan amallar — shu yerda, qatorda emas */}
+                        {!readOnly && (
+                            <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-line">
+                                <Button variant="secondary" size="sm" onClick={() => askDelete(historyItem)}
+                                    className="mr-auto text-red-600 dark:text-red-400">
+                                    <Trash2 className="w-4 h-4 mr-1.5" />{t('ui.ochirish')}
+                                </Button>
+                                {departments.length > 0 && (
+                                    <Button variant="secondary" size="sm" onClick={() => {
+                                        const it = historyItem;
+                                        setHistoryItem(null);
+                                        setMoveForm({ quantity: '', fromDepartmentId: '', toDepartmentId: '', note: '' });
+                                        setMoveTarget(it);
+                                    }}>
+                                        <ArrowLeftRight className="w-4 h-4 mr-1.5" />{t('ui.kochirish')}
+                                    </Button>
+                                )}
+                                <Button variant="secondary" size="sm" onClick={() => {
+                                    const it = historyItem;
+                                    setHistoryItem(null);
+                                    openEdit(it);
+                                }}>
+                                    <Pencil className="w-4 h-4 mr-1.5" />{t('inventory.ui.edit')}
+                                </Button>
+                            </div>
+                        )}
+                    </div>
                 </Modal>
             )}
 

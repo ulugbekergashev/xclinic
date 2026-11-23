@@ -6,8 +6,9 @@ import { formatTime } from '../../utils/format';
 import { LabValues, LabValuesStatus } from './LabValues';
 
 /* ── SHU QABULNING NATIJALARI ────────────────────────────────────────────────
-   Varaqning eng tepasida: shifokor bemor bilan gaplashishdan oldin tahlil va
-   tekshiruv nima ko'rsatganini ko'radi. Ilgari natija varaqda yo'q edi —
+   «Tahlil va tekshiruv» blokida, o'sha buyurtmalarning ustida (2026-11-20 gacha
+   varaqning eng tepasida edi va pastdagi «Natija tayyor» qatori bilan
+   ikki joyda turardi). Ilgari natija varaqda yo'q edi —
    «Natija tayyor» degan yozuv bor edi, qiymatning o'zi esa Laboratoriya
    bo'limida.
 
@@ -72,28 +73,29 @@ export const VisitResults: React.FC<Props> = ({ visit, busy, canMark, onMarkSeen
 
     return (
         <section aria-label={t('visit.resultsTab')} style={FLOOR}
-            className="relative rounded-[22px] border-[1.5px] border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/20 px-3.5 pt-[18px] pb-2.5 flex flex-col gap-2.5">
-            <span className="absolute -top-2.5 left-5 inline-flex items-center h-[18px] px-2 rounded-md bg-surface text-[10.5px] font-bold uppercase tracking-wider whitespace-nowrap text-emerald-800 dark:text-emerald-300">
+            className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/20 px-3.5 py-3 flex flex-col gap-2.5">
+            <span className="text-[13px] font-semibold text-emerald-800 dark:text-emerald-300">
                 {title}
             </span>
 
             {labs.map(o => (
                 <div key={o.id} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 text-[11.5px] font-bold text-muted truncate">
+                        <span className="min-w-0 flex-1 text-xs font-medium text-muted truncate">
                             {(o.items || []).map(i => i.testName).join(' · ') || t('visit.tabLab')}
                         </span>
                         <SeenMark seen={!!o.seenByDoctorAt} canMark={canMark} busy={busy}
                             shown={loaded[o.id] === 'ready'} onMark={() => onMarkSeen('lab', o.id)} />
                     </div>
-                    <LabValues orderId={o.id} refreshKey={o.completedAt} twoColumns onStatus={onStatus} />
+                    {/* Bitta ustun: blok endi varaqning yarmida, ikki ustunga joy yo'q */}
+                    <LabValues orderId={o.id} refreshKey={o.completedAt} onStatus={onStatus} />
                 </div>
             ))}
 
             {studies.map(s => (
                 <div key={s.id} className="flex items-start gap-2">
                     <p className="min-w-0 flex-1 text-[12.5px] text-ink">
-                        <b className="font-bold">{MODALITY_LABELS[s.modality] || s.modality} — {s.name}.</b>{' '}
+                        <b className="font-semibold">{MODALITY_LABELS[s.modality] || s.modality} — {s.name}.</b>{' '}
                         <span className="text-muted">{s.conclusion || s.findings || t('visit.resultReady')}</span>
                     </p>
                     <SeenMark seen={!!s.seenByDoctorAt} canMark={canMark} busy={busy} shown onMark={() => onMarkSeen('study', s.id)} />

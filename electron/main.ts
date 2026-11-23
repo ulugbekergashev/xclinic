@@ -1,9 +1,27 @@
-import { app, BrowserWindow, shell, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, shell, dialog, ipcMain, session } from 'electron';
 import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import http from 'http';
 import fs from 'fs';
 import { applyPendingRestore } from './restore';
+
+/* OYNA SARLAVHASIDAGI SANA — «qaysi versiya ishlayapti» degan savolga javob.
+
+   Versiya raqami hamma yig'ishda bir xil (0.1.0). Klinika yangi
+   o'rnatuvchini qo'ygach «hech narsa o'zgarmadi» dedi — va buni
+   tekshirishning iloji yo'q edi. `app.asar` ning vaqti = yig'ilgan vaqt
+   (o'rnatuvchi uni saqlaydi), shuning uchun alohida fayl kerak emas. */
+function buildLabel(): string {
+    try {
+        const built = fs.statSync(path.join(process.resourcesPath, 'app.asar')).mtime;
+        const two = (n: number) => String(n).padStart(2, '0');
+        return `versiya ${two(built.getDate())}.${two(built.getMonth() + 1)}.${built.getFullYear()} ${two(built.getHours())}:${two(built.getMinutes())}`;
+    } catch {
+        return ''; // ishlab chiqish rejimi: app.asar yo'q
+    }
+}
+const windowTitle = (tail: string): string =>
+    ['XClinic', buildLabel(), tail].filter(Boolean).join('  |  ');
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -243,7 +261,7 @@ function startNamedTunnel(userData: string, logStream: fs.WriteStream, token: st
 
     if (tunnelUrl) {
         try { fs.writeFileSync(path.join(userData, 'cf-tunnel.json'), JSON.stringify({ url: tunnelUrl }, null, 2)); } catch { }
-        setTimeout(() => { mainWindow?.setTitle(`XClinic  |  🌐 ${tunnelUrl}`); }, 3000);
+        setTimeout(() => { mainWindow?.setTitle(windowTitle(`🌐 ${tunnelUrl}`)); }, 3000);
     }
 
     cloudflaredProcess.stdout?.on('data', d => logStream.write(d));
@@ -656,7 +674,7 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
-        title: `XClinic  |  ${networkInfo}`,
+        title: windowTitle(networkInfo),
         ...(hasCustomIcon ? { icon: customIconPath } : {}),
 webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -691,6 +709,11 @@ webPreferences: {
     /* Oyna ochish va sahifadan chiqish qoidalari `web-contents-created`
        ishlovchisida (pastda) — asosiy oynaga ham, undan ochilgan bosma
        oynalarga ham bir xil qo'llanadi. */
+
+    /* Sarlavha OYNANIKI bo'lib qoladi. Busiz sahifa yuklangach uni
+       `<title>XClinic</title>` almashtirardi va versiya sanasi ham, tarmoq
+       manzili ham yo'qolardi. */
+    mainWindow.on('page-title-updated', (event) => event.preventDefault());
 
     mainWindow.on('closed', () => {
         mainWindow = null;
@@ -743,6 +766,23 @@ app.whenReady().then(async () => {
     }
 
     if (backendReady) {
+        /* YANGI VERSIYA — ESKI KESHSIZ.
+
+           Klinika yangi o'rnatuvchini qo'ydi va «hech narsa o'zgarmadi» dedi.
+           Ekran fayllari diskda yangilanadi, lekin oyna ularni brauzer
+           xotirasidan olishi mumkin: HTTP keshi va (eski nusxalardan qolgan)
+           service worker `userData` da yashaydi, o'rnatuvchi unga tegmaydi.
+
+           Har ishga tushishda ikkalasi tozalanadi. Kirish (cookie) va
+           sozlamalar (`localStorage`) SAQLANADI — tozalanadigani faqat
+           fayllar nusxasi; ular shu kompyuterdagi serverdan bir zumda
+           qayta olinadi. Xato dasturni to'xtatmaydi. */
+        try {
+            await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
+            await session.defaultSession.clearCache();
+        } catch (e: any) {
+            console.warn('Kesh tozalanmadi:', e?.message || e);
+        }
         createWindow();
         startCloudflared(app.getPath('userData'));
     } else {

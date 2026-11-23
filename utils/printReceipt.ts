@@ -18,7 +18,7 @@
    HTML ga tushadigan har bir qiymat `esc()` dan o'tadi.
    ───────────────────────────────────────────────────────────────────────────── */
 
-import { esc, fmtMoney, PrintClinic } from './printDocument';
+import { esc, fmtMoney, PrintClinic, resolvePrintClinic } from './printDocument';
 
 export interface ReceiptLine {
     name: string;
@@ -82,7 +82,8 @@ const row = (r: ReceiptRow) =>
 
 /** Chekning to'liq HTML hujjati. Brauzerga bog'liq emas — sinovda tekshiriladi. */
 export function buildReceiptHtml(data: ReceiptData): string {
-    const clinic = data.clinic;
+    // Klinika berilmasa — ilovadagi joriy klinika (printDocument)
+    const clinic = resolvePrintClinic(data.clinic);
     const contact = [clinic?.address, clinic?.phone].filter(Boolean).map(esc).join(' · ');
     const lines = data.lines.map(l => {
         const qty = l.quantity && l.quantity > 1 ? ` <span class="q">×${esc(l.quantity)}</span>` : '';
@@ -91,7 +92,7 @@ export function buildReceiptHtml(data: ReceiptData): string {
 
     return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(data.title)}</title>
 <style>${CSS}</style></head><body>
-<div class="c name">${esc(clinic?.name || '')}</div>
+<div class="c name">${esc(clinic?.name || 'XClinic')}</div>
 ${contact ? `<div class="c sub">${contact}</div>` : ''}
 <div class="c title">${esc(data.title)}</div>
 <div class="s"></div>

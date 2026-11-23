@@ -179,7 +179,7 @@ export const LabOrders: React.FC<Props> = ({
 
     const removeOrder = async (id: string) => {
         if (!await confirmAction({ title: t('laborders.yollanma_va_uning_natijalari'), danger: true, confirmLabel: t('ui.ochirish_2') })) return;
-        try { await api.labOrders.delete(id); await reload(); onExpensesChanged?.(); }
+        try { await api.labOrders.delete(id); setResultsOrder(null); await reload(); onExpensesChanged?.(); }
         catch (e: any) { setError(e.message || t('ui.ochirilmadi')); }
     };
 
@@ -199,9 +199,19 @@ export const LabOrders: React.FC<Props> = ({
         } finally { setSaving(false); }
     };
 
-    const printResults = () => {
-        if (!resultsOrder) return;
-        const patient = patients.find(p => p.id === resultsOrder.patientId);
+    /* Bosishga arziydigan natija bormi — saqlangan qiymat bo'yicha */
+    const hasSavedResults = !!resultsOrder?.items.some(item =>
+        (item.parameters || []).some(p => String(p.value ?? '').trim() !== ''));
+
+    const printResults = async () => {
+        if (!resultsOrder || !hasSavedResults) return;
+        /* Xotiradagi ro'yxat faqat 500 bemor — eski bemor serverdan olinadi,
+           aks holda tug'ilgan sana va jinsi «—» chiqadi */
+        let patient: Partial<Patient> | undefined = patients.find(p => p.id === resultsOrder.patientId);
+        if (!patient && resultsOrder.patientId) {
+            try { patient = await api.patients.getById(resultsOrder.patientId); } catch { /* quyidagi zaxira */ }
+        }
+        if (!patient) patient = { lastName: resultsOrder.patientName, gender: resultsOrder.patientSex as any };
         const opened = printLabResult(
             { ...resultsOrder, patient },
             currentClinic || undefined,
@@ -301,21 +311,15 @@ export const LabOrders: React.FC<Props> = ({
                                             {/* TO'LANDIMI — laborant uchun asosiy savol: to'lovsiz
                                                 natija berilmaydi. Ilgari buni ro'yxatda ko'rish
                                                 imkoni yo'q edi, laborant kassaga qo'ng'iroq qilardi. */}
-                                            {(order as any).paid === true && (
-                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                                    {t('ui.tolangan')}
-                                                </span>
-                                            )}
+                                            {/* «To'langan» nishoni olib tashlandi — faqat istisno
+                                                (to'lanmagan) ko'rinadi: laborantning savoli shu. */}
                                             {(order as any).paid === false && (
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                                                     {t('ui.tolanmagan')}{(order as any).due ? ` · ${fmt((order as any).due)}` : ''}
                                                 </span>
                                             )}
-                                            {(order as any).sampleCollectedAt && (
-                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-elevated text-muted">
-                                                    {t('finance.report.sampleTaken')}
-                                                </span>
-                                            )}
+                                            {/* «Proba olindi» nishoni olib tashlandi — holat nishoni
+                                                («Namuna olindi», «Bajarilmoqda») buni allaqachon aytadi. */}
                                         </div>
                                         {/* Yo'llanma IKKI xil bo'ladi: klinik tahlil
                                             (`items` — tahlillar ro'yxati) va tish
@@ -336,16 +340,13 @@ export const LabOrders: React.FC<Props> = ({
                                     </div>
                                     <div className="text-right shrink-0">
                                         <p className="font-semibold text-ink tabular-nums">{fmt(order.totalPrice || 0)} {t('ui.som')}</p>
-                                        <div className="flex gap-2 mt-2">
-                                            <button onClick={() => openResults(order)}
-                                                className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
-                                                {t('laborders.natijalar')}
-                                            </button>
-                                            <button onClick={() => removeOrder(order.id)}
-                                                className="p-1.5 text-faint hover:text-red-500 rounded-lg" title={t('common.delete')}>
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                                        {/* Har qatordagi savatcha olib tashlandi (2026-11-20):
+                                            bir noto'g'ri bosish — yo'llanma va natijalari yo'q.
+                                            O'chirish endi «Natijalar» oynasining pastida. */}
+                                        <button onClick={() => openResults(order)}
+                                            className="mt-2 px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+                                            {t('laborders.natijalar')}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -467,7 +468,9 @@ export const LabOrders: React.FC<Props> = ({
                                 </p>
                             </div>
                             <div className="ml-auto flex items-center gap-2">
-                                <button aria-label={t('common.print')} onClick={printResults} className="p-2 text-faint hover:text-muted" title={t('common.print')}>
+                                <button aria-label={t('common.print')} onClick={printResults} disabled={!hasSavedResults}
+                                    className="p-2 text-faint hover:text-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title={hasSavedResults ? t('common.print') : t('laborders.print_no_results')}>
                                     <Printer className="w-5 h-5" />
                                 </button>
                                 <button onClick={() => setResultsOrder(null)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
@@ -522,7 +525,15 @@ export const LabOrders: React.FC<Props> = ({
                             ))}
                         </div>
 
+                        {/* Xato oynaning o'zida — sahifadagi banner oyna ostida qolardi */}
+                        {error && (
+                            <p role="alert" className="mx-5 mt-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300">{error}</p>
+                        )}
                         <div className="p-5 border-t border-line flex justify-end gap-3">
+                            <button type="button" onClick={() => removeOrder(resultsOrder.id)}
+                                className="mr-auto inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg">
+                                <Trash2 className="w-4 h-4" /> {t('laborders.deleteOrder')}
+                            </button>
                             <button onClick={() => setResultsOrder(null)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">
                                 {t('common.close')}
                             </button>

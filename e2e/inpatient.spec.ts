@@ -72,6 +72,13 @@ test.describe('Statsionar — ro\'yxatlarga qo\'shish', () => {
         await go(page, '/inpatient');
         await page.waitForTimeout(3000);
 
+        /* 2026-11-19 dan bu tugma xaritadagi har koykada emas, «Palatani
+           tahrirlash» oynasida (qalam): kamdan-kam ish ekranni to'ldirmasin. */
+        await expect(page.getByRole('button', { name: /Ta'mirga chiqarish/ })).toHaveCount(0);
+        const edit = page.getByRole('button', { name: /Palatani tahrirlash/ }).first();
+        test.skip(await edit.count() === 0, 'Palata yo\'q');
+        await edit.click();
+
         const block = page.getByRole('button', { name: /Ta'mirga chiqarish/ }).first();
         test.skip(await block.count() === 0, 'Bo\'sh koyka yo\'q');
 

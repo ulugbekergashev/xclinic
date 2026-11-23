@@ -35,8 +35,6 @@ interface Props {
     looseStudies?: DiagnosticStudy[];
     departments: Department[];
     templates: EncounterTemplate[];
-    /** Varaqda ochiq turgan qabul — lentada belgilanadi */
-    sheetVisitId: string | null;
     onOpenVisit: (visitId: string) => void;
 }
 
@@ -64,7 +62,7 @@ const detailBox = 'mt-2 flex flex-col gap-2 rounded-xl border border-line bg-can
 const smallBtn = 'self-start inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg border border-primary-200 dark:border-primary-800 bg-surface text-primary-700 dark:text-primary-300 text-xs font-bold hover:border-primary-400 disabled:opacity-60 disabled:hover:border-primary-200';
 
 export const PatientTimeline: React.FC<Props> = ({
-    patient, clinic, visits, admissions, looseLabs, looseStudies, departments, templates, sheetVisitId, onOpenVisit,
+    patient, clinic, visits, admissions, looseLabs, looseStudies, departments, templates, onOpenVisit,
 }) => {
     const { t, language } = useLanguage();
     const [filter, setFilter] = useState<TimelineFilter>('all');
@@ -118,7 +116,6 @@ export const PatientTimeline: React.FC<Props> = ({
         switch (e.kind) {
             case 'visit': {
                 const v = e.visit;
-                const inSheet = v.id === sheetVisitId;
                 const prescriptions = v.prescriptions || [];
                 return (
                     <div className={detailBox}>
@@ -147,8 +144,11 @@ export const PatientTimeline: React.FC<Props> = ({
                         {(v.procedures || []).length > 0 && (
                             <p><span className="text-muted">{t('visit.tabServices')}:</span> {(v.procedures || []).map(p => p.procedureName).join(', ')}</p>
                         )}
-                        <button type="button" disabled={inSheet} onClick={() => onOpenVisit(v.id)} className={smallBtn}>
-                            {inSheet ? t('card.tl.inSheet') : t('card.tl.openInSheet')}
+                        {/* Har doim bosiladi: tarix endi alohida tabda, tugma
+                            «Qabul» tabiga olib o'tadi — shu qabul u yerda
+                            allaqachon ochiq bo'lsa ham. */}
+                        <button type="button" onClick={() => onOpenVisit(v.id)} className={smallBtn}>
+                            {t('card.tl.openInSheet')}
                         </button>
                     </div>
                 );
@@ -222,15 +222,15 @@ export const PatientTimeline: React.FC<Props> = ({
                                 <span aria-hidden="true"
                                     className={`absolute left-0 w-3 h-3 rounded-full border-2 border-surface ring-[1.5px] ${newDay ? 'top-[21px]' : 'top-[3px]'} ${cancelled ? 'bg-gray-300 ring-gray-300' : DOT[e.kind]}`} />
                                 {newDay && (
-                                    <p className="mb-0.5 text-[11px] font-bold uppercase tracking-wider text-muted tabular-nums">{dayLabel(e.at)}</p>
+                                    <p className="mb-0.5 text-xs font-medium text-muted tabular-nums">{dayLabel(e.at)}</p>
                                 )}
                                 <button type="button" aria-expanded={open} onClick={() => setOpenId(open ? null : e.id)}
                                     className="group w-full flex items-start gap-2 text-left leading-snug">
                                     <span className="min-w-0 flex-1 flex flex-col">
-                                        <span className={`text-[13px] font-bold group-hover:text-primary-700 dark:group-hover:text-primary-300 ${cancelled ? 'text-muted line-through' : 'text-ink'}`}>
+                                        <span className={`text-sm font-semibold group-hover:text-primary-700 dark:group-hover:text-primary-300 ${cancelled ? 'text-muted line-through' : 'text-ink'}`}>
                                             {head.title}
                                             {live && (
-                                                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-[10px] font-bold uppercase align-middle">
+                                                <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-[11px] font-medium align-middle">
                                                     {t('card.openVisitBadge')}
                                                 </span>
                                             )}

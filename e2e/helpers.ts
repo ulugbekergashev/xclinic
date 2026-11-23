@@ -60,3 +60,39 @@ export const uniq = () => {
 export function toast(page: Page, text: RegExp) {
     return page.getByText(text).first();
 }
+
+/**
+ * Bemor kartasida bugungi qabulni ochadi: Bo'lim → Shifokor → «Qabul ochish».
+ * `dept` berilmasa — shifokori bor birinchi bo'lim. Shifokor tanlanmagan
+ * bo'lsa ro'yxatdagi birinchisi olinadi (marshrutda shifokor bekati shundan).
+ * e2e-demo ham shuni ishlatadi.
+ */
+export async function openVisitInCard(page: Page, dept?: string) {
+    const box = page.locator('section[aria-labelledby="visit-title"]');
+    const deptSel = box.getByLabel("Bo'lim", { exact: true });
+    const docSel = box.getByLabel(/^Shifokor/);
+    /* Shifokor kirgan bo'lsa forma bitta tugma: «Qabulni boshlash» (o'ziga).
+       Boshqa bo'lim kerak bo'lsa — «O'zgartirish» bilan to'liq forma. */
+    const quick = box.getByRole('button', { name: /^Qabulni boshlash$/ });
+    await expect(quick.or(deptSel)).toBeVisible({ timeout: 15_000 });
+    if (await quick.isVisible()) {
+        if (!dept) { await quick.click(); return; }
+        await box.getByRole('button', { name: /^O'zgartirish$/ }).click();
+    }
+    // Bo'limlar serverdan kechroq keladi — ro'yxat to'lguncha kutiladi
+    await expect(deptSel.locator('option').nth(1)).toBeAttached({ timeout: 15_000 });
+    if (dept) {
+        await deptSel.selectOption({ label: dept });
+    } else {
+        const values = await deptSel.locator('option').evaluateAll(
+            os => os.map(o => (o as HTMLOptionElement).value).filter(Boolean));
+        for (const v of values) {
+            await deptSel.selectOption(v);
+            if (await docSel.locator('option').count() > 1) break;
+        }
+    }
+    if (!(await docSel.inputValue()) && await docSel.locator('option').count() > 1) {
+        await docSel.selectOption({ index: 1 });
+    }
+    await box.getByRole('button', { name: /^Qabul ochish — / }).click();
+}

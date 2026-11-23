@@ -71,6 +71,7 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
                     select: {
                         id: true, firstName: true, lastName: true, dob: true, gender: true,
                         phone: true, cardNumber: true, balance: true, medicalHistory: true,
+                        anamnesis: true, anamnesisUpdatedAt: true, anamnesisUpdatedBy: true,
                     },
                 }),
                 prisma.patientAllergy.findMany({
@@ -202,9 +203,19 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
         res.json(items);
     });
 
+    /* Allergiyani registrator ham yozadi (klinika egasi, 2026-11-21): ko'p
+       klinikada anamnezni bemor kelganda qabulxona so'raydi. */
+    const ALLERGY_ROLES = ['DOCTOR', 'CLINIC_ADMIN', 'RECEPTIONIST'];
+    /** Tibbiy tarix oxirgi marta kim va qachon o'zgargani — kartadagi belgi */
+    const stampAnamnesis = (patientId: string, user: any) =>
+        prisma.patient.update({
+            where: { id: patientId },
+            data: { anamnesisUpdatedAt: new Date(), anamnesisUpdatedBy: user?.name || null },
+        });
+
     route('post', '/api/patients/:id/allergies', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!['DOCTOR', 'CLINIC_ADMIN'].includes(user?.role)) {
+        if (!ALLERGY_ROLES.includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         if (!(await assertPatientOwnership(req, res, req.params.id))) return;
@@ -241,13 +252,14 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
             : await prisma.patientAllergy.create({
                 data: { clinicId, patientId: req.params.id, ...data },
             });
+        await stampAnamnesis(req.params.id, user);
         res.json(item);
     });
 
     /** Allergiya O'CHIRILMAYDI, faolsizlantiriladi: tibbiy tarix saqlanadi */
     route('delete', '/api/patients/:id/allergies/:allergyId', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (!['DOCTOR', 'CLINIC_ADMIN'].includes(user?.role)) {
+        if (!ALLERGY_ROLES.includes(user?.role)) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
         const rec = await prisma.patientAllergy.findUnique({ where: { id: req.params.allergyId } });
@@ -257,6 +269,7 @@ export function registerClinicalRoutes(app: express.Express, deps: Deps) {
         await prisma.patientAllergy.update({
             where: { id: req.params.allergyId }, data: { isActive: false },
         });
+        await stampAnamnesis(req.params.id, user);
         res.json({ success: true, deactivated: true });
     });
 

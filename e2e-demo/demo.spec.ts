@@ -18,6 +18,7 @@
  * so'ralgani ochiladimi va asosiy tugmalar ish bajaradimi.
  */
 import { test, expect, Page } from '@playwright/test';
+import { openVisitInCard } from '../e2e/helpers';
 
 /* Har safar YANGI hujjat. Bir xil hash'ga qayta o'tish sahifani
    yangilamaydi va oldingi sinovda ochilgan modal ochiq qolib, keyingi
@@ -71,7 +72,9 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         const before = await qtyOfPaxta();
         expect(before, 'boshlang\'ich qoldiq o\'qilishi kerak').not.toBeNull();
 
-        await page.locator('button[title="Kirim"]').nth(1).click();
+        /* Qatorda endi yozuvli «Kirim» tugmasi (2026-11-20 gacha nomsiz
+           belgi edi, `title="Kirim"` bilan topilardi). */
+        await page.getByRole('button', { name: 'Kirim', exact: true }).nth(1).click();
         await page.getByLabel(/^Miqdor/).fill('7');
         await page.getByRole('button', { name: 'Kirimni yozish' }).click();
         await page.waitForTimeout(1500);
@@ -90,7 +93,8 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         const panel = page.locator('section[aria-labelledby="pay-queue-title"]');
         const before = (await panel.innerText()).replace(/\s+/g, ' ');
 
-        await panel.getByRole('button', { name: /^To'lovni qabul qilish/ }).click();
+        /* Har qatorda o'z «To'lash» tugmasi — tanlab, keyin bosish yo'q */
+        await panel.getByRole('button', { name: /^To'lash/ }).first().click();
         await page.waitForTimeout(1200);
 
         const accept = page.getByRole('button', { name: /qabul qilish/i }).last();
@@ -159,8 +163,12 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
 
     test('Sozlamalar: «AI yordamchi» tizimdan chiqarib yubormaydi', async ({ page }) => {
         await go(page, '/settings');
-        await page.getByRole('button', { name: 'AI yordamchi' }).last().click();
+        /* AI kalitlari — «Integratsiyalar» bo'limi ichida («AI yordamchi»
+           sarlavhasi ostida). Alohida «AI yordamchi» tugmasi yo'q — sinov eski
+           joyni bosib, «Xizmatlar» da qolib ketardi. */
+        await page.getByRole('button', { name: 'Integratsiyalar' }).first().click();
         await page.waitForTimeout(2000);
+        await expect(page.getByRole('heading', { name: 'AI yordamchi' })).toBeVisible();
 
         /* Bu vkladka serverdan kalit holatini so'raydi. Demo tokeni soxta,
            server 401 beradi, 401 esa sessiyani tozalab kirish sahifasiga
@@ -183,7 +191,7 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
         await intake.getByText('Aziza').first().click();
         await page.waitForTimeout(800);
 
-        await page.locator('#rc-dept').selectOption({ label: 'Terapiya' });
+        await page.locator('#rc-dept').selectOption({ label: 'Kardiologiya' });
         await page.waitForTimeout(600);
 
         /* Xizmatda `departmentId` bo'lmagani uchun bu ro'yxat HAR DOIM
@@ -204,7 +212,8 @@ test.describe('Demo: tugmalar ish bajaradi', () => {
            «Jarrohlik» degan MAVJUD BO'LMAGAN bo'lim ko'rinardi — u
            xizmat kategoriyasi, bo'lim emas (audit XC-01). */
         await expect(page.locator('body')).not.toContainText('Jarrohlik');
-        await expect(page.locator('body')).toContainText(/TER-|Terapiya/);
+        await expect(page.locator('body')).toContainText(/STM-|Stomatologiya/);
+        await expect(page.locator('body')).toContainText(/KAR-|Kardiologiya/);
     });
 
     test('Bemorlarda shifokor biriktirilgan', async ({ page }) => {
@@ -244,13 +253,15 @@ test.describe('Demo: bemor kartasida tashxis', () => {
 
         /* Qabul ochilmagan bo'lsa — panel «Qabul ochish» formasini beradi.
            Namoyishda ham shu yo'l ishlashi kerak. */
-        const openBtn = page.getByRole('button', { name: /^Qabul ochish$/ });
+        const openBtn = page.getByRole('button', { name: /^Qabul ochish/ });
         if (await openBtn.count()) {
-            await page.locator('select').first().selectOption({ index: 1 });
-            await openBtn.click();
+            await openVisitInCard(page);
             await page.waitForTimeout(2000);
         }
 
+        // Tashxis — «+ Qo'shish» oynasining bir turi (2026-11-21)
+        await page.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ }).click();
+        await page.getByRole('dialog').getByRole('button', { name: /^Tashxis$/ }).click();
         const icd = page.getByPlaceholder(/Kod yoki kasallik nomi/);
         await expect(icd).toBeVisible();
         await icd.fill('gipert');
@@ -315,18 +326,26 @@ test.describe("Demo: rol va xizmat ko'rsatish", () => {
 test.describe('Demo: o\'zgarish sahifa yangilangandan keyin ham turadi', () => {
     test('to\'lov qaytib kelmaydi', async ({ page }) => {
         await go(page, '/finance');
+        /* Kun raqamlari — tepadagi plitkalarda (2026-11-22), navbat esa tab ichida */
         const read = async () =>
-            (await page.locator('section[aria-labelledby="pay-queue-title"]').innerText()).replace(/\s+/g, ' ');
+            (await page.locator('main').innerText()).replace(/\s+/g, ' ');
+
+        const inTill = (text: string) =>
+            Number((text.match(/kassaga tushdi ([\d ]+?) naqd/i)?.[1] || '').replace(/\s/g, ''));
 
         const before = await read();
-        await page.getByRole('button', { name: /^To'lovni qabul qilish/ }).click();
+        await page.locator('section[aria-labelledby="pay-queue-title"]')
+            .getByRole('button', { name: /^To'lash/ }).first().click();
         await page.waitForTimeout(1200);
         await page.getByRole('button', { name: /^\d[\d\s]* qabul qilish$/ }).click();
         await page.waitForTimeout(2000);
+        // To'lovdan keyin oynada chek turadi — yopiladi, keyin sahifa o'qiladi
+        await page.getByRole('dialog').getByRole('button', { name: /^Yopish$/ }).last().click();
+        await page.waitForTimeout(500);
         const afterPay = await read();
         /* Qarz ketdi VA pul keldi — ikkalasi bir paytda. Ilgari kun yakuni
            faqat sahifadan chiqib qaytgandan keyin yangilanardi. */
-        expect(afterPay, 'to\'lov kun yakunida darhol ko\'rinishi kerak').toMatch(/2 ta to'lov/);
+        expect(inTill(afterPay), 'to\'lov kassaga darhol tushishi kerak').toBeGreaterThan(inTill(before));
         expect(afterPay).not.toBe(before);
 
         /* Chek `DEMO_TRANSACTIONS` da saqlanadi. Hisob qatori saqlanmasa,

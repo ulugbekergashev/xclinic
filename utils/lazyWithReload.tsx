@@ -103,7 +103,7 @@ export function lazyWithReload<T extends React.ComponentType<any>>(
     });
 }
 
-/* ─── SERVICE WORKER ALMASHGANDA ──────────────────────────────────────────────
+/* ─── SERVICE WORKER ALMASHGANDA ────────────────────────────────────────────
 
    `registerType: 'autoUpdate'` yangi service worker'ni darhol o'rnatadi va u
    nazoratni oladi. Lekin OCHIQ sahifa eskiligicha qoladi — u yangi bo'lak
@@ -113,15 +113,78 @@ export function lazyWithReload<T extends React.ComponentType<any>>(
 
    BIRINCHI O'RNATISHDA QAYTA YUKLAMAYMIZ: `controller` bo'sh bo'lsa, bu
    service worker endigina o'rnatilgani — sahifa allaqachon to'g'ri. Aks
-   holda har birinchi tashrifda ekran sababsiz yangilanardi. */
+   holda har birinchi tashrifda ekran sababsiz yangilanardi.
+
+   ISH USTIDA QAYTA YUKLAMAYMIZ. Yangi versiya endi ochiq turgan sahifada ham
+   o'zi topiladi (pastda), ya'ni nazorat ish kunining o'rtasida almashishi
+   mumkin. Odam hozirgina yozayotgan yoki oynada forma ochiq turgan bo'lsa,
+   sahifa uning qo'li ostidan yangilanib ketmasligi kerak — qulay payt
+   kutiladi: yozish to'xtagan va oyna yopilgan, yoki vkladka ko'rinmay
+   qolgan. */
+
+/** Oxirgi klavishdan keyin shuncha jim tursa — «yozmayapti» */
+const QUIET_MS = 60_000;
+/** Qulay paytni shu oraliqda qayta tekshiramiz */
+const RETRY_MS = 10_000;
+
 export function reloadOnServiceWorkerUpdate() {
     if (!('serviceWorker' in navigator)) return;
     if (!navigator.serviceWorker.controller) return;
 
+    let lastInputAt = 0;
+    const markInput = () => { lastInputAt = Date.now(); };
+    document.addEventListener('input', markInput, true);
+    document.addEventListener('keydown', markInput, true);
+
+    const busy = () => !document.hidden
+        && (Date.now() - lastInputAt < QUIET_MS || !!document.querySelector('[role="dialog"]'));
+
+    let pending = false;
     let reloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloaded) return;
+    const reloadWhenIdle = () => {
+        if (!pending || reloaded || busy()) return;
         reloaded = true;
         window.location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        pending = true;
+        reloadWhenIdle();
     });
+    setInterval(reloadWhenIdle, RETRY_MS);
+    document.addEventListener('visibilitychange', reloadWhenIdle);
+}
+
+/* ─── YANGI VERSIYANI OCHIQ SAHIFA O'ZI TOPSIN ──────────────────────────────
+
+   MUAMMO. Brauzer service worker yangilanganini faqat sahifa YUKLANGANDA
+   tekshiradi. Ilova esa bitta sahifa: ekranlar orasida o'tish manzilning
+   `#` dan keyingi qismini o'zgartiradi, sahifa qayta yuklanmaydi. Ya'ni
+   ertalab ochilgan vkladka kun bo'yi (ochiq turgan bo'lsa — kunlab) eski
+   kodda qoladi va yangi versiya chiqqanini hech qachon bilmaydi. Amalda bu
+   «yangiladik» deyilgandan keyin ekranda hech narsa o'zgarmaganidek
+   ko'rinardi.
+
+   YECHIM. Tekshiruvni o'zimiz so'raymiz: vkladkaga qaytilganda, internet
+   qayta ulanganda va har besh daqiqada. Yangi versiya bo'lsa service worker
+   uni o'zi o'rnatadi, yuqoridagi kuzatuvchi esa sahifani qulay paytda
+   yangilaydi. Tekshiruv — bitta kichik so'rov (`sw.js`), o'zgarish bo'lmasa
+   hech narsa yuklanmaydi. */
+
+const UPDATE_CHECK_MS = 5 * 60_000;
+/** «Fokus» va «ko'rindi» hodisalari juft keladi — ikki marta so'ramaslik uchun */
+const MIN_GAP_MS = 30_000;
+
+export function watchForNewVersion(registration: ServiceWorkerRegistration) {
+    let lastCheckAt = Date.now();
+    const check = () => {
+        if (navigator.onLine === false || Date.now() - lastCheckAt < MIN_GAP_MS) return;
+        lastCheckAt = Date.now();
+        // Tarmoq uzilgan yoki server band — keyingi safar tekshiriladi
+        registration.update().catch(() => { });
+    };
+    setInterval(check, UPDATE_CHECK_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+    window.addEventListener('focus', check);
+    window.addEventListener('online', check);
 }

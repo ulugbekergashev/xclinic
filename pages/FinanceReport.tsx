@@ -8,9 +8,9 @@ import {
 } from 'recharts';
 import {
     TrendingUp, TrendingDown, Wallet, AlertCircle, Users,
-    Building2, Package, Percent, X, Activity, Download,
+    Building2, Package, Percent, X, Activity, Download, ChevronDown,
 } from 'lucide-react';
-import { Department } from '../types';
+import { Department, EXPENSE_CATEGORY_LABELS } from '../types';
 import { api } from '../services/api';
 import { useLiveUpdates, LiveEventType } from '../hooks/useLiveUpdates';
 import { useLanguage, tr, fill, TranslationKey } from '../context/LanguageContext';
@@ -29,6 +29,9 @@ const sourceLabel = (reason: string, fallback: string) => (SOURCE_KEYS[reason] ?
 const deptName = (n: string) => (n === "Bo'limsiz" ? tr('visit.noDept') : n);
 
 import { exportReportToExcel } from '../utils/reportExport';
+import { formatUzPhone } from '../shared/validation';
+import { monthLabel as calMonthLabel } from '../utils/calendarLabels';
+import { AttendanceTab } from '../components/AttendanceReport';
 
 /* Hisobot raqamlarini o'zgartiradigan hodisalar: to'lov, yangi qabul,
    ombordan chiqim. `data.changed` esa har qanday yozuvda keladi — undan
@@ -74,6 +77,8 @@ interface Summary {
 interface Props {
     departments?: Department[];
     embedded?: boolean;
+    /** Qaysi vkladka bilan ochiladi (`/dashboard?tab=davomat` → attendance) */
+    initialView?: 'summary' | 'attendance';
 }
 
 /* Raqam formati BITTA joydan — `utils/format.ts`. Ilgari bu yerda
@@ -86,6 +91,8 @@ const fmt = (n: number) => formatNumber(n);
    hisobot jimgina o'tgan oyning oxirgi kunini ham qo'shib olardi. */
 const monthStart = () => getCurrentMonthRange().startDate;
 const today = () => todayISO();
+/** 2026-10-01 → 01.10.2026 */
+const fmtDay = (iso: string) => { const [y, m, d] = String(iso).split('-'); return d ? `${d}.${m}.${y}` : iso; };
 
 // Bo'limlar diagrammasi uchun ranglar — bo'limning o'z rangi bo'lmasa shulardan
 const PALETTE = ['#0E5F55', '#005EB8', '#D5281B', '#6F4FA3', '#0891B2', '#C96F00', '#B5377A', '#009639'];
@@ -113,8 +120,8 @@ const Row: React.FC<{
     </div>
 );
 
-export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) => {
-    const { t } = useLanguage();
+export const FinanceReport: React.FC<Props> = ({ departments = [], embedded, initialView }) => {
+    const { t, language } = useLanguage();
     const [from, setFrom] = useState(monthStart());
     const [to, setTo] = useState(today());
     const [data, setData] = useState<Summary | null>(null);
@@ -131,6 +138,57 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
     }, [from, to]);
 
     useEffect(() => { load(); }, [load]);
+
+    /* TAYYOR DAVRLAR (2026-11-22, DentaCRM dagi hisobotdan). Egasi deyarli
+       har safar bir xil savolni beradi: bugun, shu hafta, shu oy, o'tgan oy.
+       Ikki sanani har safar qo'lda terish o'rniga — bitta bosish. */
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const presets = (() => {
+        const now = new Date();
+        const weekStart = new Date(now); weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+        const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        return [
+            { key: 'today', label: t('card.today'), from: today(), to: today() },
+            { key: 'week', label: t('report.week'), from: iso(weekStart), to: today() },
+            { key: 'month', label: t('cashbook.month'), from: monthStart(), to: today() },
+            { key: 'prev', label: t('report.prevMonth'), from: iso(prevStart), to: iso(prevEnd) },
+        ];
+    })();
+
+    /* Qarzdorlar — kim, qancha, necha kundan beri (DentaCRM da bor; qarz
+       yoshi bo'yicha guruh — yo'q, egasi «qaysi qarz qotib qoldi» deb so'raydi) */
+    const [debtors, setDebtors] = useState<{ total: number; patients: { patientId?: string; patientName: string; phone?: string | null; due: number; count: number; oldestDate: string }[] } | null>(null);
+    const [debtorsOpen, setDebtorsOpen] = useState(false);
+    useEffect(() => { api.reports.debtors().then(setDebtors).catch(() => setDebtors(null)); }, [data]);
+
+    /* BO'LIB TO'LASH — shu oy qancha kelishi kerak (Moliya rejasi 7). Qarzning
+       bir qismi rejaga solingan: u «qotib qolgan» emas, jadval bo'yicha
+       keladi. Egasi buni qarzdorlar yonida ko'rishi kerak. */
+    const [installmentsDue, setInstallmentsDue] = useState<{ month: number; overdue: number } | null>(null);
+    useEffect(() => {
+        let stale = false;
+        api.installments.getAll()
+            .then((plans: any[]) => {
+                if (stale) return;
+                const now = today();
+                const ym = now.slice(0, 7);
+                let month = 0, overdue = 0;
+                for (const p of plans || []) {
+                    if (p.status !== 'Active') continue;
+                    for (const it of p.items || []) {
+                        if (it.status === 'Paid') continue;
+                        const d = String(it.expectedDate || '').slice(0, 10);
+                        if (d.slice(0, 7) === ym) month += it.amount || 0;
+                        else if (d && d < now) overdue += it.amount || 0;
+                    }
+                }
+                setInstallmentsDue({ month, overdue });
+            })
+            .catch(() => { if (!stale) setInstallmentsDue(null); });
+        return () => { stale = true; };
+    }, [data]);
+    const daysSince = (d: string) => Math.max(0, Math.floor((Date.now() - new Date(`${d}T00:00:00`).getTime()) / 864e5));
 
     const colorOf = (name: string, i: number) =>
         departments.find(d => d.name === name)?.color || PALETTE[i % PALETTE.length];
@@ -154,7 +212,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
        bilan ishlaydi va bir-birini tushuntiradi. "Bo'lim zarar" degan
        raqamdan keyin darhol "chunki 4 mln behuda ketgan" degan raqamga
        o'tish kerak. */
-    const [view, setView] = useState<'summary' | 'doctors' | 'departments' | 'writeoffs' | 'labshift'>('summary');
+    const [view, setView] = useState<'summary' | 'doctors' | 'departments' | 'writeoffs' | 'labshift' | 'attendance'>(initialView || 'summary');
 
     /* Solishtirish: bitta raqam ("shu oy 40 mln") o'zi hech narsa aytmaydi.
        Javob faqat oldingi davr yonida turganda paydo bo'ladi. */
@@ -169,7 +227,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
     }, [view, from, to]);
 
     const loadExtra = useCallback(async () => {
-        if (view === 'summary') return;
+        if (view === 'summary' || view === 'attendance') return;
         if (view === 'labshift') {
             setExtraLoading(true);
             try {
@@ -198,11 +256,77 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
 
     useEffect(() => { loadExtra(); }, [loadExtra]);
 
+    /* ULUSH: TO'LANDI VA QOLDIQ (2026-11-23, Moliya rejasi 3-vazifa). Egasi
+       «kimga qancha berdim, kimga qancha qoldi» ni shu yerda ko'radi. Ulush
+       oyiga bir marta to'lanadi — shuning uchun raqam davrning OYLARI
+       bo'yicha Xodimlar → Ulush jadvalidan olinadi (bitta manba). Pul o'sha
+       yerda to'lanadi; bu yerda faqat havola. */
+    const shareMonths = useMemo(() => {
+        const out: string[] = [];
+        const [fy, fm] = from.split('-').map(Number);
+        const [ty, tm] = to.split('-').map(Number);
+        if (!fy || !ty) return out;
+        for (let y = fy, m = fm; (y < ty || (y === ty && m <= tm)) && out.length < 24; m === 12 ? (y++, m = 1) : m++) {
+            out.push(`${y}-${String(m).padStart(2, '0')}`);
+        }
+        return out;
+    }, [from, to]);
+    type ShareMap = Record<string, { paid: number; payable: number }>;
+    const loadShares = useCallback(async (): Promise<ShareMap> => {
+        const list = await Promise.all(shareMonths.map(p => api.hr.shares(p)));
+        const acc: ShareMap = {};
+        for (const res of list) for (const r of res?.rows || []) {
+            const cur = acc[r.id] || { paid: 0, payable: 0 };
+            acc[r.id] = { paid: cur.paid + (r.paid || 0) + (r.paidViaRuns || 0), payable: cur.payable + (r.payable || 0) };
+        }
+        return acc;
+    }, [shareMonths]);
+    /* `key` — qaysi oylar uchun yuklangani: davr o'zgarsa eski raqam ko'rinmaydi */
+    const [sharesState, setSharesState] = useState<{ key: string; map: ShareMap } | null>(null);
+    const [sharesFailed, setSharesFailed] = useState(false);
+    const sharesKey = shareMonths.join(',');
+    const shares = sharesState?.key === sharesKey ? sharesState.map : null;
+    useEffect(() => {
+        if (view !== 'doctors' || !extra.doctors) return;
+        let stale = false;
+        setSharesFailed(false);
+        loadShares()
+            .then(map => { if (!stale) setSharesState({ key: sharesKey, map }); })
+            /* Xato «—» (ulush yo'q) bo'lib ko'rinmasin — alohida yoziladi */
+            .catch(() => { if (!stale) setSharesFailed(true); });
+        return () => { stale = true; };
+    }, [view, sharesKey, loadShares, extra.doctors]);
+    /* Oylar bo'yicha jadval — ochilganda yuklanadi (yil = davr oxiri yili) */
+    const monthsYear = Number(to.slice(0, 4)) || new Date().getFullYear();
+    const [monthsOpen, setMonthsOpen] = useState(false);
+    type MonthRow = { month: string; revenue: number; collected: number; expense: number; profit: number };
+    const [monthsLoaded, setMonthsLoaded] = useState<{ year: number; months: MonthRow[]; totals: Omit<MonthRow, 'month'> } | null>(null);
+    const [monthsFailed, setMonthsFailed] = useState(false);
+    /* Boshqa yil tanlansa eski yil raqamlari yangi sarlavha ostida turmasin */
+    const monthsData = monthsLoaded?.year === monthsYear ? monthsLoaded : null;
+    useEffect(() => {
+        if (!monthsOpen || view !== 'summary') return;
+        let stale = false;
+        setMonthsFailed(false);
+        api.reports.months(monthsYear)
+            .then(r => { if (!stale) setMonthsLoaded(r); })
+            .catch(() => { if (!stale) setMonthsFailed(true); });
+        return () => { stale = true; };
+    }, [monthsOpen, monthsYear, view, data]);
+    /* Brauzerda «uz-UZ» oy nomlari yo'q («2026 M11» chiqardi) — nomlar
+       `calendarLabels` dagi o'z ro'yxatidan */
+    const monthLabel = (p: string) => {
+        const [y, m] = p.split('-').map(Number);
+        return calMonthLabel(new Date(y, m - 1, 1), language === 'ru' ? 'ru' : 'uz');
+    };
+    const monthName = (p: string) => monthLabel(p).replace(/\s*\d{4}$/, '');
+
     /* Hisobot O'ZI yangilanadi: pulga tegishli narsa o'zgarsa, ochiq vkladka
        jimgina qayta so'raladi — skeleton chiqmaydi, raqamlar joyida almashadi.
        Ilgari buning uchun «Yangilash» tugmasi turardi. Jim yangilash xato
        bersa, eski raqamlar qoladi: xato faqat qo'lda ochilganda ko'rsatiladi. */
     const refreshSilently = useCallback(async () => {
+        if (view === 'attendance') return;
         try {
             if (view === 'summary') {
                 const [summary, compare] = await Promise.all([
@@ -264,10 +388,19 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 cmp ? Promise.resolve(cmp) : api.reports.compare(from, to).catch(() => null),
                 extra.labshift ? Promise.resolve(extra.labshift) : api.reports.labShift(to).catch(() => null),
             ]);
+            /* Shu ochiq turgan tab qaysi bo'lishidan qat'i nazar — eksport
+               o'zi yuklaydi: ulush ustunlari soxta nol bo'lib chiqmasin. */
+            const [months, exportShares, freshCompare] = await Promise.all([
+                monthsData ? Promise.resolve(monthsData) : api.reports.months(monthsYear).catch(() => null),
+                shares ? Promise.resolve(shares) : loadShares().catch(() => null),
+                api.reports.compare(from, to).catch(() => compare),
+            ]);
             exportReportToExcel({
                 from, to,
                 clinicName: departments?.clinicName || undefined,
-                summary: data, doctors, departments, writeoffs, compare, labShift,
+                summary: data, doctors, departments, writeoffs, compare: freshCompare, labShift,
+                months, debtors, shares: exportShares,
+                expenseLabels: EXPENSE_CATEGORY_LABELS as Record<string, string>,
             });
         } catch (e: any) {
             setError(e?.message || t('financereport.eksport_qilinmadi'));
@@ -297,8 +430,19 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
     return (
         <div className="space-y-5">
             {/* Davr */}
-            <div className="flex flex-wrap items-end gap-3">
+            <div className={`flex flex-wrap items-end gap-3 ${view === 'attendance' ? 'hidden' : ''}`}>
                 {!embedded && <h2 className="text-xl font-bold text-ink mr-auto">{t('finance.report.report')}</h2>}
+                <div role="group" aria-label={t('finance.report.from')} className="flex items-center gap-0.5 p-1 rounded-xl bg-elevated">
+                    {presets.map(p => {
+                        const on = from === p.from && to === p.to;
+                        return (
+                            <button key={p.key} type="button" aria-pressed={on} onClick={() => { setFrom(p.from); setTo(p.to); }}
+                                className={`h-9 px-3.5 rounded-lg text-sm font-semibold transition-colors ${on ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'}`}>
+                                {p.label}
+                            </button>
+                        );
+                    })}
+                </div>
                 <div className="flex items-end gap-3">
                     <div>
                         <label className="block text-[11px] text-muted mb-1">{t('finance.report.from')}</label>
@@ -334,10 +478,13 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                     ['summary', t('ui.umumiy_tab')],
                     ['doctors', t('ui.shifokorlar')],
                     ['departments', t('settings.bolimlar')],
-                    ['writeoffs', t('ui.chiqimlar')],
-                    ['labshift', t('ui.smena_svodi')],
+                    ['writeoffs', t('report.tabWaste')],
+                    /* Davomat — shu qatorda (2026-11-22): ilgari tepada ikkinchi tab qatori
+                       edi. «Smena svodi» (laboratoriyaning bir kunlik ishi) pul
+                       hisobotiga tegishli emas — u bu qatordan olib tashlandi. */
+                    ['attendance', t('finance.hub.attendance')],
                 ] as const).map(([k, label]) => (
-                    <button key={k} onClick={() => setView(k)}
+                    <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)}
                         className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${view === k
                             ? 'border-primary-600 text-primary-600 dark:text-primary-400'
                             : 'border-transparent text-muted hover:text-muted'}`}>
@@ -346,6 +493,8 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 ))}
             </div>
             </div>
+
+            {view === 'attendance' && <AttendanceTab />}
 
             {/* ── SHIFOKORLAR ───────────────────────────────────────────────── */}
             {view === 'doctors' && (
@@ -359,7 +508,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 ) : (
                     <>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                            <Tile label={t('finance.report.charged')} value={fmt(extra.doctors.totals.revenue)} unit="UZS" icon={TrendingUp} />
+                            <Tile label={t('report.services')} value={fmt(extra.doctors.totals.revenue)} unit="UZS" icon={TrendingUp} />
                             <Tile label={t('ui.tolangan')} value={fmt(extra.doctors.totals.paid)} unit="UZS" icon={Wallet} tone="ok" />
                             <Tile label={t('finance.report.debt')} value={fmt(extra.doctors.totals.due)} unit="UZS" icon={AlertCircle} tone="bad" />
                             <Tile label={t('finance.report.accruedShare')} value={fmt(extra.doctors.totals.accrued)} unit="UZS"
@@ -372,12 +521,15 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     <thead className="bg-canvas/40 border-b border-line">
                                         <tr>
                                             <Th>{t('finance.report.doctor')}</Th>
-                                            <Th right>{t('finance.report.charged')}</Th>
+                                            <Th right>{t('report.services')}</Th>
                                             <Th right>{t('finance.report.paid')}</Th>
                                             <Th right>{t('finance.report.debt')}</Th>
                                             <Th right>{t('finance.report.patient')}</Th>
                                             <Th right>{t('finance.report.avgCheck')}</Th>
                                             <Th right>{t('finance.report.share')}</Th>
+                                            <Th right>{t('report.sharePaid')}</Th>
+                                            <Th right>{t('report.shareLeft')}</Th>
+                                            <Th right><span className="sr-only">{t('report.payShare')}</span></Th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-line">
@@ -390,13 +542,31 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                                 <Td right>{d.patientCount}</Td>
                                                 <Td right>{fmt(d.avgCheck)}</Td>
                                                 <Td right strong>{fmt(d.accrued)}</Td>
+                                                {(() => {
+                                                    const s = d.doctorId && shares ? shares[d.doctorId] : undefined;
+                                                    return (
+                                                        <>
+                                                            <Td right tone={s && s.paid > 0 ? 'ok' : undefined}>{!shares ? (sharesFailed ? '?' : '…') : s && s.paid > 0 ? fmt(s.paid) : '—'}</Td>
+                                                            <Td right strong tone={s && s.payable > 0 ? 'bad' : undefined}>{!shares ? (sharesFailed ? '?' : '…') : s && s.payable > 0 ? fmt(s.payable) : '—'}</Td>
+                                                            <Td right>
+                                                                {s && s.payable > 0 ? (
+                                                                    <a href="#/staff?tab=payroll"
+                                                                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap">
+                                                                        {t('report.payShare')} →
+                                                                    </a>
+                                                                ) : null}
+                                                            </Td>
+                                                        </>
+                                                    );
+                                                })()}
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
                             <p className="px-3 py-2 text-[11px] text-faint border-t border-line-soft">
-                                {t('financereport.ulush_tolangan_pul_boyicha')}
+                                {t('financereport.ulush_tolangan_pul_boyicha')}{' '}
+                                {fill(t('report.shareMonthsNote'), shareMonths.map(monthLabel).join(', '))}
                             </p>
                         </div>
                     </>
@@ -410,9 +580,9 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 ) : (
                     <>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                            <Tile label={t('finance.report.income')} value={fmt(extra.departments.totals.revenue)} unit="UZS" icon={TrendingUp} />
+                            <Tile label={t('report.services')} value={fmt(extra.departments.totals.revenue)} unit="UZS" icon={TrendingUp} />
                             <Tile label={t('finance.report.expense')} value={fmt(extra.departments.totals.expense)} unit="UZS" icon={TrendingDown} tone="bad" />
-                            <Tile label={t('finance.report.profit')} value={fmt(extra.departments.totals.profit)} unit="UZS" icon={Wallet}
+                            <Tile label={t('finance.report.netProfit')} value={fmt(extra.departments.totals.profit)} unit="UZS" icon={Wallet}
                                 tone={extra.departments.totals.profit >= 0 ? 'ok' : 'bad'} />
                             <Tile label={t('finance.report.bedOccupancy')}
                                 value={extra.departments.totals.occupancy != null ? `${extra.departments.totals.occupancy}` : '—'}
@@ -427,7 +597,7 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                     <thead className="bg-canvas/40 border-b border-line">
                                         <tr>
                                             <Th>{t('finance.report.department')}</Th>
-                                            <Th right>{t('finance.report.income')}</Th>
+                                            <Th right>{t('report.services')}</Th>
                                             <Th right>{t('finance.report.paid')}</Th>
                                             <Th right>{t('finance.report.expense')}</Th>
                                             <Th right>{t('finance.report.profit')}</Th>
@@ -509,8 +679,9 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                                 {extra.writeoffs.byItem.map((it: any) => (
                                                     <tr key={it.itemId}>
                                                         <Td>{it.name}</Td>
-                                                        <Td right>{it.qty} {it.unit || ''}</Td>
-                                                        <Td right strong>{fmt(it.cost)}</Td>
+                                                        {/* Chiqim omborda manfiy son — bu yerda «qancha ketdi» */}
+                                                        <Td right>{Math.abs(it.qty || 0)} {it.unit || ''}</Td>
+                                                        <Td right strong>{fmt(Math.abs(it.cost || 0))}</Td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -619,93 +790,61 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                 <p className="text-sm text-faint py-16 text-center">{t('finance.report.calculating')}</p>
             ) : !totals ? null : (
                 <>
-                    {/* ── Oldingi davr bilan solishtirish ────────────────────
-                        "Shu oy 40 mln" o'zi hech narsa aytmaydi: ko'pmi,
-                        kammi? Javob oldingi shu uzunlikdagi davr yonida
-                        turganda paydo bo'ladi. */}
-                    {cmp && (
-                        <div className="bg-surface rounded-xl border border-line p-4">
-                            <div className="flex flex-wrap items-baseline gap-2 mb-3">
-                                <p className="text-[11px] font-bold uppercase tracking-wide text-muted">{t('finance.report.vsPrev')}</p>
-                                <span className="text-[11px] text-faint">
-                                    {cmp.previous.from} — {cmp.previous.to} ({cmp.previous.days} {t('ui.kun')})
-                                </span>
+                    {/* ── UMUMIY: TO'RT RAQAM (2026-11-22, olti maslahatchi) ─────────
+                        Ilgari: «Oldingi davrga nisbatan» qatori va ostida yana 5–7
+                        plitka — Tushum va Sof foyda 150px ichida ikki marta, «Davr
+                        qarzi», «Umumiy qarz», «Shifokor ulushi 0» bir-biriga zid.
+                        Endi to'rtta raqam, har birining ostida o'tgan davrga
+                        nisbatan o'zgarish. Raqamlar BITTA manbadan — solishtirish
+                        javobidagi «joriy» qismdan (o'zgarish ham o'sha yerdan),
+                        bo'lmasa umumiy hisobdan. Qarz — pastdagi «Qarzdorlar» da. */}
+                    {(() => {
+                        const cur = cmp?.current;
+                        const pick = (k: string, fallback: number) => (cur && cur[k] != null ? Number(cur[k]) : fallback);
+                        const tiles = [
+                            { key: 'revenue', label: t('report.services'), value: pick('revenue', totals.revenue), hint: t('report.servicesHint'), goodUp: true, icon: TrendingUp },
+                            { key: 'collected', label: t('report.collected'), value: pick('collected', totals.collected), hint: t('report.collectedHint'), goodUp: true, icon: Wallet },
+                            { key: 'expense', label: t('ui.xarajat'), value: pick('expense', totals.doctorShare + totals.otherExpenses), hint: t('report.expenseHint'), goodUp: false, icon: TrendingDown },
+                            { key: 'profit', label: t('finance.report.netProfit'), value: pick('profit', totals.netProfit), hint: t('report.profitHint'), goodUp: true, icon: Percent },
+                        ];
+                        return (
+                            <div>
+                                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                                    {tiles.map(tl => {
+                                        const d = cmp?.delta?.[tl.key];
+                                        const tone = !d || d.abs === 0 ? 'flat' : ((d.abs > 0) === tl.goodUp ? 'good' : 'bad');
+                                        const negative = tl.key === 'profit' && tl.value < 0;
+                                        return (
+                                            <div key={tl.key} className="bg-surface rounded-xl border border-line p-4">
+                                                <div className="flex items-center gap-2 mb-1.5">
+                                                    <tl.icon className="w-4 h-4 text-faint" />
+                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{tl.label}</p>
+                                                </div>
+                                                <p className={`text-xl font-bold tabular-nums ${negative ? 'text-red-600 dark:text-red-400' : tl.key === 'profit' ? 'text-emerald-600 dark:text-emerald-400' : 'text-ink'}`}>
+                                                    {fmt(tl.value)}<span className="text-xs font-normal text-faint ml-1">UZS</span>
+                                                </p>
+                                                {d && (
+                                                    <p className={`text-[12px] font-semibold tabular-nums ${tone === 'good' ? 'text-emerald-600 dark:text-emerald-400' : tone === 'bad' ? 'text-red-600 dark:text-red-400' : 'text-faint'}`}>
+                                                        {/* Foiz faqat oldingi davr MUSBAT bo'lsa: noldan — «yangi»,
+                                                            manfiydan (zarardan foydaga) — foiz ma'nosiz, faqat farq */}
+                                                        {d.abs > 0 ? '+' : ''}{fmt(d.abs)}{d.pct != null
+                                                            ? ` (${d.pct > 0 ? '+' : ''}${d.pct}%)`
+                                                            : Number(cmp?.previous?.[tl.key] ?? 0) === 0 && d.abs !== 0 ? ` (${t('report.deltaNew')})` : ''}
+                                                    </p>
+                                                )}
+                                                <p className="text-[11px] text-faint mt-0.5">{tl.hint}</p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {cmp?.previous?.from && (
+                                    <p className="mt-2 text-[12px] text-faint">
+                                        {fill(t('report.vsPeriod'), fmtDay(cmp.previous.from), fmtDay(cmp.previous.to))}
+                                    </p>
+                                )}
                             </div>
-                            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-                                {([
-                                    ['revenue', t('ui.tushum'), true],
-                                    ['collected', t('ui.olingan_pul'), true],
-                                    ['expense', t('ui.xarajat'), true],
-                                    ['profit', t('finance.report.netProfit'), true],
-                                    ['visits', t('ui.qabullar'), false],
-                                    ['avgCheck', t('finance.report.avgCheck'), true],
-                                ] as const).map(([key, label, money]) => {
-                                    /* KO'RSATKICH YO'Q BO'LSA — SHU PLITKA
-                                       TUSHIB QOLADI, SAHIFA EMAS.
-
-                                       Ilgari bu yerda to'g'ridan-to'g'ri
-                                       `d.abs` o'qilardi. Server (yoki demo
-                                       qopqog'i) bitta kalitni bermasa
-                                       `d` `undefined` bo'lib, butun MOLIYA
-                                       bo'limi yiqilardi — bitta yordamchi
-                                       raqam uchun. Hisobot kartasi yo'qolishi
-                                       mumkin, kassa esa ochilishi kerak. */
-                                    const d = cmp.delta?.[key];
-                                    const cur = cmp.current?.[key];
-                                    if (!d || cur == null) return null;
-                                    const up = d.abs > 0;
-                                    /* Xarajat o'sishi YAXSHI emas — rangni ma'noga
-                                       qarab tanlaymiz, o'sish belgisiga emas. */
-                                    const goodWhenUp = key !== 'expense';
-                                    const tone = d.abs === 0 ? 'flat' : (up === goodWhenUp ? 'good' : 'bad');
-                                    return (
-                                        <div key={key}>
-                                            <p className="text-[11px] text-muted">{label}</p>
-                                            <p className="text-lg font-bold tabular-nums text-ink">
-                                                {money ? fmt(cur) : cur}
-                                            </p>
-                                            <p className={`text-[11px] tabular-nums ${tone === 'good' ? 'text-emerald-600 dark:text-emerald-400'
-                                                : tone === 'bad' ? 'text-red-600 dark:text-red-400'
-                                                    : 'text-faint'}`}>
-                                                {d.abs > 0 ? '+' : ''}{money ? fmt(d.abs) : d.abs}
-                                                {d.pct != null
-                                                    ? ` (${d.pct > 0 ? '+' : ''}${d.pct}%)`
-                                                    /* Oldingi davr nol bo'lsa foiz yo'q:
-                                                       "cheksiz o'sish" ma'nosiz raqam */
-                                                    : (cur > 0 ? t('financereport.yangi') : '')}
-                                            </p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Asosiy raqamlar: 6 ta yoki «Umumiy qarz» bilan 7 ta.
-                        Ilgari `xl:grid-cols-6` da yettinchisi — «Sof foyda» —
-                        ikkinchi qatorda yolg'iz qolardi. Endi 4 + 3, juda keng
-                        ekranda (2xl) esa hammasi bitta qatorda. 1280 da bitta
-                        qatorga sig'dirilsa «−6 900 000» ikki qatorga bo'linardi. */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 2xl:grid-cols-none 2xl:grid-flow-col 2xl:auto-cols-fr gap-3">
-                        <Tile label={t('finance.report.revenue')} value={fmt(totals.revenue)} unit="UZS" icon={TrendingUp}
-                            hint={fill(t('financereport.olindi_x'), fmt(totals.collected))} />
-                        <Tile label={t('finance.report.periodDebt')} value={fmt(totals.due)} unit="UZS" icon={AlertCircle}
-                            tone={totals.due > 0 ? 'warn' : undefined} hint={t('financereport.shu_davrda_tolanmagani')} />
-                        {data.openDebt && (
-                            <Tile label={t('finance.report.openDebt')} value={fmt(data.openDebt.amount)} unit="UZS" icon={AlertCircle}
-                                tone={data.openDebt.amount > 0 ? 'bad' : undefined}
-                                hint={fill(t('financereport.x_bemor_hozirgi_holat'), data.openDebt.patients)} />
-                        )}
-                        <Tile label={t('finance.report.material')} value={fmt(totals.materialCost)} unit="UZS" icon={Package}
-                            hint={t('financereport.retsept_boyicha')} />
-                        <Tile label={t('finance.report.grossProfit')} value={fmt(totals.grossProfit)} unit="UZS" icon={Percent}
-                            hint={t('financereport.tushum_material')} />
-                        <Tile label={t('finance.report.doctorShare')} value={fmt(totals.doctorShare)} unit="UZS" icon={Users} />
-                        <Tile label={t('finance.report.netProfit')} value={fmt(totals.netProfit)} unit="UZS"
-                            icon={totals.netProfit >= 0 ? TrendingUp : TrendingDown}
-                            tone={totals.netProfit >= 0 ? 'ok' : 'bad'}
-                            hint={t('financereport.barcha_xarajatlardan_keyin')} />
-                    </div>
+                        );
+                    })()}
 
                     {/* Eski stomatologik laboratoriya xarajati qolgan bo'lsa */}
                     {totals.legacyLabExpense > 0 && (
@@ -716,149 +855,72 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                         </div>
                     )}
 
-                    {/* Bo'limlar — asosiy kesim */}
-                    <div className="bg-surface rounded-xl border border-line p-4">
-                        <h3 className="flex items-center gap-2 text-sm font-semibold text-ink mb-4">
-                            <Building2 className="w-4 h-4 text-faint" />{t('finance.report.byDepartment')}</h3>
-
-                        {data.byDepartment.length === 0 ? (
-                            <p className="text-sm text-faint py-8 text-center">{t('finance.report.noRevenue')}</p>
-                        ) : (
-                            <>
-                                <div className="h-64 w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={deptChart} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" vertical={false} />
-                                            <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#768692" />
-                                            <YAxis tick={{ fontSize: 11 }} stroke="#768692"
-                                                tickFormatter={(v) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(v)} />
-                                            <Tooltip formatter={(v: any) => `${fmt(Number(v))} UZS`}
-                                                contentStyle={{ background: 'rgba(17,24,39,.95)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
-                                            <Legend wrapperStyle={{ fontSize: 12 }} />
-                                            {/* Rang seriya bo'yicha: yashil — daromad, qizil — tannarx.
-                                                Bo'lim rangi quyidagi jadvaldagi nuqtada ko'rsatiladi. */}
-                                            <Bar dataKey="Daromad" fill="#009639" radius={[4, 4, 0, 0]} />
-                                            <Bar dataKey="Tannarx" fill="#D5281B" radius={[4, 4, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                    {/* ── QARZDORLAR — kim, qancha, necha kundan beri ─────────── */}
+                    {debtors && debtors.patients.length > 0 && (() => {
+                        const buckets = [
+                            { label: t('report.age0'), sum: 0 }, { label: t('report.age30'), sum: 0 }, { label: t('report.age60'), sum: 0 },
+                        ];
+                        for (const p of debtors.patients) {
+                            const d = daysSince(p.oldestDate);
+                            buckets[d > 60 ? 2 : d > 30 ? 1 : 0].sum += p.due;
+                        }
+                        const shown = debtorsOpen ? debtors.patients : debtors.patients.slice(0, 5);
+                        return (
+                            <div className="bg-surface rounded-xl border border-line p-4">
+                                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
+                                    <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                                        <AlertCircle className="w-4 h-4 text-amber-500" />{fill(t('report.debtorsTitle'), debtors.patients.length)}
+                                    </h3>
+                                    <span className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400">{fmt(debtors.total)} UZS</span>
+                                    {/* Qarz yoshi: qaysi qarz qotib qolgani — eski qarz yig'ilishi qiyin */}
+                                    <span className="ml-auto flex flex-wrap gap-x-4 text-[12px] text-muted">
+                                        {buckets.map((b, i) => (
+                                            <span key={i}>{b.label}: <b className={`tabular-nums ${i === 2 && b.sum > 0 ? 'text-red-600 dark:text-red-400' : 'text-ink'}`}>{fmt(b.sum)}</b></span>
+                                        ))}
+                                    </span>
                                 </div>
-
-                                <div className="overflow-x-auto mt-4">
-                                    <table className="w-full text-sm min-w-[620px]">
-                                        <thead>
-                                            <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-line">
-                                                <th className="pb-2 pr-3 font-semibold">{t('finance.report.department')}</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.revenue')}</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.collected')}</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.debt')}</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.material')}</th>
-                                                <th className="pb-2 pr-3 font-semibold text-right">{t('finance.report.margin')}</th>
-                                                <th className="pb-2 font-semibold text-right">{t('finance.report.service')}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-line/60">
-                                            {data.byDepartment.map((d, i) => (
-                                                <tr key={d.departmentId || 'none'}>
-                                                    <td className="py-2 pr-3">
-                                                        <span className="inline-flex items-center gap-2">
-                                                            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: colorOf(d.name, i) }} />
-                                                            <span className="text-ink">{deptName(d.name)}</span>
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-2 pr-3 text-right tabular-nums text-ink">{fmt(d.revenue)}</td>
-                                                    <td className="py-2 pr-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmt(d.collected)}</td>
-                                                    <td className="py-2 pr-3 text-right tabular-nums text-amber-600 dark:text-amber-400">{d.due ? fmt(d.due) : '—'}</td>
-                                                    <td className="py-2 pr-3 text-right tabular-nums text-muted">{d.cost ? fmt(d.cost) : '—'}</td>
-                                                    <td className="py-2 pr-3 text-right tabular-nums font-medium text-ink">
-                                                        {fmt(d.margin)}
-                                                        {d.cost > 0 && <span className="text-[11px] text-faint ml-1">{d.marginPercent}%</span>}
-                                                    </td>
-                                                    <td className="py-2 text-right tabular-nums text-muted">{d.count}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <p className="text-[11px] text-faint mt-2">
-                                    {t('financereport.material_xizmat_retsepti_boyicha')}
-                                </p>
-                            </>
-                        )}
-                    </div>
-
-                    {/* Manba va kunlik oqim */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div className="bg-surface rounded-xl border border-line p-4">
-                            <h3 className="text-sm font-semibold text-ink mb-3">{t('finance.report.revenueSource')}</h3>
-                            {data.bySource.length === 0 ? (
-                                <p className="text-sm text-faint py-6 text-center">{t('finance.report.noData')}</p>
-                            ) : (
-                                <div className="space-y-2.5">
-                                    {data.bySource.map((s, i) => {
-                                        const pct = totals.revenue > 0 ? (s.revenue / totals.revenue) * 100 : 0;
+                                <ul className="divide-y divide-line">
+                                    {shown.map(p => {
+                                        const d = daysSince(p.oldestDate);
                                         return (
-                                            <div key={s.source}>
-                                                <div className="flex items-baseline gap-2 text-sm">
-                                                    <span className="text-ink">{s.label}</span>
-                                                    <span className="text-[11px] text-faint">{s.count} {t('ui.ta')}</span>
-                                                    <span className="ml-auto tabular-nums font-medium text-ink">{fmt(s.revenue)}</span>
-                                                    <span className="text-[11px] text-faint w-9 text-right">{Math.round(pct)}%</span>
-                                                </div>
-                                                <div className="h-1.5 bg-elevated rounded-full mt-1 overflow-hidden">
-                                                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: PALETTE[i % PALETTE.length] }} />
-                                                </div>
-                                            </div>
+                                            <li key={p.patientId || p.patientName} className="py-2 flex items-center gap-3 text-sm">
+                                                {p.patientId
+                                                    ? <a href={`#/patients/${p.patientId}`} className="text-ink font-medium hover:underline truncate">{p.patientName}</a>
+                                                    : <span className="text-ink font-medium truncate">{p.patientName}</span>}
+                                                <span className={`text-[11px] shrink-0 ${d > 60 ? 'text-red-600 dark:text-red-400 font-semibold' : d > 30 ? 'text-amber-600 dark:text-amber-400' : 'text-faint'}`}>
+                                                    {d === 0 ? t('card.today') : fill(t('report.daysAgo'), d)}
+                                                </span>
+                                                {p.phone && (
+                                                    <a href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}
+                                                        className="ml-auto text-[12px] text-muted hover:text-ink hover:underline tabular-nums shrink-0">
+                                                        {formatUzPhone(p.phone)}
+                                                    </a>
+                                                )}
+                                                <span className={`${p.phone ? '' : 'ml-auto '}tabular-nums font-semibold text-ink shrink-0 w-28 text-right`}>{fmt(p.due)}</span>
+                                            </li>
                                         );
                                     })}
-                                </div>
-                            )}
-                        </div>
+                                </ul>
+                                {installmentsDue && installmentsDue.month + installmentsDue.overdue > 0 && (
+                                    <p className="mt-2 pt-2 border-t border-line text-[12px] text-muted">
+                                        {t('report.installmentsMonth')} <b className="text-ink tabular-nums">{fmt(installmentsDue.month)} UZS</b>
+                                        {installmentsDue.overdue > 0 && (
+                                            <> · {t('report.installmentsOverdue')} <b className="text-red-600 dark:text-red-400 tabular-nums">{fmt(installmentsDue.overdue)} UZS</b></>
+                                        )}
+                                    </p>
+                                )}
+                                {debtors.patients.length > 5 && (
+                                    <button type="button" onClick={() => setDebtorsOpen(o => !o)}
+                                        className="mt-2 text-sm font-semibold text-primary-700 dark:text-primary-300 hover:underline">
+                                        {debtorsOpen ? t('pay.queue.hide') : fill(t('pay.queue.showN'), debtors.patients.length - 5)}
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })()}
 
-                        <div className="bg-surface rounded-xl border border-line p-4">
-                            <h3 className="text-sm font-semibold text-ink mb-3">{t('finance.report.dailyFlow')}</h3>
-                            {data.daily.length === 0 ? (
-                                <p className="text-sm text-faint py-6 text-center">{t('finance.report.noData')}</p>
-                            ) : (
-                                <div className="h-52 w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={data.daily} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" vertical={false} />
-                                            <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#768692"
-                                                tickFormatter={(d) => String(d).slice(5)} />
-                                            <YAxis tick={{ fontSize: 10 }} stroke="#768692"
-                                                tickFormatter={(v) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(v)} />
-                                            <Tooltip formatter={(v: any) => `${fmt(Number(v))} UZS`}
-                                                contentStyle={{ background: 'rgba(17,24,39,.95)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
-                                            <Line type="monotone" dataKey="revenue" name={t('ui.tushum')} stroke="#0E5F55" strokeWidth={2} dot={false} />
-                                            <Line type="monotone" dataKey="collected" name={t('financereport.olingan')} stroke="#005EB8" strokeWidth={2} dot={false} strokeDasharray="4 3" />
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Shifokorlar va xarajatlar */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div className="bg-surface rounded-xl border border-line p-4">
-                            <h3 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
-                                <Users className="w-4 h-4 text-faint" />{t('finance.report.byDoctor')}</h3>
-                            {data.byDoctor.length === 0 ? (
-                                <p className="text-sm text-faint py-6 text-center">{t('finance.report.noData')}</p>
-                            ) : (
-                                <div className="space-y-2">
-                                    {data.byDoctor.slice(0, 10).map(d => (
-                                        <div key={d.doctorName} className="flex items-center gap-3 text-sm">
-                                            <span className="text-ink truncate">{d.doctorName}</span>
-                                            <span className="text-[11px] text-faint shrink-0">{d.count} {t('ui.ta')}</span>
-                                            <span className="ml-auto tabular-nums font-medium text-ink shrink-0">{fmt(d.revenue)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="bg-surface rounded-xl border border-line p-4">
+                    {/* Xarajatlar — toifa bo'yicha (bu ma'lumot faqat shu yerda) */}
+                    <div className="bg-surface rounded-xl border border-line p-4">
                             <h3 className="flex items-center gap-2 text-sm font-semibold text-ink mb-3">
                                 <Wallet className="w-4 h-4 text-faint" />{t('finance.report.expenses')}</h3>
                             {data.expenseByCategory.length === 0 ? (
@@ -867,13 +929,62 @@ export const FinanceReport: React.FC<Props> = ({ departments = [], embedded }) =
                                 <div className="space-y-2">
                                     {data.expenseByCategory.map(e => (
                                         <div key={e.category} className="flex items-center gap-3 text-sm">
-                                            <span className="text-ink">{e.category}</span>
+                                            {/* Toifa o'zbekcha — ilgari «Rent», «Salary» chiqardi */}
+                                            <span className="text-ink">{(EXPENSE_CATEGORY_LABELS as Record<string, string>)[e.category] || e.category}</span>
                                             <span className="ml-auto tabular-nums font-medium text-red-600 dark:text-red-400">{fmt(e.amount)}</span>
                                         </div>
                                     ))}
                                 </div>
                             )}
-                        </div>
+                    </div>
+
+                    {/* ── OYLAR BO'YICHA — bir yil, sukut bo'yicha yopiq ───────── */}
+                    <div className="bg-surface rounded-xl border border-line">
+                        <button type="button" onClick={() => setMonthsOpen(o => !o)} aria-expanded={monthsOpen}
+                            className="w-full flex items-center gap-2 p-4 text-left text-sm font-semibold text-ink">
+                            <TrendingUp className="w-4 h-4 text-faint" />
+                            <span className="flex-1">{fill(t('report.byMonths'), monthsYear)}</span>
+                            <ChevronDown className={`w-4 h-4 text-faint transition-transform ${monthsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                        </button>
+                        {monthsOpen && (
+                            !monthsData ? (
+                                monthsFailed
+                                    ? <p role="alert" className="px-4 pb-4 text-sm font-medium text-danger">{t('financereport.hisobot_yuklanmadi')}</p>
+                                    : <p className="px-4 pb-4 text-sm text-faint">{t('finance.report.calculating')}</p>
+                            ) : (
+                                <div className="overflow-x-auto border-t border-line">
+                                    <table className="w-full min-w-[560px]">
+                                        <thead className="bg-canvas/40 border-b border-line">
+                                            <tr>
+                                                <Th>{t('report.month')}</Th>
+                                                <Th right>{t('report.services')}</Th>
+                                                <Th right>{t('report.collected')}</Th>
+                                                <Th right>{t('ui.xarajat')}</Th>
+                                                <Th right>{t('finance.report.netProfit')}</Th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-line">
+                                            {monthsData.months.filter(m => m.month <= today().slice(0, 7)).map(m => (
+                                                <tr key={m.month}>
+                                                    <Td strong>{monthName(m.month)}</Td>
+                                                    <Td right>{m.revenue ? fmt(m.revenue) : '—'}</Td>
+                                                    <Td right tone={m.collected ? 'ok' : undefined}>{m.collected ? fmt(m.collected) : '—'}</Td>
+                                                    <Td right tone={m.expense ? 'bad' : undefined}>{m.expense ? fmt(m.expense) : '—'}</Td>
+                                                    <Td right strong tone={m.profit < 0 ? 'bad' : m.profit > 0 ? 'ok' : undefined}>{m.revenue || m.expense ? fmt(m.profit) : '—'}</Td>
+                                                </tr>
+                                            ))}
+                                            <tr className="bg-canvas/40">
+                                                <Td strong>{t('report.yearTotal')}</Td>
+                                                <Td right strong>{fmt(monthsData.totals.revenue)}</Td>
+                                                <Td right strong>{fmt(monthsData.totals.collected)}</Td>
+                                                <Td right strong>{fmt(monthsData.totals.expense)}</Td>
+                                                <Td right strong tone={monthsData.totals.profit < 0 ? 'bad' : 'ok'}>{fmt(monthsData.totals.profit)}</Td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
+                        )}
                     </div>
                 </>
             ))}

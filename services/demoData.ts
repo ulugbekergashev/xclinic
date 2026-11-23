@@ -37,7 +37,7 @@ const STORAGE_KEY = 'xclinic_demo_data';
 
    ⚠️ Demo to'plamiga yozuv qo'shsangiz yoki o'zgartirsangiz — SHU RAQAMNI
    OSHIRING, aks holda o'zgarish avval demoni ochgan odamga yetib bormaydi. */
-const DEMO_DATA_VERSION = 4;
+const DEMO_DATA_VERSION = 10;
 const VERSION_KEY = 'xclinic_demo_version';
 
 export const loadDemoData = () => {
@@ -97,7 +97,7 @@ export const saveDemoData = () => {
 // Demo Clinic
 export let DEMO_CLINIC: Clinic = savedData?.clinic || {
     id: 'demo-clinic-1',
-    name: 'Demo Stomatologiya',
+    name: 'Demo Klinika',
     adminName: 'Demo Admin',
     username: 'demoklinikaadmin',
     phone: '+998 90 123 45 67',
@@ -122,12 +122,53 @@ export let DEMO_DIAGNOSES: PatientDiagnosis[] = savedData?.diagnoses || [];
 /* MKB-10 katalogi namoyish uchun. Haqiqiy bazada u 12 mingdan ortiq kod —
    uni demoga solib bo'lmaydi, lekin QIDIRUV ishlashi shart: namoyishda
    tashxis qo'yolmaslik eng ko'zga tashlanadigan nuqson edi.
-   Ro'yxat ko'p profilli: terapiya, kardiologiya, LOR, endokrinologiya. */
+   Ro'yxat ko'p profilli: kardiologiya, endokrinologiya, stomatologiya,
+   terapiya, LOR. Kodlar va nomlar JSST MKB-10 tasnifidan. */
 export const DEMO_ICD10: { code: string; name: string; nameRu?: string }[] = [
+   // ── Kardiologiya (I00–I99)
    { code: 'I10', name: 'Essensial (birlamchi) gipertenziya', nameRu: 'Эссенциальная (первичная) гипертензия' },
+   { code: 'I11.9', name: "Yurak zararlanishi ustun gipertoniya kasalligi, yurak yetishmovchiligisiz", nameRu: 'Гипертензивная болезнь с преимущественным поражением сердца без сердечной недостаточности' },
+   { code: 'I20.8', name: 'Stenokardiyaning boshqa shakllari (zo\'riqish stenokardiyasi)', nameRu: 'Другие формы стенокардии' },
+   { code: 'I20.0', name: 'Nostabil stenokardiya', nameRu: 'Нестабильная стенокардия' },
+   { code: 'I21.9', name: "O'tkir miokard infarkti, aniqlanmagan", nameRu: 'Острый инфаркт миокарда неуточнённый' },
+   { code: 'I25.1', name: 'Aterosklerotik yurak kasalligi', nameRu: 'Атеросклеротическая болезнь сердца' },
+   { code: 'I25.2', name: "O'tkazilgan miokard infarkti", nameRu: 'Перенесённый в прошлом инфаркт миокарда' },
    { code: 'I25.9', name: 'Surunkali yurak ishemik kasalligi', nameRu: 'Хроническая ишемическая болезнь сердца' },
-   { code: 'E11.9', name: 'Qandli diabet, 2-tur', nameRu: 'Сахарный диабет 2 типа' },
+   { code: 'I34.0', name: 'Mitral qopqoq yetishmovchiligi', nameRu: 'Митральная (клапанная) недостаточность' },
+   { code: 'I42.0', name: 'Dilatatsion kardiomiopatiya', nameRu: 'Дилатационная кардиомиопатия' },
+   { code: 'I47.1', name: 'Supraventrikulyar taxikardiya', nameRu: 'Наджелудочковая тахикардия' },
+   { code: 'I48.9', name: "Bo'lmachalar fibrillyatsiyasi va titrashi", nameRu: 'Фибрилляция и трепетание предсердий неуточнённые' },
+   { code: 'I49.9', name: 'Yurak ritmi buzilishi, aniqlanmagan', nameRu: 'Нарушение сердечного ритма неуточнённое' },
+   { code: 'I50.0', name: 'Dimlanishli yurak yetishmovchiligi', nameRu: 'Застойная сердечная недостаточность' },
+   { code: 'I50.9', name: 'Yurak yetishmovchiligi, aniqlanmagan', nameRu: 'Сердечная недостаточность неуточнённая' },
+   { code: 'I63.9', name: 'Miya infarkti (ishemik insult)', nameRu: 'Инфаркт мозга неуточнённый' },
+   { code: 'I70.2', name: "Oyoq arteriyalari aterosklerozi", nameRu: 'Атеросклероз артерий конечностей' },
+   { code: 'I83.9', name: "Oyoq venalarining varikoz kengayishi", nameRu: 'Варикозное расширение вен нижних конечностей' },
+   { code: 'I95.9', name: 'Gipotenziya, aniqlanmagan', nameRu: 'Гипотензия неуточнённая' },
+   { code: 'R00.0', name: 'Taxikardiya, aniqlanmagan', nameRu: 'Тахикардия неуточнённая' },
+   { code: 'R07.4', name: "Ko'krak qafasidagi og'riq, aniqlanmagan", nameRu: 'Боль в груди неуточнённая' },
+   // ── Endokrinologiya (E00–E90)
+   { code: 'E01.0', name: "Yod tanqisligi bilan bog'liq diffuz bo'qoq", nameRu: 'Диффузный (эндемический) зоб, связанный с йодной недостаточностью' },
+   { code: 'E04.1', name: "Toksik bo'lmagan bir tugunli bo'qoq", nameRu: 'Нетоксический одноузловой зоб' },
+   { code: 'E04.2', name: "Toksik bo'lmagan ko'p tugunli bo'qoq", nameRu: 'Нетоксический многоузловой зоб' },
+   { code: 'E05.0', name: "Diffuz toksik bo'qoq (Greyvs kasalligi)", nameRu: 'Тиреотоксикоз с диффузным зобом' },
    { code: 'E03.9', name: 'Gipotireoz', nameRu: 'Гипотиреоз' },
+   { code: 'E06.3', name: 'Autoimmun tireoidit (Xashimoto)', nameRu: 'Аутоиммунный тиреоидит' },
+   { code: 'E10.9', name: 'Qandli diabet, 1-tur, asoratsiz', nameRu: 'Сахарный диабет 1 типа без осложнений' },
+   { code: 'E11.9', name: 'Qandli diabet, 2-tur', nameRu: 'Сахарный диабет 2 типа' },
+   { code: 'E11.4', name: 'Qandli diabet, 2-tur, nevrologik asoratlar bilan (neyropatiya)', nameRu: 'Сахарный диабет 2 типа с неврологическими осложнениями' },
+   { code: 'E11.5', name: "Qandli diabet, 2-tur, periferik qon aylanishi buzilishi bilan (diabetik oyoq)", nameRu: 'Сахарный диабет 2 типа с нарушениями периферического кровообращения' },
+   { code: 'E11.3', name: "Qandli diabet, 2-tur, ko'z asoratlari bilan (retinopatiya)", nameRu: 'Сахарный диабет 2 типа с поражением глаз' },
+   { code: 'E11.2', name: 'Qandli diabet, 2-tur, buyrak asoratlari bilan (nefropatiya)', nameRu: 'Сахарный диабет 2 типа с поражением почек' },
+   { code: 'R73.0', name: 'Glyukozaga tolerantlikning buzilishi (prediabet)', nameRu: 'Отклонения результатов нормы теста на толерантность к глюкозе' },
+   { code: 'E21.0', name: 'Birlamchi giperparatireoz', nameRu: 'Первичный гиперпаратиреоз' },
+   { code: 'E27.1', name: 'Buyrak usti bezi birlamchi yetishmovchiligi', nameRu: 'Первичная недостаточность коры надпочечников' },
+   { code: 'E28.2', name: 'Polikistoz tuxumdon sindromi', nameRu: 'Синдром поликистоза яичников' },
+   { code: 'E55.9', name: 'D vitamini tanqisligi', nameRu: 'Недостаточность витамина D неуточнённая' },
+   { code: 'E66.0', name: "Ortiqcha energiya bilan bog'liq semizlik", nameRu: 'Ожирение, обусловленное избыточным поступлением энергетических ресурсов' },
+   { code: 'E66.9', name: 'Semizlik, aniqlanmagan', nameRu: 'Ожирение неуточнённое' },
+   { code: 'E78.0', name: 'Sof giperxolesterinemiya', nameRu: 'Чистая гиперхолестеринемия' },
+   { code: 'E78.5', name: 'Giperlipidemiya, aniqlanmagan', nameRu: 'Гиперлипидемия неуточнённая' },
    { code: 'J06.9', name: "Yuqori nafas yo'llarining o'tkir infeksiyasi", nameRu: 'Острая инфекция верхних дыхательных путей' },
    { code: 'J35.0', name: 'Surunkali tonzillit', nameRu: 'Хронический тонзиллит' },
    { code: 'J45.9', name: 'Bronxial astma', nameRu: 'Бронхиальная астма' },
@@ -141,9 +182,21 @@ export const DEMO_ICD10: { code: string; name: string; nameRu?: string }[] = [
    { code: 'H52.1', name: 'Miopiya', nameRu: 'Миопия' },
    { code: 'Z00.0', name: "Umumiy tibbiy ko'rik", nameRu: 'Общий медицинский осмотр' },
    { code: 'Z34.9', name: 'Normal homiladorlikni kuzatish', nameRu: 'Наблюдение за нормальной беременностью' },
+   // ── Stomatologiya (K00–K14)
+   { code: 'K00.6', name: 'Tish chiqishining buzilishi', nameRu: 'Нарушение прорезывания зубов' },
+   { code: 'K01.1', name: 'Retinirlangan tishlar (aql tishi)', nameRu: 'Ретинированные зубы' },
+   { code: 'K02.0', name: 'Emal kariyesi', nameRu: 'Кариес эмали' },
    { code: 'K02.1', name: 'Dentin kariyesi', nameRu: 'Кариес дентина' },
+   { code: 'K02.2', name: 'Sement kariyesi', nameRu: 'Кариес цемента' },
+   { code: 'K03.6', name: 'Tish toshlari (tish karashi)', nameRu: 'Отложения (наросты) на зубах' },
    { code: 'K04.0', name: 'Pulpit', nameRu: 'Пульпит' },
+   { code: 'K04.5', name: 'Surunkali apikal periodontit', nameRu: 'Хронический апикальный периодонтит' },
+   { code: 'K05.1', name: 'Surunkali gingivit', nameRu: 'Хронический гингивит' },
    { code: 'K05.3', name: 'Surunkali periodontit', nameRu: 'Хронический пародонтит' },
+   { code: 'K07.2', name: "Tish qatorlari munosabatining anomaliyasi (prikus)", nameRu: 'Аномалии соотношения зубных дуг' },
+   { code: 'K07.3', name: 'Tishlar joylashuvining anomaliyasi', nameRu: 'Аномалии положения зубов' },
+   { code: 'K08.1', name: "Tishlarning yo'qolishi (adentiya)", nameRu: 'Потеря зубов вследствие несчастного случая, удаления или локальной периодонтальной болезни' },
+   { code: 'K12.0', name: 'Qaytalanuvchi og\'iz aftalari (stomatit)', nameRu: 'Рецидивирующие афты полости рта' },
 ];
 
 
@@ -187,6 +240,8 @@ export let DEMO_CATEGORIES: ServiceCategory[] = savedData?.categories || [
     { id: 'cat-4', name: 'Jarrohlik', clinicId: 'demo-clinic-1' },
     { id: 'cat-5', name: 'Ortodontiya', clinicId: 'demo-clinic-1' },
     { id: 'cat-6', name: 'Protezlash', clinicId: 'demo-clinic-1' },
+    { id: 'cat-7', name: 'Kardiologiya', clinicId: 'demo-clinic-1' },
+    { id: 'cat-8', name: 'Endokrinologiya', clinicId: 'demo-clinic-1' },
 ];
 
 // Demo Services
@@ -210,6 +265,20 @@ export let DEMO_SERVICES: Service[] = savedData?.services || [
     { id: 7, name: 'Breket tizimi', price: 5000000, categoryId: 'cat-5', duration: 90, clinicId: 'demo-clinic-1', departmentId: 'demo-ter' },
     { id: 8, name: 'Panoramik rentgen (OPG)', price: 120000, categoryId: 'cat-1', duration: 15, clinicId: 'demo-clinic-1', departmentId: 'demo-diag' },
     { id: 9, name: '3D konus-nurli tomografiya', price: 350000, categoryId: 'cat-1', duration: 25, clinicId: 'demo-clinic-1', departmentId: 'demo-diag' },
+    // Kardiologiya
+    { id: 10, name: 'Kardiolog konsultatsiyasi', price: 150000, categoryId: 'cat-7', duration: 30, clinicId: 'demo-clinic-1', departmentId: 'demo-kard' },
+    { id: 11, name: 'Kardiolog qayta ko\'rigi', price: 100000, categoryId: 'cat-7', duration: 20, clinicId: 'demo-clinic-1', departmentId: 'demo-kard' },
+    { id: 12, name: 'Sutkalik qon bosimi monitoringi', price: 250000, categoryId: 'cat-7', duration: 20, clinicId: 'demo-clinic-1', departmentId: 'demo-kard' },
+    { id: 13, name: 'Xolter monitoring (24 soat)', price: 350000, categoryId: 'cat-7', duration: 20, clinicId: 'demo-clinic-1', departmentId: 'demo-kard' },
+    // Endokrinologiya
+    { id: 14, name: 'Endokrinolog konsultatsiyasi', price: 150000, categoryId: 'cat-8', duration: 30, clinicId: 'demo-clinic-1', departmentId: 'demo-endo' },
+    { id: 15, name: 'Endokrinolog qayta ko\'rigi', price: 100000, categoryId: 'cat-8', duration: 20, clinicId: 'demo-clinic-1', departmentId: 'demo-endo' },
+    { id: 16, name: 'Glyukometriya (qand o\'lchash)', price: 20000, categoryId: 'cat-8', duration: 10, clinicId: 'demo-clinic-1', departmentId: 'demo-endo' },
+    { id: 17, name: 'Diabet bo\'yicha maslahat (ovqatlanish rejasi)', price: 120000, categoryId: 'cat-8', duration: 40, clinicId: 'demo-clinic-1', departmentId: 'demo-endo' },
+    // Diagnostika — yurak va qalqonsimon bez
+    { id: 18, name: 'Elektrokardiogramma (EKG)', price: 80000, categoryId: 'cat-1', duration: 15, clinicId: 'demo-clinic-1', departmentId: 'demo-diag' },
+    { id: 19, name: 'Exokardiografiya (yurak UZI)', price: 250000, categoryId: 'cat-1', duration: 30, clinicId: 'demo-clinic-1', departmentId: 'demo-diag' },
+    { id: 20, name: 'Qalqonsimon bez UZI', price: 150000, categoryId: 'cat-1', duration: 20, clinicId: 'demo-clinic-1', departmentId: 'demo-diag' },
 ];
 
 // Demo Patients
@@ -221,7 +290,12 @@ export let DEMO_PATIENTS: Patient[] = savedData?.patients || [
         phone: '+998 90 123 11 11',
         dob: '1990-05-15',
         address: 'Yunusobod tumani, 12-mavze',
-        medicalHistory: 'Yuqori qon bosimi',
+        /* Gipertoniya «surunkali tashxis» sifatida (I10) turibdi — bu yerda
+           yana yozilsa kartada ikki marta chiqardi. */
+        medicalHistory: '',
+        anamnesis: "{\"meds\":[\"Lizinopril 10 mg\",\"Aspirin 75 mg\"],\"surgeries\":[{\"name\":\"appendectomy\",\"year\":\"2015\"}],\"family\":[\"diabetes\",\"hypertension\"],\"smoking\":\"no\",\"alcohol\":\"no\",\"blood\":\"II\",\"rh\":\"+\",\"pregnancy\":\"no\"}",
+        anamnesisUpdatedAt: dayFull(-2),
+        anamnesisUpdatedBy: 'Dr. Nilufar Tosheva',
         clinicId: 'demo-clinic-1',
         lastVisit: dayISO(-1),
         status: 'Active',
@@ -235,7 +309,8 @@ export let DEMO_PATIENTS: Patient[] = savedData?.patients || [
         phone: '+998 91 234 22 22',
         dob: '1985-08-20',
         address: 'Chilonzor tumani, 5-kvartal',
-        medicalHistory: 'Allergiya (penitsiliinga)',
+        // Penitsillin allergiyasi allergiya ro'yxatida (services/api.ts, DEMO_ALLERGIES)
+        medicalHistory: '',
         clinicId: 'demo-clinic-1',
         lastVisit: dayISO(-8),
         status: 'Active',
@@ -262,7 +337,10 @@ export let DEMO_PATIENTS: Patient[] = savedData?.patients || [
         phone: '+998 94 456 44 44',
         dob: '1988-11-25',
         address: 'Yashnobod tumani, Abdulla Qodiriy ko\'chasi',
-        medicalHistory: 'Qandli diabet (2-tur)',
+        medicalHistory: 'QANDLI DIABET(SHAKAR)-E 11.9',
+        anamnesis: "{\"none\":{\"allergies\":true,\"surgeries\":true},\"meds\":[\"Metformin 1000 mg\",\"Insulin\"],\"family\":[\"diabetes\"],\"smoking\":\"quit\",\"alcohol\":\"no\"}",
+        anamnesisUpdatedAt: dayFull(-14),
+        anamnesisUpdatedBy: 'Registratura',
         clinicId: 'demo-clinic-1',
         lastVisit: dayISO(-13),
         status: 'Active',
@@ -289,14 +367,14 @@ export let DEMO_APPOINTMENTS: Appointment[] = savedData?.appointments || [
         id: 'demo-appt-1',
         patientId: 'demo-patient-1',
         patientName: 'Aziza Rahimova',
-        doctorId: 'demo-doctor-1',
-        doctorName: 'Dr. Kamola Ahmedova',
-        type: 'Konsultatsiya',
+        doctorId: 'demo-doctor-3',
+        doctorName: 'Dr. Nilufar Tosheva',
+        type: 'Kardiolog konsultatsiyasi',
         date: dayISO(0),
         time: '10:00',
         duration: 30,
         status: 'Confirmed',
-        notes: 'Tish og\'rig\'i tekshiruvi',
+        notes: 'Qon bosimi nazorati',
         clinicId: 'demo-clinic-1',
     },
     {
@@ -364,13 +442,14 @@ export let DEMO_TRANSACTIONS: Transaction[] = savedData?.transactions || [
         patientId: 'demo-patient-1',
         patientName: 'Aziza Rahimova',
         date: dayFull(-1),
-        amount: 300000,
+        // Aziza — kardiologiya bemori: to'lovi ham o'sha bo'limdan
+        amount: 150000,
         type: 'Cash',
-        service: 'Tish plombalash',
+        service: 'Kardiolog konsultatsiyasi',
         status: 'Paid',
         clinicId: 'demo-clinic-1',
-        doctorId: 'demo-doctor-1',
-        doctorName: 'Dr. Kamola Ahmedova',
+        doctorId: 'demo-doctor-3',
+        doctorName: 'Dr. Nilufar Tosheva',
         discountPercent: 0,
         discountAmount: 0
     },
@@ -394,13 +473,14 @@ export let DEMO_TRANSACTIONS: Transaction[] = savedData?.transactions || [
         patientId: 'demo-patient-3',
         patientName: 'Dilnoza Karimova',
         date: dayFull(-3),
-        amount: 200000,
+        // Dilnoza va Eldor — endokrinologiya bemorlari
+        amount: 150000,
         type: 'Cash',
-        service: 'Tish tozalash',
+        service: 'Endokrinolog konsultatsiyasi',
         status: 'Pending',
         clinicId: 'demo-clinic-1',
-        doctorId: 'demo-doctor-1',
-        doctorName: 'Dr. Kamola Ahmedova',
+        doctorId: 'demo-doctor-5',
+        doctorName: 'Dr. Shahnoza Rahmonova',
         discountPercent: 0,
         discountAmount: 0
     },
@@ -409,13 +489,13 @@ export let DEMO_TRANSACTIONS: Transaction[] = savedData?.transactions || [
         patientId: 'demo-patient-4',
         patientName: 'Eldor Toshmatov',
         date: dayFull(-13),
-        amount: 50000,
+        amount: 150000,
         type: 'Cash',
-        service: 'Konsultatsiya',
+        service: 'Endokrinolog konsultatsiyasi',
         status: 'Paid',
         clinicId: 'demo-clinic-1',
-        doctorId: 'demo-doctor-1',
-        doctorName: 'Dr. Kamola Ahmedova',
+        doctorId: 'demo-doctor-5',
+        doctorName: 'Dr. Shahnoza Rahmonova',
         discountPercent: 0,
         discountAmount: 0
     },
@@ -429,7 +509,7 @@ export let DEMO_EXPENSES: Expense[] = savedData?.expenses || [
         amount: 2000000,
         category: 'Rent',
         title: 'Ijara (yanvar)',
-        method: 'Cash',
+        method: 'Transfer',
         clinicId: 'demo-clinic-1',
     },
     {
@@ -442,14 +522,16 @@ export let DEMO_EXPENSES: Expense[] = savedData?.expenses || [
         clinicId: 'demo-clinic-1',
     },
     {
+        /* Bugungi xarajat — kichik va oddiy. Ilgari bu 150 000 lik
+           «Shifokor ulushi» edi: bugungi tushum 50 000 bo'lgani uchun demo
+           kassada «Yashikda naqd: −100 000» chiqib turardi. */
         id: 'demo-exp-3',
         date: dayISO(0),
-        amount: 150000,
-        category: 'DoctorShare',
-        title: 'Shifokor ulushi',
+        amount: 30000,
+        category: 'Other',
+        title: 'Suv va choy',
         method: 'Cash',
         clinicId: 'demo-clinic-1',
-        doctorId: 'demo-doctor-1',
     },
 ];
 
@@ -761,7 +843,7 @@ if (!savedData?.patients) {
             phone: `+998 9${(i % 5) + 1} ${300 + n} ${10 + n} ${20 + n}`,
             dob: `19${70 + ((i * 7) % 30)}-0${(i % 9) + 1}-1${i % 9}`,
             address: ['Yunusobod', 'Chilonzor', 'Mirobod', 'Yakkasaroy', 'Sergeli'][i % 5] + ' tumani',
-            medicalHistory: i % 3 === 0 ? 'Surunkali gastrit' : '',
+            medicalHistory: i % 3 === 0 ? 'SURUNKALI GASTRIT (K29.5)' : '',
             clinicId: 'demo-clinic-1',
             lastVisit: dayISO(-(i + 2)),
             status: 'Active',
@@ -782,17 +864,32 @@ DEMO_PATIENTS.forEach((p, i) => {
     if (!p.doctorId) p.doctorId = `demo-doctor-${(i % 4) + 1}`;
 });
 
+/* Kardiolog va endokrinolog bemorlari — bugungi navbatdagi bo'lim bilan
+   bir xil shifokorga biriktiriladi (`DEMO_VISIT_PLAN`, services/api.ts). */
+const SPECIALIST: Record<string, string> = {
+    'demo-patient-1': 'demo-doctor-3', 'demo-patient-5': 'demo-doctor-3', 'demo-patient-9': 'demo-doctor-3',
+    'demo-patient-3': 'demo-doctor-5', 'demo-patient-4': 'demo-doctor-5', 'demo-patient-11': 'demo-doctor-5',
+};
+if (!savedData?.patients) {
+    DEMO_PATIENTS.forEach(p => { if (SPECIALIST[p.id]) p.doctorId = SPECIALIST[p.id]; });
+}
+
 if (!savedData?.doctors) {
     DEMO_DOCTORS.push(
         {
             id: 'demo-doctor-3', firstName: 'Nilufar', lastName: 'Tosheva',
-            specialty: 'Terapevt', phone: '+998 90 777 88 99', status: 'Active',
-            clinicId: 'demo-clinic-1', percentage: 35, departmentId: 'demo-ter', username: 'nilufar_t', color: '#F59E0B',
+            specialty: 'Kardiolog', phone: '+998 90 777 88 99', status: 'Active',
+            clinicId: 'demo-clinic-1', percentage: 35, departmentId: 'demo-kard', username: 'nilufar_t', color: '#EF4444',
         } as Doctor,
         {
             id: 'demo-doctor-4', firstName: 'Sardor', lastName: 'Mahmudov',
             specialty: 'Jarroh', phone: '+998 91 555 44 33', status: 'Active',
             clinicId: 'demo-clinic-1', percentage: 45, departmentId: 'demo-inp', username: 'sardor_m', color: '#8B5CF6',
+        } as Doctor,
+        {
+            id: 'demo-doctor-5', firstName: 'Shahnoza', lastName: 'Rahmonova',
+            specialty: 'Endokrinolog', phone: '+998 93 222 77 11', status: 'Active',
+            clinicId: 'demo-clinic-1', percentage: 35, departmentId: 'demo-endo', username: 'shahnoza_r', color: '#F59E0B',
         } as Doctor,
     );
 }
@@ -839,18 +936,29 @@ if (!savedData?.appointments) {
 if (!savedData?.transactions) {
     /* To'lovlar oxirgi 25 kunga tarqatiladi — hisobot va ulush raqamlari
        jonli chiqishi uchun. Uchdan biri qarzda qoladi. */
+    /* Xizmat bemorning O'Z bo'limidan: kardiologiya bemoriga «Tish
+       plombalash» yozilib qolmasin. Mutaxassis bemori — o'z shifokori,
+       qolganlar — stomatologlar (1, 2, 4). */
+    const DENTAL_DOCTORS = ['demo-doctor-1', 'demo-doctor-2', 'demo-doctor-4'];
     for (let i = 0; i < 12; i++) {
         const patientId = `demo-patient-${(i % 9) + 6}`;
-        const doctorId = `demo-doctor-${(i % 4) + 1}`;
-        const svc = i % SERVICE_NAMES.length;
+        const doctorId = SPECIALIST[patientId] || DENTAL_DOCTORS[i % DENTAL_DOCTORS.length];
+        const dept = DEMO_DOCTORS.find(d => d.id === doctorId)?.departmentId;
+        const pool = SPECIALIST[patientId]
+            ? DEMO_SERVICES.filter(s => s.departmentId === dept)
+            : [];
+        const svcIdx = i % SERVICE_NAMES.length;
+        const svc = pool.length
+            ? { name: pool[i % pool.length].name, price: pool[i % pool.length].price }
+            : { name: SERVICE_NAMES[svcIdx], price: SERVICE_PRICES[svcIdx] };
         DEMO_TRANSACTIONS.push({
             id: `demo-tx-g${i + 1}`,
             patientId,
             patientName: pName(patientId),
             date: dayFull(-(i * 2)),
-            amount: SERVICE_PRICES[svc],
+            amount: svc.price,
             type: (['Cash', 'Card', 'Click'] as const)[i % 3],
-            service: SERVICE_NAMES[svc],
+            service: svc.name,
             status: i % 3 === 2 ? 'Pending' : 'Paid',
             clinicId: 'demo-clinic-1',
             doctorId,
@@ -892,20 +1000,24 @@ if (!savedData?.leads) {
 }
 
 if (!savedData?.expenses) {
+    /* Demo oyining xarajati tushumga mos (2026-11-22). Ilgari bu yerda ijara
+       6 mln va oylik 3,5 mln ham turardi: oy xarajati 13,5 mln, tushum 5,2 mln —
+       hisobot «sof foyda −8 mln» deb ko'rsatib, demo zarar ko'rgan klinikadek
+       ko'rinardi. Ijara allaqachon yuqorida (`demo-exp-1`). */
     const EXP: [string, string, number][] = [
-        ['Rent', 'Ijara — avgust', 6000000],
-        ['Utilities', 'Elektr va suv', 850000],
-        ['Inventory', 'Anesteziya sotib olindi', 1200000],
-        ['Salary', 'Registratura oyligi', 3500000],
-        ['Lab', 'Laboratoriya ishlari', 950000],
-        ['Other', 'Reklama (Instagram)', 700000],
+        ['Utilities', 'Elektr va suv', 300000],
+        ['Inventory', 'Anesteziya sotib olindi', 400000],
+        ['Inventory', 'Laboratoriya reagentlari', 300000],
+        ['Other', 'Reklama (Instagram)', 250000],
     ];
     EXP.forEach(([category, title, amount], i) => {
         DEMO_EXPENSES.push({
             id: `demo-exp-g${i + 1}`,
             date: dayISO(-(i * 3 + 1)),
             amount, category: category as any, title,
-            method: 'Cash' as any,
+            /* Katta xarajat (ijara, oylik) — bank o'tkazmasi bilan. Hammasi naqd
+               bo'lsa demo kassada «Kassada qoldi» millionlab minusga tushardi. */
+            method: (amount >= 1000000 ? 'Transfer' : 'Cash') as any,
             note: null,
             clinicId: 'demo-clinic-1',
             createdAt: dayFull(-(i * 3 + 1)),

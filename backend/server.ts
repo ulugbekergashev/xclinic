@@ -1893,6 +1893,30 @@ app.post('/api/auth/login', async (req, res) => {
         const cleanPassword = String(password).trim();
         const ip = socketIp(req);
 
+        /* LOGIN HARF REGISTRINI FARQLAMAYDI.
+
+           Birinchi sozlash ekrani admin loginini KICHIK HARFDA saqlaydi
+           (`license.ts`), xaridor esa uni o'zi yozgandek — bosh harf
+           bilan — kiritadi. SQLite da `=` registrni farqlaydi, ya'ni
+           «DMCclinic» hech qachon «dmcclinic» ni topmasdi.
+
+           Oqibati og'ir edi: YANGI O'RNATMADA admin umuman kira olmasdi
+           va ekranda «Login yoki parol noto'g'ri» turardi — parol to'g'ri
+           bo'lsa ham. Sotilgan nusxa shu yerda to'xtab qolardi.
+
+           Ikkala variant birga qidiriladi: aniq yozilgani ham, kichik
+           harfdagisi ham. Ustun `@unique`, ya'ni indeks ishlaydi va
+           qo'shimcha so'rov ketmaydi. Chegaralash hisoblagichi ham
+           allaqachon kichik harfga keltiradi (pastda) — bu uni endi
+           qidiruv bilan bir xil qoidaga qo'yadi.
+
+           Bazada faqat registri bilan farq qiladigan ikkita login bo'lsa
+           (`Ali` va `ali` — xodim qo'shishda tekshiruv registrni
+           farqlaydi), qaysi biri topilishi kafolatlanmaydi. Parol baribir
+           TOPILGAN qatorga tekshiriladi, ya'ni begona hisobga kirib
+           bo'lmaydi — eng yomoni kirish muvaffaqiyatsiz tugaydi. */
+        const nameVariants = Array.from(new Set([cleanUsername, cleanUsername.toLowerCase()]));
+
         // Bloklangan bo'lsa — parolni umuman tekshirmaymiz
         const userBlock = blockedFor(loginFailByUser, cleanUsername.toLowerCase(), LOGIN_MAX_PER_USER);
         const ipBlock = blockedFor(loginFailByIp, ip, LOGIN_MAX_PER_IP);
@@ -1951,8 +1975,8 @@ app.post('/api/auth/login', async (req, res) => {
             };
 
             // Check for clinic admin in database
-            const clinic = await prisma.clinic.findUnique({
-                where: { username: cleanUsername },
+            const clinic = await prisma.clinic.findFirst({
+                where: { username: { in: nameVariants } },
             });
 
             if (clinic && await verifyAndUpgradePassword(clinic, 'clinic')) {
@@ -1973,8 +1997,8 @@ app.post('/api/auth/login', async (req, res) => {
                 };
             } else {
                 // Check for doctor
-                const doctor = await prisma.doctor.findUnique({
-                    where: { username: cleanUsername },
+                const doctor = await prisma.doctor.findFirst({
+                    where: { username: { in: nameVariants } },
                     include: { clinic: true }
                 });
 
@@ -1995,8 +2019,8 @@ app.post('/api/auth/login', async (req, res) => {
                     };
                 } else {
                     // Check for receptionist
-                    const receptionist = await prisma.receptionist.findUnique({
-                        where: { username: cleanUsername },
+                    const receptionist = await prisma.receptionist.findFirst({
+                        where: { username: { in: nameVariants } },
                         include: { clinic: true }
                     });
 
@@ -2019,8 +2043,8 @@ app.post('/api/auth/login', async (req, res) => {
 
                     if (!userPayload) {
                         // Check for lab technician
-                        const labTech = await (prisma as any).labTechnician.findUnique({
-                            where: { username: cleanUsername },
+                        const labTech = await (prisma as any).labTechnician.findFirst({
+                            where: { username: { in: nameVariants } },
                             include: { clinic: true }
                         });
 
@@ -2043,8 +2067,8 @@ app.post('/api/auth/login', async (req, res) => {
                        o'rni: laborantdan keyin, sotuvchidan oldin. Dori
                        berilishini o'z nomidan yozadi. */
                     if (!userPayload) {
-                        const nurse = await (prisma as any).nurse.findUnique({
-                            where: { username: cleanUsername },
+                        const nurse = await (prisma as any).nurse.findFirst({
+                            where: { username: { in: nameVariants } },
                             include: { clinic: true },
                         });
 
@@ -2704,6 +2728,40 @@ app.put('/api/patients/:id', authenticateToken, async (req, res) => {
         if (status !== undefined) updateData.status = status;
         if (gender !== undefined) updateData.gender = gender;
         if (medicalHistory !== undefined) updateData.medicalHistory = medicalHistory;
+        /* Tibbiy tarixning qolgan bo'limlari — JSON matn (migratsiya 0039).
+           Yaroqsiz JSON bazaga tushmasin: karta uni o'qiy olmay bo'limlarni
+           «so'ralmagan» deb ko'rsatardi. */
+        const { anamnesis } = req.body;
+        if (anamnesis !== undefined) {
+            if (anamnesis !== null && anamnesis !== '') {
+                try {
+                    const parsed = JSON.parse(String(anamnesis));
+                    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('shape');
+                } catch {
+                    return res.status(400).json({ error: "Tibbiy tarix noto'g'ri formatda", code: 'VALIDATION_FAILED' });
+                }
+                if (String(anamnesis).length > 20000) {
+                    return res.status(400).json({ error: 'Tibbiy tarix juda uzun', code: 'VALIDATION_FAILED' });
+                }
+            }
+            updateData.anamnesis = anamnesis || null;
+        }
+        /* Kim va qachon — kartada «yangilandi 21.11.2026 · Dr. …». Faqat
+           HAQIQATAN o'zgarganda: bemor formasi tahrirda kasalliklar matnini
+           har safar qayta yuboradi, va telefonni to'g'rilash «tibbiy tarix
+           yangilandi» degan soxta belgi qo'ymasligi kerak. */
+        if (medicalHistory !== undefined || anamnesis !== undefined) {
+            const cur = await prisma.patient.findUnique({
+                where: { id: req.params.id },
+                select: { medicalHistory: true, anamnesis: true },
+            });
+            const changed = (medicalHistory !== undefined && (medicalHistory || '') !== (cur?.medicalHistory || ''))
+                || (anamnesis !== undefined && (anamnesis || null) !== (cur?.anamnesis ?? null));
+            if (changed) {
+                updateData.anamnesisUpdatedAt = new Date();
+                updateData.anamnesisUpdatedBy = (req as any).user?.name || null;
+            }
+        }
         if (address !== undefined) updateData.address = address;
         if (telegramChatId !== undefined) updateData.telegramChatId = telegramChatId;
         if (secondaryPhone !== undefined) updateData.secondaryPhone = secondaryPhone;
@@ -3486,6 +3544,8 @@ app.delete('/api/transactions/:id', authenticateToken, async (req, res) => {
 
 // --- Expenses (Xarajatlar) ---
 const EXPENSE_CATEGORIES = ['DoctorShare', 'Salary', 'Rent', 'Utilities', 'Inventory', 'Lab', 'Other'];
+/** Registrator yozishi mumkin bo'lgan mayda naqd xarajat toifalari (2026-11-22) */
+const RECEPTION_EXPENSE_CATEGORIES = ['Other', 'Inventory', 'Utilities'];
 
 app.get('/api/expenses', authenticateToken, async (req, res) => {
     try {
@@ -3515,6 +3575,29 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
         if (!EXPENSE_CATEGORIES.includes(category)) {
             return res.status(400).json({ error: 'Noto\'g\'ri kategoriya' });
         }
+
+        /* REGISTRATOR — FAQAT MAYDA NAQD XARAJAT (2026-11-22). Ilgari xarajat
+           butunlay egada edi («kamomadni xarajat yozib yopmasin»). Amalda kassir
+           suvga yashikdan pul olib, uni yoza olmasdi va kechqurun kassa kam
+           chiqardi — sababini hech kim bilmasdi. Endi: faqat naqd, faqat
+           bugun, faqat mayda toifalar; kim yozgani izohga tushadi; tuzatish
+           va o'chirish — egada (`permissions.ts`). Ega hammasini ko'radi. */
+        const actor = (req as any).user;
+        const isReceptionist = actor?.role === 'RECEPTIONIST';
+        if (isReceptionist) {
+            if (!RECEPTION_EXPENSE_CATEGORIES.includes(category)) {
+                return res.status(403).json({ error: "Bu turdagi xarajatni faqat klinika egasi yozadi", code: 'EXPENSE_CATEGORY_DENIED' });
+            }
+            if ((method || 'Cash') !== 'Cash') {
+                return res.status(403).json({ error: "Registrator faqat naqd xarajat yozadi", code: 'EXPENSE_METHOD_DENIED' });
+            }
+            if (date && date !== tashkentDateStr()) {
+                return res.status(403).json({ error: "Registrator faqat bugungi xarajatni yozadi", code: 'EXPENSE_DATE_DENIED' });
+            }
+        }
+        const authorNote = isReceptionist
+            ? [note, `yozdi: ${actor?.name || 'registrator'}`].filter(Boolean).join(' · ')
+            : note;
         if (category === 'DoctorShare' && !doctorId) {
             return res.status(400).json({ error: 'Shifokor ulushi uchun shifokor tanlanishi shart' });
         }
@@ -3542,8 +3625,8 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
                 amount: parsedAmount,
                 category,
                 title: title || 'Xarajat',
-                method: method || null,
-                note: note || null,
+                method: isReceptionist ? 'Cash' : (method || null),
+                note: authorNote || null,
                 doctorId: doctorId || null,
                 receptionistId: receptionistId || null,
                 departmentId: departmentId ? String(departmentId) : null,

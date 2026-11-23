@@ -18,7 +18,7 @@ import '@fontsource/fira-sans/cyrillic-500.css';
 import '@fontsource/fira-sans/cyrillic-600.css';
 import '@fontsource/fira-sans/cyrillic-700.css';
 import './index.css';
-import { reloadOnServiceWorkerUpdate } from './utils/lazyWithReload';
+import { reloadOnServiceWorkerUpdate, watchForNewVersion } from './utils/lazyWithReload';
 
 /* HashRouter — chuqur havolalar va sahifa yangilanishi uchun. Electron
    ilgari `file://` dan ochilardi va u yerda BrowserRouter «file not found»
@@ -42,7 +42,9 @@ const isElectron = /electron/i.test(navigator.userAgent);
 if (!isElectron && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         // `./sw.js` — `base: './'` bilan mos
-        navigator.serviceWorker.register('./sw.js').catch((e) => {
+        /* Ro'yxatga olingach — yangi versiyani ochiq sahifa o'zi tekshirib turadi:
+           brauzer buni faqat sahifa yuklanganda qiladi, ilova esa qayta yuklanmaydi. */
+        navigator.serviceWorker.register('./sw.js').then(watchForNewVersion).catch((e) => {
             // Ro'yxatga olinmasa ilova baribir ishlaydi — faqat o'rnatib bo'lmaydi
             console.warn("Service worker ro'yxatga olinmadi:", e?.message || e);
         });

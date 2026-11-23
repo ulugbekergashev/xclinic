@@ -102,15 +102,16 @@ export const PatientDocuments: React.FC<Props> = ({ patientId, visitId, canCreat
     };
 
     return (
-        <div className="bg-surface rounded-xl border border-line overflow-hidden">
-            <div className="px-4 py-3 border-b border-line-soft flex items-center gap-2">
-                <FileSignature className="w-4 h-4 text-faint" />
-                <h3 className="text-sm font-bold text-ink">{t('card.secDocuments')}</h3>
-                <span className="text-xs text-faint">({docs.length})</span>
+        /* Karta bo'limlari bilan bir xil quti va sarlavha (2026-11-22) */
+        <div className="min-w-0 bg-surface rounded-2xl border border-line overflow-hidden">
+            <div className="px-5 py-4 border-b border-line flex items-center gap-2">
+                <FileSignature className="w-4 h-4 text-faint" aria-hidden="true" />
+                <h3 className="text-[15px] font-semibold text-ink">{t('card.secDocuments')}</h3>
+                {docs.length > 0 && <span className="text-xs text-faint tabular-nums">{docs.length}</span>}
             </div>
 
             {canCreate && (
-                <div className="px-4 py-3 border-b border-line-soft">
+                <div className="px-5 py-3 border-b border-line-soft">
                     <div className="flex flex-wrap gap-2">
                         {KINDS.map(k => (
                             <button key={k.key} onClick={() => create(k.key)} disabled={!!busy}

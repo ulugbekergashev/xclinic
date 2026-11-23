@@ -16,7 +16,10 @@ test('ombor: nomni tahrirlash mumkin, qoldiq tegilmaydi', async ({ page }) => {
     await go(page, '/inventory');
     await page.waitForTimeout(3000);
 
-    const editBtn = page.getByRole('button', { name: /^Tahrirlash$/ }).first();
+    /* «Tahrirlash» endi qatorda emas — mahsulot NOMINI bosganda ochiladigan
+       oynada (2026-11-20, qatorda faqat «Kirim» va «Chiqim» qoldi). */
+    await page.locator(`main button[title="Tarix, tahrirlash, o'chirish"]`).first().click();
+    const editBtn = page.getByRole('dialog').getByRole('button', { name: /^Tahrirlash$/ });
     await expect(editBtn).toBeVisible();
     await editBtn.click();
     await page.waitForTimeout(1200);

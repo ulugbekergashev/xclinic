@@ -14,7 +14,21 @@
  * `scenario.spec.ts` bilan aynan shunday bo'lgan.
  */
 import { test, expect } from '@playwright/test';
-import { login, go, uniq } from './helpers';
+import { login, go, uniq, openVisitInCard } from './helpers';
+
+/* Qabul bloklari (2026-11-21): ko'rik, tashxis, retsept, xizmatlar va
+   yo'llanma — hammasi bir ekranda. Yo'llanma turlari (tahlil, diagnostika,
+   boshqa shifokor) «+ Yo'llanma» oynasida. */
+/* «Bugungi qabul» (2026-11-21, DentaCRM namunasida): bitta «+ Qo'shish» —
+   oynada nima qo'shilishi tepada tanlanadi: Xizmat · Tahlil · Diagnostika ·
+   Dori · Tashxis · Boshqa shifokor. */
+const openAdd = async (p: any, kind: string) => {
+    /* Tashxis va xizmatdan keyin oyna ochiq qoladi — qayta ochilmaydi */
+    if (!(await p.getByRole('dialog').count())) await p.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ }).click();
+    await p.getByRole('dialog').getByRole('button', { name: new RegExp(`^${kind}$`) }).click();
+};
+const openReferral = (p: any) => openAdd(p, 'Tahlil');
+
 
 test('to\'lanmagan bemor «Bugun» da ham, kassada ham ko\'rinadi', async ({ page }) => {
     test.setTimeout(120_000);
@@ -36,13 +50,14 @@ test('to\'lanmagan bemor «Bugun» da ham, kassada ham ko\'rinadi', async ({ pag
 
     await page.getByText(surname).first().click();
     await page.waitForTimeout(2500);
-    await page.locator('select').first().selectOption({ index: 1 });
-    await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
+    /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
+    await openVisitInCard(page);
     await page.waitForTimeout(2500);
-    await expect(page.getByText('Bugungi qabul')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
 
     // ── 2. To'lanmagan xizmat ──────────────────────────────────────────
-    await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
+    await openReferral(page);
+    await page.getByRole('button', { name: /^Diagnostika$/ }).click();
     await page.waitForTimeout(800);
     /* Prayslist tugma bo'lib turadi; prayslistda yo'q tekshiruv — «qo'lda yozish» orqali */
     const manualStudy = page.getByRole('button', { name: /qo'lda yozish/ });
@@ -65,6 +80,13 @@ test('to\'lanmagan bemor «Bugun» da ham, kassada ham ko\'rinadi', async ({ pag
     await page.waitForTimeout(2000);
     await page.getByText(surname).first().click();
     await page.waitForTimeout(3000);
+    {
+        const startBtn = page.getByRole('button', { name: /^Qabulni boshlash$/ });
+        const finishBtn = page.getByRole('button', { name: /Qabulni yakunlash/ });
+        await expect(startBtn.or(finishBtn)).toBeVisible({ timeout: 15_000 });
+        if (await startBtn.isVisible()) await startBtn.click();
+        await expect(finishBtn).toBeVisible({ timeout: 15_000 });
+    }
     await page.getByRole('button', { name: /Qabulni yakunlash/ }).click();
 
     /* QAT'IY KUTISH EMAS, ELEMENTNI KUTISH.

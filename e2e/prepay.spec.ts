@@ -36,7 +36,7 @@ test('kassir xizmat tanlab, protseduradan oldin to\'lovni qabul qiladi', async (
     await page.waitForTimeout(3000);
     /* Kassa sahifasi mingdan ortiq to'lov qatorini chizadi; tugmani
        topish ham shu hajmga bog'liq — shuning uchun uzoq kutish. */
-    const openBtn = page.getByRole('button', { name: /To'lov qabul qilish/ }).first();
+    const openBtn = page.getByRole('button', { name: /To'lov qo'shish/ }).first();
     await expect(openBtn).toBeVisible({ timeout: 30_000 });
     await openBtn.click();
 
@@ -46,6 +46,8 @@ test('kassir xizmat tanlab, protseduradan oldin to\'lovni qabul qiladi', async (
        ishonchsiz — sinov aynan shunda yiqilgan edi. */
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible({ timeout: 15_000 });
+    /* Bemor ixtiyoriy — bo'lim «Bemorni ko'rsatish» ortida (klinika so'rovi) */
+    await modal.getByRole('button', { name: /Bemorni ko'rsatish/ }).click();
     const patientBox = modal.getByPlaceholder(/Ism, telefon yoki karta/);
     await expect(patientBox).toBeVisible({ timeout: 10_000 });
     await patientBox.fill(surname);
@@ -77,5 +79,7 @@ test('kassir xizmat tanlab, protseduradan oldin to\'lovni qabul qiladi', async (
     /* Va pul kunlik ro'yxatda: bemor to'lovlar orasida turadi. Bu eng
        muhim tekshiruv — pul QATORGA bog'langan, balansda emas. */
     await page.reload();
+    // To'langanlar — kassa qutisining o'z tabida (2026-11-22)
+    await page.getByRole('tab', { name: /^To'langanlar/ }).click();
     await expect(page.getByText(surname).first()).toBeVisible({ timeout: 30_000 });
 });

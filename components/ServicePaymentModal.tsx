@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wallet, Loader2, Trash2, CheckCircle, Printer, Plus } from 'lucide-react';
+import { Wallet, Loader2, Trash2, CheckCircle, Printer, Plus, UserPlus } from 'lucide-react';
 import { Modal, Button } from './Common';
 import { Patient } from '../types';
 import { api } from '../services/api';
@@ -51,6 +51,19 @@ import { QuickPatient, PatientDraft, EMPTY_DRAFT } from './payment/QuickPatient'
        bilan birga yaratiladi;
      · to'lovdan keyin oyna yopilmaydi: CHEK shu yerda, qatorma-qator.
        Ilgari chek uchun kassa jurnalidan o'sha to'lovni qidirish kerak edi.
+
+   ─── BEMOR SHART EMAS (klinika ikkinchi marta so'radi) ──────────────────────
+
+   «Xizmat tanlanadi va to'lov qilinadi. Bemorning ma'lumotlari kerak emas.»
+
+   Birinchi variantda bemor MAJBURIY edi: «bemorsiz chek hech kimga
+   bog'lanmagan pul bo'lib qoladi» degan mulohaza bilan. Bu klinikaning
+   so'roviga zid edi — ukolga kelgan odamning familiyasini yozish ular uchun
+   aynan ortiqcha ish. Server esa bemorsiz qatorni doim qabul qilgan
+   (`VisitCharge.patientId` ixtiyoriy), to'siq faqat shu oynada edi.
+
+   Endi: xizmat → to'lov → chek. Bemor — ixtiyoriy tugma ortida; kerak
+   bo'lganda (tarix, qarz, qaytarish) ko'rsatiladi.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
@@ -65,6 +78,10 @@ interface Props {
     onDone?: () => void;
     /** Oyna ichida yangi bemor yaratildi — ilova ro'yxati uni bilib qo'ysin */
     onPatientCreated?: (p: Patient) => void;
+    /* Tanlangan bemorning to'lanmagan qarzi bor — uni to'lash oynasini ochadi.
+       Bu oyna YANGI xizmat sotadi; navbatdagi bemorning qarzi bo'lsa, kassir
+       uni bilmay ikkinchi marta yozib qo'ymasin (audit, 2026-11-22). */
+    onPayDebt?: (p: Patient) => void;
     addToast?: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
@@ -72,6 +89,7 @@ type Line = { key: string; serviceId?: number; name: string; price: number; qty:
 
 /** O'tgan to'lov — chek shundan chiziladi va bosiladi */
 type PaidReceipt = {
+    /** Bo'sh — to'lov bemorsiz qabul qilingan */
     patientName: string;
     lines: Line[];
     total: number;
@@ -81,11 +99,13 @@ type PaidReceipt = {
 };
 
 export const ServicePaymentModal: React.FC<Props> = ({
-    isOpen, onClose, patient, services, receivedByName, clinic, onDone, onPatientCreated, addToast,
+    isOpen, onClose, patient, services, receivedByName, clinic, onDone, onPatientCreated, onPayDebt, addToast,
 }) => {
     const { t } = useLanguage();
 
-    /* Bemor: bazadan tanlangan YOKI shu yerda kiritilayotgan yangi. */
+    /* Bemor IXTIYORIY: bazadan tanlangan, shu yerda kiritilayotgan yangi
+       yoki umuman ko'rsatilmagan. Bo'lim sukut bo'yicha YOPIQ. */
+    const [showPatient, setShowPatient] = useState(false);
     const [picked, setPicked] = useState<Patient | null>(null);
     const [isNewPatient, setIsNewPatient] = useState(false);
     const [draft, setDraft] = useState<PatientDraft>(EMPTY_DRAFT);
@@ -97,6 +117,21 @@ export const ServicePaymentModal: React.FC<Props> = ({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [receipt, setReceipt] = useState<PaidReceipt | null>(null);
+
+    /* Tanlangan bemorning hozirgi qarzi — oynada ogohlantirish uchun */
+    const [debt, setDebt] = useState(0);
+    useEffect(() => {
+        setDebt(0);
+        if (!isOpen || !target?.id || !onPayDebt) return;
+        let alive = true;
+        api.charges.getAll({ patientId: target.id, status: 'Unpaid' })
+            .then(cs => {
+                if (!alive) return;
+                setDebt((cs || []).reduce((s, c) => s + Math.max(0, c.total - (c.paidAmount || 0)), 0));
+            })
+            .catch(() => { /* ogohlantirishsiz ham ishlaydi */ });
+        return () => { alive = false; };
+    }, [isOpen, target?.id, onPayDebt]);
 
     /* SERVERDA YARATILGAN QATORLAR: satr kaliti → qator id.
 
@@ -128,6 +163,7 @@ export const ServicePaymentModal: React.FC<Props> = ({
     const closeIfIdle = () => { if (!busyRef.current) onClose(); };
 
     const resetForm = () => {
+        setShowPatient(false);
         setPicked(null); setIsNewPatient(false); setDraft(EMPTY_DRAFT); setDuplicates([]);
         setLines([]); setError(''); setReceipt(null);
         /* Usul ham: oldingi bemor karta bilan to'lagan bo'lsa, keyingisi
@@ -165,17 +201,19 @@ export const ServicePaymentModal: React.FC<Props> = ({
             .filter(l => l.qty > 0));
     };
 
-    /** Bemor tayyor bo'lmaguncha `null`: sabab ekranda (`error` yoki takrorlar). */
-    const ensurePatient = async (force: boolean): Promise<Patient | null> => {
+    /** Kimga yoziladi.
+     *  `undefined` — to'xtash kerak: sabab ekranda (`error` yoki takrorlar).
+     *  `null` — bemor ko'rsatilmagan, to'lov bemorsiz o'tadi. */
+    const resolvePatient = async (force: boolean): Promise<Patient | null | undefined> => {
         if (target) return target;
-        if (!isNewPatient) { setError(t('advance.pickPatient')); return null; }
+        if (!isNewPatient) return null;
 
         /* Qoida serverniki bilan bitta fayldan — xato so'rov yuborilmasdan chiqadi */
         const checked: any = validatePatient({
             firstName: draft.firstName, lastName: draft.lastName,
             gender: draft.gender, phone: draft.phone,
         });
-        if (!checked.ok) { setError(checked.error); return null; }
+        if (!checked.ok) { setError(checked.error); return undefined; }
 
         try {
             const created = await api.patients.create({
@@ -191,7 +229,7 @@ export const ServicePaymentModal: React.FC<Props> = ({
             /* 409 — xato emas, savol: «shu odam emasmi?» Javobni odam beradi. */
             if (e?.status === 409 && e?.data?.code === 'DUPLICATE_PATIENT') {
                 setDuplicates(e.data.matches || []);
-                return null;
+                return undefined;
             }
             throw e;
         }
@@ -204,7 +242,7 @@ export const ServicePaymentModal: React.FC<Props> = ({
             meta: [
                 { label: t('ui.sana'), value: fmtDateTime(r.at) },
                 { label: t('receiptmodal.chek_raqami'), value: `#${r.number}` },
-                { label: t('ui.bemor'), value: r.patientName },
+                ...(r.patientName ? [{ label: t('ui.bemor'), value: r.patientName }] : []),
                 ...(receivedByName ? [{ label: t('payment.cashier'), value: receivedByName }] : []),
             ],
             lines: r.lines.map(l => ({ name: l.name, quantity: l.qty, total: l.price * l.qty })),
@@ -212,7 +250,7 @@ export const ServicePaymentModal: React.FC<Props> = ({
                 { label: t('payment.total'), value: `${formatMoney(r.total)} ${t('ui.som')}`, strong: true },
                 { label: t('ui.tolov_usuli'), value: getPaymentMethodLabel(r.method) },
             ],
-            footer: t('receiptmodal.xizmatingizdan_mamunmiz'),
+            footer: t('receiptmodal.thanks'),
         });
         if (!printed) addToast?.('error', t('print.popupBlocked'));
     };
@@ -225,9 +263,9 @@ export const ServicePaymentModal: React.FC<Props> = ({
         busyRef.current = true;
         setSaving(true);
         try {
-            const who = await ensurePatient(force);
-            if (!who) return;
-            const patientName = `${who.lastName} ${who.firstName}`.trim();
+            const who = await resolvePatient(force);
+            if (who === undefined) return;
+            const patientName = who ? `${who.lastName} ${who.firstName}`.trim() : '';
 
             /* 1) Qatorlar yaratiladi. Ular shifokor yaratadigan qatorlar bilan
                   bir xil: `serviceId` saqlanadi, ya'ni shifokor ulushi va
@@ -237,8 +275,10 @@ export const ServicePaymentModal: React.FC<Props> = ({
                 let id = createdRef.current[l.key];
                 if (!id) {
                     const created: any = await api.charges.create({
-                        patientId: who.id,
-                        patientName,
+                        /* Bemorsiz qatorda `patientId` yo'q; nom o'rnida —
+                           kassa jurnalida bo'sh katak turmasligi uchun belgi. */
+                        ...(who ? { patientId: who.id } : {}),
+                        patientName: patientName || t('payment.walkIn'),
                         name: l.name,
                         unitPrice: l.price,
                         quantity: l.qty,
@@ -268,7 +308,7 @@ export const ServicePaymentModal: React.FC<Props> = ({
             };
             rememberServiceUsage(lines.map(l => l.name));
             setReceipt(done);
-            addToast?.('success', `${formatMoney(total)} ${t('payment.accepted')}`);
+            /* Xabar yo'q — chek oynasining o'zi tasdiq (xabarlar yig'ilib qolardi) */
             onDone?.();
             /* «Chek chiqarish» sozlamasi yoqilgan klinikada bosish so'ralmaydi */
             if (clinic?.enableReceipts) showReceipt(done);
@@ -286,7 +326,9 @@ export const ServicePaymentModal: React.FC<Props> = ({
                         <CheckCircle className="w-9 h-9 text-emerald-500 shrink-0" />
                         <div className="min-w-0">
                             <p className="text-base font-bold text-ink">{t('payment.done')}</p>
-                            <p className="text-sm text-muted truncate">{receipt.patientName}</p>
+                            {receipt.patientName && (
+                                <p className="text-sm text-muted truncate">{receipt.patientName}</p>
+                            )}
                         </div>
                     </div>
 
@@ -320,33 +362,29 @@ export const ServicePaymentModal: React.FC<Props> = ({
         );
     }
 
-    const canSubmit = lines.length > 0 && (!!target || isNewPatient);
+    /* Bitta shart: xizmat tanlangan. Bemor ixtiyoriy. */
+    const canSubmit = lines.length > 0;
 
     return (
         <Modal isOpen={isOpen} onClose={closeIfIdle} title={t('payment.title')} className="max-w-2xl">
             <div className="space-y-4">
-                {/* ── Bemor ────────────────────────────────────────────── */}
-                {/* Bemor kartasidan ochilganda tanlash yo'q — lekin KIMGA
-                    to'lanayotgani ko'rinib turishi kerak. */}
+                {/* Bemor kartasidan ochilganda — KIMGA to'lanayotgani ko'rinib turadi. */}
                 {patient && (
                     <p className="text-sm text-muted">
                         {t('ui.bemor')}: <b className="font-semibold text-ink">{patient.lastName} {patient.firstName}</b>
                     </p>
                 )}
-                {!patient && (
-                    <QuickPatient
-                        enabled={isOpen}
-                        picked={picked}
-                        onPick={(p) => { setPicked(p); setDuplicates([]); setError(''); }}
-                        isNew={isNewPatient}
-                        onToggleNew={(v) => { setIsNewPatient(v); setDuplicates([]); setError(''); }}
-                        draft={draft}
-                        onDraftChange={setDraft}
-                        duplicates={duplicates}
-                        onForceNew={() => submit(true)}
-                        locked={locked}
-                        busy={saving}
-                    />
+
+                {debt > 0 && target && onPayDebt && !locked && (
+                    <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                        <p className="min-w-0 flex-1 text-sm text-amber-900 dark:text-amber-200">
+                            {t('payment.hasDebt')} <b className="tabular-nums">{formatMoney(debt)} {t('ui.som')}</b>
+                        </p>
+                        <button type="button" onClick={() => onPayDebt(target)}
+                            className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold">
+                            {t('payment.payDebt')}
+                        </button>
+                    </div>
                 )}
 
                 {/* ── Xizmat tanlash ───────────────────────────────────── */}
@@ -394,6 +432,47 @@ export const ServicePaymentModal: React.FC<Props> = ({
                         ))}
                     </div>
                 </div>
+
+                {/* ── Bemor: IXTIYORIY, sukut bo'yicha yopiq ───────────────
+                    Xizmat va to'lovdan KEYIN turadi: ukolga kelgan odam uchun
+                    bu bo'limga umuman tegilmaydi. */}
+                {!patient && !showPatient && (
+                    <button type="button" onClick={() => setShowPatient(true)} disabled={locked || saving}
+                        className="w-full h-11 rounded-xl border border-dashed border-line text-sm font-medium text-muted hover:border-primary-400 hover:text-ink disabled:opacity-40">
+                        <UserPlus className="inline w-4 h-4 mr-1.5 -mt-0.5" aria-hidden="true" />
+                        {t('payment.addPatient')} <span className="text-faint font-normal">· {t('payment.optional')}</span>
+                    </button>
+                )}
+                {!patient && showPatient && (
+                    <div>
+                        <div className="flex items-center mb-1.5">
+                            <p className="text-xs font-semibold text-muted flex-1">{t('ui.bemor')}</p>
+                            {!locked && (
+                                <button type="button" disabled={saving}
+                                    onClick={() => {
+                                        setShowPatient(false); setPicked(null); setIsNewPatient(false);
+                                        setDraft(EMPTY_DRAFT); setDuplicates([]); setError('');
+                                    }}
+                                    className="text-xs font-medium text-primary hover:underline disabled:opacity-40">
+                                    {t('payment.noPatient')}
+                                </button>
+                            )}
+                        </div>
+                        <QuickPatient
+                            enabled={isOpen}
+                            picked={picked}
+                            onPick={(p) => { setPicked(p); setDuplicates([]); setError(''); }}
+                            isNew={isNewPatient}
+                            onToggleNew={(v) => { setIsNewPatient(v); setDuplicates([]); setError(''); }}
+                            draft={draft}
+                            onDraftChange={setDraft}
+                            duplicates={duplicates}
+                            onForceNew={() => submit(true)}
+                            locked={locked}
+                            busy={saving}
+                        />
+                    </div>
+                )}
 
                 {/* ── Yakun: jami va tugma — DOIM KO'RINADI ────────────────
                     Xizmatlar ro'yxati uzun: past ekranda (noutbuk, 768 px)

@@ -7,6 +7,7 @@ import { api } from '../services/api';
 import * as auth from '../services/authStore';
 import { IS_DEMO_BUILD, DEMO_USERNAME, DEMO_PASSWORD } from '../services/demoBuild';
 import { useLanguage } from '../context/LanguageContext';
+import { BUILD_STAMP } from '../utils/buildInfo';
 
 interface SignInProps {
   onLogin: (role: UserRole, name: string, clinicId?: string, doctorId?: string,
@@ -253,6 +254,8 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin }) => {
 
         <p className="text-center text-xs text-faint mt-8">
           &copy; {new Date().getFullYear()} XClinic. {t('auth.copyright')}
+          {/* Qaysi yig'ish ishlayotgani — yangilanish o'rnatilganini shu bilan tekshiriladi */}
+          {BUILD_STAMP && <><br />{t('auth.buildStamp')}: {BUILD_STAMP}</>}
         </p>
       </div>
     </div>

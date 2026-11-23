@@ -117,6 +117,17 @@ export default defineConfig(() => {
     ],
     // DIQQAT: AI/SMS kalitlarini bu yerga QO'YMANG — `define` qiymatlari frontend
     // bundle'ga ochiq yoziladi. Barcha tashqi so'rovlar backend orqali o'tadi.
+    define: {
+      /* YIG'ILGAN SANA — ekranda ko'rinadi (`utils/buildInfo.ts`).
+
+         Sabab: versiya raqami hamma yig'ishda bir xil (0.1.0), ya'ni klinika
+         yangi o'rnatuvchini qo'ygach «yangilandimi, yo'qmi» degan savolga
+         javob topa olmasdi. Sana Toshkent vaqtida: kun.oy.yil soat:daqiqa. */
+      __BUILD_STAMP__: JSON.stringify((() => {
+        const d = new Date(Date.now() + 5 * 3600_000).toISOString();
+        return `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)} ${d.slice(11, 16)}`;
+      })()),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

@@ -42,6 +42,7 @@ import { SignIn } from './pages/SignIn';
 import { FirstRunSetup } from './pages/FirstRunSetup';
 import { QueueBoard } from './pages/QueueBoard';
 import { lazyWithReload } from './utils/lazyWithReload';
+import { setPrintClinic } from './utils/printDocument';
 import { UserRole, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, Service, InventoryItem, ServiceCategory, Lead, LabTechnician, LabOrder, CashRegisterDay, CashMovement, Department, VisitCharge } from './types';
 import { AiOverlay } from './components/AiOverlay';
 import { ToastContainer, ToastMessage } from './components/Common';
@@ -618,11 +619,14 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
     setPatients(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev]);
   }, []);
 
-  const updatePatient = async (id: string, data: Partial<Patient>) => {
+  /* `silent` — tibbiy tarix har bosishda o'zi saqlanadi; har safar
+     «ma'lumotlar yangilandi» xabari chiqsa, ekran xabarga to'lib ketardi.
+     Saqlangani kartada «yangilandi …» belgisi bilan ko'rinadi. */
+  const updatePatient = async (id: string, data: Partial<Patient>, opts?: { silent?: boolean }) => {
     try {
       const updated = await api.patients.update(id, data);
       setPatients(prev => prev.map(p => p.id === id ? updated : p));
-      addToast('success', t('app.bemor_malumotlari_yangilandi'));
+      if (!opts?.silent) addToast('success', t('app.bemor_malumotlari_yangilandi'));
     } catch (e: any) {
       addToast('error', e.message || t('ui.xatolik_yuz_berdi'));
       throw e;
@@ -1310,6 +1314,9 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
     document.title = [label, currentClinic?.name || 'XClinic'].filter(Boolean).join(' · ');
   }, [location.pathname, currentClinic?.name, userRole, t]);
 
+  /* Bosma blank shapkasi: chaqiruvchi klinikani bermasa ham shu nom chiqadi */
+  useEffect(() => { setPrintClinic(currentClinic || null); }, [currentClinic]);
+
   /* SAHIFA ALMASHGANDA SKROLL TEPAGA (audit B-37).
 
      «Shifokorlar sahifasini pastga skroll qiling → Ombor ga o'ting» —
@@ -1928,6 +1935,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                   currentClinic={currentClinic}
                   userRole={userRole}
                   doctorId={doctorId}
+                  currentUserName={userName}
                   showPatientPhone={showPatientPhoneForRole}
                   onBack={() => navigate('/patients')}
                   onUpdatePatient={updatePatient}
@@ -2063,6 +2071,9 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                   addToast={addToast}
                 />
               )} />
+
+              {/* «Daftar» olib tashlandi — eski havola Kassaga */}
+              <Route path="/daftar" element={<Navigate to="/finance" replace />} />
 
               {/* Eski manzillar — talonlar, xatcho'plar va odat uchun.
                   «Bugun» (`/today`, 2026-09-07 … 09-16) ham endi eski manzil. */}

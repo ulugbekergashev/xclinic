@@ -1,15 +1,16 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { formatFullName } from '../utils/format';
 import {
-    ChevronLeft, ChevronRight, Download, Wallet, Banknote, CreditCard,
-    TrendingDown, Users, CalendarDays, AlertCircle, Coins, Lock, LockOpen, Check,
-    Plus, Loader2, Printer, Trash2, ArrowDownToLine, Undo2, ListOrdered, Pencil, History, ChevronDown,
+    Wallet, Banknote, CreditCard,
+    TrendingDown, CalendarDays, AlertCircle, Coins, Lock, LockOpen, Check,
+    Loader2, Printer, Trash2, ArrowDownToLine, Undo2, ListOrdered, Pencil, History, ChevronDown, Search,
 } from 'lucide-react';
 import { Card, Button, Modal, Input, Select } from '../components/Common';
 import { ServicePaymentModal } from '../components/ServicePaymentModal';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import { PayQueue, PayGroup } from '../components/PayQueue';
+import { KassaToolbar } from '../components/cashbook/KassaToolbar';
 import {
     Transaction, Expense, ExpenseCategory, Doctor, Clinic, Patient, Appointment,
     CashRegisterDay, CashMovement, CashMovementType, CashAuditLog, PaymentMethod,
@@ -23,19 +24,20 @@ import {
     getClosureStatus,
     getShiftWindows,
     formatDateLabel,
-    formatMonthLabel,
     shiftDate,
     shiftMonth,
     CashBookTotals,
 } from '../utils/cashbook';
 import { exportCashBookDay, exportCashBookMonth } from '../utils/cashbookExport';
 import { PAYMENT_METHODS, EXPENSE_PAYMENT_METHODS, INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
-import { formatDateToISO } from '../utils/dateUtils';
+import { formatDateToISO, dayKey } from '../utils/dateUtils';
 import { api } from '../services/api';
 
 // Kassada kundalik chiqimlar yoziladi. Oylik va shifokor ulushi ataylab yo'q —
 // ular oyda bir marta, murakkab hisob-kitob bilan Hisobot tabida rasmiylashtiriladi.
 const KASSA_EXPENSE_CATEGORIES: ExpenseCategory[] = ['Other', 'Inventory', 'Lab', 'Rent', 'Utilities'];
+/** Registrator yozadigan mayda naqd xarajat toifalari — server bilan bir xil */
+const RECEPTION_EXPENSE_CATEGORIES: ExpenseCategory[] = ['Other', 'Inventory', 'Utilities'];
 
 export interface CashCloseArgs {
     date: string;
@@ -131,7 +133,14 @@ const Tile: React.FC<{
     );
 };
 
-const SummaryTiles: React.FC<{ totals: CashBookTotals; drawer?: number }> = ({ totals, drawer }) => {
+/* Kunning olti raqami (2026-11-22: kun ko'rinishiga qaytdi, DentaCRM dagidek).
+   Kunda oxirgi plitka — «To'lov kutmoqda»: kim hali to'lamagani. Ilgari u
+   «Qarzga yozildi» edi va eski `Transaction.status` dan sanalardi — bu qarz
+   ta'rifi ancha oldin olib tashlangan, ya'ni raqam doim 0 chiqardi. */
+const SummaryTiles: React.FC<{
+    totals: CashBookTotals; drawer?: number;
+    waiting?: { amount: number; people: number };
+}> = ({ totals, drawer, waiting }) => {
     const { t } = useLanguage();
     return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -140,7 +149,9 @@ const SummaryTiles: React.FC<{ totals: CashBookTotals; drawer?: number }> = ({ t
         <Tile label={t('finance.cash.cashless')} value={totals.nonCashIn} icon={CreditCard} tone="card" hint={t('cashbook.karta_click_otkazma')} />
         <Tile label={t('finance.cash.expense')} value={totals.expenseTotal} icon={TrendingDown} tone="expense" hint={fill(t('cashbook.naqd_x'), num(totals.cashExpense))} />
         <Tile label={t('finance.cash.leftInDrawer')} value={drawer ?? totals.drawer} icon={Wallet} tone="drawer" hint={t('cashbook.naqd_yashik')} />
-        <Tile label={t('finance.cash.creditGiven')} value={totals.unpaid} icon={AlertCircle} hint={t('visit.unpaidShort')} />
+        {waiting
+            ? <Tile label={t('cashbook.waitingTile')} value={waiting.amount} icon={AlertCircle} tone="drawer" hint={fill(t('cashbook.waitingPeople'), waiting.people)} />
+            : <Tile label={t('finance.cash.creditGiven')} value={totals.unpaid} icon={AlertCircle} hint={t('visit.unpaidShort')} />}
     </div>
 );
 };
@@ -474,13 +485,31 @@ export const CashBook: React.FC<CashBookProps> = ({
     userRole, currentUserName, addToast, departments = [],
 }) => {
     const { t } = useLanguage();
-    const today = formatDateToISO(new Date());
+    /* «Bugun» YARIM TUNDA ALMASHADI (2026-11-22 audit). Ilgari `date` bir
+       marta olinardi: kassa ochiq qolib 00:00 dan o'tsa, sahifa kechagi kunda
+       qotib turardi — navbat yo'qolar, yangi to'lovlar esa ko'rinmaydigan
+       kunga tushardi. Endi har daqiqada tekshiriladi va kassir boshqa kunni
+       ataylab ochmagan bo'lsa, sahifa yangi kunga o'zi o'tadi. */
+    const [clockTick, setClockTick] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setClockTick(n => n + 1), 60_000);
+        return () => clearInterval(id);
+    }, []);
+    const today = useMemo(() => formatDateToISO(new Date()), [clockTick]);
     const [view, setView] = useState<'day' | 'month'>('day');
     const [date, setDate] = useState(today);
     const [month, setMonth] = useState(today.slice(0, 7));
+    /** Kassir boshqa kunni o'zi tanladimi — tanlamagan bo'lsa «bugun» ortidan boradi */
+    const [datePinned, setDatePinned] = useState(false);
+    useEffect(() => {
+        if (!datePinned && date !== today) { setDate(today); setMonth(today.slice(0, 7)); }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [today]);
     const [selectedShift, setSelectedShift] = useState<number | null>(null);
     const [isCloseOpen, setIsCloseOpen] = useState(false);
     const [countedInput, setCountedInput] = useState('');
+    /** Kun yopilishida rahbarga topshirilgan naqd */
+    const [handedInput, setHandedInput] = useState('');
     const [closeNote, setCloseNote] = useState('');
     const [closeSaving, setCloseSaving] = useState(false);
 
@@ -675,13 +704,22 @@ export const CashBook: React.FC<CashBookProps> = ({
 
     const openDay = (targetDate: string) => {
         setDate(targetDate);
+        setDatePinned(targetDate !== today);
         setSelectedShift(null);
         setView('day');
     };
 
     const changeDate = (next: string) => {
         setDate(next);
+        setDatePinned(next !== today);
         setSelectedShift(null);
+    };
+
+    /* «Oy» — ko'rilayotgan kunning oyi (ilgari doim joriy oy ochilardi:
+       27.10 dan «Oy» bosilsa Noyabr chiqardi). */
+    const changeView = (next: 'day' | 'month') => {
+        if (next === 'month') setMonth(date.slice(0, 7));
+        setView(next);
     };
 
     const openCloseModal = () => {
@@ -691,21 +729,29 @@ export const CashBook: React.FC<CashBookProps> = ({
         setCountedCardInput(c?.countedCard != null ? String(c.countedCard) : '');
         setCountedClickInput(c?.countedClick != null ? String(c.countedClick) : '');
         setCloseNote(c?.note || '');
+        setHandedInput('');
         setIsCloseOpen(true);
         loadExpected();
     };
 
     /** Serverning kutilayotgan naqd hisobi — ekrandagi yagona manba. */
+    /* Faqat OXIRGI so'rov javobi yoziladi (2026-11-22 audit): kun almashganda
+       kechikkan eski javob yangi kunning raqami ustiga tushib qolardi. */
+    const expectedReq = useRef(0);
     const loadExpected = useCallback(async () => {
+        const my = ++expectedReq.current;
         setExpectedLoading(true);
         setExpectedError('');
+        setServerExpected(prev => (prev && (prev as any).date && (prev as any).date !== date ? null : prev));
         try {
-            setServerExpected(await api.cashShift.expected(date));
+            const res = await api.cashShift.expected(date);
+            if (my === expectedReq.current) setServerExpected(res);
         } catch (e: any) {
+            if (my !== expectedReq.current) return;
             setServerExpected(null);
             setExpectedError(e?.message || t('cashbook.server_hisobi_olinmadi'));
         } finally {
-            setExpectedLoading(false);
+            if (my === expectedReq.current) setExpectedLoading(false);
         }
     }, [date]);
 
@@ -754,19 +800,52 @@ export const CashBook: React.FC<CashBookProps> = ({
 
     const countedValue = Number(countedInput.replace(/\s/g, ''));
     const expectedForClose = drawerNow;
+    /* «Kunni yopish» dagi hisob qadamlari: boshlang'ich + naqd tushum + kirim
+       − xarajat − inkassatsiya − qaytarish = yashikda bo'lishi kerak. Server
+       hisobi bo'lsa — uning o'z qismlari (jami ham o'sha yerdan). */
+    const src = serverExpected?.sources || {};
+    const hasSrc = typeof src.cashPayments === 'number';
+    const closeSteps = ([
+        { label: t('finance.cash.openingBalance'), value: hasSrc ? serverExpected!.openingCash : day.totals.openingCash, sign: 0 },
+        { label: t('finance.cash.cashIn'), value: hasSrc ? src.cashPayments + (src.cashIn || 0) : day.totals.cashIn, sign: 1 },
+        { label: t('finance.cash.cashOut'), value: hasSrc ? src.cashExpense || 0 : day.totals.cashExpense, sign: -1 },
+        { label: t('finance.cash.collection'), value: hasSrc ? src.encashment || 0 : 0, sign: -1 },
+        { label: t('finance.cash.refund'), value: hasSrc ? src.refundCash || 0 : 0, sign: -1 },
+    ] as { label: string; value: number; sign: number }[]).filter((s, i) => i < 2 || s.value > 0);
     const previewDifference = isFinite(countedValue) ? countedValue - expectedForClose : 0;
 
+    /* «RAHBARGA TOPSHIRILDI» (Moliya rejasi 2-vazifa; IDENT, Dentalpro va
+       DentaCRM da shunday). Kun oxirida kassir pulni sanaydi va bir qismini
+       (odatda hammasini) egaga beradi — qolgani ertangi kun boshiga o'tadi.
+       Topshirilgani INKASSATSIYA bo'lib yoziladi, keyin kun «qolgani» bilan
+       yopiladi: kutilgan summa ham, sanalgan ham bir xil kamayadi, ya'ni farq
+       o'zgarmaydi. Ilgari buning uchun alohida «Inkassatsiya» qilib, keyin
+       kunni yopish kerak edi — ikki oyna va bitta xato qilish imkoni. */
+    const handedValue = Number(handedInput.replace(/\s/g, '')) || 0;
+    const handedTooMuch = handedValue > 0 && isFinite(countedValue) && handedValue > countedValue;
+    const leftInDrawer = isFinite(countedValue) ? Math.max(0, countedValue - handedValue) : 0;
+
     const handleCloseDay = async () => {
-        if (!onCloseDay || !isFinite(countedValue) || countedInput.trim() === '') return;
+        if (!onCloseDay || !isFinite(countedValue) || countedInput.trim() === '' || handedTooMuch) return;
         setCloseSaving(true);
         try {
+            if (handedValue > 0 && onAddCashMovement) {
+                await onAddCashMovement({
+                    date, type: 'Encashment', amount: handedValue, method: 'Cash',
+                    note: t('cashbook.handoverNote'), patientId: null, transactionId: null,
+                });
+            }
             await onCloseDay({
                 date,
                 shift: activeShift,
-                openingCash: day.totals.openingCash,
-                countedCash: countedValue,
+                /* Kun boshi — server hisobidagi bilan bir xil (2026-11-22 audit):
+                   kutilgan summani server o'z kun boshidan hisoblaydi, yozuvga
+                   esa brauzerdagisi tushib, ikkalasi bir-biriga zid qolardi. */
+                openingCash: serverExpected ? serverExpected.openingCash : day.totals.openingCash,
+                // Topshirilgandan keyin yashikda qolgani — kutilgan summa ham shuncha kamaydi
+                countedCash: countedValue - handedValue,
                 // Serverda qayta hisoblanadi; bu yerda faqat eski shakl uchun
-                expectedCash: expectedForClose,
+                expectedCash: expectedForClose - handedValue,
                 countedCard: countedCardValue,
                 expectedCard: countedCardValue === null ? null : expectedCard,
                 countedClick: countedClickValue,
@@ -884,7 +963,7 @@ export const CashBook: React.FC<CashBookProps> = ({
        Uchtasi bir ro'yxatda turgani uchun bitta qarz ikki marta
        ko'rinishi ham mumkin edi. */
     const unpaidItems = useMemo(() => charges
-        .filter(c => c.status === 'Unpaid' && (c.visit?.date || c.createdAt.split('T')[0]) === date)
+        .filter(c => c.status === 'Unpaid' && (c.visit?.date || dayKey(c.createdAt)) === date)
         .map(c => ({
             kind: 'charge' as const,
             id: c.id,
@@ -901,7 +980,7 @@ export const CashBook: React.FC<CashBookProps> = ({
     // Boshqa kunlardagi to'lanmagan qatorlar — bu ekran kunlik, lekin eski
     // qarz ko'zdan g'oyib bo'lmasligi kerak.
     const olderDue = useMemo(() => charges
-        .filter(c => c.status === 'Unpaid' && (c.visit?.date || c.createdAt.split('T')[0]) !== date)
+        .filter(c => c.status === 'Unpaid' && (c.visit?.date || dayKey(c.createdAt)) !== date)
         .reduce((sum, c) => sum + (c.total - (c.paidAmount || 0)), 0), [charges, date]);
 
     /* Qatorni to'lash — endi oyna orqali: bemorning barcha qatorlari bir
@@ -914,6 +993,12 @@ export const CashBook: React.FC<CashBookProps> = ({
        tugma HAMMAGA ko'rinardi va bosilganda jimgina 403 qaytardi —
        registrator xarajatni yozdim deb o'ylab qolardi. */
     const canEditExpenses = userRole === 'CLINIC_ADMIN';
+    /* Yozish — registratorga ham: faqat MAYDA NAQD (suv, qog'oz, taksi).
+       Tuzatish va o'chirish egada. Server ham shunday (2026-11-22). */
+    const canAddExpense = canEditExpenses || userRole === 'RECEPTIONIST';
+    /* Chekni tuzatish va o'chirish — faqat egada (server ham shunday,
+       `permissions.ts`). Ilgari tugmalar registratorga ham ko'rinardi. */
+    const canEditPayments = userRole === 'CLINIC_ADMIN';
 
     /* TO'LOV NAVBATI — faqat bugun. Uch manba, bitta ro'yxat:
 
@@ -926,7 +1011,7 @@ export const CashBook: React.FC<CashBookProps> = ({
 
        O'tgan kun ochilganda navbat ko'rsatilmaydi: «oynada kim turibdi»
        savoli faqat bugunga tegishli. */
-    const dayOf = (c: VisitCharge) => c.visit?.date || c.createdAt.split('T')[0];
+    const dayOf = (c: VisitCharge) => c.visit?.date || dayKey(c.createdAt);
     const restOf = (c: VisitCharge) => c.total - (c.paidAmount || 0);
     const payGroups = useMemo<PayGroup[] | null>(() => {
         if (view !== 'day' || date !== today) return null;
@@ -960,7 +1045,8 @@ export const CashBook: React.FC<CashBookProps> = ({
         }
         const rest = new Map<string, { group: PayGroup; charges: VisitCharge[] }>();
         for (const c of charges) {
-            if (c.status !== 'Unpaid' || listed.has(c.id)) continue;
+            /* Bo'lib to'lash rejasidagi qator — oyma-oy kartadan to'lanadi, navbatda emas */
+            if (c.status !== 'Unpaid' || listed.has(c.id) || c.installmentPlanId) continue;
             const stay = !!c.admissionId;
             if (!stay && dayOf(c) !== today) continue;
             const key = `${stay ? 'stay' : 'due'}:${c.patientId || c.patientName}`;
@@ -985,8 +1071,32 @@ export const CashBook: React.FC<CashBookProps> = ({
     /* Navbat ko'rsatilganda statsionar qatorlari allaqachon o'sha yerda —
        «boshqa kunlardan qolgan qarz» ga ikkinchi marta qo'shilmaydi. */
     const olderDueShown = payGroups
-        ? charges.filter(c => c.status === 'Unpaid' && !c.admissionId && dayOf(c) !== date).reduce((s, c) => s + restOf(c), 0)
+        ? charges.filter(c => c.status === 'Unpaid' && !c.admissionId && !c.installmentPlanId && dayOf(c) !== date).reduce((s, c) => s + restOf(c), 0)
         : olderDue;
+
+    /* BOSHQA KUNLARDAN QOLGAN QARZ — ISMI BILAN (2026-11-22). Ilgari bu
+       faqat bitta sariq yozuv edi («…qolgan qarz: N»): kim, qancha — yo'q,
+       tugma ham yo'q. Eski qarzni yopish uchun kassir Bemorlar → qidiruv →
+       karta orqali borardi. Endi har bemor — o'z qatori va «To'lash». */
+    const olderGroups = useMemo<PayGroup[]>(() => {
+        if (!payGroups) return [];
+        const byPatient = new Map<string, PayGroup>();
+        for (const c of charges) {
+            if (c.status !== 'Unpaid' || c.admissionId || c.installmentPlanId || dayOf(c) === date) continue;
+            const rest = restOf(c);
+            if (rest <= 0) continue;
+            const key = `old:${c.patientId || c.patientName}`;
+            const g = byPatient.get(key) || {
+                key, zone: 'due' as const, patientId: c.patientId || undefined, patientName: c.patientName,
+                due: 0, state: 'other' as const, items: [],
+            };
+            g.due += rest;
+            g.items = [...g.items, { id: c.id, name: `${c.name} (${formatDateLabel(dayOf(c))})`, amount: rest }];
+            byPatient.set(key, g);
+        }
+        return [...byPatient.values()].sort((a, b) => b.due - a.due);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [payGroups, charges, date]);
 
     const openChargePayment = (patientName: string, patientId?: string) => {
         setPayingPatient({ name: patientName, patientId });
@@ -1132,177 +1242,91 @@ export const CashBook: React.FC<CashBookProps> = ({
     const hiddenRows = day.rows.length - shownRows.length;
     const totals = view === 'day' ? day.totals : monthData.totals;
 
+    /* OLTINCHI PLITKA — HAR DOIM HISOB QATORLARIDAN (2026-11-22 audit).
+       Ilgari bugun «To'lov kutmoqda» edi, boshqa kun va oyda esa «Qarzga
+       yozildi» — eski `Transaction.status` dan (bu qarz ta'rifi ancha oldin
+       olib tashlangan): o'tgan kunda tab «To'lanmagan 11» desa, plitka «0». */
+    const waitingTile = (() => {
+        if (view === 'day' && payGroups) {
+            return {
+                amount: payGroups.reduce((s, g) => s + g.due, 0),
+                people: payGroups.length,
+            };
+        }
+        const inScope = charges.filter(c => c.status === 'Unpaid' && !c.installmentPlanId
+            && (view === 'day' ? dayOf(c) === date : dayOf(c).startsWith(month)));
+        return {
+            amount: inScope.reduce((s, c) => s + restOf(c), 0),
+            people: new Set(inScope.map(c => c.patientId || c.patientName)).size,
+        };
+    })();
+
+    /* Kassa qutisidagi tab. Boshqa kun ochilsa — yana «To'lov kutmoqda» dan. */
+    const [kassaTab, setKassaTab] = useState<'waiting' | 'paid' | 'out'>('waiting');
+    /** «To'lov kutmoqda» dagi ism bo'yicha qidiruv */
+    const [queueQuery, setQueueQuery] = useState('');
+    useEffect(() => { setKassaTab('waiting'); }, [date]);
+    const waitingCount = payGroups ? payGroups.filter(g => g.zone === 'due').length + payGroups.filter(g => g.zone === 'stay').length : unpaidItems.length;
+    /* Shu oyning o'tgan, harakati bor, lekin yopilmagan kunlari (oxirgi 5 tasi) */
+    const unclosedDays = monthData.days
+        .filter(d => d.hasActivity && d.date < today && !closureByDate.get(d.date)?.closed)
+        .map(d => d.date).slice(-5);
+
+    /* «To'lov kutmoqda» summasi — tab nomida (ilgari alohida plitka edi) */
+    const kassaTabs: { id: 'waiting' | 'paid' | 'out'; label: string; count: number; tone: string; sum?: number }[] = [
+        { id: 'waiting', label: payGroups ? t('cashbook.tabWaiting') : t('cashbook.tabUnpaid'), count: waitingCount,
+          sum: waitingTile.amount,
+          tone: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' },
+        { id: 'paid', label: t('cashbook.tabPaid'), count: day.rows.length,
+          tone: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
+        { id: 'out', label: t('cashbook.tabOut'), count: day.expenses.length + day.movements.length,
+          tone: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' },
+    ];
+
     return (
         <div className="space-y-5 animate-fade-in">
-            {/* Header */}
-            <div className={`flex flex-col lg:flex-row items-start lg:items-center gap-4 ${embedded ? 'lg:justify-end' : 'justify-between'}`}>
-                {!embedded && (
-                    <div>
-                        <h1 className="text-2xl font-bold text-ink">{t('cashbook.kassa')}</h1>
-                        <p className="text-sm text-muted">{t('finance.cash.realMoneyHint')}</p>
-                    </div>
-                )}
+            {!embedded && (
+                <div>
+                    <h1 className="text-2xl font-bold text-ink">{t('cashbook.kassa')}</h1>
+                    <p className="text-sm text-muted">{t('finance.cash.realMoneyHint')}</p>
+                </div>
+            )}
 
-                <div className="flex flex-wrap items-center gap-3">
-                    {/* Kassaga pul kirishi va chiqishi — kundalik amallar */}
-                    {view === 'day' && (onAddTransaction || (onAddExpense && canEditExpenses)) && (
-                        <div className="flex items-center gap-2">
-                            {/* TO'LOV — XIZMAT TANLAB, PROTSEDURADAN OLDIN HAM.
+            {/* Tepada bitta asosiy tugma, qolgani «Boshqa amallar» ichida —
+                `components/cashbook/KassaToolbar.tsx` dagi izohga qarang. */}
+            <KassaToolbar
+                date={date}
+                today={today}
+                onPay={onAddTransaction ? () => setIsAdvanceOpen(true) : undefined}
+                onExpense={onAddExpense && canAddExpense ? openExpenseModal : undefined}
+                onEncashment={onAddCashMovement ? () => openMovement('Encashment') : undefined}
+                onExport={userRole === 'CLINIC_ADMIN' ? handleExport : undefined}
+                onDate={changeDate}
+                onShiftDate={step => changeDate(shiftDate(date, step))}
+            />
 
-                                Bu tugma ilgari «Avans» edi va pul bemorning
-                                BALANSIGA tushardi — qanday xizmat uchun ekani
-                                noma'lum. Klinikada bunday pul yo'q: odam
-                                konsultatsiya yoki protsedura uchun to'laydi.
-                                Mavhum balans esa shifokor ulushini ham,
-                                «qaysi xizmat qancha keltirdi» degan hisobotni
-                                ham buzardi.
-
-                                Endi kassir xizmatni tanlaydi, qator shu yerda
-                                yaratilib darhol to'lanadi. Shifokor
-                                protsedurani keyin bajaradi. */}
+            {/* Smenalar — faqat klinikada kuniga bir necha smena bo'lsa */}
+            {view === 'day' && multiShift && (
+                <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl w-fit">
+                    {shiftWindows.map(w => {
+                        const active = w.shift === activeShift;
+                        return (
                             <button
-                                onClick={() => setIsAdvanceOpen(true)}
-                                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
-                            >
-                                <Plus className="w-3.5 h-3.5" />
-                                {t('payment.title')}
-                            </button>
-                            {onAddExpense && canEditExpenses && (
-                                <button
-                                    onClick={openExpenseModal}
-                                    className="flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
-                                >
-                                    <Banknote className="w-3.5 h-3.5" />{t('finance.cash.expense')}</button>
-                            )}
-                            {onAddCashMovement && (
-                                <>
-                                    <button
-                                        onClick={() => openMovement('Encashment')}
-                                        title={t('finance.cash.takenFromDrawer')}
-                                        className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95"
-                                    >
-                                        <ArrowDownToLine className="w-3.5 h-3.5" />{t('finance.cash.collection')}</button>
-                                    <button
-                                        onClick={() => openMovement('Refund')}
-                                        title={t('finance.cash.refundToPatient')}
-                                        className="flex items-center gap-1.5 px-3 py-2 border border-line bg-surface hover:bg-elevated text-ink text-xs font-bold rounded-xl transition-all active:scale-95"
-                                    >
-                                        <Undo2 className="w-3.5 h-3.5" />
-                                        {t('finance.cash.refund')}
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Kun / Oy */}
-                    <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl">
-                        {(['day', 'month'] as const).map(v => (
-                            <button
-                                key={v}
-                                onClick={() => setView(v)}
-                                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${view === v
+                                key={w.shift}
+                                onClick={() => setSelectedShift(w.shift)}
+                                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${active
                                     ? 'bg-surface text-primary-600 shadow-sm'
-                                    : 'text-muted hover:text-muted'
-                                    }`}
+                                    : 'text-muted hover:text-muted'}`}
                             >
-                                {v === 'day' ? t('common.day') : t('common.month')}
+                                {w.shift}-{t('cashbook.smena')}
+                                {w.isOpen
+                                    ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title={t('card.openVisitBadge')} />
+                                    : <Check className="w-3 h-3 text-emerald-500" />}
                             </button>
-                        ))}
-                    </div>
-
-                    {/* Sana boshqaruvi */}
-                    {view === 'day' ? (
-                        <div className="flex items-center gap-1">
-                            <button
-                                onClick={() => changeDate(shiftDate(date, -1))}
-                                className="p-2 rounded-lg border border-line hover:bg-elevated transition-colors"
-                                aria-label={t('finance.cash.prevDay')}
-                            >
-                                <ChevronLeft className="w-4 h-4 text-muted" />
-                            </button>
-                            <input
-                                type="date"
-                                value={date}
-                                onChange={e => e.target.value && changeDate(e.target.value)}
-                                className="h-9 px-3 rounded-lg border border-line bg-surface text-sm text-ink"
-                            />
-                            <button
-                                onClick={() => changeDate(shiftDate(date, 1))}
-                                className="p-2 rounded-lg border border-line hover:bg-elevated transition-colors"
-                                aria-label={t('finance.cash.nextDay')}
-                            >
-                                <ChevronRight className="w-4 h-4 text-muted" />
-                            </button>
-                            {date !== today && (
-                                <Button variant="ghost" size="sm" onClick={() => changeDate(today)}>{t('ui.bugun')}</Button>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-1">
-                            <button
-                                onClick={() => setMonth(shiftMonth(month, -1))}
-                                className="p-2 rounded-lg border border-line hover:bg-elevated transition-colors"
-                                aria-label={t('finance.cash.prevMonth')}
-                            >
-                                <ChevronLeft className="w-4 h-4 text-muted" />
-                            </button>
-                            <input
-                                type="month"
-                                value={month}
-                                onChange={e => e.target.value && setMonth(e.target.value)}
-                                className="h-9 px-3 rounded-lg border border-line bg-surface text-sm text-ink"
-                            />
-                            <button
-                                onClick={() => setMonth(shiftMonth(month, 1))}
-                                className="p-2 rounded-lg border border-line hover:bg-elevated transition-colors"
-                                aria-label={t('finance.cash.nextMonth')}
-                            >
-                                <ChevronRight className="w-4 h-4 text-muted" />
-                            </button>
-                        </div>
-                    )}
-
-                    <Button variant="secondary" onClick={handleExport} className="h-9">
-                        <Download className="w-4 h-4 mr-2" /> Excel
-                    </Button>
-
-                    {view === 'day' && onCloseDay && !closureStatus.closed && (
-                        <Button onClick={openCloseModal} className="h-9">
-                            <Lock className="w-4 h-4 mr-2" />{t('finance.cash.closeDay')}</Button>
-                    )}
+                        );
+                    })}
                 </div>
-            </div>
-
-            {/* Sarlavha: sana */}
-            <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 text-sm font-bold text-muted">
-                    <CalendarDays className="w-4 h-4 text-faint" />
-                    {view === 'day' ? formatDateLabel(date) : formatMonthLabel(month)}
-                </div>
-
-                {view === 'day' && multiShift && (
-                    <div className="flex items-center gap-1 bg-elevated p-1 rounded-xl">
-                        {shiftWindows.map(w => {
-                            const active = w.shift === activeShift;
-                            return (
-                                <button
-                                    key={w.shift}
-                                    onClick={() => setSelectedShift(w.shift)}
-                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${active
-                                        ? 'bg-surface text-primary-600 shadow-sm'
-                                        : 'text-muted hover:text-muted'}`}
-                                >
-                                    {w.shift}-{t('cashbook.smena')}
-                                    {w.isOpen
-                                        ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title={t('card.openVisitBadge')} />
-                                        : <Check className="w-3 h-3 text-emerald-500" />}
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
+            )}
 
             {view === 'day' && closureStatus.closed && closureStatus.closure && (
                 <ClosureBanner
@@ -1314,149 +1338,83 @@ export const CashBook: React.FC<CashBookProps> = ({
                 />
             )}
 
-            {/* KUN — navbat va kassa oynasi; OY — davr yakuni plitkalarda.
-                Kun ko'rinishida plitkalar yo'q: ulardagi olti raqamning
-                hammasi panelda bor (tushum va usullar — pastki qatorda,
-                yashikdagi naqd — kassa oynasida, olinmagan pul — navbatning
-                o'zi, xarajat — o'z ro'yxatida). */}
-            {view === 'day' ? (
-                <PayQueue
-                    groups={payGroups}
-                    totals={totals}
-                    drawer={drawerNow}
-                    clinicName={currentClinic?.name}
-                    olderDue={olderDueShown}
-                    onPay={g => openChargePayment(g.patientName, g.patientId)}
-                />
-            ) : (
-                <>
-                    <SummaryTiles totals={totals} />
-                    <MethodStrip totals={totals} />
-                </>
+            {/* KUN — UCH RAQAM (2026-11-22, olti maslahatchi muhokamasi). Ilgari
+                oltita edi: «Jami tushum», «Naqd», «Naqdsiz» bitta raqamni uch marta
+                ko'rsatardi, «Kassada qoldi» pastdagi yashik hisobi bilan bir xil edi,
+                «To'lov kutmoqda» esa tab nomida turadi. Qolgani — kassirning savoli:
+                qancha tushdi (naqd va naqdsiz ostida), qancha chiqdi, yashikda qancha. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Tile label={t('cashbook.inTill')} value={totals.gross} icon={Coins} tone="cash"
+                    hint={fill(t('cashbook.inTillHint'), num(totals.cashIn), num(totals.nonCashIn))} />
+                <Tile label={t('finance.cash.expense')} value={totals.expenseTotal} icon={TrendingDown} tone="expense"
+                    hint={fill(t('cashbook.naqd_x'), num(totals.cashExpense))} />
+                <Tile label={t('cashbook.drawerTile')} value={drawerNow} icon={Wallet} tone="drawer" hint={t('cashbook.naqd_yashik')} />
+            </div>
+
+            {/* Yopilmagan kunlar — kassir unutib qo'ymasin. Bosilsa o'sha kun ochiladi.
+                Oylik daftar o'rnida: kassirga oydan faqat shu savol kerak edi. */}
+            {unclosedDays.length > 0 && (
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-amber-800 dark:text-amber-300">
+                    <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    <span className="font-semibold">{t('cashbook.unclosedDays')}</span>
+                    {unclosedDays.map(d => (
+                        <button key={d} type="button" onClick={() => openDay(d)}
+                            className="font-bold tabular-nums underline underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100">
+                            {formatDateLabel(d)}
+                        </button>
+                    ))}
+                </p>
             )}
 
+
             {view === 'day' ? (
                 <>
-                    {/* ── Kunlik matritsa: bemor × shifokor ── */}
                     <Card className="overflow-hidden">
-                        <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
-                            <Users className="w-4 h-4 text-faint" />
-                            <h2 className="text-sm font-bold text-ink">
-                                {t('cashbook.tolovlar_shifokorlar_boyicha')}
-                            </h2>
-                            <span className="text-xs text-faint">({day.rows.length} {t('ui.ta')})</span>
+                        <div role="tablist" aria-label={t('cashbook.kassa')}
+                            className="flex gap-1 px-3 border-b border-line overflow-x-auto [scrollbar-width:none]">
+                            {kassaTabs.map(tb => (
+                                <button key={tb.id} type="button" role="tab" aria-selected={kassaTab === tb.id}
+                                    onClick={() => setKassaTab(tb.id)}
+                                    className={`shrink-0 inline-flex items-center gap-2 px-3 py-3.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${kassaTab === tb.id
+                                        ? 'border-primary-600 text-primary-700 dark:text-primary-300'
+                                        : 'border-transparent text-muted hover:text-ink'}`}>
+                                    {tb.label}
+                                    {tb.count > 0 && (
+                                        <span className={`min-w-[1.5rem] h-6 px-1.5 rounded-full text-xs font-bold grid place-items-center tabular-nums ${tb.tone}`}>{tb.count}</span>
+                                    )}
+                                    {!!tb.sum && tb.sum > 0 && (
+                                        <span className="text-sm font-bold tabular-nums text-amber-700 dark:text-amber-300">{num(tb.sum)}</span>
+                                    )}
+                                </button>
+                            ))}
                         </div>
+                    <div role="tabpanel" aria-label={kassaTabs.find(x => x.id === kassaTab)?.label}>
 
-                        {day.rows.length === 0 ? (
-                            <div className="px-5 py-12 text-center">
-                                <Wallet className="w-10 h-10 text-faint mx-auto mb-3" />
-                                <p className="text-sm text-muted">{t('finance.cash.noPaymentsLogged')}</p>
+                    {/* ── To'lov kutmoqda (bugun) ── */}
+                    {kassaTab === 'waiting' && payGroups && (<>
+                        {/* Qidiruv — ism bilan, eski qarzlar ham (Moliya rejasi 1-vazifa) */}
+                        <div className="px-5 pt-4">
+                            <div className="relative max-w-sm">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-faint" aria-hidden="true" />
+                                <input type="search" value={queueQuery} onChange={e => setQueueQuery(e.target.value)}
+                                    aria-label={t('cashbook.searchPatient')} placeholder={t('cashbook.searchPatient')}
+                                    className="w-full h-10 pl-9 pr-3 rounded-xl border border-line bg-surface text-sm text-ink placeholder:text-faint focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
                             </div>
-                        ) : (
-                            <>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-elevated">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-muted uppercase sticky left-0 bg-elevated z-10 min-w-[180px]">
-                                                {t('common.patient')}
-                                            </th>
-                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-muted uppercase w-20">{t('ui.vaqt')}</th>
-                                            {doctorCols.map(col => (
-                                                <th key={col.id} className="px-3 py-3 text-right text-[11px] font-bold text-muted uppercase whitespace-nowrap min-w-[110px]">
-                                                    {col.name}
-                                                </th>
-                                            ))}
-                                            <th className="px-3 py-3 text-left text-[11px] font-bold text-muted uppercase whitespace-nowrap">{t('finance.table.method')}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-line">
-                                        {shownRows.map(row => (
-                                            <tr
-                                                key={row.id}
-                                                className={`hover:bg-elevated transition-colors ${!row.isMoneyIn ? 'opacity-60' : ''}`}
-                                            >
-                                                <td className="px-4 py-2.5 sticky left-0 bg-surface z-10">
-                                                    {row.patientId && onPatientClick ? (
-                                                        <button
-                                                            onClick={() => onPatientClick(row.patientId!)}
-                                                            className="font-medium text-ink hover:text-primary-600 dark:hover:text-primary-400 text-left"
-                                                        >
-                                                            {row.patientName}
-                                                        </button>
-                                                    ) : (
-                                                        <span className="font-medium text-ink">{row.patientName}</span>
-                                                    )}
-                                                    {row.service && (
-                                                        <p className="text-[11px] text-faint truncate max-w-[220px]">{row.service}</p>
-                                                    )}
-                                                </td>
-                                                <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{row.time || '—'}</td>
-                                                {doctorCols.map(col => (
-                                                    <td key={col.id} className="px-3 py-2.5 text-right tabular-nums">
-                                                        {col.id === row.doctorId ? (
-                                                            <span className={row.isMoneyIn ? 'font-semibold text-ink' : 'text-faint line-through'}>
-                                                                {num(row.amount)}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-faint">·</span>
-                                                        )}
-                                                    </td>
-                                                ))}
-                                                <td className="px-3 py-2.5 whitespace-nowrap">
-                                                    <span
-                                                        className="inline-flex items-center gap-1.5 text-xs text-muted"
-                                                    >
-                                                        <span
-                                                            className="w-2 h-2 rounded-full"
-                                                            style={{ backgroundColor: PAYMENT_METHODS.find(m => m.key === row.method)?.color || '#768692' }}
-                                                        />
-                                                        {getPaymentMethodLabel(row.method)}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                    <tfoot className="bg-elevated border-t-2 border-line">
-                                        <tr>
-                                            <td className="px-4 py-3 font-bold text-ink sticky left-0 bg-elevated z-10">
-                                                {t('cashbook.jami')}
-                                            </td>
-                                            <td />
-                                            {doctorCols.map(col => (
-                                                <td key={col.id} className="px-3 py-3 text-right font-black text-ink tabular-nums">
-                                                    {col.total ? num(col.total) : '—'}
-                                                </td>
-                                            ))}
-                                            <td className="px-3 py-3 text-right font-black text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
-                                                {num(day.totals.gross)}
-                                            </td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                            {hiddenRows > 0 && (
-                                <div className="px-5 py-3 border-t border-line-soft text-center">
-                                    <button type="button" onClick={() => setRowLimit(n => n + ROWS_STEP)}
-                                        className="text-sm font-bold text-primary hover:underline">
-                                        {t('finance.cash.showMore')} ({hiddenRows})
-                                    </button>
-                                </div>
-                            )}
-                            </>
-                        )}
-                    </Card>
-
-                    {/* Ro'yxatlar yonma-yon — kenglik bo'sh qolmaydi */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+                        </div>
+                        <PayQueue
+                            bare
+                            query={queueQuery}
+                            groups={payGroups}
+                            totals={totals}
+                            drawer={drawerNow}
+                            olderDue={olderDueShown}
+                            olderGroups={olderGroups}
+                            onPay={g => openChargePayment(g.patientName, g.patientId)}
+                        />
+                    </>)}
 
                     {/* ── Kunlik to'lovlar ro'yxati (chek, o'chirish) ── */}
-                    <Card className="overflow-hidden">
-                        <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
-                            <ListOrdered className="w-4 h-4 text-faint" />
-                            <h2 className="text-sm font-bold text-ink">{t('finance.cash.dayPayments')}</h2>
-                            <span className="text-xs text-faint">({day.rows.length} {t('ui.ta')})</span>
-                        </div>
+                    {kassaTab === 'paid' && (<div>
                         {day.rows.length === 0 ? (
                             <p className="px-5 py-8 text-center text-sm text-muted">{t('finance.cash.noPayments')}</p>
                         ) : (
@@ -1470,13 +1428,10 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 {row.patientName}
                                             </p>
                                             <p className="text-[11px] text-faint truncate">
-                                                {row.doctorName}
-                                                {row.service && <><span className="mx-1.5">·</span>{row.service}</>}
-                                                <span className="mx-1.5">·</span>
-                                                {getPaymentMethodLabel(row.method)}
-                                                {row.receivedByName && (
-                                                    <><span className="mx-1.5">·</span>{t('cashbook.qabul_qildi')}: {row.receivedByName}</>
-                                                )}
+                                                {/* «Belgilanmagan» kassirga hech narsa demaydi — shifokor yo'q bo'lsa yozilmaydi */}
+                                                {[row.doctorName !== t('reception.unassigned') ? row.doctorName : '', row.service, getPaymentMethodLabel(row.method),
+                                                    row.receivedByName ? `${t('cashbook.qabul_qildi')}: ${row.receivedByName}` : '']
+                                                    .filter(Boolean).join(' · ')}
                                             </p>
                                         </div>
                                         <span className={`text-sm font-bold tabular-nums shrink-0 ${row.isMoneyIn
@@ -1498,7 +1453,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 rad etadi, shuning uchun tugmani bosiladigan qilib
                                                 qo'yish — foydalanuvchini xatoga yetaklash. To'g'ri
                                                 yo'l yonidagi «Qaytarish» tugmasi. */}
-                                            {onUpdateTransaction && (
+                                            {onUpdateTransaction && canEditPayments && (
                                                 <button
                                                     onClick={() => {
                                                         const tx = transactions.find(t => t.id === row.id);
@@ -1526,7 +1481,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                     <Undo2 className="w-4 h-4" />
                                                 </button>
                                             )}
-                                            {onDeleteTransaction && (
+                                            {onDeleteTransaction && canEditPayments && (
                                                 <button
                                                     onClick={() => setDeletingRow(row)}
                                                     disabled={transactions.find(t => t.id === row.id)?.linkedToCharges}
@@ -1552,25 +1507,23 @@ export const CashBook: React.FC<CashBookProps> = ({
                             )}
                             </>
                         )}
-                    </Card>
+                    </div>)}
 
 
                     {/* ── To'lanmaganlar: kimdan pul olinmadi ──
                         Faqat O'TGAN kun uchun. Bugungi to'lanmaganlar —
                         yuqoridagi to'lov navbatining o'zi; ikkinchi ro'yxat
                         o'sha odamlarni qator-qator takrorlardi. */}
-                    {!payGroups && (
-                    <Card className="overflow-hidden">
-                        <div className="px-5 py-4 border-b border-line-soft flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-                                <h2 className="text-sm font-bold text-ink truncate">{t('finance.cash.unpaid')}</h2>
-                                <span className="text-xs text-faint">({unpaidItems.length} {t('ui.ta')})</span>
+                    {kassaTab === 'waiting' && !payGroups && (
+                    <div>
+                        {unpaidItems.length > 0 && (
+                            <div className="px-5 py-3 border-b border-line-soft flex items-center justify-between gap-2">
+                                <span className="text-sm font-semibold text-muted">{t('finance.cash.unpaid')}</span>
+                                <span className="text-sm font-black text-amber-600 dark:text-amber-400 tabular-nums shrink-0">
+                                    {num(unpaidTotal)} UZS
+                                </span>
                             </div>
-                            <span className="text-sm font-black text-amber-600 dark:text-amber-400 tabular-nums shrink-0">
-                                {num(unpaidTotal)} UZS
-                            </span>
-                        </div>
+                        )}
                         {olderDue > 0 && (
                             <div className="px-5 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
                                 <p className="text-[11px] text-amber-800 dark:text-amber-200">{t('finance.cash.debtFromOtherDays')}<b className="tabular-nums">{num(olderDue)} UZS</b>
@@ -1580,7 +1533,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                         {unpaidItems.length === 0 ? (
                             <div className="px-5 py-10 text-center">
                                 <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                                <p className="text-sm text-muted">{t('finance.cash.allCollected')}</p>
+                                <p className="text-sm text-muted">{t('cashbook.dayEmptyOld')}</p>
                             </div>
                         ) : (
                             <ul className="divide-y divide-line">
@@ -1607,15 +1560,27 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 ))}
                             </ul>
                         )}
-                    </Card>
+                    </div>
                     )}
 
-                    {/* ── Kunlik xarajatlar ── */}
-                    <Card className="overflow-hidden">
-                        <div className="px-5 py-4 border-b border-line-soft flex items-center justify-between">
+                    {/* ── Xarajat va inkassatsiya ── */}
+                    {kassaTab === 'out' && day.expenses.length === 0 && day.movements.length === 0 && (
+                        <div className="px-5 py-10 text-center">
+                            <p className="text-sm text-muted">{t('cashbook.noOut')}</p>
+                            {onAddExpense && canAddExpense && (
+                                <button type="button" onClick={openExpenseModal}
+                                    className="mt-2 text-sm font-bold text-red-700 dark:text-red-300 hover:underline">
+                                    {t('cashbook.xarajat_qoshish')}
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    {kassaTab === 'out' && day.expenses.length > 0 && (
+                    <div>
+                        <div className="px-5 py-3 border-b border-line-soft flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <TrendingDown className="w-4 h-4 text-faint" />
-                                <h2 className="text-sm font-bold text-ink">{t('cashbook.xarajatlar')}</h2>
+                                <h3 className="text-sm font-bold text-ink">{t('cashbook.xarajatlar')}</h3>
                                 <span className="text-xs text-faint">({day.expenses.length} {t('ui.ta')})</span>
                             </div>
                             <span className="text-sm font-black text-red-600 dark:text-red-400 tabular-nums">
@@ -1625,7 +1590,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                         {day.expenses.length === 0 ? (
                             <div className="px-5 py-8 text-center">
                                 <p className="text-sm text-muted">{t('finance.cash.noExpenses')}</p>
-                                {onAddExpense && canEditExpenses && (
+                                {onAddExpense && canAddExpense && (
                                     <button
                                         onClick={openExpenseModal}
                                         className="mt-2 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
@@ -1650,6 +1615,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                                                 {/* Avtomatik xarajat qayerdan kelgani ko'rinib tursin —
                                                     kassir uni qidirib yurmasin. */}
                                                 {src && <><span className="mx-1.5">·</span><span className="text-faint">{src}</span></>}
+                                                {/* Kim yozgani (registrator yozsa — «yozdi: …») va izoh */}
+                                                {e.note && <><span className="mx-1.5">·</span>{e.note}</>}
                                             </p>
                                         </div>
                                         <span className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums shrink-0">
@@ -1670,13 +1637,15 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 })}
                             </ul>
                         )}
-                    </Card>
+                    </div>
+                    )}
 
-                    {/* ── Kassa harakatlari ── */}
-                    <Card className="overflow-hidden">
-                            <div className="px-5 py-4 border-b border-line-soft flex items-center gap-2">
+                    {/* ── Kassa harakatlari — bo'lsagina ── */}
+                    {kassaTab === 'out' && day.movements.length > 0 && (
+                    <div className="border-t border-line">
+                            <div className="px-5 py-3 border-b border-line-soft flex items-center gap-2">
                                 <ArrowDownToLine className="w-4 h-4 text-faint" />
-                                <h2 className="text-sm font-bold text-ink">{t('finance.cash.cashMoves')}</h2>
+                                <h3 className="text-sm font-bold text-ink">{t('finance.cash.cashMoves')}</h3>
                                 <span className="text-xs text-faint">({day.movements.length} {t('ui.ta')})</span>
                             </div>
                             {day.movements.length === 0 ? (
@@ -1734,11 +1703,42 @@ export const CashBook: React.FC<CashBookProps> = ({
                                 })}
                             </ul>
                             )}
-                    </Card>
+                    </div>
+                    )}
 
                     </div>
+                    </Card>
 
-                    {/* -- O'zgarishlar izi -- */}
+                    {/* ── Smena holati ──────────────────────────────────────
+                        Kim kassada turgani. Majburiy emas: ochmasdan ham
+                        ishlash mumkin, lekin ochilgan bo'lsa kunni yopishda
+                        boshlang'ich naqd kimning so'zi ekani ma'lum bo'ladi. */}
+                    {!closureStatus.closed && date === today && openedShift && (
+                        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                            <LockOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span className="text-sm text-emerald-900 dark:text-emerald-200">
+                                {t('cashbook.smena_ochiq')}{openedShift.openedByName ? ` — ${openedShift.openedByName}` : ''}
+                                {openedShift.openedAt ? ` · ${new Date(openedShift.openedAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                            </span>
+                            <span className="text-xs text-emerald-700 dark:text-emerald-300 ml-auto tabular-nums">
+                                {t('cashbook.boshlangich_naqd')} {num(openedShift.openingCash || 0)}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* ── Naqd yashik hisobi ── */}
+                    {/* «Kunni yopish» — tepada, sana yonida (bitta joy). Bu yerda
+                        faqat hisob: yashikda qancha bo'lishi kerak. */}
+                    <CashFlowPanel
+                        day={day}
+                        closure={closureStatus}
+                        drawer={drawerNow}
+                        /* «Kunni yopish» — shu yerda, yashikda bo'lishi kerak bo'lgan summa yonida (bitta joy) */
+                        onClose={onCloseDay ? openCloseModal : undefined}
+                    />
+
+                    {/* -- O'zgarishlar izi — faqat egaga -- */}
+                    {canReopen && (
                     <Card className="overflow-hidden">
                         <button
                             onClick={toggleAudit}
@@ -1779,43 +1779,8 @@ export const CashBook: React.FC<CashBookProps> = ({
                             </div>
                         )}
                     </Card>
-
-                    {/* ── Smena holati ──────────────────────────────────────
-                        Kim kassada turgani. Majburiy emas: ochmasdan ham
-                        ishlash mumkin, lekin ochilgan bo'lsa kunni yopishda
-                        boshlang'ich naqd kimning so'zi ekani ma'lum bo'ladi. */}
-                    {!closureStatus.closed && date === today && (
-                        openedShift ? (
-                            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                                <LockOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                <span className="text-sm text-emerald-900 dark:text-emerald-200">
-                                    {t('cashbook.smena_ochiq')}{openedShift.openedByName ? ` — ${openedShift.openedByName}` : ''}
-                                    {openedShift.openedAt ? ` · ${new Date(openedShift.openedAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}` : ''}
-                                </span>
-                                <span className="text-xs text-emerald-700 dark:text-emerald-300 ml-auto tabular-nums">
-                                    {t('cashbook.boshlangich_naqd')} {num(openedShift.openingCash || 0)}
-                                </span>
-                            </div>
-                        ) : (
-                            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-elevated border border-line">
-                                <Lock className="w-4 h-4 text-faint shrink-0" />
-                                <span className="text-sm text-muted">{t('finance.cash.shiftNotOpen')}</span>
-                                <Button size="sm" variant="secondary" className="ml-auto"
-                                    onClick={handleOpenShift} disabled={openingShift}>
-                                    {openingShift ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <LockOpen className="w-3.5 h-3.5 mr-1.5" />}
-                                    {t('cashbook.smenani_ochish')}
-                                </Button>
-                            </div>
-                        )
                     )}
 
-                    {/* ── Naqd yashik hisobi ── */}
-                    <CashFlowPanel
-                        day={day}
-                        closure={closureStatus}
-                        drawer={drawerNow}
-                        onClose={onCloseDay ? openCloseModal : undefined}
-                    />
                 </>
             ) : (
                 /* ── Oylik daftar ── */
@@ -1919,6 +1884,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     patientId={payingPatient.patientId}
                     receivedByName={currentUserName}
                     role={userRole}
+                    clinic={currentClinic}
                     addToast={addToast}
                     onDone={() => { onChargesChanged?.(); loadHereNow(); }}
                 />
@@ -1936,6 +1902,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                 clinic={currentClinic}
                 addToast={addToast}
                 onDone={() => onChargesChanged?.()}
+                onPayDebt={p => { setIsAdvanceOpen(false); setAdvancePatient(null); openChargePayment(`${p.lastName} ${p.firstName}`.trim(), p.id); }}
             />
 
             {/* ── Xarajat yozish ── */}
@@ -1950,7 +1917,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                         label={t('finance.cash.category')}
                         value={expenseForm.category}
                         onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value as ExpenseCategory }))}
-                        options={KASSA_EXPENSE_CATEGORIES.map(c => ({ value: c, label: EXPENSE_CATEGORY_LABELS[c] }))}
+                        options={(canEditExpenses ? KASSA_EXPENSE_CATEGORIES : RECEPTION_EXPENSE_CATEGORIES).map(c => ({ value: c, label: EXPENSE_CATEGORY_LABELS[c] }))}
                     />
 
                     {/* Bo'lim ixtiyoriy: "qaysi bo'lim foydali" hisoboti
@@ -1991,7 +1958,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     <div>
                         <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">{t('finance.cash.paidFrom')}</label>
                         <div className="flex gap-2 flex-wrap">
-                            {EXPENSE_PAYMENT_METHODS.map(m => (
+                            {(canEditExpenses ? EXPENSE_PAYMENT_METHODS : EXPENSE_PAYMENT_METHODS.filter(x => x === 'Cash')).map(m => (
                                 <button
                                     key={m}
                                     type="button"
@@ -2263,18 +2230,19 @@ export const CashBook: React.FC<CashBookProps> = ({
             >
                 <div className="space-y-5">
                     <div className="rounded-xl bg-elevated p-4 space-y-2 text-sm">
-                        <div className="flex justify-between text-muted">
-                            <span>{t('finance.cash.openingBalance')}</span>
-                            <span className="font-semibold tabular-nums">{num(day.totals.openingCash)}</span>
-                        </div>
-                        <div className="flex justify-between text-muted">
-                            <span>{t('finance.cash.cashIn')}</span>
-                            <span className="font-semibold tabular-nums">{num(day.totals.cashIn)}</span>
-                        </div>
-                        <div className="flex justify-between text-muted">
-                            <span>{t('finance.cash.cashOut')}</span>
-                            <span className="font-semibold tabular-nums text-red-600 dark:text-red-400">−{num(day.totals.cashExpense)}</span>
-                        </div>
+                        {/* QATORLAR JAMIGA TENG CHIQADI (2026-11-22). Ilgari bu yerda
+                            uch qator (boshlang'ich + naqd kirim − xarajat) turar, jami
+                            esa serverdan kelardi va u qaytarish va inkassatsiyani ham
+                            ayirardi — kassir qo'shib chiqsa, son to'g'ri kelmasdi.
+                            Endi qatorlar ham o'sha server hisobidan. */}
+                        {closeSteps.map(s => (
+                            <div key={s.label} className="flex justify-between text-muted">
+                                <span>{s.label}</span>
+                                <span className={`font-semibold tabular-nums ${s.sign < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                                    {s.sign < 0 ? '−' : s.sign > 0 ? '+' : ''}{num(s.value)}
+                                </span>
+                            </div>
+                        ))}
                         <div className="flex justify-between pt-2 border-t border-line text-base">
                             <span className="font-bold text-ink">{t('finance.cash.ledgerInDrawer')}</span>
                             <span className="font-black tabular-nums text-amber-600 dark:text-amber-400">
@@ -2357,6 +2325,32 @@ export const CashBook: React.FC<CashBookProps> = ({
                         </div>
                     )}
 
+                    {/* RAHBARGA TOPSHIRILDI — kun oxirida egaga berilgan naqd.
+                        Yozilsa inkassatsiya bo'ladi; qolgani ertangi kun boshi. */}
+                    {onAddCashMovement && countedInput.trim() !== '' && isFinite(countedValue) && (
+                        <div>
+                            <div className="flex items-end gap-2">
+                                <div className="flex-1">
+                                    <Input
+                                        label={t('cashbook.handedLabel')}
+                                        type="number"
+                                        value={handedInput}
+                                        onChange={e => setHandedInput(e.target.value)}
+                                        onWheel={e => e.currentTarget.blur()}
+                                        placeholder="0"
+                                        error={handedTooMuch ? t('cashbook.handedTooMuch') : undefined}
+                                    />
+                                </div>
+                                <Button type="button" variant="secondary" onClick={() => setHandedInput(String(Math.max(0, countedValue)))}>
+                                    {t('cashbook.handAll')}
+                                </Button>
+                            </div>
+                            <p className="mt-1.5 text-sm font-semibold text-ink tabular-nums">
+                                {fill(t('cashbook.leftInDrawer'), num(leftInDrawer))}
+                            </p>
+                        </div>
+                    )}
+
                     {/* Terminal va Click — ixtiyoriy, kiritilsa solishtiriladi */}
                     {(expectedCard > 0 || expectedClick > 0) && (
                         <div className="space-y-3 pt-1">
@@ -2403,7 +2397,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                         <Button
                             className="flex-1"
                             onClick={handleCloseDay}
-                            disabled={closeSaving || countedInput.trim() === '' || !isFinite(countedValue)}
+                            disabled={closeSaving || countedInput.trim() === '' || !isFinite(countedValue) || handedTooMuch}
                         >
                             {closeSaving ? t('ui.saqlanmoqda_2') : closureStatus.closed ? t('ui.yangilash') : t('finance.cash.closeDay')}
                         </Button>

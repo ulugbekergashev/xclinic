@@ -51,12 +51,12 @@ test.describe('Marshrut', () => {
         if (withStudy) await studies.getByRole('button').first().click();
         const stops = withStudy ? 3 : 2;
 
-        // Marshrut: laboratoriya birinchi, shifokor oxirida
-        const route = page.getByRole('list', { name: 'Marshrut' });
-        await expect(route).toContainText(`Marshrut · ${stops} bekat`);
-        const items = route.locator('li');
-        await expect(items.nth(1)).toContainText('Laboratoriya');
-        await expect(items.last()).toContainText(/Kabinet|Terapiya|[A-Z]/);
+        /* Tayinlovlar ro'yxati. Ilgari «Marshrut · N bekat» deb RAQAMLANGAN
+           edi — tartibni kod o'ylab topardi. Endi bu to'plam: nima
+           tayinlangani aytiladi, qaysi tartibda yurish emas. */
+        const route = page.getByRole('list', { name: 'Tayinlandi' });
+        await expect(route).toContainText(`Tayinlandi · ${stops} ta`);
+        await expect(route).toContainText('Laboratoriya');
 
         await page.getByRole('button', { name: /^Qabulni ochish$/ }).click();
         await expect(page.getByText(/Qabul ochildi/).first()).toBeVisible({ timeout: 20_000 });

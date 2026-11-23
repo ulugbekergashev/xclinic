@@ -13,7 +13,21 @@
  * Sinov o'z serveridan va baza NUSXASIDAN foydalanadi.
  */
 import { test, expect } from '@playwright/test';
-import { login, go, uniq } from './helpers';
+import { login, go, uniq, openVisitInCard } from './helpers';
+
+/* Qabul bloklari (2026-11-21): ko'rik, tashxis, retsept, xizmatlar va
+   yo'llanma — hammasi bir ekranda. Yo'llanma turlari (tahlil, diagnostika,
+   boshqa shifokor) «+ Yo'llanma» oynasida. */
+/* «Bugungi qabul» (2026-11-21, DentaCRM namunasida): bitta «+ Qo'shish» —
+   oynada nima qo'shilishi tepada tanlanadi: Xizmat · Tahlil · Diagnostika ·
+   Dori · Tashxis · Boshqa shifokor. */
+const openAdd = async (p: any, kind: string) => {
+    /* Tashxis va xizmatdan keyin oyna ochiq qoladi — qayta ochilmaydi */
+    if (!(await p.getByRole('dialog').count())) await p.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ }).click();
+    await p.getByRole('dialog').getByRole('button', { name: new RegExp(`^${kind}$`) }).click();
+};
+const openReferral = (p: any) => openAdd(p, 'Tahlil');
+
 
 /* Sinov uchun bemor yaratadi va uning kartasini ochadi.
 
@@ -52,40 +66,73 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
 
         /* Yangi bemorda ochiq qabul yo'q — panel «Qabul ochish»
            formasini ko'rsatishi kerak, bo'sh joy emas. */
-        await expect(page.getByText(/Ochiq qabul yo'q/)).toBeVisible();
+        await expect(page.getByText(/Bugun qabul ochilmagan/)).toBeVisible();
 
-        const openBtn = page.getByRole('button', { name: /^Qabul ochish$/ });
+        const openBtn = page.getByRole('button', { name: /^Qabul ochish/ });
         await expect(openBtn).toBeVisible();
         // Bo'lim tanlanmaguncha tugma bosilmaydi
         await expect(openBtn).toBeDisabled();
 
-        // Birinchi select — bo'lim
-        const deptSelect = page.locator('select').first();
-        const options = deptSelect.locator('option');
-        expect(await options.count()).toBeGreaterThan(1);
-        await deptSelect.selectOption({ index: 1 });
+        /* «Bugun» ekranidagi forma bilan bir xil: Bo'lim → Shifokor
+           (2026-11-21, kartochkalardan qaytildi). Klinik bo'limda
+           shifokorsiz qabul ochilmaydi — u hech kimning navbatida
+           ko'rinmasdi. */
+        const box = page.locator('section[aria-labelledby="visit-title"]');
+        const deptSel = box.getByLabel("Bo'lim", { exact: true });
+        const docSel = box.getByLabel(/^Shifokor/);
+        await expect(deptSel.locator('option').nth(1)).toBeAttached({ timeout: 15_000 });
+        const values = await deptSel.locator('option').evaluateAll(
+            os => os.map(o => (o as HTMLOptionElement).value).filter(Boolean));
+        for (const v of values) {
+            await deptSel.selectOption(v);
+            if (await docSel.locator('option').count() > 1) break;
+        }
+        // Xizmat o'zi tanlanmaydi — so'ralmagan pul hisobga tushmasin
+        expect(await box.getByLabel(/^Xizmat/).inputValue()).toBe('');
 
+        if (await docSel.locator('option').count() > 2) {
+            // Bir nechta shifokor: tanlanmaguncha tugma o'chiq
+            expect(await docSel.inputValue()).toBe('');
+            await expect(openBtn).toBeDisabled();
+            await docSel.selectOption({ index: 1 });
+        } else {
+            // Yagona shifokor o'zi tanlanadi
+            expect(await docSel.inputValue()).not.toBe('');
+        }
         await expect(openBtn).toBeEnabled();
+        await expect(openBtn).toHaveText(/^Qabul ochish — Dr\. /);
         await openBtn.click();
         await page.waitForTimeout(2500);
 
         // Qabul ochildi — panel sarlavhasi va holat chipi paydo bo'ladi
-        await expect(page.getByText('Bugungi qabul')).toBeVisible();
-        await expect(page.getByRole('button', { name: /Qabulni yakunlash/ })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
+
+        /* QABUL TARTIBI (klinika egasi, 2026-11-21): boshlanmagan qabulni
+           yakunlab bo'lmaydi. Avval «Qabulni boshlash», keyin «Yakunlash». */
+        const startBtn = page.getByRole('button', { name: /^Qabulni boshlash$/ });
+        const finishBtn = page.getByRole('button', { name: /Qabulni yakunlash/ });
+        await expect(startBtn).toBeVisible();
+        await expect(finishBtn).toHaveCount(0);
+        await startBtn.click();
+        await expect(finishBtn).toBeVisible({ timeout: 15_000 });
+        await expect(startBtn).toHaveCount(0);
+        await expect(page.getByText(/(^|· )Qabulda$/)).toBeVisible();
     });
 
     test('MKB-10 qidiruvi kartada natija beradi va tashxis qo\'shiladi', async ({ page }) => {
         await login(page);
         await openFreshPatientCard(page);
 
-        await page.locator('select').first().selectOption({ index: 1 });
-        await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
+        /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
+        await openVisitInCard(page);
         await page.waitForTimeout(2500);
 
         /* Tashxis maydoni AYNAN KARTADA bo'lishi kerak — boshqa sahifaga
            o'tmasdan. Auditda topilgan nuqson shu edi. */
-        await expect(page.getByText('Tashxis (MKB-10)')).toBeVisible();
+        await expect(page.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ })).toBeVisible();
 
+        // Qidiruv — «+ Qo'shish» oynasining «Tashxis» turida
+        await openAdd(page, 'Tashxis');
         const icd = page.getByPlaceholder(/Kod yoki kasallik nomi/);
         await expect(icd).toBeVisible();
         await icd.fill('gipert');
@@ -110,14 +157,16 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await login(page);
         await openFreshPatientCard(page);
 
-        await page.locator('select').first().selectOption({ index: 1 });
-        await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
+        /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
+        await openVisitInCard(page);
         await page.waitForTimeout(2500);
 
-        await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
+        await openReferral(page);
+        await page.getByRole('button', { name: /^Diagnostika$/ }).click();
         await page.waitForTimeout(800);
 
-        await expect(page.getByText('Qaysi tekshiruv?')).toBeVisible();
+        // Tanlov oynada; «Qaysi tekshiruv?» — guruhning nomi (sarlavhani oyna beradi)
+        await expect(page.getByRole('dialog').getByRole('group', { name: 'Qaysi tekshiruv?' })).toBeVisible();
         /* Prayslist tugma bo'lib turadi — tanlash nom va narxni o'zi
            to'ldiradi. Qo'lda yozish esa prayslistda yo'q tekshiruv uchun
            qoladi va alohida bosib ochiladi. */
@@ -130,13 +179,14 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await login(page);
         await openFreshPatientCard(page);
 
-        await page.locator('select').first().selectOption({ index: 1 });
-        await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
+        /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
+        await openVisitInCard(page);
         await page.waitForTimeout(2500);
 
-        /* Tarix endi bitta lenta. «Qabul» filtri bosilganda hozirgina
-           ochilgan qabul «ochiq» belgisi bilan turishi kerak — sahifa
-           qayta yuklanmasdan. */
+        /* Tarix — alohida tab (2026-11-20), bitta lenta. «Qabul» filtri
+           bosilganda hozirgina ochilgan qabul «ochiq» belgisi bilan turishi
+           kerak — sahifa qayta yuklanmasdan. */
+        await page.getByRole('tab', { name: /^Tarix/ }).click();
         const history = page.locator('section[aria-labelledby="hist-title"]');
         const feed = history.getByRole('list', { name: 'Tarix' });
         await history.getByRole('button', { name: /^Qabul$/ }).click();
@@ -145,7 +195,7 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         /* Yozuv JOYIDA ochiladi (ilgari bo'lim sahifaning eng pastida
            ochilardi) va varaqda aynan shu qabul turgani ko'rinadi. */
         await feed.getByRole('button').first().click();
-        await expect(history.getByRole('button', { name: 'varaqda ochiq' })).toBeDisabled();
+        await expect(history.getByRole('button', { name: 'Qabulni ochish' })).toBeEnabled();
 
         /* Boshqa turdagi yozuv yo'q — lenta bo'sh ekanini aytadi, jim qolmaydi. */
         await history.getByRole('button', { name: /^Tahlil$/ }).click();
@@ -156,12 +206,13 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await login(page);
         await openFreshPatientCard(page);
 
-        await page.locator('select').first().selectOption({ index: 1 });
-        await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
+        /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
+        await openVisitInCard(page);
         await page.waitForTimeout(2500);
 
         /* Tekshiruv buyuramiz — server unga `VisitCharge` qatori yaratadi. */
-        await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
+        await openReferral(page);
+        await page.getByRole('button', { name: /^Diagnostika$/ }).click();
         await page.waitForTimeout(800);
         /* Prayslist tugma bo'lib turadi; prayslistda yo'q tekshiruv — «qo'lda yozish» orqali */
         const manualStudy = page.getByRole('button', { name: /qo'lda yozish/ });
@@ -175,10 +226,11 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
            Ilgari bu ro'yxat kalendar yozuvlaridan yasalardi va hisob
            qatorlarini umuman ko'rmasdi: shifokor kartada bir qarzni,
            kassir esa boshqasini ko'rardi. */
-        await page.getByRole('button', { name: /^To'lovlar/ }).click();
-        /* Daftar oynada ochiladi (ilgari — sahifaning eng pastida). Qatorni
-           AYNAN SHU OYNADAN qidiramiz: «Sinov UZI» varaqning o'zida ham bor. */
-        const register = page.getByRole('dialog', { name: "To'lovlar" });
+        await page.getByRole('tab', { name: /^To'lovlar/ }).click();
+        /* «To'lovlar» — sarlavha ostidagi tab (2026-11-20 gacha oyna edi).
+           Qatorni AYNAN SHU TABDAN qidiramiz: «Sinov UZI» varaqda ham bor. */
+        const register = page.getByRole('tabpanel');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
         await expect(register.getByText('Sinov UZI').first()).toBeVisible();
 
         /* To'lov oynasi — kassadagi bilan aynan bir xil komponent. */
@@ -198,10 +250,10 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await login(page);
         const n = await openFreshPatientCard(page);
 
-        await page.locator('select').first().selectOption({ index: 1 });
-        await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
+        /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
+        await openVisitInCard(page);
         await page.waitForTimeout(2500);
-        await expect(page.getByText('Bugungi qabul')).toBeVisible();
+        await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
 
         /* Endi «Bugun» xaritasida o'sha bemor kutish zalida turishi kerak.
            Alohida navbat ro'yxati yo'q (u xaritani takrorlardi) — karta
@@ -222,7 +274,7 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         expect(page.url()).toContain('/patients/');
         expect(page.url()).not.toContain('undefined');
         expect(page.url()).toContain('visit=');
-        await expect(page.getByText('Bugungi qabul')).toBeVisible();
+        await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
 
         /* Eski havola: `/visit/:id` bemor kartasiga yo'naltiradi —
            chop etilgan talonlar va xatcho'plar ishlashda davom etsin. */
@@ -232,6 +284,6 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await go(page, `/visit/${visitId}`);
         await page.waitForTimeout(3000);
         expect(page.url()).toContain('/patients/');
-        await expect(page.getByText('Bugungi qabul')).toBeVisible();
+        await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
     });
 });

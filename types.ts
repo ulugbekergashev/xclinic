@@ -92,6 +92,11 @@ export interface Patient {
   cardNumber?: string | null;
   /** Kartochka ochilgan vaqt — «Yangi bemorlar» filtri shunga qaraydi */
   createdAt?: string;
+  /** Tibbiy tarixning qolgan bo'limlari (JSON, `AnamnesisData`). Migratsiya 0039 */
+  anamnesis?: string | null;
+  /** Tibbiy tarix (kasallik, allergiya yoki shu JSON) oxirgi marta qachon va kim o'zgartirgan */
+  anamnesisUpdatedAt?: string | null;
+  anamnesisUpdatedBy?: string | null;
 }
 
 export interface Appointment {

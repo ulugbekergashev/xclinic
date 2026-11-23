@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Check, Printer } from 'lucide-react';
+import { Check, Printer } from 'lucide-react';
 import { Card } from './Common';
 import { LabOrder, LabTest } from '../types';
 import { useLanguage, fill } from '../context/LanguageContext';
@@ -41,10 +41,6 @@ interface Props {
 
 type Paid = { paid?: boolean | null; due?: number | null };
 
-const FLOOR_WARM: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(217,119,6,0.14) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
-const FLOOR_SKY: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(0,164,153,0.13) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
-const FLOOR_GREEN: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(0,150,57,0.11) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
-
 const TAB = 'absolute -top-2.5 left-5 inline-flex items-center gap-1.5 h-[18px] px-2 rounded-md bg-surface text-[10.5px] font-extrabold uppercase tracking-wider whitespace-nowrap';
 
 /* Probirka qopqog'ining rangi — NAMUNA TURI (tahlil katalogidagi maydon).
@@ -58,15 +54,6 @@ const CAP: Record<string, string> = {
 const capOf = (sample: string) => CAP[sample] || 'bg-gray-400';
 
 const dayKey = (iso?: string | null) => (iso ? new Date(iso).toDateString() : '');
-
-const Step: React.FC = () => (
-    <div aria-hidden="true" className="hidden xl:flex relative items-center justify-center">
-        <span className="absolute left-1/2 -translate-x-1/2 top-6 bottom-6 border-l-2 border-dashed border-line" />
-        <span className="relative w-6 h-6 rounded-full bg-surface border-[1.5px] border-line text-faint inline-flex items-center justify-center">
-            <ArrowRight className="w-3 h-3" />
-        </span>
-    </div>
-);
 
 export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpen }) => {
     const { t } = useLanguage();
@@ -118,35 +105,28 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
         return [...bySample.values()].map(r => ({ ...r, tubes: r.tubes.sort((a, b) => a.left - b.left) }));
     }, [live, testById, now, t]);
     const tubeCount = racks.reduce((n, r) => n + r.tubes.filter(x => !x.done).length, 0);
-    const lateCount = racks.reduce((n, r) => n + r.tubes.filter(x => !x.done && x.left < 0).length, 0);
     /* 3. Bugun tayyor bo'lganlar — ko'rilmagani tepada. */
     const today = new Date().toDateString();
     const ready = orders.filter(o => o.status === 'Completed' && dayKey(o.completedAt) === today)
         .sort((a, b) => Number(!!a.seenByDoctorAt) - Number(!!b.seenByDoctorAt) || +new Date(b.completedAt || 0) - +new Date(a.completedAt || 0));
     const unseen = ready.filter(o => !o.seenByDoctorAt).length;
 
-    const testsOf = (o: LabOrder) => (o.items || []).map(i => i.testName).join(' · ') || '—';
-    const legendItem = (dot: string, text: string) => (
-        <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={`w-2.5 h-2.5 rounded-full ${dot}`} />{text}</span>
-    );
-
+    /* Tish laboratoriyasi ishida tahlillar yo'q — turi va materiali bor
+       (jurnaldagi bilan bir xil qoida, audit XC-28). Ilgari bu yerda «—» edi. */
+    const testsOf = (o: LabOrder) => (o.items || []).map(i => i.testName).join(' · ')
+        || [(o as any).orderType, (o as any).material].filter(Boolean).join(' · ')
+        || '—';
     return (
         <Card className="p-5 sm:p-6">
             <section aria-labelledby="lab-line-title">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 id="lab-line-title" className="text-lg font-black text-ink">{t('labline.title')}</h2>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-muted">
-                        {legendItem('bg-amber-500', fill(t('labline.legendWaiting'), waiting.length))}
-                        {legendItem('bg-sky-500', fill(t('labline.legendWorking'), tubeCount))}
-                        {lateCount > 0 && <span className="text-red-600 dark:text-red-400">{legendItem('bg-red-500', fill(t('labline.legendLate'), lateCount))}</span>}
-                        {legendItem('bg-emerald-500', fill(t('labline.legendReady'), ready.length))}
-                    </div>
-                </div>
+                {/* Sarlavha yonidagi izoh olib tashlandi (2026-11-20): u uchta
+                    ustun sarlavhasidagi sonlarni takrorlardi. Muddati o'tgani —
+                    shtativning o'zida qizil bilan. */}
+                <h2 id="lab-line-title" className="text-lg font-black text-ink">{t('labline.title')}</h2>
 
-                <div className="mt-7 grid grid-cols-1 gap-y-7 xl:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1.15fr)_2.75rem_minmax(0,1fr)]">
+                <div className="mt-7 grid grid-cols-1 gap-y-7 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] xl:gap-x-5">
                     {/* ── 1. Proba olish ── */}
-                    <div className="relative min-w-0 rounded-[22px] border-[1.5px] border-amber-200/80 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 px-3 pt-[18px] pb-3"
-                        style={FLOOR_WARM}>
+                    <div className="relative min-w-0 rounded-[22px] border-[1.5px] border-amber-200/80 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 px-3 pt-[18px] pb-3">
                         <span className={`${TAB} text-amber-700 dark:text-amber-300`}>{fill(t('labline.sample'), waiting.length)}</span>
                         {waiting.length === 0 && (
                             <p className="px-2 py-5 text-sm font-semibold text-muted">{t('labline.sampleNone')}</p>
@@ -198,11 +178,9 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
                         )}
                     </div>
 
-                    <Step />
 
                     {/* ── 2. Ishlanmoqda ── */}
-                    <div className="relative min-w-0 rounded-[22px] border-[1.5px] border-sky-200 dark:border-sky-900/60 bg-sky-50/60 dark:bg-sky-950/20 px-3 pt-[18px] pb-3 flex flex-col gap-2"
-                        style={FLOOR_SKY}>
+                    <div className="relative min-w-0 rounded-[22px] border-[1.5px] border-sky-200 dark:border-sky-900/60 bg-sky-50/60 dark:bg-sky-950/20 px-3 pt-[18px] pb-3 flex flex-col gap-2">
                         <span className={`${TAB} text-sky-700 dark:text-sky-300`}>{fill(t('labline.working'), tubeCount)}</span>
                         {racks.length === 0 ? (
                             <p className="px-2 py-5 text-sm font-semibold text-muted">{t('labline.workingNone')}</p>
@@ -245,11 +223,9 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
                         })}
                     </div>
 
-                    <Step />
 
                     {/* ── 3. Tayyor ── */}
-                    <div className="relative min-w-0 rounded-[22px] border-[1.5px] border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 pt-[18px] pb-3"
-                        style={FLOOR_GREEN}>
+                    <div className="relative min-w-0 rounded-[22px] border-[1.5px] border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 pt-[18px] pb-3">
                         <span className={`${TAB} text-emerald-700 dark:text-emerald-300`}>{fill(t('labline.ready'), ready.length)}</span>
                         {ready.length === 0 ? (
                             <p className="px-2 py-5 text-sm font-semibold text-muted">{t('labline.readyNone')}</p>

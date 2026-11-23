@@ -15,10 +15,11 @@ import { formatUzPhone } from '../../shared/validation';
    ENDI shu oynaning o'zida: familiya, ism, jins (telefon ixtiyoriy). Bemor
    to'lov bilan BIRGA yaratiladi — alohida «saqlash» qadami yo'q.
 
-   BEMORSIZ CHEK YO'Q, ataylab. «Shunchaki chek» qulayroq ko'rinardi, lekin
-   pul hech kimga bog'lanmagan qator bo'lib qolardi: qaytarish kimga,
-   ertangi muolajada tarix qayerda — javobsiz. Uchta maydon shu savollarni
-   yopadi. Qoida serverniki bilan bitta (`shared/validation.ts`).
+   BU BLOK IXTIYORIY. Ilgari «bemorsiz chek yo'q» degan qoida bor edi —
+   klinika uni ikki marta rad etdi: ukolga kelgan odamning ma'lumotini
+   yozish ular uchun ortiqcha ish. Endi to'lov oynasi bu blokni faqat
+   «Bemorni ko'rsatish» bosilganda ochadi (`ServicePaymentModal`).
+   Bemor kiritilsa, qoida serverniki bilan bitta (`shared/validation.ts`).
    ───────────────────────────────────────────────────────────────────────────── */
 
 export type PatientDraft = {

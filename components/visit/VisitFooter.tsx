@@ -1,122 +1,234 @@
-import React from 'react';
-import { ArrowRight, CheckCircle, Plus, Printer, XCircle } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowRight, MoreHorizontal, Play, Plus, Printer, Undo2, XCircle } from 'lucide-react';
 import { ChargeSummary, Visit } from '../../types';
-import { useLanguage, fill } from '../../context/LanguageContext';
-import { formatDate, formatNumber, formatTime } from '../../utils/format';
-import { AddButton } from './sheetParts';
+import { useLanguage } from '../../context/LanguageContext';
+import { formatNumber, formatTime } from '../../utils/format';
 
-/* Varaqning pastki ikki qatori: qabulni yopish va hisob. */
+/* ─────────────────────────────────────────────────────────────────────────────
+   «BUGUNGI QABUL» BLOKINING TEPASI VA PASTI (2026-11-21, DentaCRM namunasida).
 
-export const lightBtn = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-primary-200 dark:border-primary-800 bg-surface text-primary-700 dark:text-primary-300 text-xs font-bold whitespace-nowrap hover:border-primary-400 disabled:opacity-50';
+   Klinika egasi DentaCRM kartasini ko'rsatdi: «Umumiy» tabida ikkita blok —
+   «Bugungi qabul» (bitta «+ Protsedura qo'shish» tugmasi va bugun
+   qilinganlar ro'yxati) va «Tibbiy tarix». Bizda o'sha joyda yettita narsa
+   turardi: qabul qatori, katta ko'rik formasi va to'rtta blok.
 
-/** Ochiq qabulda — keyingi tashrif va «Yakunlash»; yopilganida — nima bo'lgani */
-export const VisitFinishRow: React.FC<{
+   Endi «Bugungi qabul» bloki:
+     · TEPADA (`VisitHeader`) — sarlavha, ostida bitta kulrang qator
+       (navbat, holat, shu qabulning puli), o'ngda «+ Qo'shish» va «⋯»;
+     · O'RTADA — bugun qo'shilgan hamma narsa bitta ro'yxatda (VisitPanel);
+     · PASTDA (`VisitActions`) — «Qabulni yakunlash». Boshlanmagan qabulda
+       u ko'rinmaydi.
+
+   «Qabulni boshlash» TEPADA, holat qatorining ostida turadi. Avval u pastda
+   edi va natijalari ko'p bemorda ekrandan tushib ketardi — klinika egasi
+   «boshlash qayerda o'zi?» deb so'radi (2026-11-21). Kutayotgan bemorning
+   kartasini ochgan shifokor birinchi ko'radigan narsa — shu tugma.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+const barBtn = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-xl text-sm font-semibold whitespace-nowrap disabled:opacity-50';
+const lightBtn = `${barBtn} border border-line text-ink hover:bg-elevated`;
+const primaryBtn = `${barBtn} bg-primary-600 hover:bg-primary-700 text-white`;
+
+interface HeaderProps {
     visit: Visit;
-    /** Yozib bo'lmaydi: qabul yopilgan yoki foydalanuvchining huquqi yo'q */
-    locked: boolean;
+    /** «Bugungi qabul» */
+    title: string;
+    /** Kim qabul qilyapti: «Dr. … , 3-kabinet» — sarlavhaning davomi */
+    titleNote?: string;
+    statusLabel: string;
+    /** Holat nuqtasining rangi */
+    statusDot: string;
+    /** «saqlandi · 12:21» — `role="status"` bilan */
+    saveLabel?: React.ReactNode;
+    money: ChargeSummary;
     busy: boolean;
-    nextAppointment?: { date: string; time: string; doctorName?: string } | null;
-    onSchedule?: () => void;
-    /** Retsept yozilgan bo'lsa — uni chop etish */
-    onPrintRx?: () => void;
-    onComplete: () => void;
-    /** Yakunlangan qabuldan keyin shu kunning o'zida yana bittasini ochish */
-    onNewVisit?: () => void;
-}> = ({ visit, locked, busy, nextAppointment, onSchedule, onPrintRx, onComplete, onNewVisit }) => {
+    referralBusy: boolean;
+    /** «+ Qo'shish» — xizmat, tahlil, diagnostika, dori, tashxis, boshqa shifokor */
+    onAdd?: () => void;
+    addOpen?: boolean;
+    /** Qabul hali boshlanmagan («Kutmoqda»/«Chaqirildi») — «Qabulni boshlash» */
+    onStart?: () => void;
+    onPrintReferral: () => void;
+    onCancelVisit?: () => void;
+}
+
+export const VisitHeader: React.FC<HeaderProps> = ({
+    visit, title, titleNote, statusLabel, statusDot, saveLabel, money, busy, referralBusy,
+    onAdd, addOpen = false, onStart, onPrintReferral, onCancelVisit,
+}) => {
     const { t } = useLanguage();
-    const printRx = onPrintRx && (
-        <button type="button" onClick={onPrintRx} className={`${lightBtn} h-9`}>
-            <Printer className="w-3.5 h-3.5" /> {t('visit.writeRx')}
-        </button>
-    );
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!menuOpen) return;
+        menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+        const onDown = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [menuOpen]);
 
     const closed = visit.status === 'Completed' || visit.status === 'Cancelled';
-    // Ochiq qabul, lekin yozish huquqi yo'q — yakunlash tugmasi ham yo'q
-    if (!closed && locked) return null;
-    if (!closed) {
-        return (
-            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-4 border-t border-dashed border-line">
-                <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
-                    {nextAppointment && (
-                        <span>
-                            {t('visit.nextVisit')}: <b className="font-bold text-ink">{formatDate(nextAppointment.date)}, {nextAppointment.time}</b>
-                            {nextAppointment.doctorName ? ` · ${nextAppointment.doctorName}` : ''}
-                        </span>
-                    )}
-                    {onSchedule && <AddButton label={t('visit.nextVisitAdd')} onClick={onSchedule} />}
-                </div>
-                <div className="ml-auto flex items-center gap-2">
-                    {printRx}
-                    <button type="button" onClick={onComplete} disabled={busy}
-                        className="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-[12.5px] font-bold whitespace-nowrap shadow-lg shadow-primary-900/15 disabled:opacity-50">
-                        {t('visit.complete')} <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                </div>
-            </div>
-        );
-    }
+    const doneAt = visit.status === 'Completed' && visit.checkOutTime ? ` · ${formatTime(visit.checkOutTime)}` : '';
+    // Yopilgan qabulda yo'llanma berilmaydi — menyudan ham yo'qoladi
+    const showPrint = money.due > 0 && !closed;
+    const hasMenu = showPrint || !!onCancelVisit;
+    const run = (fn: () => void) => () => { setMenuOpen(false); fn(); };
+    const menuItem = 'w-full flex items-center gap-2.5 px-3 h-10 rounded-xl text-sm font-medium text-left hover:bg-elevated disabled:opacity-50';
 
-    const completed = visit.status === 'Completed';
     return (
-        <div role="status" className={`flex flex-wrap items-center gap-3 px-4 py-3 rounded-2xl border-[1.5px] ${completed
-            ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/20'
-            : 'border-line bg-canvas'}`}>
-            <span aria-hidden="true" className={`shrink-0 w-8 h-8 rounded-full grid place-items-center ${completed
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-elevated text-muted'}`}>
-                {completed ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-            </span>
-            <p className="min-w-0 flex-1 text-[13px] font-bold text-ink">
-                {completed
-                    ? (visit.checkOutTime ? fill(t('visit.doneAt'), formatTime(visit.checkOutTime)) : t('visit.completedOk'))
-                    : t('visit.cancelledBanner')}
-            </p>
-            {printRx}
-            {onNewVisit && (
-                <button type="button" onClick={onNewVisit} className={`${lightBtn} h-9`}>
-                    <Plus className="w-3.5 h-3.5" /> {t('visit.newVisit')}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="grow basis-0 min-w-[10rem]">
+                {/* Sarlavha qisqa — «Bugungi qabul». Kim qabul qilyapti — ostidagi
+                    kulrang qatorda: shifokor ismi sarlavhada ikki qatorga bo'linib
+                    ketardi (2026-11-21). */}
+                <h2 id="visit-title" className="text-[17px] font-semibold text-ink leading-snug">{title}</h2>
+            </div>
+
+            <div className="ml-auto shrink-0 flex items-center gap-1.5">
+                {onAdd && (
+                    <button type="button" onClick={onAdd} aria-expanded={addOpen}
+                        className={`${barBtn} border border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30`}>
+                        <Plus className="w-4 h-4" aria-hidden="true" /> {t('common.add')}
+                    </button>
+                )}
+                {hasMenu && (
+                    <div ref={menuRef} className="relative">
+                        <button type="button" onClick={() => setMenuOpen(o => !o)}
+                            aria-haspopup="menu" aria-expanded={menuOpen} aria-label={t('visit.menu')} title={t('visit.menu')}
+                            className="w-9 h-9 grid place-items-center rounded-xl text-muted hover:text-ink hover:bg-elevated">
+                            <MoreHorizontal className="w-5 h-5" />
+                        </button>
+                        {menuOpen && (
+                            <div role="menu" aria-label={t('visit.menu')}
+                                className="absolute right-0 top-11 z-30 w-64 p-1.5 rounded-2xl border border-line bg-surface shadow-xl">
+                                {showPrint && (
+                                    <button type="button" role="menuitem" disabled={referralBusy}
+                                        className={`${menuItem} text-ink`} onClick={run(onPrintReferral)}>
+                                        <Printer className="w-4 h-4 text-muted" /> {t('visit.printReferral')}
+                                    </button>
+                                )}
+                                {onCancelVisit && (
+                                    <button type="button" role="menuitem" disabled={busy}
+                                        className={`${menuItem} text-red-700 dark:text-red-400`} onClick={run(onCancelVisit)}>
+                                        <XCircle className="w-4 h-4" /> {t('visit.cancelVisit')}
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Holat va pul — blokning TO'LIQ kengligida: tugmalar yonida siqilib
+                ikki qatorga bo'linib ketardi. */}
+            <div className="basis-full -mt-1">
+                <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] text-muted">
+                    <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${statusDot}`} />
+                    {titleNote && <span>{titleNote} ·</span>}
+                    <span className="whitespace-nowrap">
+                        {visit.queueNumber != null && !closed ? `№ ${visit.queueNumber} · ` : ''}{statusLabel}{doneAt}
+                    </span>
+                    {saveLabel}
+                </p>
+                {money.total > 0 && (
+                    /* «Bu qabul» — chapdagi «Qarz» bemorning HAMMA qarzi, bu
+                       yerda faqat shu qabulniki. */
+                    <p className="mt-0.5 text-[13px] text-muted">
+                        {money.due > 0 ? (
+                            <>
+                                {t('visit.thisVisit')}{' '}
+                                <b className="font-semibold text-amber-700 dark:text-amber-400 tabular-nums">{formatNumber(money.due)} {t('ui.som')}</b>
+                                {' '}{t('visit.unpaidShortBar')}
+                            </>
+                        ) : (
+                            <span className="text-emerald-700 dark:text-emerald-400">{t('visit.paidInFull')}</span>
+                        )}
+                    </p>
+                )}
+                {onStart && !closed && (
+                    <button type="button" onClick={onStart} disabled={busy} className={`${primaryBtn} mt-3 h-10 px-5`}>
+                        <Play className="w-4 h-4" /> {t('flow.startVisit')}
+                    </button>
+                )}
+            </div>
+
+            {visit.status === 'Cancelled' && (
+                <p role="status" className="basis-full text-sm font-medium text-muted">{t('visit.cancelledBanner')}</p>
+            )}
+        </div>
+    );
+};
+
+interface ActionsProps {
+    visit: Visit;
+    busy: boolean;
+    /** Qabul ochiq va yozish huquqi bor */
+    canFinish: boolean;
+    /** Qabul hali boshlanmagan — «Yakunlash» ko'rinmaydi («Boshlash» tepada, `VisitHeader`) */
+    notStarted: boolean;
+    onComplete: () => void;
+    onResume?: () => void;
+    onShowToday?: () => void;
+    /** Yakunlangan qabuldan keyin shu kunning o'zida yana bittasini ochish */
+    onNewVisit?: () => void;
+}
+
+/** Blok pastidagi qabul tartibi tugmalari. Hech biri bo'lmasa — chiziq ham chizilmaydi. */
+export const VisitActions: React.FC<ActionsProps> = ({
+    visit, busy, canFinish, notStarted, onComplete, onResume, onShowToday, onNewVisit,
+}) => {
+    const { t } = useLanguage();
+    const closed = visit.status === 'Completed' || visit.status === 'Cancelled';
+    const showFinish = canFinish && !notStarted && !closed;
+    const showNew = closed && !!onNewVisit;
+    if (!onResume && !onShowToday && !showFinish && !showNew) return null;
+
+    return (
+        <div className="pt-4 border-t border-line flex flex-wrap items-center justify-end gap-2">
+            {onResume && (
+                <button type="button" onClick={onResume} disabled={busy} className={lightBtn}>
+                    <Play className="w-4 h-4" /> {t('visit.continue')}
+                </button>
+            )}
+            {onShowToday && (
+                <button type="button" onClick={onShowToday} className={lightBtn}>
+                    <Undo2 className="w-4 h-4" /> {t('visit.showToday')}
+                </button>
+            )}
+            {showFinish && (
+                <button type="button" onClick={onComplete} disabled={busy} className={primaryBtn}>
+                    {t('visit.complete')} <ArrowRight className="w-4 h-4" />
+                </button>
+            )}
+            {showNew && (
+                <button type="button" onClick={onNewVisit} className={primaryBtn}>
+                    <Plus className="w-4 h-4" /> {t('visit.newVisit')}
                 </button>
             )}
         </div>
     );
 };
 
-/** Hisob — bitta qator. To'lanmagan buyurtma — ogohlantirish, blok emas. */
-export const VisitBill: React.FC<{
-    money: ChargeSummary;
-    referralBusy: boolean;
-    onPrintReferral: () => void;
-    /** To'lov oynasi — kassadagi bilan bir xil. Shifokorda bu tugma yo'q. */
-    onTakePayment?: () => void;
-}> = ({ money, referralBusy, onPrintReferral, onTakePayment }) => {
-    const { t } = useLanguage();
-    if (money.total <= 0) return null;
+/** Keyingi tashrif — yozilgan bo'lsa «Bugungi qabul» ro'yxatining ostida */
+export const NextVisitRow: React.FC<{
+    nextAppointment?: { date: string; time: string; doctorName?: string } | null;
+    formatDate: (d: string) => string;
+}> = ({ nextAppointment, formatDate }) => {
+    if (!nextAppointment) return null;
     return (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 rounded-2xl border border-line bg-canvas text-sm">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted">{t('visit.billTitle')}</span>
-            <span className="text-muted">{t('common.total')} <b className="text-ink tabular-nums">{formatNumber(money.total)}</b></span>
-            <span className="text-muted">{t('visit.paid')} <b className="text-emerald-700 dark:text-emerald-400 tabular-nums">{formatNumber(money.paid)}</b></span>
-            {money.due > 0 ? (
-                <span className="text-amber-800 dark:text-amber-300">
-                    <b className="tabular-nums">{formatNumber(money.due)} {t('ui.som')}</b> {t('visit.unpaidHint')}
-                </span>
-            ) : (
-                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 text-[11px] font-bold">
-                    {t('visit.paidInFull')}
-                </span>
-            )}
-            {money.due > 0 && (
-                <span className="ml-auto flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={onPrintReferral} disabled={referralBusy} className={lightBtn}>
-                        <Printer className="w-3.5 h-3.5" /> {t('visit.printReferral')}
-                    </button>
-                    {onTakePayment && (
-                        <button type="button" onClick={onTakePayment}
-                            className="inline-flex items-center h-8 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold whitespace-nowrap">
-                            {t('card.takePayment')}
-                        </button>
-                    )}
-                </span>
-            )}
+        <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted">
+            <span>
+                <b className="font-semibold text-ink">{formatDate(nextAppointment.date)}, {nextAppointment.time}</b>
+                {nextAppointment.doctorName ? ` · ${nextAppointment.doctorName}` : ''}
+            </span>
         </div>
     );
 };

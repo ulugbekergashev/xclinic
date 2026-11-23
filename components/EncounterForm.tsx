@@ -257,7 +257,7 @@ export const EncounterForm: React.FC<Props> = ({
             {groups.map(([groupName, fields], index) => (
                 <div key={groupName} role="group" aria-label={groupName} className="flex flex-col gap-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted">{groupName}</span>
+                        <span className="text-[13px] font-semibold text-ink">{groupName}</span>
                         {/* Shablon tanlovi — birinchi guruh sarlavhasida, alohida qator emas */}
                         {index === 0 && deptTemplates.length > 1 && (
                             <span className="relative">
@@ -273,13 +273,13 @@ export const EncounterForm: React.FC<Props> = ({
                             </span>
                         )}
                     </div>
-                    {/* Matn maydonlari yarim kenglikda: ko'rik shabloni uzun bo'ladi va
-                        to'liq kenglikdagi qatorlar tashxisni ekrandan pastga surib yuborardi. */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2.5">
+                    {/* Ko'rik o'z blokida (2026-11-21): matn maydoni blok kengligida,
+                        raqamli maydonlar (harorat, bosim) — ikkitadan yonma-yon. */}
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
                         {fields.map(f => (
                             <label key={f.key}
                                 className={`flex flex-col gap-1 min-w-0 ${f.type === 'textarea' || f.type === 'text' ? 'col-span-2' : ''}`}>
-                                <span className="text-xs font-semibold text-muted truncate">{f.label}</span>
+                                <span className="text-xs font-medium text-muted truncate">{f.label}</span>
                                 {renderField(f)}
                             </label>
                         ))}

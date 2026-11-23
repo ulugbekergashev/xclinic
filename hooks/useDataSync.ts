@@ -65,8 +65,10 @@ const AFFECTS: Record<string, Slice[]> = {
        `due` — laboratoriya ro'yxatida serverdan keladi). Busiz kassir pulni
        olgandan keyin ham laborantning ochiq ekranida «to'lanmagan» turardi
        va u natijani kiritmasdi — sahifani qayta yuklamaguncha. */
-    charges: ['charges', 'transactions', 'labOrders'],
-    payments: ['charges', 'transactions', 'labOrders'],
+    /* Qaytarish `CashMovement` ham yozadi — kassaning «Xarajat va inkassatsiya»
+       vkladkasi va yashik hisobi u bilan birga yangilansin (2026-11-22). */
+    charges: ['charges', 'transactions', 'labOrders', 'cashMovements'],
+    payments: ['charges', 'transactions', 'labOrders', 'cashMovements'],
     transactions: ['transactions', 'charges'],
     installments: ['transactions', 'charges'],
 
@@ -84,12 +86,17 @@ const AFFECTS: Record<string, Slice[]> = {
 
     /* Demoda server yo'q va manzil ham yo'q — `demoDone` bitta umumiy
        belgi beradi. Faqat ekranlar chetlab o'tadigan ro'yxatlar. */
-    demo: ['departments', 'charges', 'labOrders', 'inventory'],
+    /* Kassa ro'yxatlari ham: bemor kartasida olingan pul kassaga qaytganda
+       «Jami tushum» va «To'langanlar» da ko'rinsin (2026-11-22 audit). */
+    demo: ['departments', 'charges', 'labOrders', 'inventory', 'transactions', 'expenses', 'cashMovements', 'cashClosures'],
 };
 
 /** Oqim uzilganda so'rov bilan yangilanadigan ro'yxatlar — og'irlari
  *  (bemorlar, qabullar, cheklar) kirmaydi. */
-const POLLED: Slice[] = ['departments', 'services', 'staff', 'charges', 'labOrders', 'inventory'];
+/* Xarajatlar va kassa harakatlari ham (yengil). Cheklar ro'yxati og'ir —
+   u oqim orqali va kassaning o'z yozuvidan keyin yangilanadi.
+   (2026-11-22 audit) */
+const POLLED: Slice[] = ['departments', 'services', 'staff', 'charges', 'labOrders', 'inventory', 'expenses', 'cashMovements'];
 const POLL_MS = 60_000;
 
 /** Bir nechta yozuv ketma-ket kelsa (o'z e'lonimiz + server aks-sadosi,

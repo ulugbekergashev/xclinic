@@ -1,6 +1,6 @@
 import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, TodayZones, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
 import { medDue } from '../shared/medSchedule';
-import { todayISO } from '../utils/dateUtils';
+import { todayISO, dayKey } from '../utils/dateUtils';
 import * as auth from './authStore';
 import { tr } from '../context/LanguageContext';
 import { emitDataChanged, resourceOf } from './dataBus';
@@ -152,6 +152,13 @@ const DEMO_ALLERGIES: { id: string; patientId: string; substance: string; reacti
     { id: 'demo-allergy-1', patientId: 'demo-patient-2', substance: 'Penitsillin', reaction: 'Toshma', severity: 'Severe' },
 ];
 
+/** Tibbiy tarixni kim va qachon o'zgartirgani — demoda kirgan foydalanuvchi */
+const demoAnamnesisStamp = () => ({ anamnesisUpdatedAt: new Date().toISOString(), anamnesisUpdatedBy: 'Demo Admin' });
+const demoStampPatient = (patientId: string) => {
+    const p = DEMO_PATIENTS.find(x => x.id === patientId);
+    if (p) { Object.assign(p, demoAnamnesisStamp()); saveDemoData(); }
+};
+
 /** Bemor kartasidagi klinik xulosa — demo ma'lumotidan yig'iladi. */
 const demoClinicalSummary = (patientId: string) => {
     const pending = DEMO_TRANSACTIONS.filter(
@@ -176,7 +183,9 @@ const demoClinicalSummary = (patientId: string) => {
         .filter(r => r.flag === 'High' || r.flag === 'Low')
         .map(r => ({ name: r.name, value: r.value, unit: r.unit, flag: r.flag, refLow: r.refLow, refHigh: r.refHigh, at: r.at }));
 
+    const p = DEMO_PATIENTS.find(x => x.id === patientId);
     return {
+        patient: p ? { anamnesisUpdatedAt: p.anamnesisUpdatedAt ?? null, anamnesisUpdatedBy: p.anamnesisUpdatedBy ?? null } : undefined,
         allergies: DEMO_ALLERGIES.filter(a => a.patientId === patientId),
         /* FAQAT surunkali tashxislar va serverdagi shaklda (`name` bilan).
            Ilgari bemorning HAMMA tashxisi qaytardi va nomi yo'q edi. */
@@ -353,13 +362,17 @@ const demoMissing = <T,>(what: string): Promise<T> =>
 
 /** Demo rejimda ko'rsatiladigan bo'limlar — faqat menyu tirik ko'rinishi uchun */
 const DEMO_DEPARTMENTS: Department[] = [
-    { id: 'demo-ter', clinicId: 'demo-clinic-1', name: 'Terapiya', code: 'TER', type: 'CLINICAL', color: '#2563EB', sortOrder: 1, isActive: true },
-    { id: 'demo-lab', clinicId: 'demo-clinic-1', name: 'Laboratoriya', code: 'LAB', type: 'LAB', color: '#0D9488', sortOrder: 2, isActive: true },
-    { id: 'demo-diag', clinicId: 'demo-clinic-1', name: 'Diagnostika', code: 'DIAG', type: 'DIAGNOSTIC', color: '#4F46E5', sortOrder: 3, isActive: true },
+    /* Ko'p profilli klinika: stomatologiya, kardiologiya, endokrinologiya.
+       `demo-ter` id si eski — unga ko'p joy bog'langan, nomi o'zgardi xolos. */
+    { id: 'demo-ter', clinicId: 'demo-clinic-1', name: 'Stomatologiya', code: 'STM', type: 'CLINICAL', color: '#2563EB', sortOrder: 1, isActive: true },
+    { id: 'demo-kard', clinicId: 'demo-clinic-1', name: 'Kardiologiya', code: 'KAR', type: 'CLINICAL', color: '#DC2626', sortOrder: 2, isActive: true },
+    { id: 'demo-endo', clinicId: 'demo-clinic-1', name: 'Endokrinologiya', code: 'END', type: 'CLINICAL', color: '#D97706', sortOrder: 3, isActive: true },
+    { id: 'demo-lab', clinicId: 'demo-clinic-1', name: 'Laboratoriya', code: 'LAB', type: 'LAB', color: '#0D9488', sortOrder: 4, isActive: true },
+    { id: 'demo-diag', clinicId: 'demo-clinic-1', name: 'Diagnostika', code: 'DIAG', type: 'DIAGNOSTIC', color: '#4F46E5', sortOrder: 5, isActive: true },
     /* Statsionar bo'limi — `Inpatient.tsx` yangi bemorni yotqizishda
        `departments.find(d => d.type === 'INPATIENT')` ni qidiradi. Busiz
        demoda yotqizish oynasi bo'limsiz qolardi. */
-    { id: 'demo-inp', clinicId: 'demo-clinic-1', name: 'Statsionar', code: 'INP', type: 'INPATIENT', color: '#DB2777', sortOrder: 4, isActive: true },
+    { id: 'demo-inp', clinicId: 'demo-clinic-1', name: 'Statsionar', code: 'INP', type: 'INPATIENT', color: '#DB2777', sortOrder: 6, isActive: true },
 ];
 
 /* ── DEMO: STATSIONAR ────────────────────────────────────────────────────
@@ -463,17 +476,27 @@ const demoName = (id: string) => {
     return p ? `${p.firstName} ${p.lastName}` : 'Bemor';
 };
 
-const DEMO_VISIT_PLAN: { pid: number; status: Visit['status']; doc: number; waited: number; complaint: string }[] = [
-    { pid: 6, status: 'In Progress', doc: 1, waited: 35, complaint: "Tish og'rig'i, o'ng past tomonda" },
-    { pid: 7, status: 'Called', doc: 2, waited: 28, complaint: 'Breket sozlash' },
-    { pid: 8, status: 'Waiting', doc: 1, waited: 22, complaint: "Profilaktik ko'rik" },
-    { pid: 9, status: 'Waiting', doc: 3, waited: 17, complaint: 'Milk qonashi' },
-    { pid: 10, status: 'Waiting', doc: 4, waited: 12, complaint: "Aql tishi olib tashlash bo'yicha maslahat" },
-    { pid: 11, status: 'AwaitingResults', doc: 3, waited: 45, complaint: 'Umumiy holsizlik, tahlil topshirdi' },
-    { pid: 12, status: 'Completed', doc: 2, waited: 150, complaint: 'Plomba almashtirish' },
-    { pid: 13, status: 'Completed', doc: 1, waited: 190, complaint: 'Tish toshini olish' },
-    { pid: 14, status: 'Completed', doc: 4, waited: 95, complaint: "Jarrohlikdan keyingi ko'rik" },
-    { pid: 1,  status: 'Waiting', doc: 2, waited: 8, complaint: "Toj o'rnatish bosqichi" },
+/* Bugungi navbat UCH bo'limda: stomatologiya (1, 2, 4-shifokor),
+   kardiologiya (3) va endokrinologiya (5). Qabul shifokorning bo'limiga
+   ochiladi — shunda kartadagi xizmatlar ro'yxati ham o'sha bo'limniki.
+   Yangi qator faqat OXIRIGA qo'shilsin: qabul id si tartib raqamidan. */
+const DEMO_VISIT_PLAN: { pid: number; status: Visit['status']; doc: number; dept: string; waited: number; complaint: string; plan?: string }[] = [
+    { pid: 6, status: 'In Progress', doc: 1, dept: 'demo-ter', waited: 35, complaint: "Tish og'rig'i, o'ng past tomonda" },
+    { pid: 7, status: 'Called', doc: 2, dept: 'demo-ter', waited: 28, complaint: 'Breket sozlash' },
+    { pid: 8, status: 'Waiting', doc: 1, dept: 'demo-ter', waited: 22, complaint: "Profilaktik ko'rik" },
+    { pid: 9, status: 'Waiting', doc: 3, dept: 'demo-kard', waited: 17, complaint: "Ko'krak qafasida siquvchi og'riq, zinadan chiqqanda hansirash" },
+    { pid: 10, status: 'Waiting', doc: 4, dept: 'demo-ter', waited: 12, complaint: "Aql tishi olib tashlash bo'yicha maslahat" },
+    { pid: 11, status: 'AwaitingResults', doc: 5, dept: 'demo-endo', waited: 45, complaint: "Chanqoq, tez-tez siyish, oriqlash; qand tahlili topshirdi" },
+    { pid: 12, status: 'Completed', doc: 2, dept: 'demo-ter', waited: 150, complaint: 'Plomba almashtirish' },
+    { pid: 13, status: 'Completed', doc: 1, dept: 'demo-ter', waited: 190, complaint: 'Tish toshini olish' },
+    { pid: 14, status: 'Completed', doc: 4, dept: 'demo-ter', waited: 95, complaint: "Jarrohlikdan keyingi ko'rik" },
+    { pid: 1,  status: 'Waiting', doc: 3, dept: 'demo-kard', waited: 8, complaint: "Bosh og'rig'i, qon bosimi 160/100 gacha ko'tariladi",
+      plan: "Arterial gipertenziya II daraja, nazoratsiz. Lizinopril dozasi 20 mg gacha oshirildi (ertalab). " +
+        "Kuniga 2 mahal bosimni o'lchab, kundalikka yozib borish. Tuz kuniga 5 g dan oshmasin, haftada 5 kun 30 daqiqa piyoda yurish. " +
+        "EKG va qon tahlili natijasi bilan 2 haftadan keyin qayta ko'rik. Bosim 180/110 dan oshsa yoki ko'krakda og'riq bo'lsa — darhol murojaat." },
+    { pid: 4,  status: 'In Progress', doc: 5, dept: 'demo-endo', waited: 30, complaint: "Qandli diabet nazorati, oyoqlarda uvishish" },
+    { pid: 3,  status: 'Waiting', doc: 5, dept: 'demo-endo', waited: 14, complaint: "Bo'yinda shish, holsizlik, sochlar to'kilishi" },
+    { pid: 5,  status: 'Completed', doc: 3, dept: 'demo-kard', waited: 120, complaint: "Yurak urishi tezlashishi, bosh aylanishi" },
 ];
 
 const DEMO_VISITS: Visit[] = DEMO_VISIT_PLAN.map((v, i) => {
@@ -492,8 +515,9 @@ const DEMO_VISITS: Visit[] = DEMO_VISIT_PLAN.map((v, i) => {
         checkOutTime: v.status === 'Completed' ? minsAgo(Math.max(0, v.waited - 40)) : undefined,
         status: v.status,
         complaints: v.complaint,
+        treatmentPlan: v.plan,
         clinicId: 'demo-clinic-1',
-        departmentId: 'demo-ter',
+        departmentId: v.dept,
         doctorId,
         doctorName: doc ? `Dr. ${doc.firstName} ${doc.lastName}` : undefined,
         queueNumber: i + 1,
@@ -507,8 +531,16 @@ const DEMO_VISITS: Visit[] = DEMO_VISIT_PLAN.map((v, i) => {
 
 /* Hisob qatorlari qabullardan chiqadi: har bir qabulda 1-2 xizmat.
    Uchdan biri to'lanmagan — kassada ish bo'lsin. */
+/** Qabulga mos tahlil nomi — kardiologga lipid, endokrinologga HbA1c. */
+const DEMO_DEPT_LAB: Record<string, string> = {
+    'demo-kard': 'Lipid profili',
+    'demo-endo': 'Glikirlangan gemoglobin (HbA1c)',
+};
 const DEMO_CHARGES: VisitCharge[] = DEMO_VISITS.flatMap((v, i) => {
-    const svc = DEMO_SERVICES[i % DEMO_SERVICES.length];
+    /* Xizmat qabulning O'Z bo'limidan: kardiologga «Tish plombalash»
+       yozilib qolmasin. */
+    const pool = DEMO_SERVICES.filter(s => s.departmentId === v.departmentId);
+    const svc = pool.length ? pool[i % pool.length] : DEMO_SERVICES[i % DEMO_SERVICES.length];
     const unpaid = i % 3 !== 0;
     const rows: VisitCharge[] = [{
         id: `demo-charge-${i + 1}`,
@@ -531,13 +563,12 @@ const DEMO_CHARGES: VisitCharge[] = DEMO_VISITS.flatMap((v, i) => {
         visit: { id: v.id, date: v.date, queueNumber: v.queueNumber, departmentId: v.departmentId },
     }];
     if (i % 4 === 1) {
-        const extra = DEMO_SERVICES[(i + 2) % DEMO_SERVICES.length];
         rows.push({
             ...rows[0],
             id: `demo-charge-${i + 1}b`,
             source: 'Lab',
             sourceId: null,
-            name: `Tahlil: ${extra.name}`,
+            name: `Tahlil: ${DEMO_DEPT_LAB[v.departmentId || ''] || 'Umumiy qon tahlili'}`,
             unitPrice: 90000, total: 90000,
             status: 'Unpaid', paidAmount: 0, paidAt: null,
         });
@@ -558,6 +589,10 @@ const DEMO_LAB_TESTS: LabTest[] = [
     { id: 'demo-lt-6', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Gormonlar (TTG)', code: 'TTG', sampleType: 'Qon', price: 110000, cost: 48000, turnaroundHours: 48, isActive: true, sortOrder: 6 },
     { id: 'demo-lt-7', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Gepatit B markerlari', code: 'HBS', sampleType: 'Qon', price: 85000, cost: 36000, turnaroundHours: 24, isActive: true, sortOrder: 7 },
     { id: 'demo-lt-8', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Mikroreaksiya', code: 'RW', sampleType: 'Qon', price: 40000, cost: 15000, turnaroundHours: 6, isActive: false, sortOrder: 8 },
+    // Kardiologiya va endokrinologiya uchun
+    { id: 'demo-lt-9', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Lipid profili', code: 'LIP', sampleType: 'Qon', price: 95000, cost: 40000, turnaroundHours: 24, isActive: true, sortOrder: 9 },
+    { id: 'demo-lt-10', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Glikirlangan gemoglobin (HbA1c)', code: 'HBA1C', sampleType: 'Qon', price: 90000, cost: 38000, turnaroundHours: 24, isActive: true, sortOrder: 10 },
+    { id: 'demo-lt-11', clinicId: 'demo-clinic-1', departmentId: 'demo-lab', name: 'Erkin T4', code: 'FT4', sampleType: 'Qon', price: 85000, cost: 35000, turnaroundHours: 48, isActive: true, sortOrder: 11 },
 ];
 
 /* Tahlil PARAMETRLARI — natija kiritish oynasi aynan shulardan qatorlar
@@ -590,6 +625,14 @@ const DEMO_LAB_PARAMS: Record<string, { name: string; unit?: string; refLow?: nu
     ],
     'demo-lt-6': [{ name: 'TTG', unit: 'mMe/l', refLow: 0.4, refHigh: 4 }],
     'demo-lt-7': [{ name: 'HBsAg', refText: 'Manfiy' } as any],
+    'demo-lt-9': [
+        { name: 'Umumiy xolesterin', unit: 'mmol/l', refLow: 0, refHigh: 5.2 },
+        { name: 'LPNP (yomon xolesterin)', unit: 'mmol/l', refLow: 0, refHigh: 3.0 },
+        { name: 'LPYuP (yaxshi xolesterin)', unit: 'mmol/l', refLow: 1.0, refHigh: 2.2 },
+        { name: 'Triglitseridlar', unit: 'mmol/l', refLow: 0, refHigh: 1.7 },
+    ],
+    'demo-lt-10': [{ name: 'HbA1c', unit: '%', refLow: 4, refHigh: 6 }],
+    'demo-lt-11': [{ name: 'Erkin T4', unit: 'pmol/l', refLow: 10, refHigh: 22 }],
 };
 
 /* Tekshiruv turlari `types.ts` dagi `Modality` bilan BIR XIL bo'lishi shart.
@@ -597,34 +640,43 @@ const DEMO_LAB_PARAMS: Record<string, { name: string; unit?: string; refLow?: nu
    bilan o'tkazib yuborilardi. Ekran esa `MODALITY_LABELS[s.modality]` ni
    qidiradi — kalit topilmagach xom inglizcha so'zni chizardi, ya'ni
    o'zbekcha interfeysda «Ultrasound» ko'rinardi (audit XC-32). */
-const MODALITIES: Modality[] = ['RENTGEN', 'KT', 'UZI', 'EKG'];
-
-/* Tekshiruvlar STOMATOLOGIYAGA moslandi. Ilgari bu yerda «Qorin
-   bo'shlig'i UZI», «Bosh miya KT» va «Tizza MRT» turardi — demo klinika
-   nomi esa «Demo Stomatologiya». Buni ko'rgan stomatolog dasturni o'ziga
-   emas deb o'ylaydi (audit XC-33). */
-const STUDY_NAMES = ['Panoramik rentgen (OPG)', 'Tish rentgeni (pritsel)',
-    '3D konus-nurli tomografiya', 'Jag\' bo\'g\'imi rentgeni',
-    "So'lak bezi UZI", 'Implant oldi KT'];
+/* Tekshiruvlar klinika bo'limlariga mos: stomatologiya, kardiologiya,
+   endokrinologiya. Har biri O'SHA bo'lim bemoriga yoziladi — tish
+   bemoriga yurak UZI chiqmasin (audit XC-33). 9-bemor kardiolog
+   navbatida, 11-bemor endokrinolog navbatida natija kutmoqda. */
+const STUDY_PLAN: { pid: number; name: string; modality: Modality }[] = [
+    { pid: 6, name: 'Panoramik rentgen (OPG)', modality: 'RENTGEN' },
+    { pid: 7, name: 'Tish rentgeni (pritsel)', modality: 'RENTGEN' },
+    { pid: 8, name: '3D konus-nurli tomografiya', modality: 'KT' },
+    { pid: 9, name: 'Elektrokardiogramma (EKG)', modality: 'EKG' },
+    { pid: 5, name: 'Exokardiografiya (yurak UZI)', modality: 'UZI' },
+    { pid: 11, name: 'Qalqonsimon bez UZI', modality: 'UZI' },
+];
+const STUDY_NAMES = STUDY_PLAN.map(s => s.name);
 
 const DEMO_STUDIES: DiagnosticStudy[] = STUDY_NAMES.map((name, i) => {
-    const patientId = `demo-patient-${(i % 9) + 6}`;
+    const patientId = `demo-patient-${STUDY_PLAN[i].pid}`;
     const p = DEMO_PATIENTS.find(x => x.id === patientId);
-    const st = (['Completed', 'Completed', 'InProgress', 'Ordered'] as const)[i % 4];
+    /* «Natija kutilmoqda» holatidagi bugungi qabul — tekshiruv O'SHA
+       qabulga bog'lanadi va hali tayyor emas. Ilgari bog'lanmagan edi:
+       kartada «Natija kutilmoqda» deb turib, kutilayotgan narsa ko'rinmasdi. */
+    const awaiting = DEMO_VISITS.find(v => v.patientId === patientId && v.status === 'AwaitingResults');
+    const st = awaiting ? 'InProgress' : (['Completed', 'Completed', 'InProgress', 'Ordered'] as const)[i % 4];
     return {
         id: `demo-study-${i + 1}`,
+        ...(awaiting ? { visitId: awaiting.id } : {}),
         clinicId: 'demo-clinic-1',
         patientId,
         patientName: p ? `${p.firstName} ${p.lastName}` : 'Bemor',
         departmentId: 'demo-diag',
-        modality: MODALITIES[i % MODALITIES.length],
+        modality: STUDY_PLAN[i].modality,
         name,
         status: st,
         orderedByName: 'Dr. Kamola Ahmedova',
         performedByName: st === 'Ordered' ? null : 'Laborant Zuhra',
         orderedAt: dayShift(-(i + 1)),
         performedAt: st === 'Ordered' ? null : dayShift(-i),
-        price: [180000, 220000, 950000, 1400000, 150000, 240000][i % 6],
+        price: [180000, 60000, 350000, 80000, 250000, 150000][i % 6],
     } as DiagnosticStudy;
 });
 
@@ -863,36 +915,53 @@ const demoPendingResults = () => DEMO_VISITS
         visitId: v.id,
         patientId: v.patientId,
         patientName: demoName(v.patientId),
-        department: 'Terapiya',
+        department: DEMO_DEPARTMENTS.find(d => d.id === v.departmentId)?.name || '',
         date: v.date,
         unseenCount: i === 0 ? 2 : 0,
         stillPending: i === 0 ? 0 : 1,
     }));
 
-/** Ko'rsatkich dinamikasi — bitta qiymat emas, o'zgarish muhim. */
-const demoLabDynamics = () => [
-    {
-        parameterId: 'demo-par-hgb', name: 'Gemoglobin', unit: 'g/L',
-        refLow: 120, refHigh: 160, count: 4,
-        last: 118, lastAt: dayShift(-2), lastFlag: 'low', delta: -9,
-        points: [
-            { at: dayShift(-90), value: 134, flag: 'normal' },
-            { at: dayShift(-60), value: 129, flag: 'normal' },
-            { at: dayShift(-30), value: 127, flag: 'normal' },
-            { at: dayShift(-2), value: 118, flag: 'low' },
-        ],
-    },
-    {
-        parameterId: 'demo-par-glu', name: 'Glyukoza', unit: 'mmol/L',
-        refLow: 3.9, refHigh: 6.1, count: 3,
-        last: 5.4, lastAt: dayShift(-2), lastFlag: 'normal', delta: -0.3,
-        points: [
-            { at: dayShift(-60), value: 6.0, flag: 'normal' },
-            { at: dayShift(-30), value: 5.7, flag: 'normal' },
-            { at: dayShift(-2), value: 5.4, flag: 'normal' },
-        ],
-    },
-];
+/** Ko'rsatkich dinamikasi — shu bemorning o'z demo natijalaridan
+ *  (server `/patients/:id/lab-dynamics` bilan bir xil shakl). Natija
+ *  yo'q bo'lsa bo'sh: hamma bemorda bir xil soxta raqam chiqmasin. */
+const demoLabDynamics = (patientId: string) => {
+    const byParam = new Map<string, any>();
+    const orders = DEMO_LAB_ORDERS
+        .filter(o => o.patientId === patientId && o.status === 'Completed'
+            && (DEMO_ORDER_ITEMS[o.id] || o.items?.length))
+        .sort((a, b) => String(a.completedAt || a.orderedAt || '').localeCompare(String(b.completedAt || b.orderedAt || '')));
+    for (const o of orders) {
+        const full = demoLabResults(o.id);
+        for (const it of full.items) {
+            for (const p of it.parameters) {
+                if (p.valueNum == null) continue;
+                if (!byParam.has(p.parameterId)) {
+                    byParam.set(p.parameterId, {
+                        parameterId: p.parameterId, name: p.name, unit: p.unit,
+                        refLow: p.refLow, refHigh: p.refHigh, testName: it.testName,
+                        points: [] as { at: string; value: number; flag: string | null }[],
+                    });
+                }
+                byParam.get(p.parameterId).points.push({
+                    at: o.completedAt || o.orderedAt, value: p.valueNum, flag: p.flag,
+                });
+            }
+        }
+    }
+    const series = Array.from(byParam.values()).map((s: any) => {
+        const pts = s.points;
+        const last = pts[pts.length - 1];
+        const prev = pts.length > 1 ? pts[pts.length - 2] : null;
+        return {
+            ...s, count: pts.length,
+            last: last?.value ?? null, lastAt: last?.at ?? null, lastFlag: last?.flag ?? null,
+            delta: prev ? Math.round((last.value - prev.value) * 100) / 100 : null,
+        };
+    });
+    // Server tartibi: normadan chetdagilar tepada, keyin o'lchovi ko'plar
+    const bad = (s: any) => (s.lastFlag && s.lastFlag !== 'Normal' ? 1 : 0);
+    return series.sort((a, b) => bad(b) - bad(a) || b.count - a.count);
+};
 
 /** Davomat hisoboti — Kalendardagi «Hisobot» ko'rinishi. */
 const demoAttendance = () => {
@@ -944,29 +1013,46 @@ const demoWriteoffs = () => ({
     })),
 });
 
-/** Hisobot → Bo'limlar. */
-const demoDepartmentsReport = () => {
-    const rows = DEMO_DEPARTMENTS.map((d, i) => {
-        const revenue = 4200000 - i * 850000;
-        const expense = 1300000 - i * 220000;
-        return {
-            departmentId: d.id, name: d.name, color: d.color,
-            revenue, paid: Math.round(revenue * 0.78), expense, profit: revenue - expense,
-        };
-    });
+/** Hisobot → Bo'limlar.
+    Umumiy tab bilan BITTA manba — `demoReportSummary` (2026-11-23, Moliya
+    rejasi 5-vazifa). Ilgari bu yerda o'ylab topilgan raqamlar turardi:
+    Umumiy «Xizmatlar 3,1 mln», Bo'limlar yig'indisi «12,6 mln». */
+const demoDepartmentsReport = (from?: string, to?: string) => {
+    const summary = demoReportSummary(from, to);
+    const rows = new Map<string, any>();
+    const ensure = (id: string | null) => {
+        const key = id || 'none';
+        if (!rows.has(key)) {
+            const d = DEMO_DEPARTMENTS.find(x => x.id === id);
+            rows.set(key, {
+                departmentId: id, name: d?.name || "Bo'limsiz", color: d?.color || null,
+                revenue: 0, paid: 0, expense: 0, profit: 0,
+            });
+        }
+        return rows.get(key);
+    };
+    for (const d of summary.byDepartment) {
+        const r = ensure(d.departmentId || null);
+        r.revenue += d.revenue; r.paid += d.collected;
+    }
+    for (const e of DEMO_EXPENSES.filter(x => inRange(x.date as any, from, to) && x.category !== 'Lab')) {
+        const r = ensure((e as any).departmentId || null);
+        r.expense += e.amount || 0;
+    }
+    for (const r of rows.values()) r.profit = r.revenue - r.expense;
     return {
-        departments: rows,
+        departments: Array.from(rows.values()).sort((a, b) => b.revenue - a.revenue),
         totals: {
-            revenue: rows.reduce((a, r) => a + r.revenue, 0),
-            expense: rows.reduce((a, r) => a + r.expense, 0),
-            profit: rows.reduce((a, r) => a + r.profit, 0),
+            revenue: Array.from(rows.values()).reduce((a, r) => a + r.revenue, 0),
+            paid: Array.from(rows.values()).reduce((a, r) => a + r.paid, 0),
+            expense: Array.from(rows.values()).reduce((a, r) => a + r.expense, 0),
+            profit: Array.from(rows.values()).reduce((a, r) => a + r.profit, 0),
             occupancy: 62,
             bedDays: 34,
             bedCount: DEMO_BEDS.length,
         },
     };
 };
-
 /** Kirish jurnali — kim, qachon, nimaga qaradi. */
 const demoAccessLog = () => {
     const actions = ['VIEW', 'CREATE', 'UPDATE', 'PRINT', 'EXPORT'];
@@ -1000,9 +1086,8 @@ const DEMO_BACKUPS = Array.from({ length: 5 }, (_, i) => ({
 const DEMO_ENCOUNTER_TEMPLATES: EncounterTemplate[] = [
     {
         id: 'demo-tpl-1', clinicId: 'demo-clinic-1', departmentId: 'demo-ter',
-        name: 'Terapevtik ko’rik', isDefault: true, gender: null, minAge: null, maxAge: null,
+        name: 'Terapevtik ko’rik', isDefault: false, gender: null, minAge: null, maxAge: null,
         fields: [
-            { key: 'complaints', label: 'Shikoyatlar', type: 'text', group: 'Anamnez' },
             { key: 'history', label: 'Kasallik tarixi', type: 'text', group: 'Anamnez' },
             { key: 'temperature', label: 'Harorat', type: 'number', unit: '°C', group: 'Ko’rik' },
             { key: 'bp', label: 'Qon bosimi', type: 'text', unit: 'mm sim.ust.', group: 'Ko’rik' },
@@ -1011,7 +1096,7 @@ const DEMO_ENCOUNTER_TEMPLATES: EncounterTemplate[] = [
     },
     {
         id: 'demo-tpl-2', clinicId: 'demo-clinic-1', departmentId: 'demo-ter',
-        name: 'Stomatologik ko’rik', isDefault: false, gender: null, minAge: null, maxAge: null,
+        name: 'Stomatologik ko’rik', isDefault: true, gender: null, minAge: null, maxAge: null,
         fields: [
             { key: 'tooth', label: 'Tish raqami', type: 'text', group: 'Ko’rik' },
             { key: 'caries', label: 'Karies darajasi', type: 'select', options: ['Yo’q', 'Boshlang’ich', 'O’rta', 'Chuqur'], group: 'Ko’rik' },
@@ -1025,6 +1110,28 @@ const DEMO_ENCOUNTER_TEMPLATES: EncounterTemplate[] = [
             { key: 'state', label: 'Umumiy holati', type: 'select', options: ['Qoniqarli', 'O’rta og’ir', 'Og’ir'], group: 'Ko’rik' },
             { key: 'temperature', label: 'Harorat', type: 'number', unit: '°C', group: 'Ko’rik' },
             { key: 'plan', label: 'Tayinlov', type: 'text', group: 'Yakun' },
+        ],
+    },
+    {
+        id: 'demo-tpl-4', clinicId: 'demo-clinic-1', departmentId: 'demo-kard',
+        name: 'Kardiologik ko’rik', isDefault: true, gender: null, minAge: null, maxAge: null,
+        fields: [
+            { key: 'bp', label: 'Qon bosimi', type: 'text', unit: 'mm sim.ust.', group: 'Ko’rik' },
+            { key: 'pulse', label: 'Puls', type: 'number', unit: 'urish/daq', group: 'Ko’rik' },
+            { key: 'heart', label: 'Yurak tonlari', type: 'select', options: ['Aniq, ritmik', 'Bo’g’iq', 'Aritmik'], group: 'Ko’rik' },
+            { key: 'edema', label: 'Shishlar', type: 'select', options: ['Yo’q', 'Oyoqlarda', 'Umumiy'], group: 'Ko’rik' },
+            { key: 'conclusion', label: 'Xulosa', type: 'text', group: 'Yakun' },
+        ],
+    },
+    {
+        id: 'demo-tpl-5', clinicId: 'demo-clinic-1', departmentId: 'demo-endo',
+        name: 'Endokrinologik ko’rik', isDefault: true, gender: null, minAge: null, maxAge: null,
+        fields: [
+            { key: 'weight', label: 'Vazn', type: 'number', unit: 'kg', group: 'Ko’rik' },
+            { key: 'height', label: 'Bo’y', type: 'number', unit: 'sm', group: 'Ko’rik' },
+            { key: 'glucose', label: 'Qand (glyukometr)', type: 'number', unit: 'mmol/l', group: 'Ko’rik' },
+            { key: 'thyroid', label: 'Qalqonsimon bez', type: 'select', options: ['O’zgarishsiz', 'Kattalashgan', 'Tugun bor'], group: 'Ko’rik' },
+            { key: 'conclusion', label: 'Xulosa', type: 'text', group: 'Yakun' },
         ],
     },
 ];
@@ -1150,6 +1257,12 @@ const saveDemoState = () => {
         replaceAll(DEMO_PRESCRIPTIONS, s.prescriptions);
         replaceAll(DEMO_LAB_TESTS, s.labTests);
         replaceAll(DEMO_ENCOUNTER_TEMPLATES, s.templates);
+        /* «Shikoyatlar» maydoni varaqning o'z «Shikoyat» maydonini takrorlardi
+           (2026-11-20 da shablondan olib tashlandi). Brauzerda saqlangan eski
+           nusxada u qolib ketmasin. */
+        DEMO_ENCOUNTER_TEMPLATES.forEach(tpl => {
+            if (tpl.id === 'demo-tpl-1') tpl.fields = (tpl.fields || []).filter(f => f.key !== 'complaints');
+        });
         replaceAll(DEMO_RECIPES, s.recipes);
         if (s.orderItems) Object.assign(DEMO_ORDER_ITEMS, s.orderItems);
         if (s.resultValues) Object.assign(DEMO_RESULT_VALUES, s.resultValues);
@@ -1208,12 +1321,12 @@ const saveDemoState = () => {
         [`${orderId}-i2:demo-lt-2-p1`]: { value: '7.8' },   // glyukoza — baland
     });
 
-    // ── Bugun: rentgenga yo'llangan, hali bajarilmagan
+    // ── Bugun: EKG ga yo'llangan, hali bajarilmagan (kardiolog qabuli)
     put(DEMO_STUDIES, {
         id: 'demo-study-card-1', clinicId, patientId, patientName, visitId: visit.id,
-        departmentId: 'demo-diag', modality: 'RENTGEN', name: 'Panoramik rentgen (OPG)',
+        departmentId: 'demo-diag', modality: 'EKG', name: 'Elektrokardiogramma (EKG)',
         status: 'Ordered', orderedByName: visit.doctorName || null, performedByName: null,
-        orderedAt: minsAgo(8), performedAt: null, price: 180000,
+        orderedAt: minsAgo(8), performedAt: null, price: 80000,
     } as DiagnosticStudy);
 
     const charge = (id: string, source: VisitCharge['source'], sourceId: string, name: string, total: number, paid: boolean): VisitCharge => ({
@@ -1232,7 +1345,7 @@ const saveDemoState = () => {
         if (c.visitId === visit.id && c.source === 'Lab' && !c.sourceId) DEMO_CHARGES.splice(i, 1);
     }
     addOnce(DEMO_CHARGES, charge('demo-charge-card-lab', 'Lab', orderId, 'Umumiy qon tahlili, glyukoza', 75000, true));
-    addOnce(DEMO_CHARGES, charge('demo-charge-card-study', 'Study', 'demo-study-card-1', 'Panoramik rentgen (OPG)', 180000, false));
+    addOnce(DEMO_CHARGES, charge('demo-charge-card-study', 'Study', 'demo-study-card-1', 'Elektrokardiogramma (EKG)', 80000, false));
 
     // ── Doimiy holat: surunkali kasallik, uning dorisi, allergiya
     addOnce(DEMO_DIAGNOSES, {
@@ -1262,6 +1375,36 @@ const saveDemoState = () => {
         addOnce(DEMO_DIAGNOSES, {
             id: `demo-dx-${p.id}`, patientId, clinicId, visitId: p.id, code: p.code, date: at.slice(0, 10),
             notes: '', status: 'Active', icd10: DEMO_ICD10.find(c => c.code === p.code),
+        } as PatientDiagnosis);
+    }
+})();
+
+/* ── DEMO: KARDIOLOG VA ENDOKRINOLOG BEMORLARIGA MKB-10 TASHXISLARI ──────
+   Bugungi qabulga qo'yilgan va surunkali tashxislar: kartada «Bugun
+   qo'shilganlar» va «Kasalliklari» ro'yxatlari kod bilan ko'rinsin.
+   Faqat bo'lmasa qo'shiladi — namoyishda o'chirilgani qaytib chiqmasin. */
+(function seedSpecialistDiagnoses() {
+    const clinicId = 'demo-clinic-1';
+    const today = todayISO();
+    const plan: { pid: number; code: string; chronic?: boolean; daysAgo?: number }[] = [
+        { pid: 4, code: 'E11.4' },
+        { pid: 4, code: 'E78.5', chronic: true, daysAgo: 400 },
+        { pid: 5, code: 'I47.1' },
+        { pid: 11, code: 'R73.0', chronic: true, daysAgo: 200 },
+        { pid: 9, code: 'I10', chronic: true, daysAgo: 600 },
+        { pid: 3, code: 'E55.9', chronic: true, daysAgo: 150 },
+    ];
+    for (const p of plan) {
+        const patientId = `demo-patient-${p.pid}`;
+        const visit = p.chronic ? undefined : DEMO_VISITS.find(v => v.patientId === patientId && v.date === today);
+        const id = `demo-dx-spec-${p.pid}-${p.code}`;
+        if (DEMO_DIAGNOSES.some(d => d.id === id)) continue;
+        DEMO_DIAGNOSES.push({
+            id, patientId, clinicId, code: p.code,
+            ...(visit ? { visitId: visit.id } : {}),
+            date: p.daysAgo ? dayShift(-p.daysAgo).slice(0, 10) : today,
+            notes: '', status: p.chronic ? 'Chronic' : 'Active', isChronic: !!p.chronic,
+            icd10: DEMO_ICD10.find(c => c.code === p.code),
         } as PatientDiagnosis);
     }
 })();
@@ -1321,6 +1464,20 @@ const DEMO_DOCUMENTS: any[] = [];
 
 /** Yo'llanmalar (laboratoriya, diagnostika, kassa). */
 const DEMO_REFERRALS: any[] = [];
+
+/** Yo'llanma + bemor va bo'lim — server `include` qilgan shakl */
+const demoReferralView = (r: any) => {
+    const p = DEMO_PATIENTS.find(x => x.id === r.patientId);
+    const dep = r.targetDepartmentId ? DEMO_DEPARTMENTS.find(d => d.id === r.targetDepartmentId) : undefined;
+    return {
+        ...r,
+        patient: p ? {
+            firstName: p.firstName, lastName: p.lastName, phone: p.phone,
+            dob: p.dob, gender: p.gender, cardNumber: (p as any).cardNumber,
+        } : null,
+        targetDepartment: dep ? { name: dep.name } : null,
+    };
+};
 
 /* Zaxira nusxa holati. Demoda HAQIQIY nusxa yo'q — bulutda baza ham yo'q.
    Shuning uchun raqamlar o'ylab topilmaydi: ekran «nusxa hali olinmagan»
@@ -1553,7 +1710,7 @@ const DEMO_VITALS: any[] = [
    `perDay / slots / due / nextAt` (`backend/inpatient.ts`, `scheduleOf`).
    Qoida ikkalasida bitta — `shared/medSchedule.ts`. */
 const demoMedMarks = (orderId: string, day: string) => DEMO_ADMINISTRATIONS
-    .filter(x => x.orderId === orderId && String(x.at).slice(0, 10) === day)
+    .filter(x => x.orderId === orderId && dayKey(x.at) === day)
     .map(x => ({ ...x, status: (x as any).status || 'Given', givenAt: x.at }));
 
 const demoMedSchedule = (order: { frequency?: string | null; status?: string }, marks: { givenAt: string }[], day: string) => {
@@ -1910,7 +2067,10 @@ export const api = {
             if (isDemoMode()) {
                 const index = DEMO_PATIENTS.findIndex(p => p.id === id);
                 if (index !== -1) {
-                    DEMO_PATIENTS[index] = { ...DEMO_PATIENTS[index], ...data };
+                    /* Tibbiy tarix o'zgarsa — kim va qachon (server bilan bir xil) */
+                    const stamp = data.medicalHistory !== undefined || data.anamnesis !== undefined
+                        ? demoAnamnesisStamp() : {};
+                    DEMO_PATIENTS[index] = { ...DEMO_PATIENTS[index], ...data, ...stamp };
                     saveDemoData();
                     return Promise.resolve(DEMO_PATIENTS[index]);
                 }
@@ -2173,7 +2333,7 @@ export const api = {
                     doctorId: plan.doctorId,
                     doctorName: doctor ? `${doctor.lastName} ${doctor.firstName}` : '',
                     amount: item.amount,
-                    date: demoNow().split('T')[0],
+                    date: demoLocalDay(new Date()),
                     service: plan.service,
                     type: paymentMethod as any,
                     status: 'Paid',
@@ -2182,7 +2342,7 @@ export const api = {
                 DEMO_TRANSACTIONS.unshift(tx);
 
                 item.status = 'Paid';
-                item.paidDate = demoNow().split('T')[0];
+                item.paidDate = demoLocalDay(new Date());
                 item.transactionId = tx.id;
                 plan.totalPaid += item.amount;
                 if (plan.items.every((it: any) => it.status === 'Paid')) plan.status = 'Completed';
@@ -2857,6 +3017,7 @@ export const api = {
                 const q = query.trim().toLowerCase();
                 return Promise.resolve(DEMO_ICD10.filter(c =>
                     c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
+                    || (c.nameRu || '').toLowerCase().includes(q)
                 ).slice(0, 12));
             }
             return fetchJson<ICD10Code[]>(`/icd10?query=${query}`);
@@ -2930,7 +3091,9 @@ export const api = {
                     appointmentId: data.appointmentId,
                     date: data.date || todayISO(),
                     checkInTime: new Date().toISOString(),
-                    status: 'Waiting',
+                    /* Shifokor o'ziga ochsa — darhol «Qabulda» (server bilan bir xil) */
+                    status: data.status === 'In Progress' ? 'In Progress' : 'Waiting',
+                    ...(data.status === 'In Progress' ? { startedAt: new Date().toISOString() } : {}),
                     complaints: data.complaints,
                     clinicId: 'demo-clinic-1',
                     departmentId: data.departmentId || 'demo-ter',
@@ -3190,7 +3353,7 @@ export const api = {
        `summary` — shifokorning ish stolidagi "avval nima bo'lgan" paneli.
        Bitta so'rov: allergiya, surunkali, oldingi qabullar, tahlillar, dorilar. */
     /* Bemor kartasidagi klinik qatlam. Demo qoplamasi ALOHIDA muhim:
-       sarlavha va tarix (`PinnedFacts`) bemor kartasining ICHIDA turadi, ya'ni bu
+       sarlavha va anamnez (`Anamnesis`) bemor kartasining ICHIDA turadi, ya'ni bu
        yerdagi xato namoyishning eng asosiy oqimida — «bemor qo'shdim,
        kartasini ochdim» — ko'rinib qoladi. */
     clinical: {
@@ -3211,8 +3374,13 @@ export const api = {
                     reaction: data.reaction || '',
                     severity: data.severity || 'Unknown',
                 };
-                DEMO_ALLERGIES.push(created);
-                return demoRead<any>(created);
+                /* Bir modda ikki marta yozilmasin — server bilan bir xil qoida */
+                const same = DEMO_ALLERGIES.find(a => a.patientId === patientId
+                    && a.substance.trim().toLowerCase() === data.substance.trim().toLowerCase());
+                if (same) Object.assign(same, { reaction: created.reaction, severity: created.severity });
+                else DEMO_ALLERGIES.push(created);
+                demoStampPatient(patientId);
+                return demoRead<any>(same || created);
             }
             return fetchJson<any>(`/patients/${patientId}/allergies`, { method: 'POST', body: JSON.stringify(data) });
         },
@@ -3220,6 +3388,7 @@ export const api = {
             if (isDemoMode()) {
                 const i = DEMO_ALLERGIES.findIndex(a => a.id === allergyId);
                 if (i > -1) DEMO_ALLERGIES.splice(i, 1);
+                demoStampPatient(patientId);
                 return demoRead<{ success: true }>({ success: true });
             }
             return fetchJson<{ success: true }>(`/patients/${patientId}/allergies/${allergyId}`, { method: 'DELETE' });
@@ -3239,7 +3408,7 @@ export const api = {
         },
         /** Ko'rsatkich bo'yicha vaqt qatori: bitta qiymat emas, O'ZGARISH muhim */
         labDynamics: (patientId: string) => {
-            if (isDemoMode()) return demoRead<any[]>(demoLabDynamics());
+            if (isDemoMode()) return demoRead<any[]>(demoLabDynamics(patientId));
             return fetchJson<any[]>(`/patients/${patientId}/lab-dynamics`);
         },
         lockVisit: (visitId: string, disposition?: string) => {
@@ -3393,15 +3562,32 @@ export const api = {
                     service: rows.map(r => r.name).join(', ').slice(0, 120),
                     status: 'Paid',
                     clinicId: 'demo-clinic-1',
-                    doctorId: data.doctorId,
-                    doctorName: data.doctorName,
+                    /* Server bilan bir xil: so'rovda shifokor yo'q bo'lsa — qatorlarning
+                       shifokori (hammasi bitta shifokorniki bo'lsa) */
+                    ...(() => {
+                        if (data.doctorId) return { doctorId: data.doctorId, doctorName: data.doctorName };
+                        const ids = [...new Set(rows.map(r => r.doctorId).filter(Boolean))];
+                        return ids.length === 1
+                            ? { doctorId: ids[0] as string, doctorName: rows.find(r => r.doctorId === ids[0])?.doctorName || undefined }
+                            : { doctorId: undefined, doctorName: undefined };
+                    })(),
                     createdAt: demoNow(),
                     receivedByName: data.receivedByName || 'Demo Admin',
                     linkedToCharges: true,
                 };
-                DEMO_TRANSACTIONS.push(tx);
+                /* BIR NECHA USUL — HAR BIRIGA O'Z CHEKI (server bilan bir xil).
+                   Ilgari demo hammasini birinchi usulga yozardi: 500 000 naqd +
+                   300 000 karta «Naqd 800 000» bo'lib tushar va yashik 300 000
+                   ga ko'p ko'rsatilardi (kassir maslahatchi, 2026-11-22). */
+                const split = (data.payments || []).filter(p => (p.amount || 0) > 0);
+                const parts = split.length > 1 ? split : [{ method, amount: paidTotal }];
+                const receipts = parts.map((p, i) => ({ ...tx, id: i === 0 ? tx.id : demoId('demo-tx'), amount: p.amount, type: p.method as Transaction['type'] }));
+                DEMO_TRANSACTIONS.push(...receipts);
+                /* Qator o'z chekini biladi — server ham shunday (`transactionId`).
+                   Daftar to'lov usulini shu bog'lanishdan o'qiydi. */
+                for (const row of rows) row.transactionId = tx.id;
                 saveDemoData();
-                return demoDone({ success: true, paid: paidTotal, transaction: tx });
+                return demoDone({ success: true, paid: paidTotal, transaction: receipts[0] });
             }
             return fetchJson<any>('/payments', { method: 'POST', body: JSON.stringify(data) });
         },
@@ -3470,20 +3656,33 @@ export const api = {
                    Kassa ekranidagi «Kassada qoldi» endi aynan shu raqamni
                    ko‘rsatgani uchun demo yolg‘on son ko‘rsatib turardi. */
                 const paidToday = DEMO_TRANSACTIONS.filter(
-                    t => t.status === 'Paid' && String(t.date).slice(0, 10) === date);
+                    t => t.status === 'Paid' && dayKey(t.date) === date);
                 const sumBy = (m: string) => paidToday
                     .filter(t => (t.type || 'Cash') === m)
                     .reduce((acc, t) => acc + (t.amount || 0), 0);
                 const cashExpense = DEMO_EXPENSES
-                    .filter(e => String(e.date).slice(0, 10) === date && (e.method || 'Cash') === 'Cash')
+                    .filter(e => dayKey(e.date) === date && (e.method || 'Cash') === 'Cash')
                     .reduce((acc, e) => acc + (e.amount || 0), 0);
                 const day = demoSnapshot(date, date);
+                /* Kassa harakatlari ham (server bilan bir xil): inkassatsiya va
+                   naqd qaytarish yashikdan chiqadi, kirim qo'shiladi. Ilgari demo
+                   ularni 0 deb olardi va inkassatsiyadan keyin «Yashikda» raqami
+                   o'zgarmasdi (kassir maslahatchi, 2026-11-22). */
+                const moves = DEMO_CASH_MOVEMENTS.filter(m => dayKey(m.date) === date && (m.method || 'Cash') === 'Cash');
+                const moveSum = (type: string) => moves.filter(m => m.type === type).reduce((acc, m) => acc + (m.amount || 0), 0);
+                const encashment = moveSum('Encashment');
+                const refundCash = moveSum('Refund');
+                const cashIn = moveSum('CashIn');
                 return demoRead({
                     date, openingCash: 0,
-                    expectedCash: sumBy('Cash') - cashExpense,
+                    expectedCash: sumBy('Cash') + cashIn - cashExpense - encashment - refundCash,
                     expectedCard: sumBy('Card'), expectedClick: sumBy('Click'),
                     openCharges: { count: 0, patients: 0, due: day.period.due },
-                    sources: {} as Record<string, any>,
+                    /* Server bilan bir xil qismlar — «Kunni yopish» dagi qatorlar jamiga teng chiqsin */
+                    sources: {
+                        cashPayments: sumBy('Cash'), cashIn, cashExpense,
+                        encashment, refundCash, paymentCount: paidToday.length,
+                    } as Record<string, any>,
                 });
             }
             return fetchJson<{
@@ -3718,7 +3917,7 @@ export const api = {
                            «50000 ta to'lov» degan bema'nilik chiqardi:
                            server `_count` qaytaradi, qopqoq esa summani. */
                         payments: DEMO_TRANSACTIONS.filter(
-                            t => t.status === 'Paid' && String(t.date).slice(0, 10) === today,
+                            t => t.status === 'Paid' && dayKey(t.date) === today,
                         ).length,
                     },
                     month: { revenue: month.period.collected },
@@ -3801,7 +4000,27 @@ export const api = {
             }>('/reports/attention');
         },
 
-        debtors: () => isDemoMode() ? demoRead<any>({ total: 0, patients: [] }) : fetchJson<any>('/reports/debtors'),
+        debtors: () => {
+            if (isDemoMode()) {
+                /* Server bilan bir xil: to'lanmagan qatorlar bemor bo'yicha, eng eski sanasi bilan */
+                const byPatient = new Map<string, any>();
+                for (const c of DEMO_CHARGES) {
+                    if (c.status !== 'Unpaid') continue;
+                    const key = c.patientId || `noname:${c.patientName}`;
+                    const day = (c as any).visit?.date || dayKey(c.createdAt);
+                    const g = byPatient.get(key) || { patientId: c.patientId, patientName: c.patientName, due: 0, count: 0, oldestDate: day };
+                    g.due += c.total - (c.paidAmount || 0);
+                    g.count += 1;
+                    if (day < g.oldestDate) g.oldestDate = day;
+                    byPatient.set(key, g);
+                }
+                const patients = [...byPatient.values()].filter(g => g.due > 0)
+                    .map(g => ({ ...g, phone: DEMO_PATIENTS.find(p => p.id === g.patientId)?.phone || null }))
+                    .sort((a, b) => b.due - a.due);
+                return demoRead<any>({ total: patients.reduce((s, g) => s + g.due, 0), patients });
+            }
+            return fetchJson<any>('/reports/debtors');
+        },
 
         /* Reliz 5: uch hisobot. Hammasi faqat klinika egasiga — server ham
            shu rolni talab qiladi. */
@@ -3814,8 +4033,39 @@ export const api = {
             return fetchJson<any>(`/reports/doctors?from=${from}&to=${to}`);
         },
         departmentsReport: (from: string, to: string) => {
-            if (isDemoMode()) return demoRead<any>(demoDepartmentsReport());
+            if (isDemoMode()) return demoRead<any>(demoDepartmentsReport(from, to));
             return fetchJson<any>(`/reports/departments?from=${from}&to=${to}`);
+        },
+
+        /** Oylar bo'yicha — bir yilning 12 oyi (Umumiy tab ostida) */
+        months: (year: number) => {
+            if (isDemoMode()) {
+                /* Har oy — `compare` dagi demo `measure()` bilan bir xil manba:
+                   xizmatlar va olindi `demoSnapshot`, xarajat `DEMO_EXPENSES`. */
+                const months = Array.from({ length: 12 }, (_, i) => {
+                    const m = `${year}-${String(i + 1).padStart(2, '0')}`;
+                    const last = new Date(Date.UTC(year, i + 1, 0)).getUTCDate();
+                    const a = `${m}-01`, b = `${m}-${String(last).padStart(2, '0')}`;
+                    const snap = demoSnapshot(a, b);
+                    const expense = DEMO_EXPENSES
+                        .filter(e => inRange(e.date as any, a, b) && e.category !== 'Lab')
+                        .reduce((s, e) => s + (e.amount || 0), 0);
+                    return {
+                        month: m, revenue: snap.period.charged, collected: snap.period.collected,
+                        expense, profit: snap.period.charged - expense,
+                    };
+                });
+                const sum = (k: 'revenue' | 'collected' | 'expense' | 'profit') => months.reduce((s, m) => s + m[k], 0);
+                return demoRead<any>({
+                    year, months,
+                    totals: { revenue: sum('revenue'), collected: sum('collected'), expense: sum('expense'), profit: sum('profit') },
+                });
+            }
+            return fetchJson<{
+                year: number;
+                months: { month: string; revenue: number; collected: number; expense: number; profit: number }[];
+                totals: { revenue: number; collected: number; expense: number; profit: number };
+            }>(`/reports/months?year=${year}`);
         },
 
         /** Oldingi SHU UZUNLIKDAGI davr bilan solishtirish */
@@ -3841,8 +4091,20 @@ export const api = {
                 const len = Math.max(1, Math.round(
                     (new Date(to).getTime() - new Date(from).getTime()) / 86400000
                 ) + 1);
-                const prevTo = new Date(new Date(from).getTime() - 86400000).toISOString().slice(0, 10);
-                const prevFrom = new Date(new Date(from).getTime() - len * 86400000).toISOString().slice(0, 10);
+                let prevTo = new Date(new Date(from).getTime() - 86400000).toISOString().slice(0, 10);
+                let prevFrom = new Date(new Date(from).getTime() - len * 86400000).toISOString().slice(0, 10);
+                /* Oyning boshidan — o'tgan oyning o'sha kunlari (server bilan bir xil) */
+                const [fy, fm, fd] = from.split('-').map(Number);
+                const [ty, tm, td] = to.split('-').map(Number);
+                if (fd === 1 && fy === ty && fm === tm) {
+                    const py = fm === 1 ? fy - 1 : fy;
+                    const pm = fm === 1 ? 12 : fm - 1;
+                    const lastPrev = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+                    const pad = (n: number) => String(n).padStart(2, '0');
+                    prevFrom = `${py}-${pad(pm)}-01`;
+                    const lastCur = new Date(Date.UTC(ty, tm, 0)).getUTCDate();
+                    prevTo = `${py}-${pad(pm)}-${pad(td >= lastCur ? lastPrev : Math.min(td, lastPrev))}`;
+                }
 
                 const measure = (a: string, b: string) => {
                     const snap = demoSnapshot(a, b);
@@ -4074,9 +4336,35 @@ export const api = {
            oy tanlanadi, jadval chiqadi, to'lash bir bosish. */
         shares: (period: string) => {
             if (isDemoMode()) {
+                /* Hisobotdagi «Shifokorlar» bilan BITTA manba — `demoDoctorLines`.
+                   Ilgari bu yer doim nol qaytarardi: Hisobotda «Hisoblangan ulush
+                   2 077 500», Xodimlar → Ulush da esa «0» (2026-11-22 audit). */
+                const [y, m] = period.split('-').map(Number);
+                const from = `${period}-01`;
+                const to = `${period}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+                const lines = demoDoctorLines(from, to);
+                const paidShare = (id: string) => DEMO_EXPENSES
+                    .filter(e => e.category === 'DoctorShare' && (e as any).doctorId === id && inRange(e.date as any, from, to))
+                    .reduce((s, e) => s + (e.amount || 0), 0);
+                const rows = DEMO_DOCTORS.map(d => {
+                    const line = lines.find(l => l.doctorId === d.id);
+                    const accrued = line?.accrued || 0;
+                    const paid = paidShare(d.id);
+                    return {
+                        id: d.id, name: `${d.lastName} ${d.firstName}`.trim(), specialty: d.specialty || null,
+                        accrued, paidViaRuns: 0, paid, paidAt: null,
+                        payable: Math.max(0, accrued - paid), closed: paid > 0 && paid >= accrued,
+                        itemCount: line?.items.length || 0,
+                    };
+                });
                 return demoRead<any>({
-                    period, rows: [], totals: { accrued: 0, paid: 0, payable: 0 },
-                    stats: { payments: 0, skippedNoDoctor: 0, skippedNoDoctorSum: 0, skippedCancelled: 0 },
+                    period, from, to, rows,
+                    totals: {
+                        accrued: rows.reduce((s, r) => s + r.accrued, 0),
+                        paid: rows.reduce((s, r) => s + r.paid, 0),
+                        payable: rows.reduce((s, r) => s + r.payable, 0),
+                    },
+                    stats: demoPayrollPreview(from, to).stats,
                 });
             }
             return fetchJson<any>(`/hr/shares?period=${period}`);
@@ -4519,6 +4807,14 @@ export const api = {
                     a.status = 'Discharged';
                     a.dischargedAt = new Date().toISOString();
                     a.dischargeSummary = typeof data === 'string' ? data : (data?.dischargeSummary ?? null);
+                    /* Epikriz qismlari ham saqlanadi — bosma varaq yozilganini ko'rsatsin */
+                    if (data && typeof data === 'object') {
+                        const ext = a as Admission & Record<string, unknown>;
+                        if (data.admissionDiagnosis !== undefined) ext.admissionDiagnosis = data.admissionDiagnosis;
+                        if (data.finalDiagnosis !== undefined) ext.finalDiagnosis = data.finalDiagnosis;
+                        if (data.treatmentGiven !== undefined) ext.treatmentGiven = data.treatmentGiven;
+                        if (data.recommendations !== undefined) ext.recommendations = data.recommendations;
+                    }
                     a.bedId = null;
                 }
                 demoSyncBeds();
@@ -4728,11 +5024,11 @@ export const api = {
                     }))
                     .sort((a, b) => Number(b.overdue) - Number(a.overdue));
                 const ready = DEMO_LAB_ORDERS.filter(o =>
-                    status(o) === 'Completed' && String(o.completedAt || '').slice(0, 10) === today);
+                    status(o) === 'Completed' && dayKey(o.completedAt) === today);
 
                 const active = DEMO_ADMISSIONS.filter(a => a.status === 'Active');
                 const seenToday = (admissionId: string) => DEMO_ROUNDS.some(r =>
-                    r.admissionId === admissionId && String(r.date).slice(0, 10) === today);
+                    r.admissionId === admissionId && dayKey(r.date) === today);
                 const wards = DEMO_WARDS.filter(w => w.isActive).map(w => ({
                     id: w.id,
                     name: w.name,
@@ -4742,7 +5038,7 @@ export const api = {
                             id: b.id, label: b.label, status: b.status,
                             admissionId: adm?.id || null,
                             patientName: adm?.patientName || null,
-                            admittedToday: !!adm && String(adm.admittedAt).slice(0, 10) === today,
+                            admittedToday: !!adm && dayKey(adm.admittedAt) === today,
                             seenToday: !!adm && seenToday(adm.id),
                         };
                     }),
@@ -4763,7 +5059,7 @@ export const api = {
                         wards,
                         admittedToday: beds.filter(b => b.admittedToday).length,
                         dischargedToday: DEMO_ADMISSIONS.filter(a =>
-                            a.status === 'Discharged' && String(a.dischargedAt || '').slice(0, 10) === today).length,
+                            a.status === 'Discharged' && dayKey(a.dischargedAt) === today).length,
                         notSeenToday: active.filter(a => !seenToday(a.id)).length,
                         medsDue,
                     } : null,
@@ -5363,7 +5659,7 @@ export const api = {
                 (!params?.patientId || r.patientId === params.patientId)
                 && (!params?.status || r.status === params.status)
                 && (!params?.visitId || r.visitId === params.visitId)
-            ));
+            ).map(demoReferralView));
             const q = new URLSearchParams();
             Object.entries(params || {}).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
             const qs = q.toString();
@@ -5373,7 +5669,10 @@ export const api = {
         get: (id: string) => {
             if (isDemoMode()) {
                 const r = DEMO_REFERRALS.find(x => x.id === id);
-                return r ? demoRead<any>(r) : demoMissing<any>('bu yo\'llanma');
+                if (!r) return demoMissing<any>('bu yo\'llanma');
+                // Server kabi: klinika shapkasi va yoyilgan payload bilan
+                const { name, phone, address, licenseNumber, letterheadNote } = DEMO_CLINIC as any;
+                return demoRead<any>({ ...demoReferralView(r), clinic: { name, phone, address, licenseNumber, letterheadNote } });
             }
             return fetchJson<any>(`/referrals/${id}`);
         },
@@ -5384,12 +5683,33 @@ export const api = {
             items?: { name: string; price: number; quantity?: number }[];
         }) => {
             if (isDemoMode()) {
+                /* Server bilan bir xil yozuv: raqam, kim bergan va payload
+                   (berilgan paytdagi xizmatlar va summa). Ilgari bularsiz
+                   bosma yo'llanma «—» bilan to'la chiqardi. */
+                const clean = (data.items || [])
+                    .map(it => ({
+                        name: String(it?.name || '').trim().slice(0, 200),
+                        price: Math.round(Number(it?.price) || 0),
+                        quantity: Number(it?.quantity) > 0 ? Number(it.quantity) : 1,
+                    }))
+                    .filter(it => it.name);
+                const total = clean.reduce((s, it) => s + it.price * it.quantity, 0);
+                const visit = data.visitId ? DEMO_VISITS.find(v => v.id === data.visitId) : undefined;
+                const year = new Date().getFullYear();
+                const seq = DEMO_REFERRALS.filter(x => String(x.number || '').startsWith(`${year}-`)).length + 1;
+                const now = demoNow();
                 const r = {
-                    id: `demo-ref-${Date.now()}`, ...data,
-                    status: 'Active', createdAt: new Date().toISOString(),
+                    id: demoId('demo-ref'), clinicId: 'demo-clinic-1',
+                    patientId: data.patientId, visitId: data.visitId || null,
+                    number: `${year}-${String(seq).padStart(4, '0')}`,
+                    kind: data.kind,
+                    targetDepartmentId: data.targetDepartmentId || null,
+                    issuedByName: visit?.doctorName || auth.getSession()?.name || 'Demo Admin',
+                    payload: clean.length ? { items: clean, total } : null,
+                    status: 'Active', issuedAt: now, createdAt: now,
                 };
                 DEMO_REFERRALS.push(r);
-                return demoRead<any>(r);
+                return demoRead<any>(demoReferralView(r));
             }
             return fetchJson<any>('/referrals', { method: 'POST', body: JSON.stringify(data) });
         },

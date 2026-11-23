@@ -1,29 +1,34 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-    Banknote, Plus, X, Percent, Undo2, AlertCircle, Check, Loader2,
+    Plus, X, Percent, Undo2, AlertCircle, Check, Loader2, CheckCircle, Printer, Wallet,
 } from 'lucide-react';
-import { Modal, Button, Input, Select } from './Common';
+import { Modal, Button, Input } from './Common';
 import { VisitCharge } from '../types';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { api } from '../services/api';
+import { fmtDateTime, PrintClinic } from '../utils/printDocument';
+import { printReceipt } from '../utils/printReceipt';
 
 import { useLanguage, fill } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
-   BITTA BEMOR — KO'P QATOR — BITTA CHEK.
+   QARZNI TO'LASH — BITTA BEMOR, BITTA CHEK.
 
-   MUAMMO. Ilgari kassir bemorning har bir buyurtmasini alohida "To'lash"
-   tugmasi bilan, faqat NAQD va faqat TO'LIQ summa bilan yopardi. Real kassada
-   esa: bemor 5 qatordan 3 tasini to'laydi, 200 mingni karta bilan, qolganini
-   naqd, bitta qatorga chegirma so'raydi (GAP-ANALYSIS, Б4).
+   Kassadagi navbat, boshqa kunlardan qolgan qarz va bemor kartasi — hammasi
+   shu oynani ochadi.
 
-   BU OYNA nima qiladi:
-     • qatorlarni belgilash — qaysi biri to'lanadi
-     • har qatorga alohida summa — qisman to'lov
-     • to'lovni usullarga bo'lish — naqd + karta bir chekda
-     • chegirma (admin va registrator)
-     • qaytarish (FAQAT klinika admini — pul yashikdan chiqadi)
-
-   Server ham shu shartlarni qayta tekshiradi: bu oyna qulaylik, himoya emas.
+   2026-11-22 QAYTA (klinika egasi: «oson, tez, qulay — DentaCRM ni ko'r»).
+   Ilgari: har qatorga alohida summa katagi (qisman to'lash uchun «200000»
+   ni qo'lda qayta yozish), usul — ochiladigan ro'yxat, ko'k tugma va
+   to'lovdan keyin chek yo'q. Endi DentaCRM dagi «Qarzni to'lash» kabi:
+     · BITTA summa — oldindan to'liq qarz, yonida «Yarmi» / «Hammasi»;
+       qatorlarga eskisidan boshlab o'zi taqsimlanadi;
+     · ostida natija so'z bilan: «Qarz to'liq yopiladi» / «Qoldiq qarz: X»;
+     · usul — katta tugmalar, odatda Naqd; ikkinchi usul «Boshqa usul
+       qo'shish» ortida va qolgani birinchi usulga o'zi tushadi;
+     · yashil «X so'm qabul qilish»; to'lovdan keyin chek SHU YERDA
+       («Chek chiqarish» sozlamasi yoqilgan bo'lsa — o'zi bosiladi).
+   Chegirma va qaytarish — faqat egada (server ham shunday, `permissions.ts`).
+   Ilgari chegirma tugmasi registratorga ham ko'rinar va bosilsa 403 berardi.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
@@ -32,38 +37,44 @@ interface Props {
     patientName: string;
     /** To'lanmagan qatorlar (ota-komponentdan, tirik ro'yxat) */
     charges: VisitCharge[];
-    /** Berilsa — oyna bemorning TO'LANGAN qatorlarini ham o'zi yuklaydi.
-     *  Ilovada faqat `status: Unpaid` qatorlar keshda turadi, qaytarish uchun
-     *  esa to'langanlar kerak. */
+    /** Berilsa — oyna bemorning TO'LANGAN qatorlarini ham o'zi yuklaydi (qaytarish uchun) */
     patientId?: string;
     /** Kim ishlayapti — chekka yoziladi */
     receivedByName?: string;
     role?: string;
+    /** Chek shapkasi; `enableReceipts` yoqilgan bo'lsa chek o'zi bosiladi */
+    clinic?: (PrintClinic & { enableReceipts?: boolean }) | null;
     onDone?: () => void;
     addToast?: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
+type Split = { method: string; amount: string };
+type Paid = { lines: { name: string; amount: number }[]; total: number; methods: { method: string; amount: number }[]; left: number; number: string; at: Date };
+
 const num = (v: number) => Math.round(v || 0).toLocaleString('uz-UZ').replace(/,/g, ' ');
-const remainingOf = (c: VisitCharge) => Math.round((c.total - (c.paidAmount || 0)) * 100) / 100;
+const round2 = (v: number) => Math.round(v * 100) / 100;
+const remainingOf = (c: VisitCharge) => round2(c.total - (c.paidAmount || 0));
+/** «200 000» → 200000 — kassir bo'sh joy bilan ham yozadi */
+const parseSum = (v: string) => Number(String(v).replace(/[^\d.]/g, '')) || 0;
+const METHODS = INCOMING_PAYMENT_METHODS.filter(m => m !== 'Balance');
 
 export const ChargePaymentModal: React.FC<Props> = ({
-    isOpen, onClose, patientName, charges, patientId, receivedByName, role, onDone, addToast,
+    isOpen, onClose, patientName, charges, patientId, receivedByName, role, clinic, onDone, addToast,
 }) => {
     const { t } = useLanguage();
-    const canDiscount = role === 'CLINIC_ADMIN' || role === 'RECEPTIONIST';
+    const canDiscount = role === 'CLINIC_ADMIN';
     const canRefund = role === 'CLINIC_ADMIN';
 
     // To'langan qatorlar — faqat qaytarish uchun, alohida so'rov bilan
     const [paidRows, setPaidRows] = useState<VisitCharge[]>([]);
 
+    /* Eskisi birinchi: qisman to'lovda avval eski qarz yopiladi */
     const unpaid = useMemo(
-        () => charges.filter(c => c.status === 'Unpaid' && remainingOf(c) > 0),
+        () => charges.filter(c => c.status === 'Unpaid' && remainingOf(c) > 0)
+            .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || ''))),
         [charges],
     );
-    const paid = useMemo(
-        () => paidRows.filter(c => (c.paidAmount || 0) > 0),
-        [paidRows],
-    );
+    const paidList = useMemo(() => paidRows.filter(c => (c.paidAmount || 0) > 0), [paidRows]);
 
     const loadPaid = async () => {
         if (!patientId || !canRefund) return;
@@ -73,11 +84,15 @@ export const ChargePaymentModal: React.FC<Props> = ({
         } catch { /* qaytarish bo'limi ko'rinmaydi, qolgani ishlaydi */ }
     };
 
-    /** Qator id → to'lanadigan summa. Yo'q bo'lsa — belgilanmagan. */
-    const [plan, setPlan] = useState<Record<string, string>>({});
-    const [splits, setSplits] = useState<{ method: string; amount: string }[]>([{ method: 'Cash', amount: '' }]);
+    /** Belgilangan qatorlar (id). Sukut bo'yicha — hammasi. */
+    const [picked, setPicked] = useState<Set<string>>(new Set());
+    const [amount, setAmount] = useState('');
+    const [method, setMethod] = useState('Cash');
+    /** Qo'shimcha usullar — «Boshqa usul qo'shish». Asosiy usulga qolgani tushadi. */
+    const [extra, setExtra] = useState<Split[]>([]);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [done, setDone] = useState<Paid | null>(null);
     const [busyId, setBusyId] = useState('');
     const [discountFor, setDiscountFor] = useState<VisitCharge | null>(null);
     const [discountVal, setDiscountVal] = useState('');
@@ -86,91 +101,109 @@ export const ChargePaymentModal: React.FC<Props> = ({
     const [refundReason, setRefundReason] = useState('');
     const [refundError, setRefundError] = useState('');
 
-    /* Oyna ochilganda — hamma to'lanmagan qator belgilangan, to'liq summa
-       bilan: kassadagi eng ko'p uchraydigan holat shu.
-
-       Imzo (`sig`) qatorlar RO'YXATI yoki SUMMASI o'zgarganda yangilanadi —
+    /* Imzo (`sig`) qatorlar RO'YXATI yoki SUMMASI o'zgarganda yangilanadi —
        chegirma yoki qaytarishdan keyin oynada eski raqam qolib ketmasin. */
     const sig = unpaid.map(c => `${c.id}:${c.total}:${c.paidAmount || 0}`).join('|');
+    const pickedTotal = useMemo(
+        () => round2(unpaid.filter(c => picked.has(c.id)).reduce((s, c) => s + remainingOf(c), 0)),
+        [unpaid, picked],
+    );
+
     useEffect(() => {
-        if (!isOpen) return;
-        const init: Record<string, string> = {};
-        for (const c of unpaid) init[c.id] = String(remainingOf(c));
-        setPlan(init);
-        setSplits([{ method: 'Cash', amount: '' }]);
+        if (!isOpen) { setDone(null); return; }
+        const all = new Set(unpaid.map(c => c.id));
+        setPicked(all);
+        setAmount(String(round2(unpaid.reduce((s, c) => s + remainingOf(c), 0))));
+        setMethod('Cash');
+        setExtra([]);
         setError('');
         setDiscountFor(null);
         setRefundFor(null);
         loadPaid();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, sig]);
 
-    const selectedTotal = useMemo(
-        () => Object.values(plan).reduce((sum: number, v) => sum + (Number(v) || 0), 0),
-        [plan],
-    );
-    const selectedCount = Object.values(plan).filter(v => (Number(v) || 0) > 0).length;
-
-    const splitSum = useMemo(
-        () => splits.reduce((s, p) => s + (Number(p.amount) || 0), 0),
-        [splits],
-    );
-    const multiMethod = splits.length > 1;
-    // Bitta usul bo'lsa summa avtomatik — kassir raqamni ikki marta kiritmasligi kerak
-    const splitMismatch = multiMethod && Math.abs(splitSum - selectedTotal) > 0.01;
-
     const toggle = (c: VisitCharge) => {
-        setPlan(p => {
-            const next = { ...p };
-            if (next[c.id] != null) delete next[c.id];
-            else next[c.id] = String(remainingOf(c));
-            return next;
-        });
+        const next = new Set(picked);
+        if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
+        setPicked(next);
+        /* Summa belgilanganlar jamisiga teng bo'lib turadi */
+        setAmount(String(round2(unpaid.filter(x => next.has(x.id)).reduce((s, x) => s + remainingOf(x), 0))));
     };
 
-    const setAmount = (c: VisitCharge, v: string) => {
-        setPlan(p => ({ ...p, [c.id]: v }));
+    const sum = parseSum(amount);
+    const extraSum = round2(extra.reduce((s, p) => s + parseSum(p.amount), 0));
+    const mainSum = round2(sum - extraSum);
+    const left = round2(pickedTotal - sum);
+    const over = sum > pickedTotal + 0.001;
+
+    /** Summa belgilangan qatorlarga eskisidan boshlab taqsimlanadi */
+    const allocate = (total: number): Record<string, number> => {
+        const out: Record<string, number> = {};
+        let rest = total;
+        for (const c of unpaid) {
+            if (!picked.has(c.id) || rest <= 0.001) continue;
+            const part = round2(Math.min(rest, remainingOf(c)));
+            if (part > 0) out[c.id] = part;
+            rest = round2(rest - part);
+        }
+        return out;
     };
 
     const submit = async () => {
         setError('');
-        const perCharge: Record<string, number> = {};
-        for (const [id, v] of Object.entries(plan)) {
-            const n = Number(v) || 0;
-            if (n > 0) perCharge[id] = n;
-        }
+        if (sum <= 0) { setError(t('cpay.enterAmount')); return; }
+        if (over) { setError(fill(t('cpay.over'), num(pickedTotal))); return; }
+        if (extra.length && mainSum <= 0) { setError(fill(t('cpay.splitTooBig'), num(sum))); return; }
+        const perCharge = allocate(sum);
         const ids = Object.keys(perCharge);
         if (ids.length === 0) { setError(t('chargepaymentmodal.qator_tanlanmagan')); return; }
-
-        // Qator qarzidan ko'p kiritilmaganini oldindan tekshiramiz —
-        // serverga bormasdan, kassir darhol tushunsin
-        for (const id of ids) {
-            const c = unpaid.find(x => x.id === id);
-            if (c && perCharge[id] > remainingOf(c) + 0.001) {
-                setError(fill(t('chargepaymentmodal.x_uchun_x_qarzdan'), c.name, num(perCharge[id]), num(remainingOf(c))));
-                return;
-            }
-        }
-        if (splitMismatch) {
-            setError(fill(t('chargepaymentmodal.usullar_yigindisi_x_umumiy'), num(splitSum), num(selectedTotal)));
-            return;
-        }
+        const methods = [{ method, amount: mainSum }, ...extra.map(p => ({ method: p.method, amount: parseSum(p.amount) }))]
+            .filter(p => p.amount > 0);
 
         setSaving(true);
         try {
-            await api.payments.pay({
+            const res: any = await api.payments.pay({
                 chargeIds: ids,
                 perCharge,
                 receivedByName,
-                ...(multiMethod
-                    ? { payments: splits.filter(p => (Number(p.amount) || 0) > 0).map(p => ({ method: p.method, amount: Number(p.amount) })) }
-                    : { method: splits[0]?.method || 'Cash' }),
+                ...(methods.length > 1 ? { payments: methods } : { method }),
             });
-            addToast?.('success', fill(t('chargepaymentmodal.x_som_qabul_qilindi'), num(selectedTotal)));
+            const paid: Paid = {
+                lines: ids.map(id => ({ name: unpaid.find(c => c.id === id)?.name || '', amount: perCharge[id] })),
+                total: sum, methods, left: Math.max(0, left),
+                number: String(res?.transaction?.id || ids[0]).replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase(),
+                at: new Date(),
+            };
+            /* Xabar chiqarilmaydi: chek oynasining o'zi tasdiq. Ilgari har to'lovda
+               xabar chiqib, o'ngda yig'ilib, summalar ustunini yopib qo'yardi. */
             onDone?.();
-            onClose();
+            setDone(paid);
+            if (clinic?.enableReceipts) printPaid(paid);
         } catch (e: any) {
             setError(e?.message || t('payment.failed'));
         } finally { setSaving(false); }
+    };
+
+    const printPaid = (p: Paid) => {
+        const ok = printReceipt({
+            title: t('payment.receiptTitle'),
+            clinic,
+            meta: [
+                { label: t('ui.sana'), value: fmtDateTime(p.at) },
+                { label: t('receiptmodal.chek_raqami'), value: `#${p.number}` },
+                { label: t('ui.bemor'), value: patientName },
+                ...(receivedByName ? [{ label: t('payment.cashier'), value: receivedByName }] : []),
+            ],
+            lines: p.lines.map(l => ({ name: l.name, quantity: 1, total: l.amount })),
+            summary: [
+                { label: t('payment.total'), value: `${num(p.total)} ${t('ui.som')}`, strong: true },
+                ...p.methods.map(m => ({ label: getPaymentMethodLabel(m.method), value: num(m.amount) })),
+                ...(p.left > 0 ? [{ label: t('cpay.leftLabel'), value: `${num(p.left)} ${t('ui.som')}` }] : []),
+            ],
+            footer: t('receiptmodal.thanks'),
+        });
+        if (!ok) addToast?.('error', t('print.popupBlocked'));
     };
 
     const applyDiscount = async () => {
@@ -189,23 +222,18 @@ export const ChargePaymentModal: React.FC<Props> = ({
     const applyRefund = async () => {
         if (!refundFor) return;
         setRefundError('');
-        /* SUMMA HAR DOIM ANIQ YUBORILADI. Ilgari `Number(refundVal) || undefined`
-           edi: maydon bo'sh yoki «0» bo'lsa summa umuman ketmasdi, server esa
-           summasiz so'rovda TO'LANGAN SUMMANING HAMMASINI qaytaradi. Ya'ni
-           kassir «0» yozsa, yashikdan butun pul chiqib ketardi. */
-        const amount = Math.round((Number(refundVal) || 0) * 100) / 100;
+        /* SUMMA HAR DOIM ANIQ YUBORILADI. Server summasiz so'rovda TO'LANGAN
+           SUMMANING HAMMASINI qaytaradi — «0» yozilsa yashikdan butun pul
+           chiqib ketardi. */
+        const value = round2(Number(refundVal) || 0);
         const paidAmount = refundFor.paidAmount || 0;
-        if (!Number.isFinite(amount) || amount <= 0 || amount > paidAmount + 0.001) {
+        if (!Number.isFinite(value) || value <= 0 || value > paidAmount + 0.001) {
             setRefundError(fill(t('chargepaymentmodal.refundInvalid'), num(paidAmount)));
             return;
         }
         setBusyId(refundFor.id);
         try {
-            await api.payments.refund(refundFor.id, {
-                amount,
-                method: 'Cash',
-                reason: refundReason.trim() || undefined,
-            });
+            await api.payments.refund(refundFor.id, { amount: value, method: 'Cash', reason: refundReason.trim() || undefined });
             addToast?.('success', t('finance.cash.returned'));
             setRefundFor(null);
             setRefundReason('');
@@ -216,141 +244,172 @@ export const ChargePaymentModal: React.FC<Props> = ({
         } finally { setBusyId(''); }
     };
 
+    const chip = (on: boolean) => `px-3.5 h-11 rounded-xl text-sm font-semibold border transition-colors ${on
+        ? 'bg-emerald-600 text-white border-emerald-600'
+        : 'bg-surface text-muted border-line hover:border-emerald-500'}`;
+
+    /* ── To'lov o'tdi: chek ─────────────────────────────────────────────── */
+    if (done) {
+        return (
+            <Modal isOpen={isOpen} onClose={onClose} title={fill(t('chargepaymentmodal.tolov_x'), patientName)} className="max-w-md">
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                        <CheckCircle className="w-9 h-9 text-emerald-500 shrink-0" />
+                        <div className="min-w-0">
+                            <p className="text-base font-bold text-ink">{t('payment.done')}</p>
+                            <p className="text-sm text-muted">
+                                {done.left > 0 ? fill(t('cpay.leftAfter'), num(done.left)) : t('cpay.closedAll')}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="border border-line rounded-xl divide-y divide-line">
+                        {done.lines.map((l, i) => (
+                            <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                                <span className="text-sm text-ink flex-1 truncate">{l.name}</span>
+                                <span className="text-sm font-semibold tabular-nums text-ink">{num(l.amount)}</span>
+                            </div>
+                        ))}
+                        <div className="flex items-center gap-3 px-3 py-3 bg-elevated">
+                            <span className="text-sm font-bold text-ink flex-1">
+                                {t('payment.total')} · {done.methods.map(m => getPaymentMethodLabel(m.method)).join(' + ')}
+                            </span>
+                            <span className="text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-300">{num(done.total)}</span>
+                        </div>
+                    </div>
+                    <Button onClick={() => printPaid(done)} className="w-full h-12 text-base" autoFocus>
+                        <Printer className="w-5 h-5" /> {t('payment.printReceipt')}
+                    </Button>
+                    <Button variant="secondary" onClick={onClose} className="w-full">{t('common.close')}</Button>
+                </div>
+            </Modal>
+        );
+    }
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={fill(t('chargepaymentmodal.tolov_x'), patientName)} className="max-w-2xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={fill(t('chargepaymentmodal.tolov_x'), patientName)} className="max-w-xl">
             <div className="space-y-4">
 
-                {/* ── Qatorlar ─────────────────────────────────────────────── */}
+                {/* ── Nima uchun: qatorlar ─────────────────────────────────── */}
                 {unpaid.length === 0 ? (
                     <div className="py-6 text-center">
                         <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
                         <p className="text-sm text-muted">{t('chargepaymentmodal.tolanmagan_qator_yoq')}</p>
                     </div>
                 ) : (
-                    <div className="border border-line rounded-xl divide-y divide-line max-h-64 overflow-y-auto">
+                    <div className="border border-line rounded-xl divide-y divide-line max-h-56 overflow-y-auto">
                         {unpaid.map(c => {
-                            const on = plan[c.id] != null;
+                            const on = picked.has(c.id);
                             return (
-                                <div key={c.id} className="p-3 flex items-center gap-3">
+                                <label key={c.id} className="p-3 flex items-center gap-3 cursor-pointer">
                                     <input type="checkbox" checked={on} onChange={() => toggle(c)}
                                         className="w-4 h-4 rounded accent-emerald-600 shrink-0" />
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium text-ink truncate">{c.name}</p>
-                                        <p className="text-[11px] text-faint">
-                                            {c.quantity > 1 && `${c.quantity} x ${num(c.unitPrice)} · `}
-                                            {t('ui.qarz')} {num(remainingOf(c))}
-                                            {(c.discount || 0) > 0 && fill(t('chargepaymentmodal.chegirma_x'), num(c.discount))}
-                                            {(c.paidAmount || 0) > 0 && fill(t('chargepaymentmodal.tolangan_x'), num(c.paidAmount))}
-                                        </p>
-                                    </div>
+                                    <span className="min-w-0 flex-1">
+                                        <span className={`block text-sm font-medium truncate ${on ? 'text-ink' : 'text-faint'}`}>{c.name}</span>
+                                        {((c.discount || 0) > 0 || (c.paidAmount || 0) > 0) && (
+                                            <span className="block text-[11px] text-faint">
+                                                {(c.discount || 0) > 0 && fill(t('chargepaymentmodal.chegirma_x'), num(c.discount))}
+                                                {(c.paidAmount || 0) > 0 && fill(t('chargepaymentmodal.tolangan_x'), num(c.paidAmount))}
+                                            </span>
+                                        )}
+                                    </span>
                                     {canDiscount && (
-                                        <button
-                                            onClick={() => { setDiscountFor(c); setDiscountVal(String(c.discount || 0)); }}
-                                            title={t('finance.table.discount')}
+                                        <button type="button"
+                                            onClick={(e) => { e.preventDefault(); setDiscountFor(c); setDiscountVal(String(c.discount || 0)); }}
+                                            title={t('finance.table.discount')} aria-label={`${t('finance.table.discount')}: ${c.name}`}
                                             className="p-1.5 rounded-lg text-faint hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 shrink-0">
                                             <Percent className="w-4 h-4" />
                                         </button>
                                     )}
-                                    <div className="w-28 shrink-0">
-                                        <input type="number" value={plan[c.id] ?? ''} disabled={!on}
-                                            onChange={(e) => setAmount(c, e.target.value)}
-                                            onFocus={(e) => e.currentTarget.select()}
-                                            className="w-full px-2 py-1.5 text-sm text-right tabular-nums border border-line rounded-lg bg-surface text-ink disabled:opacity-40" />
-                                    </div>
-                                </div>
+                                    <span className={`shrink-0 text-sm font-semibold tabular-nums ${on ? 'text-ink' : 'text-faint'}`}>{num(remainingOf(c))}</span>
+                                </label>
                             );
                         })}
                     </div>
                 )}
 
-                {/* ── To'lov usullari ──────────────────────────────────────── */}
                 {unpaid.length > 0 && (
-                    <div>
-                        <div className="flex items-center justify-between mb-2">
-                            <h4 className="text-xs font-bold uppercase tracking-wide text-muted">
-                                {t('ui.tolov_usuli')}
-                            </h4>
-                            {splits.length < 3 && (
-                                <button
-                                    onClick={() => setSplits(s => [...s, {
-                                        method: INCOMING_PAYMENT_METHODS.find(m => !s.some(x => x.method === m)) || 'Card',
-                                        // Ikkinchi usul qo'shilganda birinchisiga qolgan summa yozilmaydi:
-                                        // kassir ataylab kiritsin, aks holda xato summa jimgina o'tib ketadi
-                                        amount: '',
-                                    }])}
-                                    className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1">
-                                    <Plus className="w-3 h-3" /> {t('chargepaymentmodal.usul_qoshish')}
+                    <>
+                        {/* ── Qancha: bitta summa ─────────────────────────────── */}
+                        <div>
+                            <label htmlFor="cpay-amount" className="block text-xs font-semibold text-muted mb-1.5">{t('cpay.amountLabel')}</label>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* Raqam bo'sh joy bilan ko'rinadi: «145 000», «145000» emas */}
+                                <input id="cpay-amount" inputMode="numeric" value={amount ? num(parseSum(amount)) : ''}
+                                    onChange={e => { setAmount(e.target.value.replace(/\D/g, '')); setError(''); }}
+                                    onFocus={e => e.currentTarget.select()}
+                                    className="w-44 h-12 px-3 text-xl font-black text-right tabular-nums border border-line rounded-xl bg-surface text-ink focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" />
+                                <button type="button" onClick={() => setAmount(String(Math.round(pickedTotal / 2)))} className={chip(false)}>{t('cpay.half')}</button>
+                                <button type="button" onClick={() => setAmount(String(pickedTotal))} className={chip(false)}>{t('cpay.all')}</button>
+                            </div>
+                            {/* Natija so'z bilan — kassir nima bo'lishini oldindan ko'radi */}
+                            <p className={`mt-1.5 text-sm font-semibold ${over ? 'text-red-600 dark:text-red-400' : left > 0.001 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                                {over ? fill(t('cpay.over'), num(pickedTotal))
+                                    : left > 0.001 ? fill(t('cpay.leftAfter'), num(left))
+                                        : t('cpay.closedAll')}
+                            </p>
+                        </div>
+
+                        {/* ── Qanday: usul ────────────────────────────────────── */}
+                        <div>
+                            <p className="text-xs font-semibold text-muted mb-1.5">{t('advance.method')}</p>
+                            <div role="group" aria-label={t('advance.method')} className="flex flex-wrap gap-2">
+                                {METHODS.map(m => (
+                                    <button key={m} type="button" aria-pressed={method === m} onClick={() => setMethod(m)} className={chip(method === m)}>
+                                        {getPaymentMethodLabel(m)}
+                                    </button>
+                                ))}
+                            </div>
+                            {extra.map((p, i) => (
+                                <div key={i} className="mt-2 flex flex-wrap items-center gap-2">
+                                    <select value={p.method} aria-label={t('advance.method')}
+                                        onChange={e => setExtra(s => s.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}
+                                        className="h-10 px-2 rounded-xl border border-line bg-surface text-sm text-ink">
+                                        {METHODS.filter(m => m !== method).map(m => <option key={m} value={m}>{getPaymentMethodLabel(m)}</option>)}
+                                    </select>
+                                    <input inputMode="numeric" value={p.amount} placeholder={t('chargepaymentmodal.summa')} aria-label={t('chargepaymentmodal.summa')}
+                                        onChange={e => setExtra(s => s.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))}
+                                        className="w-36 h-10 px-2 text-sm text-right tabular-nums border border-line rounded-xl bg-surface text-ink" />
+                                    <button type="button" onClick={() => setExtra(s => s.filter((_, j) => j !== i))} aria-label={t('common.delete')}
+                                        className="p-2 text-faint hover:text-red-600"><X className="w-4 h-4" /></button>
+                                </div>
+                            ))}
+                            {extra.length > 0 && (
+                                <p className={`mt-1.5 text-xs ${mainSum > 0 ? 'text-muted' : 'text-red-600 dark:text-red-400 font-semibold'}`}>
+                                    {fill(t('cpay.mainGets'), getPaymentMethodLabel(method), num(Math.max(0, mainSum)))}
+                                </p>
+                            )}
+                            {extra.length < 2 && (
+                                <button type="button"
+                                    onClick={() => setExtra(s => [...s, { method: METHODS.find(m => m !== method && !s.some(x => x.method === m)) || 'Card', amount: '' }])}
+                                    className="mt-2 text-xs font-semibold text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1">
+                                    <Plus className="w-3 h-3" /> {t('cpay.addMethod')}
                                 </button>
                             )}
                         </div>
-
-                        <div className="space-y-2">
-                            {splits.map((p, i) => (
-                                <div key={i} className="flex items-center gap-2">
-                                    <Select value={p.method}
-                                        onChange={(e) => setSplits(s => s.map((x, j) => j === i ? { ...x, method: e.target.value } : x))}
-                                        options={INCOMING_PAYMENT_METHODS.map(m => ({ value: m, label: getPaymentMethodLabel(m) }))}
-                                    />
-                                    {multiMethod && (
-                                        <>
-                                            <div className="w-32 shrink-0">
-                                                <input type="number" value={p.amount} placeholder={t('chargepaymentmodal.summa')}
-                                                    onChange={(e) => setSplits(s => s.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
-                                                    className="w-full h-10 px-2 text-sm text-right tabular-nums border border-line rounded-lg bg-surface text-ink" />
-                                            </div>
-                                            <button onClick={() => setSplits(s => s.filter((_, j) => j !== i))}
-                                                className="p-2 text-faint hover:text-red-600 shrink-0">
-                                                <X className="w-4 h-4" />
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-
-                        {multiMethod && (
-                            <p className={`mt-2 text-xs ${splitMismatch ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-faint'}`}>
-                                Usullar: {num(splitSum)} / {num(selectedTotal)}
-                                {splitMismatch && fill(t('chargepaymentmodal.farq_x'), num(Math.abs(selectedTotal - splitSum)))}
-                            </p>
-                        )}
-                    </div>
-                )}
-
-                {/* ── Yakun ────────────────────────────────────────────────── */}
-                {unpaid.length > 0 && (
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                        <Banknote className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span className="text-sm text-emerald-900 dark:text-emerald-200">
-                            {selectedCount} {t('ui.qator')}
-                        </span>
-                        <span className="ml-auto text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-300">
-                            {num(selectedTotal)} UZS
-                        </span>
-                    </div>
+                    </>
                 )}
 
                 {error && (
-                    <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <div role="alert" className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                         <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                         <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
                     </div>
                 )}
 
-                {/* ── To'langan qatorlar: qaytarish ────────────────────────── */}
-                {canRefund && paid.length > 0 && (
+                {/* ── To'langan qatorlar: qaytarish (faqat ega) ────────────── */}
+                {canRefund && paidList.length > 0 && (
                     <details className="border border-line rounded-xl">
                         <summary className="p-3 text-xs font-bold uppercase tracking-wide text-muted cursor-pointer">
-                            To'langanlar ({paid.length}{t('chargepaymentmodal.qaytarish')}
+                            {fill(t('cpay.paidList'), paidList.length)}
                         </summary>
                         <div className="border-t border-line divide-y divide-line">
-                            {paid.map(c => (
+                            {paidList.map(c => (
                                 <div key={c.id} className="p-3 flex items-center gap-3">
                                     <div className="min-w-0 flex-1">
                                         <p className="text-sm text-ink truncate">{c.name}</p>
                                         <p className="text-[11px] text-faint">{t('visit.paidShort')} {num(c.paidAmount)}</p>
                                     </div>
-                                    <button onClick={() => { setRefundFor(c); setRefundVal(String(c.paidAmount || 0)); setRefundError(''); }}
+                                    <button type="button" onClick={() => { setRefundFor(c); setRefundVal(String(c.paidAmount || 0)); setRefundError(''); }}
                                         className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100">
                                         <Undo2 className="w-3.5 h-3.5" /> {t('finance.cash.refund')}
                                     </button>
@@ -361,11 +420,14 @@ export const ChargePaymentModal: React.FC<Props> = ({
                 )}
 
                 <div className="flex items-center justify-end gap-2 pt-2">
-                    <Button variant="secondary" onClick={onClose}>{t('ui.bekor')}</Button>
-                    <Button onClick={submit} disabled={saving || selectedTotal <= 0 || splitMismatch}>
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Check className="w-4 h-4 mr-1.5" />}
-                        {num(selectedTotal)} {t('chargepaymentmodal.qabul_qilish')}
-                    </Button>
+                    <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+                    {unpaid.length > 0 && (
+                        <button type="button" onClick={submit} disabled={saving || sum <= 0 || over}
+                            className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-base font-bold disabled:opacity-50">
+                            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wallet className="w-5 h-5" />}
+                            {fill(t('cpay.accept'), num(sum))}
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -381,7 +443,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                             onChange={(e) => setDiscountVal(e.target.value)} autoFocus
                             helperText={t('chargepaymentmodal.chegirma_tolovdan_oldin_hisobni')} />
                         <div className="flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setDiscountFor(null)}>{t('ui.bekor')}</Button>
+                            <Button variant="secondary" onClick={() => setDiscountFor(null)}>{t('common.cancel')}</Button>
                             <Button onClick={applyDiscount} disabled={busyId === discountFor.id}>{t('chargepaymentmodal.qoyish')}</Button>
                         </div>
                     </div>
@@ -395,9 +457,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                     <div className="space-y-3">
                         <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                            <p className="text-xs text-amber-800 dark:text-amber-200">
-                                {t('chargepaymentmodal.yashiqdan_naqd_chiqadi_va')}
-                            </p>
+                            <p className="text-xs text-amber-800 dark:text-amber-200">{t('chargepaymentmodal.yashiqdan_naqd_chiqadi_va')}</p>
                         </div>
                         <Input type="number" label={t('chargepaymentmodal.qaytariladigan_summa')} value={refundVal}
                             onChange={(e) => { setRefundVal(e.target.value); setRefundError(''); }} autoFocus
@@ -407,7 +467,7 @@ export const ChargePaymentModal: React.FC<Props> = ({
                         <Input label={t('chargepaymentmodal.sabab')} value={refundReason} onChange={(e) => setRefundReason(e.target.value)}
                             placeholder={t('chargepaymentmodal.masalan_xizmat_korsatilmadi')} />
                         <div className="flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setRefundFor(null)}>{t('ui.bekor')}</Button>
+                            <Button variant="secondary" onClick={() => setRefundFor(null)}>{t('common.cancel')}</Button>
                             <Button variant="danger" onClick={applyRefund} disabled={busyId === refundFor.id}>
                                 {t('finance.cash.refund')}
                             </Button>

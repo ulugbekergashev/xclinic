@@ -55,6 +55,14 @@ export interface ReportExportInput {
     writeoffs?: any;
     compare?: any;
     labShift?: any;
+    /** `/reports/months` — Oylar bo'yicha varag'i */
+    months?: any;
+    /** `/reports/debtors` — Qarzdorlar varag'i */
+    debtors?: any;
+    /** Xarajat toifalari o'zbekcha (`EXPENSE_CATEGORY_LABELS`) */
+    expenseLabels?: Record<string, string>;
+    /** Shifokor id → davr oylari bo'yicha to'langan va qoldiq ulush */
+    shares?: Record<string, { paid: number; payable: number }> | null;
 }
 
 export function exportReportToExcel(data: ReportExportInput): void {
@@ -68,20 +76,21 @@ export function exportReportToExcel(data: ReportExportInput): void {
         [],
     ];
 
-    /* ── 1. Umumiy ── */
+    /* ── 1. Umumiy ── (ekrandagi to'rt plitka bilan BIR XIL yorliq va raqam:
+       Xizmatlar · Olindi · Xarajat · Sof foyda — 2026-11-23, Moliya rejasi 8) */
     if (data.summary?.totals) {
         const t = data.summary.totals;
+        const cur = data.compare?.current || {};
+        const pick = (k: string, fallback: number) => (cur[k] != null ? Number(cur[k]) : fallback);
         const rows: Sheet = [
             ...head(tr('reportexport.umumiy_hisobot')),
             [tr('reportexport.korsatkich'), tr('ui.summa')],
-            [tr('reportexport.tushum_yozilgan'), t.revenue],
-            [tr('ui.olingan_pul'), t.collected],
+            [tr('report.services'), pick('revenue', t.revenue)],
+            [tr('report.collected'), pick('collected', t.collected)],
+            [tr('ui.xarajat'), pick('expense', (t.doctorShare || 0) + (t.otherExpenses || 0))],
+            [tr('finance.report.netProfit'), pick('profit', t.netProfit)],
+            [],
             [tr('reportexport.qarz'), t.due],
-            [tr('reportexport.material_tannarxi'), t.materialCost],
-            [tr('finance.report.grossProfit'), t.grossProfit],
-            [tr('ui.shifokor_ulushi_2'), t.doctorShare],
-            [tr('reportexport.boshqa_xarajatlar'), t.otherExpenses],
-            [tr('finance.report.netProfit'), t.netProfit],
         ];
 
         if (data.compare?.previous) {
@@ -90,10 +99,9 @@ export function exportReportToExcel(data: ReportExportInput): void {
             rows.push([], [tr('reportexport.oldingi_davr_bilan_solishtirish')]);
             rows.push([tr('reportexport.oldingi_davr'), fill(tr('reportexport.x_x_x_kun'), p.from, p.to, p.days)]);
             rows.push([tr('reportexport.korsatkich'), tr('reportexport.hozir'), tr('reportexport.oldin'), tr('ui.farq'), tr('reportexport.foiz')]);
-            const cur = data.compare.current || {};
             for (const [key, label] of [
-                ['revenue', tr('ui.tushum')], ['collected', tr('ui.olingan_pul')],
-                ['expense', tr('ui.xarajat')], ['profit', tr('finance.report.profit')],
+                ['revenue', tr('report.services')], ['collected', tr('report.collected')],
+                ['expense', tr('ui.xarajat')], ['profit', tr('finance.report.netProfit')],
                 ['visits', tr('ui.qabullar')], ['avgCheck', tr('finance.report.avgCheck')],
             ] as const) {
                 rows.push([
@@ -105,7 +113,44 @@ export function exportReportToExcel(data: ReportExportInput): void {
             }
         }
 
+        if (data.summary.expenseByCategory?.length) {
+            rows.push([], [tr('finance.report.expenses')]);
+            for (const e of data.summary.expenseByCategory) {
+                rows.push([(data.expenseLabels || {})[e.category] || e.category, e.amount]);
+            }
+        }
+
         addSheet(wb, tr('ui.umumiy_tab'), rows, [1, 2, 3], [30, 16, 16, 16, 10]);
+    }
+
+    /* ── 1b. Oylar bo'yicha (Moliya rejasi 6) ── */
+    if (data.months?.months?.length) {
+        const m = data.months;
+        const rows: Sheet = [
+            ...head(fill(tr('report.byMonths'), m.year)),
+            [tr('report.month'), tr('report.services'), tr('report.collected'), tr('ui.xarajat'), tr('finance.report.netProfit')],
+            ...m.months.map((r: any) => [r.month, r.revenue, r.collected, r.expense, r.profit]),
+            [],
+            [tr('report.yearTotal'), m.totals.revenue, m.totals.collected, m.totals.expense, m.totals.profit],
+        ];
+        addSheet(wb, tr('report.monthsSheet'), rows, [1, 2, 3, 4], [14, 16, 16, 16, 16]);
+    }
+
+    /* ── 1c. Qarzdorlar — qarz yoshi bilan (Moliya rejasi 8) ── */
+    if (data.debtors?.patients?.length) {
+        const ageOf = (d: string) => Math.max(0, Math.floor((Date.now() - new Date(`${d}T00:00:00`).getTime()) / 864e5));
+        const rows: Sheet = [
+            ...head(fill(tr('report.debtorsTitle'), data.debtors.patients.length)),
+            [tr('ui.bemor'), tr('reportexport.qarz'), tr('report.debtSince'), tr('report.debtDays'), tr('report.debtAge')],
+            ...data.debtors.patients.map((p: any) => {
+                const days = ageOf(p.oldestDate);
+                return [p.patientName, p.due, p.oldestDate, days,
+                    days > 60 ? tr('report.age60') : days > 30 ? tr('report.age30') : tr('report.age0')];
+            }),
+            [],
+            [tr('cashbook.jami'), data.debtors.total],
+        ];
+        addSheet(wb, tr('report.debtorsSheet'), rows, [1], [28, 16, 14, 10, 12]);
     }
 
     /* ── 2. Bo'limlar ── */
@@ -113,7 +158,7 @@ export function exportReportToExcel(data: ReportExportInput): void {
     if (deptRows?.length) {
         const rows: Sheet = [
             ...head(tr('reportexport.bolimlar')),
-            [tr('ui.bolim_2'), tr('reportexport.daromad'), tr('ui.tolangan_2'), tr('ui.xarajat'), tr('finance.report.profit'), tr('finance.report.bedDays')],
+            [tr('ui.bolim_2'), tr('report.services'), tr('ui.tolangan_2'), tr('ui.xarajat'), tr('finance.report.profit'), tr('finance.report.bedDays')],
             ...deptRows.map((d: any) => [
                 d.name,
                 d.revenue ?? 0,
@@ -135,15 +180,20 @@ export function exportReportToExcel(data: ReportExportInput): void {
     if (data.doctors?.doctors?.length) {
         const rows: Sheet = [
             ...head(tr('reportexport.shifokorlar')),
-            [tr('ui.shifokor_2'), tr('ui.yozilgan'), tr('ui.tolangan_2'), tr('reportexport.qarz'), tr('ui.bemor'), tr('finance.report.avgCheck'), tr('finance.report.accruedShare')],
-            ...data.doctors.doctors.map((d: any) => [
-                d.name, d.revenue, d.paid, d.due, d.patientCount, d.avgCheck, d.accrued,
-            ]),
+            [tr('ui.shifokor_2'), tr('report.services'), tr('ui.tolangan_2'), tr('reportexport.qarz'), tr('ui.bemor'), tr('finance.report.avgCheck'), tr('finance.report.accruedShare'), tr('report.sharePaid'), tr('report.shareLeft')],
+            ...data.doctors.doctors.map((d: any) => {
+                const s = d.doctorId && data.shares ? data.shares[d.doctorId] : undefined;
+                /* Ulush yuklanmagan bo'lsa — bo'sh katak, soxta nol emas */
+                const none = data.shares ? 0 : '';
+                return [d.name, d.revenue, d.paid, d.due, d.patientCount, d.avgCheck, d.accrued, s?.paid ?? none, s?.payable ?? none];
+            }),
         ];
         const t = data.doctors.totals;
-        if (t) rows.push([], [tr('cashbook.jami'), t.revenue, t.paid, t.due, '', '', t.accrued]);
+        const shareSum = (k: 'paid' | 'payable') => Object.values(data.shares || {}).reduce((a, s) => a + (s[k] || 0), 0);
+        if (t) rows.push([], [tr('cashbook.jami'), t.revenue, t.paid, t.due, '', '', t.accrued,
+            data.shares ? shareSum('paid') : '', data.shares ? shareSum('payable') : '']);
         rows.push([], [tr('reportexport.ulush_tolangan_pul_boyicha')]);
-        addSheet(wb, tr('ui.shifokorlar'), rows, [1, 2, 3, 5, 6], [26, 15, 15, 15, 10, 15, 18]);
+        addSheet(wb, tr('ui.shifokorlar'), rows, [1, 2, 3, 5, 6, 7, 8], [26, 15, 15, 15, 10, 15, 18, 16, 16]);
     }
 
     /* ── 4. Chiqimlar ── */
@@ -162,7 +212,9 @@ export function exportReportToExcel(data: ReportExportInput): void {
             [],
             [tr('reportexport.pozitsiya_boyicha')],
             [tr('ui.nomi'), tr('reportexport.miqdor'), tr('lab.unit'), tr('ui.summa')],
-            ...(w.byItem || []).map((i: any) => [i.name, i.qty, i.unit || '', i.cost]),
+            /* Chiqim omborda manfiy son bo'lib yotadi — hisobotda «qancha
+               ketdi» deb o'qiladi, shuning uchun musbat */
+            ...(w.byItem || []).map((i: any) => [i.name, Math.abs(i.qty || 0), i.unit || '', Math.abs(i.cost || 0)]),
         ];
         addSheet(wb, tr('ui.chiqimlar'), rows, [1, 2, 3], [30, 12, 12, 15]);
     }

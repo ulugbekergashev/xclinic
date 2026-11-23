@@ -12,9 +12,17 @@
  *   · klinika mavjud bo'lganda sozlash TAKRORLANMAYDI
  *   · noto'g'ri kalit rad etiladi
  *   · kalit hisoblash barqaror va tiklash kaliti undan FARQ qiladi
+ *   · kirish loginning harf registrini FARQLAMAYDI
  *
- * Bo'sh bazadagi to'liq oqim (sozlash -> kirish) qo'lda tekshirilgan;
- * uni bu yerda takrorlash uchun alohida server va bo'sh baza kerak.
+ * Oxirgi band bu yerga keyin qo'shildi va sababi achchiq: sozlash
+ * loginni kichik harfda saqlar, kirish esa uni o'zgartirmay qidirardi.
+ * Yangi o'rnatmada admin umuman kira olmasdi. O'sha paytda bu faylda
+ * «sozlash -> kirish oqimi QO'LDA tekshirilgan» deb yozilgan edi —
+ * aynan shu bo'shliqdan xato o'tib ketdi.
+ *
+ * Bo'sh bazadagi to'liq oqim (sozlash -> kirish) hamon qo'lda
+ * tekshiriladi: uni bu yerda takrorlash uchun alohida server va bo'sh
+ * baza kerak.
  *
  * Ishga tushirish: cd backend && npm run test:api
  */
@@ -99,6 +107,31 @@ async function main() {
     const rec = generateRecoveryKey(id);
     ok('tiklash kaliti aktivatsiya kalitidan farq qiladi', rec !== k1, `${rec} == ${k1}`);
     ok('tiklash kaliti 20 belgi', rec.length === 20, String(rec.length));
+
+    console.log('\n═══ 5. LOGIN HARF REGISTRINI FARQLAMAYDI ═══════════');
+
+    /* SOTILGAN NUSXANI TO'XTATGAN XATO. Sozlash marshruti loginni
+       KICHIK HARFDA saqlaydi (`license.ts`), kirish esa uni o'zgartirmay
+       qidirardi. SQLite da `=` registrni farqlaydi, ya'ni xaridor
+       o'rnatishda «DMCclinic» deb yozsa, baza «dmcclinic» ni saqlardi va
+       keyin «DMCclinic» bilan HECH QACHON kira olmasdi — ekranda esa
+       «Login yoki parol noto'g'ri» turardi, parol to'g'ri bo'lsa ham.
+
+       Bu aynan yangi o'rnatmada chiqadi: sozlash marshrutidan o'tgan
+       yagona hisob — admin. Shuning uchun sinov shu to'plamda. */
+    const lower = await call('POST', '/auth/login', { username: 'admin', password: 'testpass123' });
+    ok('kichik harf bilan kirish o\'tadi', lower.status === 200, `status ${lower.status}`);
+
+    const upper = await call('POST', '/auth/login', { username: 'ADMIN', password: 'testpass123' });
+    ok('BOSH HARF bilan ham kirish o\'tadi', upper.status === 200, `status ${upper.status}`);
+
+    const mixed = await call('POST', '/auth/login', { username: 'AdMiN', password: 'testpass123' });
+    ok('aralash harf bilan ham kirish o\'tadi', mixed.status === 200, `status ${mixed.status}`);
+
+    /* Noto'g'ri parol baribir rad etilishi kerak: registr qoidasi
+       yumshatilgani parolni ham yumshatmasligi shart. */
+    const wrong = await call('POST', '/auth/login', { username: 'ADMIN', password: 'notogriparol' });
+    ok('noto\'g\'ri parol bosh harfda ham rad etiladi', wrong.status !== 200, `status ${wrong.status}`);
 
     finish();
 }

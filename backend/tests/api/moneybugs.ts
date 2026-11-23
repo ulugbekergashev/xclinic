@@ -362,6 +362,7 @@ async function main() {
     }
 
     await auditMoneyFixes();
+    await handoverOnClose();
 
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);
@@ -540,6 +541,39 @@ async function auditMoneyFixes() {
         });
         ok("mavjud bo'lmagan xizmat rad etildi (404)", badSvc.status === 404, `status: ${badSvc.status}`);
     }
+}
+
+/* ═══ KUN YOPILISHIDA «RAHBARGA TOPSHIRILDI» (Moliya rejasi 2-vazifa) ═════
+   Kassa oynasi topshirilgan summani inkassatsiya qilib yozadi va kunni
+   «qolgani» bilan yopadi. Shart: farq topshiruvsiz yopilgandagi bilan bir xil
+   bo'lishi kerak — topshirish kamomadni yashirmaydi ham, yaratmaydi ham. */
+async function handoverOnClose() {
+    console.log('\n═══ KUN YOPILISHIDA TOPSHIRISH ═════════════════════');
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date());
+    const before = (await api('GET', `/cash-register/expected?date=${day}`)).data;
+    const expected = Math.round(before?.expectedCash ?? 0);
+    const counted = Math.max(0, expected) + 1000;         // sanalgan: kutilgandan 1 000 ko'p
+    const handed = Math.min(500, counted);
+
+    const mv = await api('POST', '/cash-movements', {
+        date: day, type: 'Encashment', amount: handed, method: 'Cash', note: 'Kun yopilishida rahbarga topshirildi',
+    });
+    ok('topshirilgan summa inkassatsiya bo\'lib yozildi', mv.status === 200, `status: ${mv.status}`);
+
+    const after = (await api('GET', `/cash-register/expected?date=${day}`)).data;
+    ok('kutilgan summa topshirilgan qadar kamaydi',
+        Math.round(after?.expectedCash ?? 0) === expected - handed,
+        `oldin ${expected}, keyin ${after?.expectedCash}`);
+
+    const close = await api('POST', '/cash-register/close', { date: day, countedCash: counted - handed });
+    ok('kun «qolgani» bilan yopildi', close.status === 200, `status: ${close.status}`);
+    ok('farq topshiruvsiz yopilgandagi bilan bir xil (+1 000)',
+        Math.round(close.data?.difference ?? NaN) === counted - expected,
+        `difference: ${close.data?.difference}`);
+
+    // Keyingi sinovlar ochiq kunda ishlasin
+    await api('DELETE', `/cash-register/${day}`);
+    if (mv.data?.id) await api('DELETE', `/cash-movements/${mv.data.id}`);
 }
 
 main().catch((e) => { console.error('Sinov yiqildi:', e); process.exit(1); });

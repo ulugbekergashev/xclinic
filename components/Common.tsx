@@ -325,6 +325,13 @@ export const Modal: React.FC<{
   className?: string;
 }> = ({ isOpen, onClose, title, children, className = 'max-w-lg' }) => {
     const { t } = useLanguage();
+  /* Esc oynani yopadi — «×» ni qidirmasdan. */
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
   if (!isOpen) return null;
 
   return (

@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import {
     Department, Doctor, InventoryItem, LabTest, Modality, MODALITY_LABELS, Service,
 } from '../../types';
-import { useLanguage } from '../../context/LanguageContext';
+import { useLanguage, fill } from '../../context/LanguageContext';
 import { formatNumber } from '../../utils/format';
 import { pickableDoctors } from '../DoctorPicker';
 import { ChipButton, PickerBox, inputCls } from './sheetParts';
@@ -72,13 +72,18 @@ const guessModality = (name: string): Modality | null => {
 };
 
 export const StudyPicker: React.FC<{
-    services: Service[]; busy: boolean; onSend: (draft: StudyDraft) => void;
-}> = ({ services, busy, onSend }) => {
+    services: Service[];
+    /** Boshqa bo'limga xos tekshiruvlar (masalan OPG) — «Hammasi» bosilgandagina */
+    more?: Service[];
+    busy: boolean; onSend: (draft: StudyDraft) => void;
+}> = ({ services: own, more = [], busy, onSend }) => {
     const { t } = useLanguage();
     const [form, setForm] = useState<StudyDraft>({ modality: 'UZI', name: '', price: '', serviceId: '' });
+    const [showAll, setShowAll] = useState(own.length === 0);
+    const services = showAll ? [...own, ...more] : own;
     /* Prayslist bo'lsa — tugmalar; qo'lda yozish faqat prayslistda yo'q
        tekshiruv uchun, alohida bosib ochiladi. */
-    const [manual, setManual] = useState(services.length === 0);
+    const [manual, setManual] = useState(own.length + more.length === 0);
 
     const pickService = (s: Service) => setForm(f => ({
         modality: guessModality(s.name) || f.modality,
@@ -109,6 +114,12 @@ export const StudyPicker: React.FC<{
                 </>
             )}
             <div className="flex flex-wrap items-center gap-3 mt-3">
+                {!manual && !showAll && more.length > 0 && (
+                    <button type="button" onClick={() => setShowAll(true)}
+                        className="text-sm font-semibold text-primary-700 dark:text-primary-300 hover:underline">
+                        {fill(t('visit.studyShowAll'), more.length)}
+                    </button>
+                )}
                 {services.length > 0 && (
                     <button type="button" onClick={manual ? toPrice : toManual}
                         className="text-sm font-semibold text-primary-700 dark:text-primary-300 hover:underline">

@@ -14,7 +14,21 @@
  * yuklanmasligi shu sinovning butun mazmuni.
  */
 import { test, expect, Page, Browser } from '@playwright/test';
-import { login, uniq } from './helpers';
+import { login, uniq, openVisitInCard } from './helpers';
+
+/* Qabul bloklari (2026-11-21): ko'rik, tashxis, retsept, xizmatlar va
+   yo'llanma — hammasi bir ekranda. Yo'llanma turlari (tahlil, diagnostika,
+   boshqa shifokor) «+ Yo'llanma» oynasida. */
+/* «Bugungi qabul» (2026-11-21, DentaCRM namunasida): bitta «+ Qo'shish» —
+   oynada nima qo'shilishi tepada tanlanadi: Xizmat · Tahlil · Diagnostika ·
+   Dori · Tashxis · Boshqa shifokor. */
+const openAdd = async (p: any, kind: string) => {
+    /* Tashxis va xizmatdan keyin oyna ochiq qoladi — qayta ochilmaydi */
+    if (!(await p.getByRole('dialog').count())) await p.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ }).click();
+    await p.getByRole('dialog').getByRole('button', { name: new RegExp(`^${kind}$`) }).click();
+};
+const openReferral = (p: any) => openAdd(p, 'Tahlil');
+
 
 /* SAHIFA QAYTA YUKLANMAGANINI ISBOTLASH.
  *
@@ -91,31 +105,30 @@ async function openVisitAtReception(page: Page, surname: string, dept: RegExp) {
     await expect(page.getByText(/Qabul ochildi/).first()).toBeVisible();
 }
 
-/** Kassa: bemor to'lov navbatida turibdi → tanlanadi → hisobi kassa
- *  oynasida chiqadi → «To'lovni qabul qilish» to'lov oynasini ochadi. */
+/** Kassa: bemor to'lov navbatida turibdi → qatoridagi «To'lash» to'lov
+ *  oynasini ochadi (bir bosish — tanlab, keyin bosish yo'q). */
 async function payFromQueue(page: Page, surname: string) {
     const queue = page.locator('section[aria-labelledby="pay-queue-title"]');
     const row = queue.locator('li', { hasText: surname }).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.getByRole('button').click();
-    await expect(row.getByRole('button')).toHaveAttribute('aria-pressed', 'true');
-    await queue.getByRole('button', { name: /^To'lovni qabul qilish/ }).click();
+    await row.getByRole('button', { name: /^To'lash/ }).click();
 }
 
 /** Bemor kartasida qabul ochib, UZI buyuradi — to'lanmagan qator tug'iladi. */
 async function orderStudyInCard(page: Page, surname: string, studyName: string) {
     await page.getByText(surname).first().click();
-    await page.locator('select').first().selectOption({ index: 1 });
-    await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
-    await expect(page.getByText('Bugungi qabul')).toBeVisible();
-    await page.getByRole('button', { name: /^Diagnostikaga$/ }).click();
+    /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
+    await openVisitInCard(page);
+    await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
+    await openReferral(page);
+    await page.getByRole('button', { name: /^Diagnostika$/ }).click();
     /* Prayslist tugma bo'lib turadi; prayslistda yo'q tekshiruv — «qo'lda yozish» orqali */
     const manualStudy = page.getByRole('button', { name: /qo'lda yozish/ });
     if (await manualStudy.isVisible()) await manualStudy.click();
     await page.getByPlaceholder(/Masalan: Qorin/).fill(studyName);
     await page.getByPlaceholder(/^Narx$/).fill('90000');
     await page.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();
-    await expect(page.getByText(/to'lanmagan — bemorni kassaga/)).toBeVisible();
+    await expect(page.getByText(/so'm to'lanmagan$/)).toBeVisible();
 }
 
 async function secondScreen(browser: Browser, username: string) {
@@ -177,7 +190,7 @@ test.describe('bir kompyuterda', () => {
         await expect(page.getByText(/Terapevt konsultatsiyasi/).last()).toBeVisible();
         // Oynadagi tugma summa bilan boshlanadi: «60 000 qabul qilish»
         await page.getByRole('button', { name: /^\d[\d\s]* qabul qilish$/ }).click();
-        await expect(page.getByText(/so'm qabul qilindi/).first()).toBeVisible();
+        await expect(page.getByText(/To'lov qabul qilindi/).first()).toBeVisible();
 
         // To'langach bemor qarzdorlar ro'yxatidan ketadi
         await expect(page.locator('li', { hasText: surname })
@@ -193,11 +206,12 @@ test.describe('bir kompyuterda', () => {
         await addPatient(page, surname, n);
 
         await page.getByText(surname).first().click();
-        await page.locator('select').first().selectOption({ index: 1 });
-        await page.getByRole('button', { name: /^Qabul ochish$/ }).click();
-        await expect(page.getByText('Bugungi qabul')).toBeVisible();
+        /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
+        await openVisitInCard(page);
+        await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
 
-        await page.getByRole('button', { name: /^Tahlilga$/ }).click();
+        await openReferral(page);
+        await page.getByRole('button', { name: /^Tahlil$/ }).click();
         /* Tanlov qutisining O'ZIDAN: varaqda boshqa belgilash katakchalari ham bor
            (tashxisdagi «surunkali», ko'rik shablonidagi maydonlar). */
         await page.getByRole('group', { name: 'Qaysi tahlillar?' }).locator('label').first().click();
@@ -276,7 +290,8 @@ test.describe('ikki kompyuterda', () => {
         const typed = `Bosh og'rig'i, uch kundan beri ${n}`;
         const exam = page.locator('textarea:not([disabled])').first();
         await exam.fill(typed);
-        await page.getByRole('button', { name: /^Tahlilga$/ }).click();
+        await openReferral(page);
+        await page.getByRole('button', { name: /^Tahlil$/ }).click();
         await expect(exam).toHaveValue(typed);
 
         // Kassir — boshqa kompyuterda, registrator hisobi bilan
@@ -284,7 +299,7 @@ test.describe('ikki kompyuterda', () => {
         await nav(cashier.page, /^Kassa$/);
         await payFromQueue(cashier.page, surname);
         await cashier.page.getByRole('button', { name: /^\d[\d\s]* qabul qilish$/ }).click();
-        await expect(cashier.page.getByText(/so'm qabul qilindi/).first()).toBeVisible();
+        await expect(cashier.page.getByText(/To'lov qabul qilindi/).first()).toBeVisible();
 
         // Shifokor kartadan chiqmagan — ogohlantirish o'zi yo'qoladi
         await expect(page.getByText(/to'lanmagan — bemorni kassaga/)).toHaveCount(0, { timeout: 15_000 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatDateTime } from '../utils/format';
+import { formatDate, formatDateTime } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
 import { Camera, Upload, Trash2, X, ZoomIn } from 'lucide-react';
@@ -166,14 +166,19 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId }) => {
     ];
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium text-ink">{t('patients.details.photos.title')}</h3>
-                <Button onClick={() => setIsUploadModalOpen(true)}>
-                    <Upload className="w-4 h-4 mr-2" />
+        /* Kartaning boshqa bo'limlari bilan BIR XIL quti (2026-11-22): ilgari
+           rasmlar qutisiz, katta sarlavha va ko'k tugma bilan turardi, ustidagi
+           hujjatlar esa boshqacha — bir tabda ikki xil ko'rinish. */
+        <section className="min-w-0 bg-surface border border-line rounded-2xl overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-line">
+                <h3 className="text-[15px] font-semibold text-ink">{t('patients.details.photos.title')}</h3>
+                <button type="button" onClick={() => setIsUploadModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-primary-200 dark:border-primary-800 text-sm font-semibold text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30">
+                    <Upload className="w-4 h-4" aria-hidden="true" />
                     {t('patients.details.photos.uploadBtn')}
-                </Button>
+                </button>
             </div>
+            <div className="p-5">
 
             {loading ? (
                 <div className="text-center py-10 text-muted">{t('common.loading')}</div>
@@ -212,7 +217,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId }) => {
                                         <p className="text-white text-xs truncate">{photo.description}</p>
                                     )}
                                     <p className="text-faint text-[10px]">
-                                        {new Date(photo.date).toLocaleDateString()}
+                                        {formatDate(new Date(photo.date))}
                                     </p>
                                 </div>
                             </div>
@@ -220,6 +225,7 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId }) => {
                     ))}
                 </div>
             )}
+            </div>
 
             {/* Upload Modal */}
             <Modal
@@ -323,6 +329,6 @@ export const PatientPhotos: React.FC<PatientPhotosProps> = ({ patientId }) => {
                     </div>
                 </div>
             )}
-        </div>
+        </section>
     );
 };

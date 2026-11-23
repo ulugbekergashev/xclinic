@@ -44,8 +44,10 @@ test.describe('Kalendar', () => {
 
         await login(page);
         await go(page, '/calendar');
-        const side = page.locator('aside[aria-label="Kalendar paneli"]');
-        await expect(side).toBeVisible({ timeout: 30_000 });
+        /* Yon panel 2026-11-20 da olib tashlandi: shifokor filtri — tepadagi
+           ro'yxat, istalgan kun — sana yozuvini bosib. */
+        const doctorSelect = page.getByRole('combobox', { name: 'Shifokorlar' });
+        await expect(doctorSelect).toBeVisible({ timeout: 30_000 });
 
         // ── Sarlavha interfeys tilida ───────────────────────────────────
         const header = page.locator('h1').locator('xpath=following-sibling::div[1]');
@@ -60,16 +62,15 @@ test.describe('Kalendar', () => {
         const hourRow = page.getByText(`${now.getHours()}:00`, { exact: true });
         await expect(page.locator('span.border-red-500.border-t-2')).toHaveCount((await hourRow.count()) > 0 ? 1 : 0);
 
-        // ── Yon panel: shifokor — filtr ─────────────────────────────────
-        const mine = side.getByRole('button', { name: new RegExp(`^Dr\\. ${doc.lastName}`) });
-        await mine.click();
-        await expect(mine).toHaveAttribute('aria-pressed', 'true');
+        // ── Shifokor filtri — tepadagi ro'yxat ───────────────────────────
+        await doctorSelect.selectOption(doc.id);
+        await expect(doctorSelect).toHaveValue(doc.id);
         /* Blok ism bilan emas, `title` bilan qidiriladi: bir vaqtda uch va undan
            ko'p yozuv bo'lsa hafta ko'rinishida blok siqiladi va ism yozilmaydi. */
         const block = page.locator(`[title*="Oy${n} Sinov"]`);
         await expect(block.first()).toBeAttached();
-        await mine.click();
-        await expect(mine).toHaveAttribute('aria-pressed', 'false');
+        await doctorSelect.selectOption('');
+        await expect(doctorSelect).toHaveValue('');
 
         // ── Oy: katakda son; kun bosilsa kunlik ko'rinish ───────────────
         await page.getByRole('button', { name: /^Oy$/ }).click();
@@ -81,21 +82,19 @@ test.describe('Kalendar', () => {
         await expect(header).toContainText(new RegExp(`^${now.getDate()}-`));
         await expect(block.first()).toBeAttached();
 
-        // ── Kichik oy kalendari: boshqa kun → «Bugun» qaytaradi ─────────
+        // ── Sana yozuvi orqali boshqa kun → «Bugun» qaytaradi ───────────
         const other = now.getDate() === 15 ? 16 : 15;
-        await side.getByRole('button', { name: new RegExp(`^${other} `) }).click();
+        const otherKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(other).padStart(2, '0')}`;
+        await page.getByLabel('Sanani tanlash').fill(otherKey);
         await expect(header).toContainText(new RegExp(`^${other}-`));
         await page.getByRole('button', { name: /^Bugun$/ }).last().click();
         await expect(header).toContainText(new RegExp(`^${now.getDate()}-`));
     });
 
-    test("shifokorda yon panelda boshqa shifokorlar ro'yxati yo'q", async ({ page }) => {
+    test("shifokorda shifokor filtri yo'q — u faqat o'zinikini ko'radi", async ({ page }) => {
         await login(page, 'malika.yusupova');
         await go(page, '/calendar');
-        const side = page.locator('aside[aria-label="Kalendar paneli"]');
-        await expect(side).toBeVisible({ timeout: 30_000 });
-        await expect(side.getByRole('button', { name: /^Dr\. / })).toHaveCount(0);
-        // Holatlar izohi hammaga
-        await expect(side.getByText('Holatlar')).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Kalendar' })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByRole('combobox', { name: 'Shifokorlar' })).toHaveCount(0);
     });
 });

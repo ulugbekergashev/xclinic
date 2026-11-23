@@ -30,15 +30,33 @@ export const esc = (v: unknown): string => {
 export const fmtMoney = (n: number) =>
     Math.round(n || 0).toLocaleString('uz-UZ').replace(/,/g, ' ');
 
-export const fmtDate = (v?: string | Date | null) => {
-    if (!v) return '—';
-    try { return new Date(v).toLocaleDateString('uz-UZ'); } catch { return String(v).slice(0, 10); }
+/* Qog'ozda sana faqat dd.mm.yyyy. `toLocaleDateString('uz-UZ')` Chrome'da
+   «2026-07-24» qaytaradi. Sof `YYYY-MM-DD` (tug'ilgan sana) mahalliy kun
+   deb o'qiladi — UTC orqali bir kun siljimasin. */
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+const toPrintDate = (v: string | Date): Date | null => {
+    if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+    const m = DATE_ONLY.exec(v.trim());
+    const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
 };
 
-export const fmtDateTime = (v?: string | Date | null) => {
+/* `utils/format` bilan bir xil ko'rinish. U yerdan import qilinmaydi:
+   format tarjima kontekstini tortadi, bu fayl esa brauzersiz sinovda ham
+   ishlaydi (printReceipt.test). */
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+export const fmtDate = (v?: string | Date | null): string => {
     if (!v) return '—';
-    try { return new Date(v).toLocaleString('uz-UZ', { dateStyle: 'short', timeStyle: 'short' }); }
-    catch { return String(v); }
+    const d = toPrintDate(v);
+    return d ? `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}` : String(v);
+};
+
+export const fmtDateTime = (v?: string | Date | null): string => {
+    if (!v) return '—';
+    const d = toPrintDate(v);
+    return d ? `${fmtDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}` : String(v);
 };
 
 export interface PrintClinic {
@@ -49,19 +67,32 @@ export interface PrintClinic {
     letterheadNote?: string | null;
 }
 
+/* Joriy klinika — ilova uni yuklaganda shu yerga yozadi (App.tsx).
+   Chaqiruvchi klinikani bermasa, shapka «Klinika» emas, shu nom bilan chiqadi. */
+let storedClinic: PrintClinic | null = null;
+
+export function setPrintClinic(clinic?: PrintClinic | null): void {
+    storedClinic = clinic || null;
+}
+
+/** Berilgan klinika, bo'lmasa saqlangan joriy klinika */
+export function resolvePrintClinic(clinic?: PrintClinic | null): PrintClinic | null {
+    if (clinic?.name) return clinic;
+    return storedClinic || clinic || null;
+}
+
 /** Hujjat shapkasi: klinika kim ekani va litsenziya raqami */
-export function clinicHeader(clinic?: PrintClinic | null): string {
+export function clinicHeader(clinicArg?: PrintClinic | null): string {
+    const clinic = resolvePrintClinic(clinicArg);
     const line2 = [clinic?.address, clinic?.phone].filter(Boolean).map(esc).join(' · ');
     return `
     <div class="head">
-      <div class="head-name">${esc(clinic?.name || 'Klinika')}</div>
+      <div class="head-name">${esc(clinic?.name || 'XClinic')}</div>
       ${line2 ? `<div class="head-sub">${line2}</div>` : ''}
       ${clinic?.licenseNumber
             ? `<div class="head-sub">Litsenziya: ${esc(clinic.licenseNumber)}</div>`
-            /* Litsenziya raqami kiritilmagan bo'lsa shapkada JOY QOLDIRAMIZ.
-               Sabab: bu rasmiy hujjat va raqamsiz chiqqani ko'rinib turishi
-               kerak, jimgina yo'qolib ketmasligi kerak. */
-            : `<div class="head-sub muted">Litsenziya raqami kiritilmagan (Sozlamalar)</div>`}
+            /* Raqam yo'q — satr chiqmaydi: bemor qog'ozida eslatma o'rni yo'q */
+            : ''}
     </div>`;
 }
 
@@ -75,7 +106,8 @@ export function signatureBlock(label = 'Shifokor', name?: string | null): string
 }
 
 /** Klinikaning blank pastidagi erkin satri */
-export function letterheadFooter(clinic?: PrintClinic | null): string {
+export function letterheadFooter(clinicArg?: PrintClinic | null): string {
+    const clinic = resolvePrintClinic(clinicArg);
     if (!clinic?.letterheadNote) return '';
     return `<div class="foot">${esc(clinic.letterheadNote)}</div>`;
 }

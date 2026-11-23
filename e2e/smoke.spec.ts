@@ -134,17 +134,16 @@ test.describe('XClinic — asosiy oqimlar', () => {
         await login(page);
         await go(page, '/calendar');
 
-        /* Kalendar lazy chunk — yuklanishini kutamiz. Shifokor tugmalari
-           `aria-pressed` bilan: ilgari ular oddiy `div` edi va bosilmasdi.
-           Keng ekranda filtr yon panelda (setka ustidagi nishonlar qatori
-           faqat tor ekranda ko'rinadi). */
-        const legend = page.locator('aside[aria-label="Kalendar paneli"]').getByRole('button', { name: /^Dr. / });
-        await expect(legend.first()).toBeVisible({ timeout: 20_000 });
-        const n = await legend.count();
-        expect(n).toBeGreaterThan(0);
+        /* Kalendar lazy chunk — yuklanishini kutamiz. Shifokor filtri —
+           tepadagi bitta ro'yxat (2026-11-20 gacha yon panelda edi). */
+        const filter = page.getByRole('combobox', { name: 'Shifokorlar' });
+        await expect(filter).toBeVisible({ timeout: 20_000 });
+        const options = filter.locator('option');
+        expect(await options.count()).toBeGreaterThan(1);
 
-        await legend.first().click();
-        await expect(legend.first()).toHaveAttribute('aria-pressed', 'true');
+        const first = await options.nth(1).getAttribute('value');
+        await filter.selectOption(first!);
+        await expect(filter).toHaveValue(first!);
     });
 
     test('7. Klaviatura fokusi KO\'RINADI (B-15)', async ({ page }) => {

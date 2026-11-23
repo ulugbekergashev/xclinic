@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-    FlaskConical, Scan, Pill, Trash2, AlertCircle,
-    Printer, Stethoscope, Loader2, XCircle, Play, Undo2,
+    FlaskConical, Scan, Pill, AlertCircle, ClipboardList,
+    Printer, Stethoscope, Loader2, Plus, CalendarPlus,
 } from 'lucide-react';
 import {
     Visit, Department, EncounterTemplate, LabTest, Service, Doctor, Patient,
     MODALITY_LABELS, ICD10Code, VisitCharge, ChargeSummary, UserRole,
-    Prescription, InventoryItem,
+    Prescription, InventoryItem, Clinic,
 } from '../types';
+import { printVisitSummary } from '../utils/printVisitSummary';
 import { api } from '../services/api';
 import { useResourceSync } from '../hooks/useDataSync';
 import { useVisitAutosave } from '../hooks/useVisitAutosave';
@@ -22,9 +23,10 @@ import {
 } from '../utils/recentPicks';
 import { OpenVisitForm } from './visit/OpenVisitForm';
 import { VisitResults } from './visit/VisitResults';
-import { AddButton, ItemRow, SheetLabel } from './visit/sheetParts';
-import { DiagnosisBlock } from './visit/DiagnosisBlock';
-import { VisitBill, VisitFinishRow, lightBtn } from './visit/VisitFooter';
+import { ItemRow, SheetLabel } from './visit/sheetParts';
+import { DiagnosisPicker } from './visit/DiagnosisBlock';
+import { Modal } from './Common';
+import { VisitActions, VisitHeader } from './visit/VisitFooter';
 import {
     ConsultDraft, ConsultPicker, LabPicker, RxDraft, RxForm, ServicePicker, StudyDraft, StudyPicker,
 } from './visit/VisitPickers';
@@ -39,10 +41,48 @@ import {
    bayon alohida kartada o'zining «Saqlash» tugmasi bilan, yozilgan narsalar
    esa pastdagi to'rtta ro'yxatda.
 
-   Endi bu BITTA VARAQ va u shifokor ishlaydigan tartibda o'qiladi:
-   natijalar → shikoyat → ko'rik → tashxis → tayinlov → xizmat → yo'llanma →
-   keyingi tashrif. Har bo'limda yozilgani ham, «+ qo'shish» ham o'z joyida.
+   Endi bu BITTA VARAQ va u shifokor ishlaydigan tartibda o'qiladi.
+
+   «+» TUGMALAR — O'Z BO'LIMINING SARLAVHASIDA (2026-11-20). Pastdagi
+   «Yana: + Tahlil · + Diagnostika …» qatori olib tashlandi: «Qilingan ish»
+   sarlavhasida «+ Xizmat», «+ Dori»; «Yo'llanma» sarlavhasida «+ Tahlil»,
+   «+ Diagnostika», «+ Boshqa shifokor». Keyingi qabulga yozish — chapdagi
+   bemor kartochkasidagi «Qabulga yozish» tugmasi.
+
+   BITTA EKRAN (2026-11-20). Klinika egasi: «nimani qayerdan qidirishni odam
+   bilmaydi», «hammasi bitta ekran ichida hal bo'lsa» — lekin «tiqib tashlash
+   emas». Varaq endi:
+     · tepada QABUL QATORI — kim, navbat, holat, qarz, «To'lash» va
+       «Qabulni yakunlash»; u aylantirilmaydi;
+     · ostida BITTA keng ustun, faqat har bemorda kerak bo'ladigani:
+       Shikoyat va ko'rik → Tashxis → Qilingan ish (xizmat, dori);
+     · oxirida «Yana: + Tahlil · + Diagnostika · + Boshqa shifokor ·
+       + Keyingi tashrif». Bular har bemorda kerak emas, shuning uchun
+       alohida blok bo'lib turmaydi: biror narsa qo'shilgandagina uning
+       bloki chiqadi (natijalar ham o'sha yerda).
+   Katta ekranda ustun o'z ichida aylanadi, sahifa esa joyida turadi.
    Matn o'zi saqlanadi.
+
+   BLOKLAR (2026-11-21). Bosqichlar (Ko'rik · Tashxis · Retsept …) ikkinchi
+   tab qatori bo'lib qoldi — tepadagi karta tablari bilan ustma-ust. Klinika
+   egasi DentaCRM va boshqa CRM kartalarini ko'rsatdi: «bloklar bilan».
+   Endi «Umumiy» tabida hammasi BIR EKRANDA, o'z kartochkasida:
+     · chapda katta blok — Shikoyat va ko'rik (shifokor shu yerda yozadi);
+     · o'ngda ixcham bloklar — Tashxis, Retsept, Xizmatlar, Yo'llanma;
+       har birida yozilgani va bitta «+» tugma.
+   «+» bosilganda tanlov OYNADA ochiladi: blok tor, tanlov esa keng.
+
+   IKKI BLOK (2026-11-21, kechqurun). Klinika egasi DentaCRM kartasining
+   boshini ko'rsatdi: «Umumiy» tabida bor-yo'g'i ikkita blok — «Bugungi
+   qabul» (bitta «+ Protsedura qo'shish» va bugun qilinganlar) va «Tibbiy
+   tarix». Bizda bir qarashda yettita narsa turardi. Endi:
+     · «BUGUNGI QABUL» — bitta «+ Qo'shish» (xizmat, tahlil, diagnostika,
+       dori, tashxis, boshqa shifokor — bitta oynada), bugun qo'shilgan
+       hamma narsa BITTA ro'yxatda, pastda «Qabulni boshlash» →
+       «Qabulni yakunlash»;
+     · «TIBBIY TARIX» — allergiya, kasalliklar (karta beradi, `history`),
+       shikoyat va ko'rik. Ko'rik formasi yopiq turadi va «Ko'rik yozish»
+       bilan ochiladi: har bemorda kerak emas.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
@@ -63,16 +103,48 @@ interface Props {
     onState?: (state: VisitSheetState) => void;
     /** Tarixdan eski qabul ochilgan — bugungisiga qaytish */
     onShowToday?: () => void;
-    /** Bemorning eng yaqin kelajakdagi yozuvi */
-    nextAppointment?: { date: string; time: string; doctorName?: string } | null;
+    /** «Keyingi qabulga yozish» — yakunlangan qabul ostida */
     onSchedule?: () => void;
-    /** To'lov oynasi — kassadagi bilan bir xil */
-    onTakePayment?: () => void;
+    /** «Tibbiy tarix» blokining boshi — allergiya va kasalliklar (karta beradi) */
+    history?: React.ReactNode;
+    /** Qog'ozlar shapkasi uchun */
+    clinic?: Clinic;
+    /* Karta tablaridagi «+ Tahlilga yuborish», «+ Retsept yozish» — shu
+       qabulning «+ Qo'shish» oynasini o'sha bo'limda ochadi. `n` har bosishda
+       oshadi: bir tugma ikki marta bosilsa ham oyna qayta ochilsin. */
+    addRequest?: { kind: AddKind; n: number } | null;
 }
 
 export interface VisitSheetState { visit: Visit | null; money: ChargeSummary }
 
+/** «+ Qo'shish» oynasida nima tanlangan. `null` — oyna yopiq. */
 type Panel = null | 'dx' | 'rx' | 'service' | 'lab' | 'study' | 'consult';
+export type AddKind = Exclude<Panel, null>;
+
+/* Tish tekshiruvlari (OPG, 3D tomografiya …) faqat stomatologga birinchi
+   chiqadi; boshqa shifokorga ular «Hammasi» ostida (audit, 2026-11-22:
+   endokrinologga OPG taklif qilinardi). */
+const DENTAL_STUDY = /(\bopg|ortopantomo|3d\s*tomo|kt\s*3d|cbct|\btish|dental|зуб)/i;
+const DENTAL_DEPT = /(stomat|стомат|dent)/i;
+
+/** Ikki blok yonma-yon (DentaCRM dagidek), tor ekranda ustma-ust */
+const gridCls = 'min-w-0 grid grid-cols-1 xl:grid-cols-2 gap-4 items-start';
+const boxCls = 'min-w-0 bg-surface border border-line rounded-2xl p-5 flex flex-col gap-4';
+
+/** Tekshiruv nomi: «UZI — Qalqonsimon bez UZI» kabi takror chiqmasin —
+ *  nomda tur allaqachon bo'lsa, faqat nomning o'zi. */
+const studyTitle = (kind: string, name: string): string =>
+    name.toLowerCase().includes(kind.toLowerCase()) ? name : `${kind} — ${name}`;
+
+/** Ko'rikda biror qiymat yozilganmi — yozilgan bo'lsa forma yopilmaydi */
+const hasExamData = (raw?: string | null): boolean => {
+    if (!raw) return false;
+    try {
+        const data = JSON.parse(raw);
+        return !!data && typeof data === 'object'
+            && Object.values(data).some(v => v !== null && v !== undefined && String(v).trim() !== '' && v !== false);
+    } catch { return false; }
+};
 
 const fmt = (n: number) => formatNumber(n);
 const NO_MONEY: ChargeSummary = { total: 0, paid: 0, due: 0, unpaidCount: 0 };
@@ -89,14 +161,14 @@ export const VISIT_STATUS_KEY = {
     'Cancelled': 'visit.status.Cancelled',
 } as const;
 
-/** Qabul holati — rangi bilan birga */
-const STATUS_TONE: Record<string, string> = {
-    'Waiting': 'bg-elevated text-muted',
-    'Called': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-    'In Progress': 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
-    'AwaitingResults': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    'Completed': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-    'Cancelled': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+/** Qabul holati — sarlavha ostidagi kichik rangli nuqta */
+const STATUS_DOT: Record<string, string> = {
+    'Waiting': 'bg-slate-400',
+    'Called': 'bg-blue-500',
+    'In Progress': 'bg-primary-600',
+    'AwaitingResults': 'bg-amber-500',
+    'Completed': 'bg-emerald-500',
+    'Cancelled': 'bg-red-500',
 };
 
 /** Shu manzillarga yozilsa ochiq qabul varag'i eskiradi */
@@ -108,7 +180,7 @@ const VISIT_RESOURCES = [
 export const VisitPanel: React.FC<Props> = ({
     patient, visitId, departments, services, doctors, currentUserName, userRole,
     loggedDoctorId, addToast, onVisitChanged, onState, onShowToday,
-    nextAppointment, onSchedule, onTakePayment,
+    onSchedule, history, clinic, addRequest,
 }) => {
     const { t } = useLanguage();
 
@@ -124,6 +196,8 @@ export const VisitPanel: React.FC<Props> = ({
 
     /** Qaysi «+» ochiq. Bir vaqtda bittasi: varaq uzayib ketmasin. */
     const [panel, setPanel] = useState<Panel>(null);
+    /** Ko'rik formasi ochilganmi (bo'sh qabulda u yopiq turadi) */
+    const [examOpen, setExamOpen] = useState(false);
     /* Retseptdagi dorilar ombordan taklif qilinadi. Erkin matn ham
        qoladi: omborda yo'q dorini yozish mumkin bo'lishi kerak. */
     const [meds, setMeds] = useState<InventoryItem[]>([]);
@@ -175,7 +249,12 @@ export const VisitPanel: React.FC<Props> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visitId]);
 
-    useEffect(() => { setLoading(!!visitId); setPanel(null); reload(); }, [reload, visitId]);
+    useEffect(() => { setLoading(!!visitId); setPanel(null); setExamOpen(false); reload(); }, [reload, visitId]);
+
+    /* Kartaning tabidan kelgan «+» — oyna o'sha bo'limda ochiladi */
+    useEffect(() => {
+        if (addRequest) setPanel(addRequest.kind);
+    }, [addRequest]);
 
     /* Karta ochiq turganda boshqa kompyuterda biror narsa o'zgarsa —
        kassir pulni oldi, laborant natija kiritdi, registrator xizmat
@@ -209,6 +288,14 @@ export const VisitPanel: React.FC<Props> = ({
         const diagIds = new Set(departments.filter(d => d.type === 'DIAGNOSTIC').map(d => d.id));
         return services.filter(s => s.departmentId && diagIds.has(s.departmentId));
     }, [services, departments]);
+    /* O'z bo'limiga mos tekshiruvlar oldinda, qolgani «Hammasi» ostida */
+    const visitDeptName = departments.find(d => d.id === visit?.departmentId)?.name || '';
+    const [ownStudies, otherStudies] = useMemo(() => {
+        const dental = DENTAL_DEPT.test(visitDeptName);
+        const own: Service[] = []; const other: Service[] = [];
+        diagServices.forEach(s => ((dental || !DENTAL_STUDY.test(s.name)) ? own : other).push(s));
+        return [own, other];
+    }, [diagServices, visitDeptName]);
 
     const patientName = `${patient.lastName || ''} ${patient.firstName || ''}`.trim();
 
@@ -219,10 +306,12 @@ export const VisitPanel: React.FC<Props> = ({
     );
 
     // ── Amallar ─────────────────────────────────────────────────────────────
-    /** Yozish + varaqni yangilash. `true` — yozildi (tez tugmalar shundagina eslab qolinadi). */
-    const guard = async (fn: () => Promise<any>, okMsg: string): Promise<boolean> => {
+    /** Yozish + varaqni yangilash. `true` — yozildi (tez tugmalar shundagina eslab qolinadi).
+     *  `keepOpen` — bir bosishda qo'shiladigan narsa (tashxis, xizmat): oyna
+     *  ochiq qoladi, shifokor ketma-ket qo'shadi va «Tayyor» bilan yopadi. */
+    const guard = async (fn: () => Promise<any>, okMsg: string, keepOpen = false): Promise<boolean> => {
         setBusy(true);
-        try { await fn(); await reload(); onVisitChanged(visitId); addToast('success', okMsg); setPanel(null); return true; }
+        try { await fn(); await reload(); onVisitChanged(visitId); addToast('success', okMsg); if (!keepOpen) setPanel(null); return true; }
         catch (e: any) { addToast('error', e?.message || t('ui.xatolik')); return false; }
         finally { setBusy(false); }
     };
@@ -245,6 +334,14 @@ export const VisitPanel: React.FC<Props> = ({
             await api.visits.update(visit.id, { status: 'In Progress' });
         }
     }, t('visit.markedSeen'));
+
+    /* QABUL TARTIBI (klinika egasi, 2026-11-21): «Kutmoqda» → «Qabulni
+       boshlash» → «Qabulda» → «Qabulni yakunlash». Karta ochilishi qabulni
+       boshlamaydi — boshlanmagan qabulda «Yakunlash» ko'rinmaydi. */
+    const start = () => guard(
+        () => api.visits.update(visit!.id, { status: 'In Progress' }),
+        t('visit.started'),
+    );
 
     /** «Natija kutilmoqda» dan qo'lda qaytish — bemor qaytib keldi */
     const resume = () => guard(
@@ -318,7 +415,7 @@ export const VisitPanel: React.FC<Props> = ({
 
     const addService = (serviceId: number) => guard(
         () => api.visits.addProcedure(visit!.id, { serviceId }),
-        t('visit.serviceAdded'),
+        t('visit.serviceAdded'), true,
     );
 
     /* BOSHQA SHIFOKORGA YUBORISH. Bemor o'sha bo'limning navbatiga tushadi
@@ -337,16 +434,18 @@ export const VisitPanel: React.FC<Props> = ({
                 date: todayISO(),
                 status: 'Waiting',
             } as any);
+            /* Qog'oz O'ZI CHIQMAYDI (2026-11-22). Ilgari bo'sh «Konsultatsiyaga»
+               varag'i so'ralmasdan ochilardi va unda «kassaga taqdim eting»
+               deb yozilardi. Bemor boshqa shifokor navbatiga tushdi — shuning
+               o'zi yetadi; yo'llanma yozuvi tarix uchun qoladi. */
             try {
-                const ref = await api.referrals.create({
+                await api.referrals.create({
                     patientId: visit.patientId,
                     visitId: visit.id,
                     kind: 'Consult',
                     targetDepartmentId: draft.departmentId,
                     items: [],
                 } as any);
-                const full = await api.referrals.get(ref.id);
-                printReferral(full, full.clinic);
             } catch { /* yo'llanma ixtiyoriy — navbat allaqachon ochildi */ }
             addToast('success', t('visit.consultSent'));
             setPanel(null);
@@ -361,7 +460,7 @@ export const VisitPanel: React.FC<Props> = ({
             patientId: visit!.patientId, code: code.code, date: visit!.date,
             notes: '', status: 'Active', clinicId: visit!.clinicId, visitId: visit!.id,
             isChronic,
-        } as any), t('visit.diagnosisAdded'));
+        } as any), t('visit.diagnosisAdded'), true);
         if (!ok) return;
         rememberDiagnosis(quickOwner, code);
         setRecentDx(recentDiagnoses(quickOwner));
@@ -411,9 +510,15 @@ export const VisitPanel: React.FC<Props> = ({
             setPanel(null);
         } catch (e: any) {
             if (e?.data?.code === 'VISIT_INCOMPLETE') {
-                const reasons: { text: string }[] = e.data.reasons || [];
+                const reasons: { code?: string; text: string }[] = e.data.reasons || [];
                 const nl = String.fromCharCode(10);
-                const proceed = await confirmAction({
+                /* FAQAT TASHXIS TO'XTATADI (2026-11-22). Qarz — kassirning
+                   ishi, kelmagan natija — laboratoriyaniki: ular deyarli har
+                   qabulda chiqardi va shifokor oynani o'qimay «Baribir
+                   yakunlash» ni bosadigan bo'lib qolgan edi. Endi ular faqat
+                   xabar bo'lib ko'rinadi, savol esa tashxis yo'q bo'lsagina. */
+                const blocking = reasons.some(r => r.code === 'NO_DIAGNOSIS');
+                const proceed = !blocking || await confirmAction({
                     title: t('visit.incompleteTitle'),
                     body: `${reasons.map(r => '• ' + r.text).join(nl)}${nl}${nl}${t('visit.incompleteBody')}`,
                     confirmLabel: t('visit.completeAnyway'),
@@ -425,7 +530,8 @@ export const VisitPanel: React.FC<Props> = ({
                             closeReason: t('visit.closedWith') + ' ' + reasons.map(r => r.text).join('; '),
                         } as any);
                         await reload(); onVisitChanged(visitId);
-                        addToast('success', t('visit.completedOk'));
+                        addToast('success', blocking ? t('visit.completedOk')
+                            : `${t('visit.completedOk')} · ${reasons.map(r => r.text).join('; ')}`);
                         setPanel(null);
                     } catch (e2: any) { addToast('error', e2?.message || t('ui.xatolik')); }
                 }
@@ -453,17 +559,31 @@ export const VisitPanel: React.FC<Props> = ({
 
     // ── Ko'rinish ───────────────────────────────────────────────────────────
 
+    /* «Tibbiy tarix» bloki — DentaCRM dagi o'ng blok. Allergiya va
+       kasalliklar (`history`, karta beradi) har doim; shikoyat va ko'rik —
+       ochiq qabul bo'lsa. */
+    const historyBox = (body?: React.ReactNode) => (
+        <section aria-labelledby="medhist-title" className={boxCls}>
+            <h2 id="medhist-title" className="text-[17px] font-semibold text-ink leading-snug">{t('card.medHistory')}</h2>
+            {history}
+            {body}
+        </section>
+    );
+
     if (loading) return (
         <div className="bg-surface rounded-[20px] border border-line p-10 flex items-center justify-center">
             <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
         </div>
     );
 
-    /* Ochiq qabul yo'q — varaq o'rniga qabul ochish formasi */
+    /* Ochiq qabul yo'q — «Bugungi qabul» o'rnida qabul ochish formasi */
     if (!visit) {
         return (
-            <OpenVisitForm patient={patient} departments={departments} doctors={doctors} services={services}
-                loggedDoctorId={loggedDoctorId} error={error} addToast={addToast} onOpened={onVisitChanged} />
+            <div className={gridCls}>
+                <OpenVisitForm patient={patient} departments={departments} doctors={doctors} services={services}
+                    loggedDoctorId={loggedDoctorId} error={error} addToast={addToast} onOpened={onVisitChanged} />
+                {historyBox()}
+            </div>
         );
     }
 
@@ -482,18 +602,17 @@ export const VisitPanel: React.FC<Props> = ({
        (backend/multiprofile.ts, CLINICAL_FIELDS_DENIED). Shikoyat esa qabulxonada ham yoziladi. */
     const clinicalReadOnly = isDone || userRole === UserRole.RECEPTIONIST;
     const startNewVisit = isClosed && isToday && canAct ? () => onVisitChanged(null) : undefined;
+    const notStarted = visit.status === 'Waiting' || visit.status === 'Called';
 
     const diagnoses = visit.diagnoses || [];
     const prescriptions = visit.prescriptions || [];
     const procedures = visit.procedures || [];
     const labOrders = (visit.labOrders || []).filter(o => o.status !== 'Cancelled');
     const studies = (visit.studies || []).filter(s => s.status !== 'Cancelled');
-    const toggle = (key: Exclude<Panel, null>) => setPanel(p => (p === key ? null : key));
+    const itemCount = diagnoses.length + procedures.length + labOrders.length + studies.length + prescriptions.length;
 
-    const title = [
-        isToday ? t('visit.panelTitle') : fill(t('visit.panelTitlePast'), formatDate(visit.date)),
-        [visit.doctorName || dept?.name || t('visit.noDept'), room ? fill(t('visit.room'), room) : ''].filter(Boolean).join(', '),
-    ].join(' · ');
+    const title = isToday ? t('visit.panelTitle') : fill(t('visit.panelTitlePast'), formatDate(visit.date));
+    const titleNote = [visit.doctorName || dept?.name || t('visit.noDept'), room ? fill(t('visit.room'), room) : ''].filter(Boolean).join(', ');
 
     const { save } = autosave;
     const saveLabel = isDone ? ''
@@ -501,83 +620,57 @@ export const VisitPanel: React.FC<Props> = ({
             : save.state === 'saving' ? t('visit.saving')
                 : save.state === 'saved' ? fill(t('visit.savedAt'), formatTime(save.at))
                     : save.state === 'error' ? t('visit.saveFailed')
-                        : t('visit.autosave');
+                        : '';
     const saveTone = autosave.examInvalid || save.state === 'error' ? 'text-red-600 dark:text-red-400' : 'text-muted';
 
     const orderStatus = (done: boolean, seen: boolean) =>
         done ? (seen ? t('visit.resultSeen') : t('visit.resultReady')) : t('visit.pending');
 
-    return (
-        <section aria-labelledby="visit-title"
-            className="bg-surface rounded-[20px] border border-line p-4 sm:p-5 flex flex-col gap-[22px] min-w-0">
+    /* «+ Qo'shish» oynasidagi turlar. Tashxis — faqat shifokor va egada
+       (registratorga server 403 beradi), qolgani ochiq qabulda hammaga. */
+    /* Tartib — shifokor ishlaydigan tartibda (2026-11-22): avval tashxis,
+       keyin nima tekshiriladi, nima ichiladi, oxirida xizmat. Ilgari doim
+       «Xizmat» da ochilardi, tashxis esa beshinchi edi. Retsept faqat
+       shifokor va egada (server registratorga 403). */
+    const addKinds: { id: AddKind; label: string }[] = [
+        ...(clinicalReadOnly ? [] : [{ id: 'dx' as const, label: t('visit.blockDx') }]),
+        { id: 'lab', label: t('visit.sendLab') },
+        { id: 'study', label: t('visit.sendStudy') },
+        ...(clinicalReadOnly ? [] : [{ id: 'rx' as const, label: t('visit.addRx') }]),
+        { id: 'service', label: t('visit.addSvcShort') },
+        { id: 'consult', label: t('visit.sendConsult') },
+    ];
+    const panelShown = panel && addKinds.some(k => k.id === panel) ? panel : null;
+    const closedToday = visit.status === 'Completed' && isToday && canAct;
 
-            {/* ── Sarlavha ────────────────────────────────────────────────── */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <h2 id="visit-title" className="min-w-0 text-base font-bold text-ink">{title}</h2>
-                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${STATUS_TONE[visit.status] || STATUS_TONE['Waiting']}`}>
-                    {t(VISIT_STATUS_KEY[visit.status] || 'visit.status.Waiting')}
-                </span>
-                <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                    {saveLabel && (
-                        <span role="status" className={`text-xs font-semibold ${saveTone}`}>
-                            {saveLabel}
-                            {save.state === 'error' && (
-                                <button type="button" onClick={() => { void autosave.flush(); }}
-                                    className="ml-1.5 font-bold underline">{t('ui.qayta_urinish')}</button>
-                            )}
-                        </span>
-                    )}
-                    {visit.status === 'AwaitingResults' && (
-                        <button type="button" onClick={resume} disabled={busy}
-                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 hover:bg-amber-200 disabled:opacity-50">
-                            <Play className="w-3.5 h-3.5" /> {t('visit.continue')}
-                        </button>
-                    )}
-                    {!isToday && onShowToday && (
-                        <button type="button" onClick={onShowToday} className={lightBtn}>
-                            <Undo2 className="w-3.5 h-3.5" /> {t('visit.showToday')}
-                        </button>
-                    )}
-                    {!isDone && canCancelVisit && (
-                        <button type="button" onClick={cancelVisit} disabled={busy}
-                            title={t('visit.cancelVisit')} aria-label={t('visit.cancelVisit')}
-                            className="w-8 h-8 grid place-items-center rounded-lg border border-line text-muted hover:border-red-400 hover:text-red-600 disabled:opacity-50">
-                            <XCircle className="w-4 h-4" />
-                        </button>
-                    )}
-                </span>
-            </div>
+    /* Ko'rik formasi yopiq turadi — har bemorda kerak emas (stomatolog
+       ochmaydi ham). Yozilgani bo'lsa yoki shifokor ochsa — ochiq. */
+    const examShown = examOpen || hasExamData(visit.examData);
 
-            {error && (
-                <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
-                    <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
-                </div>
-            )}
+    /* Shikoyat qabulxonada ham yoziladi, shuning uchun registratorga ochiq. */
+    const complaintField = (
+        <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-muted">{t('visit.complaintLabel')}</span>
+            <textarea rows={2} value={autosave.complaint} disabled={isDone}
+                placeholder={isDone ? t('visit.noComplaint') : t('visit.complaintPh')}
+                onChange={e => autosave.onComplaintChange(e.target.value)}
+                onBlur={autosave.onComplaintBlur}
+                className="w-full px-3 py-2.5 rounded-xl border border-line bg-canvas text-ink text-sm leading-relaxed resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:text-muted" />
+        </label>
+    );
 
-            <VisitResults visit={visit} busy={busy} onMarkSeen={markSeen}
-                canMark={userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN} />
-
-            {/* ── Shikoyat ────────────────────────────────────────────────── */}
-            {/* Qabulxonada ham yoziladi, shuning uchun registratorga ochiq. */}
-            <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted">{t('visit.complaintLabel')}</span>
-                <textarea rows={2} value={autosave.complaint} disabled={isDone}
-                    placeholder={isDone ? t('visit.noComplaint') : t('visit.complaintPh')}
-                    onChange={e => autosave.onComplaintChange(e.target.value)}
-                    onBlur={autosave.onComplaintBlur}
-                    className="w-full px-3 py-2.5 rounded-xl border border-line bg-canvas text-ink text-sm leading-relaxed resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:text-muted" />
-            </label>
-
-            {/* ── Ko'rik ──────────────────────────────────────────────────── */}
+    const examBlock = (
+        <div className="flex flex-col gap-4 pt-4 border-t border-line">
             {clinicalReadOnly ? (
                 /* Yoza olmaydigan odamga (yakunlangan qabul, registrator)
                    bo'sh maydonlar to'ri emas, YOZILGANI ko'rsatiladi. */
-                <div className="flex flex-col gap-2">
-                    <SheetLabel>{t('ui.qabul_bayoni')}</SheetLabel>
-                    <EncounterSummary template={templates.find(x => x.id === visit.templateId)} value={visit.examData} />
-                </div>
-            ) : (
+                hasExamData(visit.examData) && (
+                    <div className="flex flex-col gap-2">
+                        <SheetLabel>{t('ui.qabul_bayoni')}</SheetLabel>
+                        <EncounterSummary template={templates.find(x => x.id === visit.templateId)} value={visit.examData} />
+                    </div>
+                )
+            ) : examShown ? (
                 /* Bemor jinsi va yoshi UZATILADI: mos kelmaydigan shablon
                    (masalan homiladorlik) erkak bemorga ochilmasin. */
                 <EncounterForm
@@ -592,129 +685,227 @@ export const VisitPanel: React.FC<Props> = ({
                     value={visit.examData}
                     onChange={autosave.onExamChange}
                 />
+            ) : (
+                <button type="button" onClick={() => setExamOpen(true)}
+                    className="self-start inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-line text-sm font-semibold text-ink hover:bg-elevated">
+                    <Plus className="w-4 h-4" aria-hidden="true" /> {t('visit.examOpen')}
+                </button>
             )}
+        </div>
+    );
 
-            <DiagnosisBlock diagnoses={diagnoses} recent={recentDx} readOnly={clinicalReadOnly} busy={busy}
-                pickerOpen={panel === 'dx'} onTogglePicker={() => toggle('dx')}
-                onAdd={addDiagnosis} onRemove={removeDiagnosis} />
+    /* XULOSA VA TAVSIYALAR (2026-11-22). Klinika egasi: «shifokor o'tirib
+       olib uzun qilib xulosa yozadiku — o'sha narsa yo'q». Ko'rik — o'lchovlar,
+       bu esa shifokorning o'z so'zi: nima topildi, nima qilinadi, bemorga nima
+       tavsiya. Qabul oxirida yoziladi — shuning uchun «Qabulni yakunlash»
+       ustida. Qog'ozlarga ham tushadi. Serverda maydon (`treatmentPlan`) bor
+       edi, ekranda yo'q edi. */
+    const conclusionBlock = (
+        <div className="pt-3 border-t border-line">
+            {clinicalReadOnly ? (
+                visit.treatmentPlan ? (
+                    <div className="flex flex-col gap-1.5">
+                        <SheetLabel>{t('visit.conclusionLabel')}</SheetLabel>
+                        <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">{visit.treatmentPlan}</p>
+                    </div>
+                ) : null
+            ) : (
+                <label className="flex flex-col gap-1.5">
+                    <span className="text-[13px] font-medium text-muted">{t('visit.conclusionLabel')}</span>
+                    <textarea rows={4} value={autosave.conclusion}
+                        placeholder={t('visit.conclusionPh')}
+                        onChange={e => autosave.onConclusionChange(e.target.value)}
+                        onBlur={autosave.onConclusionBlur}
+                        className="w-full px-3 py-2.5 rounded-xl border border-line bg-canvas text-ink text-sm leading-relaxed resize-y focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+                </label>
+            )}
+        </div>
+    );
 
-            {/* ── Tayinlov ────────────────────────────────────────────────── */}
-            {(prescriptions.length > 0 || !isDone) && (
-                <div className="flex flex-col gap-2">
-                    <SheetLabel>{t('visit.rxTitle')}</SheetLabel>
-                    {prescriptions.length > 0 && (
-                        <ul className="flex flex-col gap-1.5">
-                            {prescriptions.map(rx => (
-                                <li key={rx.id} className="flex items-start gap-3 pl-3 pr-2 py-2.5 rounded-xl border border-line bg-canvas">
-                                    <Pill className="w-4 h-4 mt-0.5 shrink-0 text-primary-600 dark:text-primary-400" aria-hidden="true" />
-                                    <ul className="min-w-0 flex-1 flex flex-col gap-1">
-                                        {(rx.items || []).map((item, index) => (
-                                            <li key={item.id || index} className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                                                <b className="text-[13.5px] font-bold text-ink">{item.name}</b>
-                                                <span className="text-[12.5px] text-muted">{[item.dosage, item.frequency].filter(Boolean).join(' · ')}</span>
-                                                {item.durationDays ? (
-                                                    <span className="px-1.5 py-0.5 rounded-md bg-elevated text-[10.5px] font-bold text-muted">
-                                                        {item.durationDays} {t('visit.days')}
-                                                    </span>
-                                                ) : null}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    <button type="button" onClick={() => printPrescription({ ...rx, patient }, undefined)}
+    const printSummary = () => {
+        const ok = printVisitSummary(visit, patient, {
+            clinic, departmentName: dept?.name,
+            template: templates.find(x => x.id === visit.templateId),
+        });
+        if (!ok) addToast('info', t('visit.printBlocked'));
+    };
+
+    return (
+        <section aria-labelledby="visit-title" className={gridCls}>
+            {/* ── BUGUNGI QABUL ─────────────────────────────────────────────── */}
+            <div className={boxCls}>
+                <VisitHeader
+                    visit={visit}
+                    title={title}
+                    titleNote={titleNote}
+                    statusLabel={t(VISIT_STATUS_KEY[visit.status] || 'visit.status.Waiting')}
+                    statusDot={STATUS_DOT[visit.status] || STATUS_DOT['Waiting']}
+                    saveLabel={saveLabel && (
+                        <span role="status" className={`whitespace-nowrap ${saveTone}`}>
+                            · {saveLabel}
+                            {save.state === 'error' && (
+                                <button type="button" onClick={() => { void autosave.flush(); }}
+                                    className="ml-1.5 font-semibold underline">{t('ui.qayta_urinish')}</button>
+                            )}
+                        </span>
+                    )}
+                    money={money}
+                    busy={busy}
+                    referralBusy={refBusy}
+                    onAdd={isDone ? undefined : () => setPanel(p => (p ? null : addKinds[0].id))}
+                    addOpen={!!panel}
+                    onStart={!isDone && notStarted ? start : undefined}
+                    onPrintReferral={issueReferral}
+                    onCancelVisit={!isDone && canCancelVisit ? cancelVisit : undefined}
+                />
+
+                {error && (
+                    <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                        <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+                    </div>
+                )}
+
+                {/* SHIKOYAT — VARAQNING BOSHIDA (2026-11-22). Ilgari u o'ngdagi
+                    «Tibbiy tarix» ning sakkiz bo'limi ostida, ikki ekran pastda
+                    edi — shifokor birinchi yozadigan narsa eng oxirida turardi. */}
+                {complaintField}
+
+                {/* Tayyor natijalar — ro'yxatning tepasida, ko'zga birinchi tushsin */}
+                <VisitResults visit={visit} busy={busy} onMarkSeen={markSeen}
+                    canMark={userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN} />
+
+                {itemCount === 0 ? (
+                    <p className="py-2 text-sm text-faint">{isDone ? t('visit.emptyTodayDone') : t('visit.emptyToday')}</p>
+                ) : (
+                    <ul aria-label={t('visit.todayList')} className="flex flex-col">
+                        {diagnoses.map(d => (
+                            <ItemRow key={d.id} icon={ClipboardList}
+                                main={`${d.code}${d.icd10?.name ? ` — ${d.icd10.name}` : ''}`}
+                                kind={t('visit.blockDx')} sub={d.isChronic ? t('visit.chronic') : undefined}
+                                deleteLabel={`${t('common.delete')}: ${d.code}`}
+                                onDelete={clinicalReadOnly ? undefined : () => removeDiagnosis(d.id)} />
+                        ))}
+                        {procedures.map(p => (
+                            <ItemRow key={p.id} icon={Stethoscope} main={p.procedureName}
+                                kind={t('visit.addSvcShort')}
+                                right={fill(t('ui.x_som'), fmt(p.finalPrice))}
+                                charge={chargeOf('Service', p.id)}
+                                /* To'langan xizmat o'chirilmaydi — server ham rad etadi */
+                                onDelete={isDone || (chargeOf('Service', p.id)?.paidAmount || 0) > 0 ? undefined : () => removeProcedure(p.id)} />
+                        ))}
+                        {labOrders.map(o => {
+                            const ch = chargeOf('Lab', o.id);
+                            const done = o.status === 'Completed';
+                            return (
+                                <ItemRow key={o.id} icon={FlaskConical}
+                                    main={(o.items || []).map(i => i.testName).join(', ') || t('visit.tabLab')}
+                                    kind={t('visit.sendLab')}
+                                    sub={orderStatus(done, !!o.seenByDoctorAt)} tone={done ? 'ok' : 'wait'}
+                                    right={fill(t('ui.x_som'), fmt(o.totalPrice))} charge={ch}
+                                    onDelete={isDone || done ? undefined : () => cancelOrder('lab', o.id, !!ch && ch.status === 'Paid')} />
+                            );
+                        })}
+                        {studies.map(s => {
+                            const ch = chargeOf('Study', s.id);
+                            const done = s.status === 'Completed';
+                            return (
+                                <ItemRow key={s.id} icon={Scan}
+                                    main={studyTitle(MODALITY_LABELS[s.modality] || s.modality, s.name)}
+                                    kind={t('visit.sendStudy')}
+                                    sub={orderStatus(done, !!s.seenByDoctorAt)} tone={done ? 'ok' : 'wait'}
+                                    right={fill(t('ui.x_som'), fmt(s.price))} charge={ch}
+                                    onDelete={isDone || done ? undefined : () => cancelOrder('study', s.id, !!ch && ch.status === 'Paid')} />
+                            );
+                        })}
+                        {prescriptions.map(rx => (
+                            <ItemRow key={rx.id} icon={Pill}
+                                main={(rx.items || []).map(i => i.name).join(', ')}
+                                kind={t('visit.prescription')}
+                                sub={(rx.items || []).map(i => [i.dosage, i.frequency, i.durationDays ? `${i.durationDays} ${t('visit.days')}` : '']
+                                    .filter(Boolean).join(' ')).filter(Boolean).join('; ') || undefined}
+                                action={(
+                                    <button type="button" onClick={() => printPrescription({ ...rx, patient }, clinic)}
                                         title={t('common.print')} aria-label={t('common.print')}
-                                        className="w-7 h-7 grid place-items-center rounded-md text-faint hover:text-primary-600 hover:bg-surface shrink-0">
+                                        className="w-7 h-7 grid place-items-center rounded-md text-faint hover:text-primary-600 hover:bg-elevated shrink-0">
                                         <Printer className="w-3.5 h-3.5" />
                                     </button>
-                                    {!isDone && (
-                                        <button type="button" onClick={() => removePrescription(rx)} aria-label={t('ui.ochirish')}
-                                            className="w-7 h-7 grid place-items-center rounded-md text-faint hover:text-red-600 hover:bg-surface shrink-0">
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    {!isDone && (
-                        <div><AddButton label={t('visit.addRx')} open={panel === 'rx'} onClick={() => toggle('rx')} /></div>
-                    )}
-                    {!isDone && panel === 'rx' && <RxForm meds={meds} recent={recentRx} busy={busy} onSave={writePrescription} />}
+                                )}
+                                onDelete={isDone ? undefined : () => removePrescription(rx)} />
+                        ))}
+                    </ul>
+                )}
+
+                {(!clinicalReadOnly || visit.treatmentPlan) && conclusionBlock}
+
+                {/* YAKUNLANGACH — bemor qo'liga qog'oz va keyingi qabul. Ikkalasi
+                    ham taklif: hech narsa o'zi chop etilmaydi. */}
+                {closedToday && (
+                    <div className="pt-3 border-t border-line flex flex-wrap gap-2">
+                        <button type="button" onClick={printSummary}
+                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-line text-sm font-semibold text-ink hover:bg-elevated">
+                            <Printer className="w-4 h-4" aria-hidden="true" /> {t('visit.printSummary')}
+                        </button>
+                        {onSchedule && (
+                            <button type="button" onClick={onSchedule}
+                                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-line text-sm font-semibold text-ink hover:bg-elevated">
+                                <CalendarPlus className="w-4 h-4" aria-hidden="true" /> {t('visit.bookNext')}
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                <VisitActions
+                    visit={visit}
+                    busy={busy}
+                    canFinish={!isDone}
+                    notStarted={notStarted}
+                    onComplete={complete}
+                    onResume={visit.status === 'AwaitingResults' ? resume : undefined}
+                    onShowToday={!isToday ? onShowToday : undefined}
+                    onNewVisit={startNewVisit}
+                />
+            </div>
+
+            {/* ── TIBBIY TARIX va ko'rik formasi ───────────────────────────
+                Ko'rik formasi uzun — u chapga qo'yilsa «Qabulni yakunlash»
+                noutbuk ekranidan tushib ketadi. Shikoyat esa (2 qator) chapda. */}
+            {historyBox(examBlock)}
+
+            {/* ── «+ Qo'shish» oynasi: nima qo'shilishi tepada tanlanadi ──────── */}
+            <Modal isOpen={!!panelShown && !isDone} onClose={() => setPanel(null)} title={t('visit.addTitle')} className="max-w-2xl">
+                <div role="group" aria-label={t('visit.addWhat')} className="mb-4 flex flex-wrap gap-1 p-1 rounded-xl bg-elevated">
+                    {addKinds.map(k => (
+                        <button key={k.id} type="button" aria-pressed={panelShown === k.id} onClick={() => setPanel(k.id)}
+                            className={`h-8 px-3.5 rounded-lg text-sm font-medium transition-colors ${panelShown === k.id
+                                ? 'bg-surface text-ink shadow-sm'
+                                : 'text-muted hover:text-ink'}`}>
+                            {k.label}
+                        </button>
+                    ))}
                 </div>
-            )}
-
-            {/* ── Xizmatlar ───────────────────────────────────────────────── */}
-            {(procedures.length > 0 || !isDone) && (
-                <div className="flex flex-col gap-2">
-                    <SheetLabel>{t('visit.tabServices')}</SheetLabel>
-                    {procedures.length > 0 && (
-                        <ul className="flex flex-col gap-1.5">
-                            {procedures.map(p => (
-                                <ItemRow key={p.id} icon={Stethoscope} main={p.procedureName}
-                                    right={fill(t('ui.x_som'), fmt(p.finalPrice))}
-                                    charge={chargeOf('Service', p.id)}
-                                    onDelete={isDone ? undefined : () => removeProcedure(p.id)} />
-                            ))}
-                        </ul>
-                    )}
-                    {!isDone && (
-                        <div><AddButton label={t('visit.addSvcShort')} open={panel === 'service'} onClick={() => toggle('service')} /></div>
-                    )}
-                    {!isDone && panel === 'service' && <ServicePicker services={deptServices} busy={busy} onAdd={addService} />}
-                </div>
-            )}
-
-            {/* ── Yo'llanma ───────────────────────────────────────────────── */}
-            {(labOrders.length > 0 || studies.length > 0 || !isDone) && (
-                <div className="flex flex-col gap-2">
-                    <SheetLabel hint={isDone ? undefined : t('visit.referHint')}>{t('visit.referTitle')}</SheetLabel>
-                    {!isDone && (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            <AddButton solid label={t('visit.sendLab')} open={panel === 'lab'} onClick={() => toggle('lab')} />
-                            <AddButton solid label={t('visit.sendStudy')} open={panel === 'study'} onClick={() => toggle('study')} />
-                            <AddButton solid label={t('visit.sendConsult')} open={panel === 'consult'} onClick={() => toggle('consult')} />
-                        </div>
-                    )}
-                    {!isDone && panel === 'lab' && <LabPicker tests={labTests} busy={busy} onSend={sendToLab} />}
-                    {!isDone && panel === 'study' && <StudyPicker services={diagServices} busy={busy} onSend={sendToDiagnostics} />}
-                    {!isDone && panel === 'consult' && (
-                        <ConsultPicker departments={bookableDepts.filter(d => d.id !== visit.departmentId)}
-                            doctors={doctors} busy={busy} onSend={sendToConsult} />
-                    )}
-                    {(labOrders.length > 0 || studies.length > 0) && (
-                        <ul className="flex flex-col gap-1.5">
-                            {labOrders.map(o => {
-                                const ch = chargeOf('Lab', o.id);
-                                const done = o.status === 'Completed';
-                                return (
-                                    <ItemRow key={o.id} icon={FlaskConical}
-                                        main={(o.items || []).map(i => i.testName).join(', ') || t('visit.tabLab')}
-                                        sub={orderStatus(done, !!o.seenByDoctorAt)} tone={done ? 'ok' : 'wait'}
-                                        right={fill(t('ui.x_som'), fmt(o.totalPrice))} charge={ch}
-                                        onDelete={isDone || done ? undefined : () => cancelOrder('lab', o.id, !!ch && ch.status === 'Paid')} />
-                                );
-                            })}
-                            {studies.map(s => {
-                                const ch = chargeOf('Study', s.id);
-                                const done = s.status === 'Completed';
-                                return (
-                                    <ItemRow key={s.id} icon={Scan}
-                                        main={`${MODALITY_LABELS[s.modality] || s.modality} — ${s.name}`}
-                                        sub={orderStatus(done, !!s.seenByDoctorAt)} tone={done ? 'ok' : 'wait'}
-                                        right={fill(t('ui.x_som'), fmt(s.price))} charge={ch}
-                                        onDelete={isDone || done ? undefined : () => cancelOrder('study', s.id, !!ch && ch.status === 'Paid')} />
-                                );
-                            })}
-                        </ul>
-                    )}
-                </div>
-            )}
-
-            <VisitFinishRow visit={visit} locked={isDone} busy={busy} nextAppointment={nextAppointment} onSchedule={onSchedule}
-                onNewVisit={startNewVisit}
-                onPrintRx={prescriptions.length > 0 ? () => printPrescription({ ...prescriptions[0], patient }, undefined) : undefined}
-                onComplete={complete} />
-
-            <VisitBill money={money} referralBusy={refBusy} onPrintReferral={issueReferral} onTakePayment={onTakePayment} />
+                {panelShown === 'dx' && (
+                    <DiagnosisPicker diagnoses={diagnoses} recent={recentDx} busy={busy} onAdd={addDiagnosis} />
+                )}
+                {panelShown === 'rx' && <RxForm meds={meds} recent={recentRx} busy={busy} onSave={writePrescription} />}
+                {panelShown === 'service' && <ServicePicker services={deptServices} busy={busy} onAdd={addService} />}
+                {panelShown === 'lab' && <LabPicker tests={labTests} busy={busy} onSend={sendToLab} />}
+                {panelShown === 'study' && <StudyPicker services={ownStudies} more={otherStudies} busy={busy} onSend={sendToDiagnostics} />}
+                {panelShown === 'consult' && (
+                    <ConsultPicker departments={bookableDepts.filter(d => d.id !== visit.departmentId)}
+                        doctors={doctors} busy={busy} onSend={sendToConsult} />
+                )}
+                {/* Tashxis va xizmat bir bosishda qo'shiladi va oyna ochiq qoladi */}
+                {(panelShown === 'dx' || panelShown === 'service') && (
+                    <div className="mt-4 pt-3 border-t border-line flex justify-end">
+                        <button type="button" onClick={() => setPanel(null)}
+                            className="h-9 px-4 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700">
+                            {t('visit.addDone')}
+                        </button>
+                    </div>
+                )}
+            </Modal>
         </section>
     );
 };
+

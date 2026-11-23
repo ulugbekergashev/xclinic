@@ -4,7 +4,7 @@ import { Transaction, Clinic } from '../types';
 import { Modal, Button } from './Common';
 import { getPaymentMethodLabel } from '../utils/paymentMethods';
 import { Printer } from 'lucide-react';
-import { esc } from '../utils/printDocument';
+import { esc, fmtDate, fmtDateTime, resolvePrintClinic } from '../utils/printDocument';
 
 import { useLanguage } from '../context/LanguageContext';
 interface ReceiptModalProps {
@@ -30,7 +30,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, tra
       printWindow.document.write(`
          <html>
             <head>
-               <title>${esc(`${t('finance.cash.receipt')} - ${clinic?.name || t('ui.klinika')}`)}</title>
+               <title>${esc(`${t('finance.cash.receipt')} - ${resolvePrintClinic(clinic)?.name || 'XClinic'}`)}</title>
                <style>
                   @page { margin: 0; }
                   body {
@@ -73,24 +73,33 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, tra
 
    if (!transaction) return null;
 
+   /* Chek nomi — klinikaning o'zi, hech qachon mutaxassislik emas */
+   const printClinic = resolvePrintClinic(clinic);
+   const clinicName = printClinic?.name || 'XClinic';
+   // Aniq vaqt bo'lsa sana+soat, eski yozuvda faqat sana — ikkalasi dd.mm.yyyy
+   const paidAt = transaction.createdAt ? fmtDateTime(transaction.createdAt) : fmtDate(transaction.date);
+   /* Alohida chek raqami yo'q — id ning oxirgi 6 belgisi («demo-tx-…» dan
+      «DEMO-T» chiqardi) */
+   const receiptNo = String(transaction.id).replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase();
+
    return (
       <Modal isOpen={isOpen} onClose={onClose} title={t('receiptmodal.tolov_cheki')}>
          <div className="flex flex-col items-center">
             {/* Preview Block for Modal UI using Tailwind */}
             <div className="w-[320px] border border-gray-200 shadow-sm p-4 rounded bg-white text-gray-900 font-mono text-sm max-h-[60vh] overflow-y-auto no-scrollbar">
                <div ref={printRef}>
-                  <div className="text-center font-bold text-xl mb-2">{clinic?.name || 'Stomatologiya'}</div>
-                  {clinic?.phone && <div className="text-center mb-1 text-xs">Tel: {clinic.phone}</div>}
-                  {clinic?.address && <div className="text-center mb-2 text-xs">{clinic.address}</div>}
-                  
+                  <div className="text-center font-bold text-xl mb-2">{clinicName}</div>
+                  {printClinic?.phone && <div className="text-center mb-1 text-xs">Tel: {printClinic.phone}</div>}
+                  {printClinic?.address && <div className="text-center mb-2 text-xs">{printClinic.address}</div>}
+
                   <div className="border-t my-2 py-2">
                      <div className="flex justify-between mb-1">
                         <span>{t('ui.sana')}:</span>
-                        <span>{transaction.date}</span>
+                        <span>{paidAt}</span>
                      </div>
                      <div className="flex justify-between mb-1">
                         <span>{t('receiptmodal.chek_raqami')}:</span>
-                        <span>#{transaction.id.slice(0, 6).toUpperCase()}</span>
+                        <span>№ {receiptNo}</span>
                      </div>
                      <div className="flex justify-between mb-1">
                         <span>{t('receiptmodal.bemor')}</span>
@@ -129,7 +138,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, tra
                            <p>{t('receiptmodal.klinikamiz_botiga_obuna_boling')}</p>
                         </div>
                      )}
-                     <div className="mt-4 font-bold text-xs">{t('receiptmodal.xizmatingizdan_mamunmiz')}</div>
+                     <div className="mt-4 font-bold text-xs">{t('receiptmodal.thanks')}</div>
                   </div>
                </div>
             </div>

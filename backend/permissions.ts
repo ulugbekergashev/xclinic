@@ -112,12 +112,13 @@ export const RULES: Rule[] = [
     { method: 'POST', path: '/api/visits/:id/dmed-sync', roles: owner(D, R) },
 
     /* ─── Klinik yozuvlar — shifokorniki ───────────────────────────────────
-       Tashxis, allergiya, retsept va yo'llanma — tibbiy qaror. Registrator
-       ularni kirita olmaydi. */
+       Tashxis, retsept va yo'llanma — tibbiy qaror, registrator ularni
+       kirita olmaydi. ALLERGIYA bundan mustasno (klinika egasi,
+       2026-11-21): uni anamnez bilan birga qabulxona ham so'rab yozadi. */
     { method: 'POST', path: '/api/diagnoses', roles: owner(D) },
     { method: 'DELETE', path: '/api/diagnoses/:id', roles: owner(D) },
-    { method: 'POST', path: '/api/patients/:id/allergies', roles: owner(D, N) },
-    { method: 'DELETE', path: '/api/patients/:id/allergies/:allergyId', roles: owner(D) },
+    { method: 'POST', path: '/api/patients/:id/allergies', roles: owner(D, N, R) },
+    { method: 'DELETE', path: '/api/patients/:id/allergies/:allergyId', roles: owner(D, R) },
     { method: 'POST', path: '/api/prescriptions', roles: owner(D) },
     { method: 'DELETE', path: '/api/prescriptions/:id', roles: owner(D) },
     { method: 'POST', path: '/api/referrals', roles: owner(D) },
@@ -158,9 +159,11 @@ export const RULES: Rule[] = [
     { method: 'PUT', path: '/api/charges/:id/discount', roles: owner() },
 
     /* ─── Pul: xarajat va oylik ────────────────────────────────────────────
-       Butunlay egada. Registrator xarajat kirita olmaydi — aks holda kassa
-       farqini xarajat yozib yopib qo'yish mumkin bo'lardi. */
-    { method: 'POST', path: '/api/expenses', roles: owner() },
+       2026-11-22: registrator MAYDA NAQD xarajatni yozadi (toifa, usul va sana
+       cheklovi — `server.ts` POST /api/expenses); tuzatish va o'chirish egada.
+       Ilgari butunlay egada edi («registrator kamomadni xarajat yozib
+       yopmasin»). Endi yozuvda kim yozgani turadi va ega uni ko'radi. */
+    { method: 'POST', path: '/api/expenses', roles: owner(R) },
     { method: 'PUT', path: '/api/expenses/:id', roles: owner() },
     { method: 'DELETE', path: '/api/expenses/:id', roles: owner() },
     { method: 'PUT', path: '/api/doctor-rates/:doctorId', roles: owner() },

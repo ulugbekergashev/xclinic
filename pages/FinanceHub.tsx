@@ -83,7 +83,6 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                     <h1 className="text-2xl font-bold text-ink">{t('finance.hub.title')}</h1>
                     <p className="text-sm text-muted">{t('finance.hub.kassaHint')}</p>
                 </div>
-
             </div>
 
             <CashBook

@@ -97,6 +97,12 @@ model Patient {
   /// Registratura aytadigan/yozadigan raqam. UUID bemor uchun yaroqsiz.
   /// Migratsiya 0003. Nullable: mavjud bemorlarda bo'sh.
   cardNumber       String?
+  /// Tibbiy tarixning qolgan bo'limlari (JSON): doimiy dorilar, operatsiyalar,
+  /// oilada, odatlar, qon guruhi, homiladorlik va «yo'q» belgilari.
+  /// Kasalliklar — `medicalHistory` da, allergiya — `PatientAllergy` da. Migratsiya 0039.
+  anamnesis          String?
+  anamnesisUpdatedAt DateTime?
+  anamnesisUpdatedBy String?
   appointments     Appointment[]
   installmentPlans InstallmentPlan[]
   /// ESKI jurnal — 0028 dan keyin unga yozilmaydi, faqat tarix uchun turibdi

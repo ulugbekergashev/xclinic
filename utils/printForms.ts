@@ -100,6 +100,8 @@ export function printReferral(referral: any, clinic?: PrintClinic | null): boole
 
 export function printLabResult(order: any, clinic?: PrintClinic | null): boolean {
     const items: any[] = order?.items || [];
+    const hasAnyValue = items.some((it: any) => (Array.isArray(it.parameters) ? it.parameters : [])
+        .some((pr: any) => String(pr?.value ?? '').trim() !== ''));
 
     const flagMark = (flag?: string | null) =>
         flag === 'High' ? ' ↑' : flag === 'Low' ? ' ↓' : '';
@@ -109,7 +111,9 @@ export function printLabResult(order: any, clinic?: PrintClinic | null): boolean
        gemoglobin, leykotsitlar, EChT. Qog'ozda ham shunday ko'rinishi kerak:
        tahlil nomi sarlavha, ko'rsatkichlar uning ostida. */
     const rows = items.map((it: any) => {
-        const params: any[] = Array.isArray(it.parameters) ? it.parameters : [];
+        /* Qiymati kiritilmagan ko'rsatkich qog'ozga «—» bo'lib tushmaydi */
+        const params: any[] = (Array.isArray(it.parameters) ? it.parameters : [])
+            .filter((pr: any) => String(pr?.value ?? '').trim() !== '');
         const head = `<tr><td colspan="4" style="background:#f5f5f5;font-weight:700">${esc(it.testName || it.name)}</td></tr>`;
 
         if (params.length === 0) {
@@ -143,7 +147,7 @@ export function printLabResult(order: any, clinic?: PrintClinic | null): boolean
         ...(order?.doctorName ? [['Yuborgan shifokor', order.doctorName] as [string, string]] : []),
         ...(order?.priority === 'Urgent' ? [['Shoshilinch', 'Ha'] as [string, string]] : []),
     ])}
-    ${items.length
+    ${hasAnyValue
             ? `<table class="grid">
         <thead><tr>
           <th>Ko'rsatkich</th>

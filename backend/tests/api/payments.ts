@@ -23,7 +23,9 @@ async function api(method: string, path: string, body?: any) {
     return { status: r.status, data };
 }
 
-const today = () => new Date().toISOString().split('T')[0];
+/* Toshkent kuni — server ham pulni shu kunga yozadi. UTC sanasi (`toISOString`)
+   yarim tundan 05:00 gacha kechagi kunni berardi va sinov 00:10 da yiqildi. */
+const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date());
 let patientId = '';
 const balanceOf = async () => (await api('GET', `/patients/${patientId}`)).data?.balance ?? 0;
 
@@ -227,6 +229,43 @@ async function main() {
         }
     }
     ok('hamma qatorda ChargePayment yig\'indisi paidAmount ga teng', bad === 0, `nomuvofiq: ${bad}`);
+
+    console.log('\n═══ 9. BEMORSIZ TO\'LOV — xizmat tanlandi, pul olindi ═');
+    /* Klinika so'ragani: «Xizmat tanlanadi va to'lov qilinadi. Bemorning
+       ma'lumotlari kerak emas». To'lov oynasi shu yo'ldan yuradi: qator
+       `patientId` siz yaratiladi va darhol to'lanadi. Pul kassaga tushishi,
+       hech qanday bemor yaratilmasligi va qarz qolmasligi shart. */
+    const patientsBefore = ((await api('GET', '/patients')).data || []).length;
+    const snapBefore = (await api('GET', `/reports/snapshot?from=${today()}&to=${today()}`)).data;
+
+    const walkIn = await api('POST', '/charges', {
+        patientName: 'Ismsiz', name: 'Ukol', unitPrice: 30000, quantity: 2, source: 'Service',
+    });
+    ok('bemorsiz qator yaratildi', walkIn.status === 200 && !!walkIn.data?.id,
+        `status: ${walkIn.status}, ${JSON.stringify(walkIn.data).slice(0, 140)}`);
+    ok('qatorda bemor yo\'q, summa 60 000',
+        walkIn.data?.patientId == null && Math.round(walkIn.data?.total) === 60000,
+        `patientId: ${walkIn.data?.patientId}, total: ${walkIn.data?.total}`);
+
+    const walkPay = await api('POST', '/payments', { chargeIds: [walkIn.data?.id], method: 'Cash' });
+    ok('bemorsiz to\'lov o\'tdi', walkPay.status === 200,
+        `status: ${walkPay.status}, ${JSON.stringify(walkPay.data).slice(0, 140)}`);
+    ok('chek 60 000 ga yozildi, bemorga bog\'lanmagan',
+        Math.round(walkPay.data?.received) === 60000 && walkPay.data?.transaction?.patientId == null,
+        `received: ${walkPay.data?.received}, tx.patientId: ${walkPay.data?.transaction?.patientId}`);
+    ok('qator to\'liq yopildi — qarz qolmadi',
+        walkPay.data?.charges?.[0]?.status === 'Paid' && Math.round(walkPay.data?.due) === 0,
+        `status: ${walkPay.data?.charges?.[0]?.status}, due: ${walkPay.data?.due}`);
+
+    const snapAfter = (await api('GET', `/reports/snapshot?from=${today()}&to=${today()}`)).data;
+    ok('pul bugungi tushumda ko\'rinadi (+60 000)',
+        Math.round((snapAfter?.period?.collected ?? 0) - (snapBefore?.period?.collected ?? 0)) === 60000,
+        `oldin ${snapBefore?.period?.collected}, keyin ${snapAfter?.period?.collected}`);
+    ok('umumiy qarz o\'zgarmadi',
+        Math.round(snapAfter?.debt?.amount ?? -1) === Math.round(snapBefore?.debt?.amount ?? -2),
+        `oldin ${snapBefore?.debt?.amount}, keyin ${snapAfter?.debt?.amount}`);
+    ok('yangi bemor yaratilmadi',
+        ((await api('GET', '/patients')).data || []).length === patientsBefore);
 
     console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} o'tdi, ${fail} yiqildi\n`);
     process.exit(fail === 0 ? 0 : 1);

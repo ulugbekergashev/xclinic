@@ -93,7 +93,16 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                        LOKAL vaqt deb o'qiladi — ya'ni bir filtrning ikki chegarasi
                        turli zonalarda o'lchanardi va davr boshidagi 5 soat
                        hisobotga tushmasdi. Endi ikkalasi ham Toshkent kuni. */
-                    createdAt: { gte: rangeStart, lte: rangeEnd },
+                    /* QAYSI KUNGA TUSHADI (2026-11-23, Moliya rejasi 4-vazifa):
+                       qabul sanasi bo'yicha, qabulsiz qator — yozilgan Toshkent
+                       kuni bo'yicha. `/compare`, `/doctors`, `/departments` ham
+                       aynan shunday. Ilgari bu yer faqat `createdAt` ni olardi:
+                       kechagi qabulga bugun qo'shilgan xizmat Umumiy da bugunga,
+                       Shifokorlar da kechaga tushardi — raqamlar mos kelmasdi. */
+                    OR: [
+                        { visit: { date: { gte: from, lte: to } } },
+                        { visitId: null, createdAt: { gte: rangeStart, lte: rangeEnd } },
+                    ],
                 },
                 include: { visit: { select: { departmentId: true, doctorId: true, doctorName: true, date: true } } },
             }),
@@ -261,7 +270,20 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             g.count++;
         }
 
-        const list = Array.from(byPatient.values()).sort((a, b) => b.due - a.due);
+        /* Telefon — egasi qarzdorga shu yerdan qo'ng'iroq qiladi (Moliya
+           rejasi 7). Bitta so'rov, bemor sonicha emas. */
+        /* Faqat egaga: bu manzilni Bemorlar va xabar oynasi ham chaqiradi —
+           hamshira yoki laborantga telefon shu yo'l bilan ketmasin. */
+        const isOwner = (req as any).user?.role === 'CLINIC_ADMIN';
+        const ids = isOwner ? Array.from(byPatient.values()).map(g => g.patientId).filter(Boolean) : [];
+        const phones = ids.length
+            ? await prisma.patient.findMany({ where: { clinicId, id: { in: ids } }, select: { id: true, phone: true } })
+            : [];
+        const phoneOf = new Map(phones.map((p: any) => [p.id, p.phone || null]));
+
+        const list = Array.from(byPatient.values())
+            .map(g => ({ ...g, phone: g.patientId ? phoneOf.get(g.patientId) || null : null }))
+            .sort((a, b) => b.due - a.due);
         res.json({ total: round(list.reduce((s, g) => s + g.due, 0)), patients: list });
     });
 
@@ -437,11 +459,13 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                     name: doc ? `${doc.lastName} ${doc.firstName}` : (c.doctorName || 'Belgilanmagan'),
                     departmentId: doc?.departmentId || null,
                     revenue: 0, paid: 0, due: 0, accrued: 0,
-                    chargeCount: 0, patients: new Set<string>(),
+                    chargeCount: 0, patients: new Set<string>(), visits: new Set<string>(),
                     bySource: {} as Record<string, number>,
                 });
             }
             const r = rows.get(key);
+            /* Bitta qabul — bitta chek; qabulsiz qator o'zi alohida chek */
+            r.visits.add(c.visitId || `line:${key}:${r.chargeCount}`);
             const paid = round(c.paidAmount || 0);
             r.revenue = round(r.revenue + c.total);
             r.paid = round(r.paid + paid);
@@ -464,7 +488,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                     name: doc ? `${doc.lastName} ${doc.firstName}` : 'Belgilanmagan',
                     departmentId: doc?.departmentId || null,
                     revenue: 0, paid: 0, due: 0, accrued: 0,
-                    chargeCount: 0, patients: new Set<string>(),
+                    chargeCount: 0, patients: new Set<string>(), visits: new Set<string>(),
                     bySource: {} as Record<string, number>,
                 });
             }
@@ -484,8 +508,13 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             .map((r: any) => ({
                 ...r,
                 patientCount: r.patients.size,
-                avgCheck: r.chargeCount > 0 ? round(r.revenue / r.chargeCount) : 0,
+                /* O'RTACHA CHEK = bir qabulga to'g'ri keladigan summa (2026-11-23).
+                   Ilgari xizmat QATORI bo'yicha bo'linardi: uch xizmatli bitta
+                   qabul «uchta chek» bo'lib, chek uch baravar kichik chiqardi.
+                   `/compare` ham shu qoida bilan. */
+                avgCheck: r.visits.size > 0 ? round(r.revenue / r.visits.size) : 0,
                 patients: undefined,
+                visits: undefined,
             }))
             .sort((a, b) => b.revenue - a.revenue);
 
@@ -638,8 +667,23 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             return res.status(400).json({ error: "Davr noto'g'ri" });
         }
         const days = Math.round((toT - fromT) / dayMs) + 1;
-        const prevTo = new Date(fromT - dayMs).toISOString().slice(0, 10);
-        const prevFrom = new Date(fromT - days * dayMs).toISOString().slice(0, 10);
+        let prevTo = new Date(fromT - dayMs).toISOString().slice(0, 10);
+        let prevFrom = new Date(fromT - days * dayMs).toISOString().slice(0, 10);
+        /* OYNING BOSHIDAN — O'TGAN OYNING O'SHA KUNLARI (2026-11-22, egasi
+           nigohidagi maslahatchi). «1–22 noyabr» oldin «10–31 oktyabr» bilan
+           solishtirilardi — ega buni o'qiy olmaydi. Endi «1–22 oktyabr». */
+        const [fy, fm, fd] = from.split('-').map(Number);
+        const [ty, tm, td] = to.split('-').map(Number);
+        if (fd === 1 && fy === ty && fm === tm) {
+            const py = fm === 1 ? fy - 1 : fy;
+            const pm = fm === 1 ? 12 : fm - 1;
+            const lastPrev = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+            const pad = (n: number) => String(n).padStart(2, '0');
+            prevFrom = `${py}-${pad(pm)}-01`;
+            /* To'liq oy tanlansa (1–30 noyabr) — o'tgan oy ham TO'LIQ (1–31 oktyabr) */
+            const lastCur = new Date(Date.UTC(ty, tm, 0)).getUTCDate();
+            prevTo = `${py}-${pad(pm)}-${pad(td >= lastCur ? lastPrev : Math.min(td, lastPrev))}`;
+        }
 
         /** Bitta davrning asosiy raqamlari */
         const measure = async (a: string, b: string) => {
@@ -654,7 +698,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                             { visitId: null, createdAt: { gte: start, lte: end } },
                         ],
                     },
-                    select: { total: true, paidAmount: true, patientId: true },
+                    select: { total: true, paidAmount: true, patientId: true, visitId: true },
                 }),
                 prisma.expense.findMany({
                     where: { clinicId, date: { gte: a, lte: b } },
@@ -686,7 +730,11 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 profit: round(revenue - expense),
                 visits,
                 patients,
-                avgCheck: charges.length > 0 ? round(revenue / charges.length) : 0,
+                /* Bir qabulga to'g'ri keladigan summa — `/doctors` bilan bir xil */
+                avgCheck: (() => {
+                    const checks = new Set(charges.map((c: any, i: number) => c.visitId || `line:${i}`)).size;
+                    return checks > 0 ? round(revenue / checks) : 0;
+                })(),
             };
         };
 
@@ -710,6 +758,78 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
         }
 
         res.json({ current, previous, delta });
+    });
+
+    /**
+     * OYLAR BO'YICHA — bir yil, o'n ikki qator (2026-11-23, Moliya rejasi 6).
+     *
+     * Egasi «qaysi oy yaxshi edi» ni ko'rish uchun har oyni alohida tanlab
+     * chiqardi. Endi Umumiy tab ostida bitta jadval. Har ustun `/compare`
+     * dagi `measure()` qoidasi bilan: xizmatlar — qabul sanasi bo'yicha,
+     * olindi — to'lov vaqti bo'yicha, xarajat — `isCountedExpense`,
+     * sof foyda = xizmatlar − xarajat. Bitta so'rovda, oy bo'yicha guruhlab.
+     */
+    route('get', '/api/reports/months', async (req, res, clinicId) => {
+        if (!ownerOnly(req, res)) return;
+        const year = Number(req.query.year) || Number(today().slice(0, 4));
+        if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+            return res.status(400).json({ error: "Yil noto'g'ri" });
+        }
+        const from = `${year}-01-01`;
+        const to = `${year}-12-31`;
+        const { start, end } = tashkentRangeBounds(from, to);
+
+        const [charges, payments, expenses] = await Promise.all([
+            prisma.visitCharge.findMany({
+                where: {
+                    clinicId,
+                    status: { not: 'Cancelled' },
+                    OR: [
+                        { visit: { date: { gte: from, lte: to } } },
+                        { visitId: null, createdAt: { gte: start, lte: end } },
+                    ],
+                },
+                select: { total: true, createdAt: true, visit: { select: { date: true } } },
+            }),
+            prisma.chargePayment.findMany({
+                where: { clinicId, createdAt: { gte: start, lte: end } },
+                select: { amount: true, createdAt: true },
+            }),
+            prisma.expense.findMany({
+                where: { clinicId, date: { gte: from, lte: to } },
+                select: { amount: true, category: true, date: true },
+            }),
+        ]);
+
+        const months = Array.from({ length: 12 }, (_, i) => ({
+            month: `${year}-${String(i + 1).padStart(2, '0')}`,
+            revenue: 0, collected: 0, expense: 0, profit: 0,
+        }));
+        const slot = (day: string) => months[Number(day.slice(5, 7)) - 1];
+
+        for (const c of charges) {
+            const m = slot(c.visit?.date || toTashkentDay(c.createdAt));
+            if (m) m.revenue += c.total || 0;
+        }
+        for (const p of payments) {
+            const m = slot(toTashkentDay(p.createdAt));
+            if (m) m.collected += p.amount || 0;
+        }
+        for (const e of expenses) {
+            if (!isCountedExpense(e.category)) continue;
+            const m = slot(String(e.date));
+            if (m) m.expense += e.amount || 0;
+        }
+        for (const m of months) {
+            m.revenue = round(m.revenue); m.collected = round(m.collected);
+            m.expense = round(m.expense); m.profit = round(m.revenue - m.expense);
+        }
+
+        const sum = (k: 'revenue' | 'collected' | 'expense' | 'profit') => round(months.reduce((s, m) => s + m[k], 0));
+        res.json({
+            year, months,
+            totals: { revenue: sum('revenue'), collected: sum('collected'), expense: sum('expense'), profit: sum('profit') },
+        });
     });
 
     /**

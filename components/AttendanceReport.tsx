@@ -9,7 +9,8 @@ import { api } from '../services/api';
 
 import { useLanguage, fill, tr, TranslationKey } from '../context/LanguageContext';
 /* Server `name` ni o'zbekcha beradi; ekranda hafta kuni raqamidan tildagi nom olinadi (0 = yakshanba). */
-const wdName = (n: number) => tr(`ui.wd_${n}` as TranslationKey);
+/* Hafta kuni raqami kelmasa (demo javobida faqat `name`) — server bergan nom; ilgari «ui.wd_undefined» chiqardi */
+const wdName = (n: number | undefined, fallback = '') => (n == null || Number.isNaN(Number(n)) ? fallback : tr(`ui.wd_${n}` as TranslationKey));
 
 /* ─────────────────────────────────────────────────────────────────────
    DAVOMAT HISOBOTI.
@@ -105,7 +106,7 @@ const AttendanceReport: React.FC<{
   const hours = (data.byHour || []).filter((h: any) => h.booked > 0)
     .map((h: any) => ({ ...h, label: h.hour + ':00', kelmagan: Math.max(0, h.booked - h.arrived) }));
 
-  const wdChart = wd.map((w: any) => ({ ...w, short: wdName(w.weekday).slice(0, 3) }));
+  const wdChart = wd.map((w: any) => ({ ...w, short: wdName(w.weekday, w.name).slice(0, 3) }));
   const maxWd = Math.max(1, ...wd.map((w: any) => w.avgVisits || 0));
 
   return (
@@ -140,8 +141,8 @@ const AttendanceReport: React.FC<{
       {data.best && data.worst && data.best.weekday !== data.worst.weekday && (
         <div className="rounded-xl border border-line bg-surface p-4">
           <div className="text-sm text-muted">
-            {tr('attendancereport.eng_gavjum_kun')} <b className="text-emerald-600 dark:text-emerald-400">{wdName(data.best.weekday)}</b>,
-            {tr('attendancereport.kuniga_ortacha_2')} <b>{data.best.avgVisits}</b> {tr('attendancereport.ta_qabul_eng_boshi')} — <b className="text-amber-600 dark:text-amber-400">{wdName(data.worst.weekday)}</b>,
+            {tr('attendancereport.eng_gavjum_kun')} <b className="text-emerald-600 dark:text-emerald-400">{wdName(data.best.weekday, data.best.name)}</b>,
+            {tr('attendancereport.kuniga_ortacha_2')} <b>{data.best.avgVisits}</b> {tr('attendancereport.ta_qabul_eng_boshi')} — <b className="text-amber-600 dark:text-amber-400">{wdName(data.worst.weekday, data.worst.name)}</b>,
             <b> {data.worst.avgVisits}</b> {tr('attendancereport.ta')}
             {data.worst.avgVisits > 0 && (
               <> {tr('attendancereport.farqi')} <b>{Math.round((data.best.avgVisits / data.worst.avgVisits) * 10) / 10} barobar</b>.</>
@@ -266,7 +267,7 @@ const AttendanceReport: React.FC<{
               {wd.map((w: any) => (
                 <tr key={w.weekday} className="border-t border-line-soft">
                   <td className="py-2 font-medium text-ink whitespace-nowrap">
-                    {wdName(w.weekday)}<span className="text-xs text-faint font-normal ml-1">{w.days} {tr('ui.kun')}</span>
+                    {wdName(w.weekday, w.name)}<span className="text-xs text-faint font-normal ml-1">{w.days} {tr('ui.kun')}</span>
                   </td>
                   <td className="py-2 text-right tabular-nums font-semibold">{w.avgVisits}</td>
                   <td className="py-2 text-right tabular-nums">{formatNumber(w.booked)}</td>

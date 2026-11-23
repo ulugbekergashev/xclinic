@@ -1,5 +1,6 @@
 import { Patient, Clinic, Doctor, PatientDiagnosis, EncounterTemplate } from '../types';
 import { todayISO } from './dateUtils';
+import { fmtDate as printFmtDate, resolvePrintClinic } from './printDocument';
 import { tr } from '../context/LanguageContext';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -29,17 +30,22 @@ interface PrintCardParams {
     procedures: ProcedureInfo[];
     complaints?: string;
     departmentName?: string;
+    /** Tibbiy tarix qatorlari (`anamnesisLines`). Berilmasa — kasalliklar matni. */
+    anamnesis?: string[];
+    /** Qabulning o'z sanasi — bo'lmasa bugun */
+    visitDate?: string;
+    /** Shifokor ro'yxatda topilmasa — qabulda yozilgan ism */
+    doctorName?: string;
+    /** Shifokorning xulosasi va tavsiyalari (`Visit.treatmentPlan`) */
+    conclusion?: string;
 }
 
 const esc = (s: string | undefined | null): string =>
     String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
-const fmtDate = (iso?: string): string => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
-};
+/* Umumiy bosma sana (dd.mm.yyyy): sof `YYYY-MM-DD` mahalliy kun deb o'qiladi */
+/* Tushunilmagan sana xom matn bo'lib qaytadi — HTML ga tushishidan oldin tozalanadi */
+const fmtDate = (iso?: string): string => (iso ? esc(printFmtDate(iso)) : '');
 
 const calcAge = (dob?: string): number | null => {
     if (!dob) return null;
@@ -70,22 +76,32 @@ function encounterRows(encounter?: EncounterInfo): string {
 }
 
 export function printPatientCard({
-    patient, clinic, doctor, encounter, diagnoses, procedures, complaints, departmentName,
+    patient, clinic, doctor, encounter, diagnoses, procedures, complaints, departmentName, anamnesis,
+    visitDate, doctorName: doctorNameArg, conclusion,
 }: PrintCardParams): void {
+    /* Anamnez: har bo'lim alohida satrda — allergiya, kasalliklar, doimiy
+       dorilar, … Ilgari bu yerga kasalliklarning xom matni tushardi. */
+    const anamnesisHtml = anamnesis?.length
+        ? anamnesis.map(esc).join('<br>')
+        : (esc(patient.medicalHistory) || '&nbsp;');
     const todayIso = todayISO();
+    const dayIso = visitDate || todayIso;
+    // Klinika berilmasa — ilovadagi joriy klinika
+    const cardClinic = resolvePrintClinic(clinic);
     const age = calcAge(patient.dob);
 
-    const activeDiagnoses = diagnoses
+    /* Bir kod bir marta: tashxis har qabulda qayta qo'yilsa ham qog'ozda takrorlanmaydi */
+    const activeDiagnoses = [...new Map(diagnoses
         .filter(d => d.status !== 'Resolved')
-        .map(d => [d.code, d.icd10?.name].filter(Boolean).join(' — '))
+        .map(d => [d.code, [d.code, d.icd10?.name].filter(Boolean).join(' — ')] as const)).values()]
         .join('; ');
 
     const treatment = procedures
-        .slice(-8)
+        .slice(0, 12)
         .map(p => p.departmentName ? `${p.serviceName} (${p.departmentName})` : p.serviceName)
         .join('; ');
 
-    const doctorName = doctor ? `${doctor.firstName} ${doctor.lastName}` : '';
+    const doctorName = doctor ? `${doctor.lastName} ${doctor.firstName}`.trim() : (doctorNameArg || '');
     const contact = [patient.address, patient.phone].filter(Boolean).join(' / ');
 
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Karta — ${esc(patient.lastName)} ${esc(patient.firstName)}</title>
@@ -121,14 +137,14 @@ export function printPatientCard({
  <div class="dcard-head">
   <div><h1 class="dcard-title">Bemor kartasi</h1>
    <p class="dcard-sub">Qabul vipiskasi${departmentName ? ' — ' + esc(departmentName) : ''}</p></div>
-  <div class="dcard-clinic">${esc(clinic?.name) || 'Klinika'}<span>${esc(clinic?.phone)}</span></div>
+  <div class="dcard-clinic">${esc(cardClinic?.name) || 'XClinic'}<span>${esc(cardClinic?.phone)}</span></div>
  </div>
  <div class="dcard-row"><span class="dcard-lbl">1. F.I.Sh:</span> <span class="dcard-val" style="min-width:110mm">${esc(patient.lastName)} ${esc(patient.firstName)}</span></div>
  <div class="dcard-row"><span class="dcard-lbl">2. Tug'ilgan sana:</span> <span class="dcard-val">${fmtDate(patient.dob) || '&nbsp;'}</span> <span class="dcard-lbl">Yosh:</span> <span class="dcard-val" style="min-width:18mm">${age ?? '&nbsp;'}</span></div>
  <div class="dcard-row"><span class="dcard-lbl">3. Manzil / Telefon:</span> <span class="dcard-val" style="min-width:105mm">${esc(contact) || '&nbsp;'}</span></div>
- <div class="dcard-row"><span class="dcard-lbl">4. Qabul sanasi:</span> <span class="dcard-val">${fmtDate(todayIso)}</span></div>
+ <div class="dcard-row"><span class="dcard-lbl">4. Qabul sanasi:</span> <span class="dcard-val">${fmtDate(dayIso)}</span></div>
  <div class="dcard-row"><span class="dcard-lbl">5. Shikoyatlar:</span><span class="dcard-val wide">${esc(complaints) || '&nbsp;'}</span></div>
- <div class="dcard-row"><span class="dcard-lbl">6. Anamnez:</span><span class="dcard-val wide">${esc(patient.medicalHistory) || '&nbsp;'}</span></div>
+ <div class="dcard-row"><span class="dcard-lbl">6. Anamnez:</span><span class="dcard-val wide">${anamnesisHtml}</span></div>
 
  <div class="dcard-sect">7. Qabul bayoni${encounter?.template ? ' — ' + esc(encounter.template.name) : ''}</div>
  <table class="dcard-table"><thead><tr><th style="width:55mm">Ko'rsatkich</th><th>Qiymat</th></tr></thead>
@@ -140,6 +156,9 @@ export function printPatientCard({
   <div class="dcard-col"><div class="dcard-sect">9. Tayinlangan davolash</div>
    <div class="dcard-box">${esc(treatment)}</div></div>
  </div>
+
+ <div class="dcard-sect">10. Xulosa va tavsiyalar</div>
+ <div class="dcard-box" style="min-height:30mm">${esc(conclusion) || '&nbsp;'}</div>
 
  <div class="dcard-foot">
   <div class="dcard-sign"><span class="dcard-lbl">Shifokor: ${esc(doctorName)}</span><div class="line"></div><div class="cap">Imzo</div></div>

@@ -25,6 +25,7 @@ const LIVE_EVENTS: LiveEventType[] = ['admission.changed', 'charge.paid'];
 import { Clinic } from '../types';
 import { printDischarge } from '../utils/printForms';
 import { AdmissionBill } from '../components/AdmissionBill';
+import { DischargeBill } from '../components/DischargeBill';
 import { VitalsChart } from '../components/VitalsChart';
 import { todayISO } from '../utils/dateUtils';
 import { DoctorPicker } from '../components/DoctorPicker';
@@ -65,6 +66,8 @@ const fmt = (n: number) => formatNumber(n);
 const BILL_WRITERS = ['NURSE', 'DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN'];
 /** Qatorni bekor qila oladiganlar (`DELETE /api/charges/:id`) — hamshira va laborant yo'q */
 const BILL_REMOVERS = ['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN'];
+/** To'lov qabul qila oladiganlar (`POST /api/payments`) — chiqarish oynasida pul shular oladi */
+const BILL_CASHIERS = ['RECEPTIONIST', 'CLINIC_ADMIN'];
 
 const fmtDate = (iso?: string | null) => iso ? formatDate(iso) : '—';
 
@@ -648,7 +651,6 @@ export const Inpatient: React.FC<Props> = ({
                         onOpenAdmission={openDetail}
                         onAdmit={(bed, ward) => setAdmitBed({ bed, ward })}
                         onBedReady={markBedReady}
-                        onToggleBlock={toggleBedBlock}
                         onEditWard={openWardEdit}
                         onAddBed={addBed}
                         onGive={o => giveMed(o.id, o.dosage)}
@@ -1198,6 +1200,37 @@ export const Inpatient: React.FC<Props> = ({
                                     <input type="number" value={wardForm.bedCount} onChange={e => setWardForm(f => ({ ...f, bedCount: e.target.value }))} className={inputCls} />
                                 </div>
                             )}
+                            {/* KOYKANI TA'MIRGA CHIQARISH — shu yerda. 2026-11-19 gacha
+                                bu tugma xaritadagi HAR bo'sh koykada turardi: kamdan-kam
+                                ish uchun ekranda beshta tugma. Band koyka ro'yxatda
+                                yo'q — uni bloklab bo'lmaydi (server ham 409 beradi). */}
+                            {editWard && (() => {
+                                const repairable = (wards.find(w => w.id === editWard.id)?.beds || [])
+                                    .filter(b => b.status === 'Free' || b.status === 'Blocked');
+                                if (repairable.length === 0) return null;
+                                return (
+                                    <div className="col-span-2">
+                                        {/* Xato oynaning o'zida: koyka shu orada band bo'lsa server 409 beradi */}
+                                        {error && (
+                                            <p role="alert" className="mb-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300">{error}</p>
+                                        )}
+                                        <p className="block text-sm font-medium text-muted mb-1.5">{t('inp.bedsRepair')}</p>
+                                        <ul className="divide-y divide-line border border-line rounded-lg">
+                                            {repairable.map(b => (
+                                                <li key={b.id} className="flex items-center gap-2 px-3 py-2">
+                                                    <span className="flex-1 text-sm text-ink">
+                                                        {b.label} · <span className="text-muted">{b.status === 'Blocked' ? t('zones.inp.bedBlocked') : t('zones.inp.bedFree')}</span>
+                                                    </span>
+                                                    <button type="button" onClick={() => toggleBedBlock(b)} disabled={saving}
+                                                        className="h-8 px-3 rounded-lg border border-line text-xs font-semibold text-muted hover:text-ink hover:bg-elevated disabled:opacity-50">
+                                                        {b.status === 'Blocked' ? t('inp.unblockBed') : t('inp.blockBed')}
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                );
+                            })()}
                         </div>
                         <div className="p-5 border-t border-line flex justify-end gap-3">
                             <button onClick={() => { setShowWard(false); setEditWard(null); }} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">{t('common.cancel2')}</button>
@@ -1325,13 +1358,32 @@ export const Inpatient: React.FC<Props> = ({
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setDischargeFor(null)}>
                     <div className="bg-surface rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-line">
-                            <h3 className="font-semibold text-ink">{t('inp.dischargeEpicrisis')}</h3>
+                            <h3 className="font-semibold text-ink">{t('inp.dis.title')}</h3>
                             <p className="text-xs text-muted">
                                 {dischargeFor.patientName} · {daysIn(dischargeFor.admittedAt, null)} {t('inpatient.kun_yotdi')}
                             </p>
                         </div>
 
                         <div className="p-5 overflow-y-auto space-y-3">
+                            {/* HISOB — BIRINCHI. Klinika summani aynan bemorni
+                                chiqarayotganda kutadi; ilgari bu oynada pul
+                                haqida hech narsa yo'q edi (`DischargeBill`). */}
+                            <DischargeBill
+                                key={dischargeFor.id}
+                                admission={dischargeFor}
+                                clinic={currentClinic}
+                                canPay={BILL_CASHIERS.includes(userRole || '')}
+                                receivedByName={currentUserName}
+                                role={userRole}
+                                onPaid={async () => {
+                                    /* Orqada ochiq turgan karta ham yangi hisobni ko'rsatsin */
+                                    const id = dischargeFor.id;
+                                    const fresh = await api.admissions.billing(id).catch(() => null);
+                                    if (fresh && detailIdRef.current === id) setBilling(fresh);
+                                }}
+                            />
+
+                            <h4 className="pt-2 text-sm font-semibold text-ink">{t('inp.dischargeEpicrisis')}</h4>
                             {([
                                 ['admissionDiagnosis', t('inpatient.kirishdagi_tashxis'), 2],
                                 ['finalDiagnosis', t('inpatient.yakuniy_tashxis'), 2],

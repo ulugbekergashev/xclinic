@@ -36,6 +36,8 @@ export interface NavItemDef {
     labelFor?: Partial<Record<UserRole, TranslationKey>>;
     icon: React.ElementType;
     roles: UserRole[];
+    /** Menyuda ko'rinmaydi — faqat manzil va ruxsat uchun turadi */
+    hidden?: boolean;
 }
 
 const ALL = [UserRole.CLINIC_ADMIN, UserRole.DOCTOR, UserRole.RECEPTIONIST, UserRole.NURSE];
@@ -122,7 +124,7 @@ export function accessModulesFor(role: UserRole): NavItemDef[] {
 /** Rol va «Ruxsatlar» sozlamasiga ko'ra ko'rinadigan punktlar */
 export function visibleNavigation(role: UserRole, ac: AccessControl): NavItemDef[] {
     return NAVIGATION.filter(item =>
-        item.roles.includes(role)
+        item.roles.includes(role) && !item.hidden
         && !isModuleHidden(ac, role, item.id)
         && (item.id !== 'finance' || canSeeFinance(ac, role)),
     );

@@ -442,6 +442,16 @@ export async function applyChargePayment(tx: any, clinicId: string, input: Charg
         .filter((c: any) => plan.has(c.id))
         .map((c: any) => c.name).join(', ').slice(0, 200);
 
+    /* SHIFOKOR — SO'ROVDA BO'LMASA QATORLARDAN (2026-11-22 audit). Kassa
+       oynasi shifokorni yubormaydi, va chek «Belgilanmagan» bo'lib yozilardi:
+       oylik kassa daftaridagi shifokor ustunlari va Excel bo'sh chiqardi.
+       To'lanayotgan qatorlarning hammasi bitta shifokorniki bo'lsa — o'sha. */
+    const paidDoctors = new Set(charges.filter((c: any) => plan.has(c.id) && c.doctorId).map((c: any) => c.doctorId));
+    const inferredDoctorId = !doctorId && paidDoctors.size === 1 ? [...paidDoctors][0] as string : null;
+    const inferredDoctorName = inferredDoctorId
+        ? charges.find((c: any) => c.doctorId === inferredDoctorId)?.doctorName || null
+        : null;
+
     /* Har usul uchun chek va uning ulushidagi ChargePayment qatorlari.
        Usul ulushi qatorlar bo'yicha proportsional taqsimlanadi — shunda
        kassa kitobidagi "naqd" va "karta" summalari to'g'ri chiqadi. */
@@ -461,8 +471,8 @@ export async function applyChargePayment(tx: any, clinicId: string, input: Charg
                 type: ms.method,
                 service: serviceLabel,
                 status: 'Paid',
-                doctorId: doctorId || null,
-                doctorName: doctorName || null,
+                doctorId: doctorId || inferredDoctorId || null,
+                doctorName: doctorName || inferredDoctorName || null,
                 receivedById: receivedById || null,
                 receivedByName: receivedByName || null,
             },
@@ -654,7 +664,11 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
             },
             include: { visit: { select: { id: true, date: true, queueNumber: true, departmentId: true } } },
             orderBy: { createdAt: 'desc' },
-            take: 500,
+            /* To'lanmaganlar CHEKLANMAYDI (2026-11-22 audit): ilgari 500 ta edi va
+               koyka qatorlari ko'p bo'lsa eng eski qarzlar kassadan ham, bemorning
+               to'lov oynasidan ham yo'qolardi — bemor kamroq qarzdor ko'rinardi.
+               Qolgan so'rovlar (hammasi) — avvalgidek 500 bilan. */
+            ...(String(status) === 'Unpaid' ? {} : { take: 500 }),
         });
         res.json(charges);
     });

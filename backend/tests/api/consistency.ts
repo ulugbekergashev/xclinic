@@ -124,6 +124,48 @@ async function main() {
         Math.abs((tot.doctorShare + tot.otherExpenses) - (cmp.data?.current?.expense ?? NaN)) < 1,
         `${tot.doctorShare + tot.otherExpenses} vs ${cmp.data?.current?.expense}`);
 
+    console.log('\n═══ 4c. XIZMATLAR SUMMASI — HAMMA TABDA BITTA ═════');
+    /* Moliya rejasi 4–5-vazifa (2026-11-23). Umumiy (compare), pastdagi
+       summary, Shifokorlar va Bo'limlar bir davr uchun BIR XIL «Xizmatlar»
+       summasini berishi shart: hammasi qabul sanasi bo'yicha sanaydi. */
+    const [docs, depts] = await Promise.all([
+        call('GET', `/reports/doctors?from=${monthStart}&to=${today}`, undefined, token),
+        call('GET', `/reports/departments?from=${monthStart}&to=${today}`, undefined, token),
+    ]);
+    ok('xizmatlar: summary === compare',
+        Math.abs((tot.revenue ?? NaN) - (cmp.data?.current?.revenue ?? NaN)) < 1,
+        `${tot.revenue} vs ${cmp.data?.current?.revenue}`);
+    ok('xizmatlar: shifokorlar jami === compare',
+        Math.abs((docs.data?.totals?.revenue ?? NaN) - (cmp.data?.current?.revenue ?? NaN)) < 1,
+        `${docs.data?.totals?.revenue} vs ${cmp.data?.current?.revenue}`);
+    const deptSum = (depts.data?.departments || depts.data?.rows || []).reduce((s: number, d: any) => s + (d.revenue || 0), 0);
+    ok("xizmatlar: bo'limlar yig'indisi === compare",
+        Math.abs(deptSum - (cmp.data?.current?.revenue ?? NaN)) < 1,
+        `${deptSum} vs ${cmp.data?.current?.revenue}`);
+
+    console.log('\n═══ 4d. OYLAR BO\'YICHA — SHU OY = SOLISHTIRISH ═══');
+    /* Moliya rejasi 6: «Oylar bo'yicha» jadvalidagi joriy oy qatori Umumiy
+       plitkalari bilan bir xil bo'lishi shart (oy boshidan bugungacha). */
+    const months = await call('GET', `/reports/months?year=${today.slice(0, 4)}`, undefined, token);
+    ok('months javob berdi', months.status === 200 && months.data?.months?.length === 12, `status: ${months.status}`);
+    const thisMonth = (months.data?.months || []).find((m: any) => m.month === today.slice(0, 7)) || {};
+    for (const k of ['revenue', 'collected', 'expense', 'profit']) {
+        ok(`oylar: joriy oy ${k} === compare`,
+            Math.abs((thisMonth[k] ?? NaN) - (cmp.data?.current?.[k] ?? NaN)) < 1,
+            `${thisMonth[k]} vs ${cmp.data?.current?.[k]}`);
+    }
+    /* To'liq oy — o'tgan oy ham to'liq (31-kun tushib qolmasin) */
+    const fullMonth = await call('GET', '/reports/compare?from=2026-11-01&to=2026-11-30', undefined, token);
+    ok("to'liq noyabr ↔ to'liq oktyabr (1–31)",
+        fullMonth.data?.previous?.from === '2026-10-01' && fullMonth.data?.previous?.to === '2026-10-31',
+        `${fullMonth.data?.previous?.from} – ${fullMonth.data?.previous?.to}`);
+    const debt = await call('GET', '/reports/debtors', undefined, token);
+    ok('qarzdorlarda telefon maydoni bor (Moliya rejasi 7)',
+        (debt.data?.patients || []).every((p: any) => 'phone' in p),
+        JSON.stringify((debt.data?.patients || [])[0] || {}).slice(0, 120));
+    const badYear = await call('GET', '/reports/months?year=abc', undefined, token);
+    ok("noto'g'ri yil — joriy yil olinadi", badYear.status === 200 && badYear.data?.year === Number(today.slice(0, 4)), `status: ${badYear.status}`);
+
     console.log('\n═══ 5. DAVR CHEGARASI HURMAT QILINADI ═════════════');
     /* Qarz davrga bog'liq EMAS — bir kunlik oraliqda ham o'zgarmasligi
        kerak. Tushum esa bog'liq. */

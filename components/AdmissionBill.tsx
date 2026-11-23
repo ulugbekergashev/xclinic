@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Wallet, Plus, Printer, X, Loader2 } from 'lucide-react';
 import { Admission } from '../types';
 import { api } from '../services/api';
-import { useLanguage, fill, tr } from '../context/LanguageContext';
+import { useLanguage, fill, tr, TranslationKey } from '../context/LanguageContext';
 import { formatDate, formatMoney, formatNumber } from '../utils/format';
 import { fmtDateTime, PrintClinic } from '../utils/printDocument';
 import { printReceipt, mergeReceiptLines, ReceiptLine } from '../utils/printReceipt';
@@ -26,8 +26,9 @@ import { printReceipt, mergeReceiptLines, ReceiptLine } from '../utils/printRece
         faqat epikriz bosilardi — unda pul yo'q. «Hisob cheki» hamma qatorni
         lentaga chiqaradi: nima uchun, qancha, to'langani va qolgani.
 
-   PUL BU YERDA OLINMAYDI. To'lov kassada, o'sha yagona oynada: bemor shu
-   chek bilan kassaga boradi. Bu blok faqat hisobni yuritadi.
+   PUL BU YERDA OLINMAYDI — bu blok hisobni yuritadi. Pul chiqarish oynasida
+   olinadi (`DischargeBill`): klinika summani aynan bemorni chiqarayotganda
+   ko'rishni kutadi. Kassadagi yagona oyna ham ishlayveradi.
    ───────────────────────────────────────────────────────────────────────────── */
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -67,7 +68,7 @@ const paidOf = (c: any): number => Number(c.paidAmount ?? c.paid ?? 0);
 const isRemovable = (c: any): boolean => !c.sourceId && c.status === 'Unpaid' && paidOf(c) <= 0;
 
 /** Chek qatorlari: koyka kunlari bitta satrga, qolgani nomi bo'yicha yig'iladi */
-function receiptLines(charges: any[], bedLabel: string): ReceiptLine[] {
+export function receiptLines(charges: any[], bedLabel: string): ReceiptLine[] {
     const beds = charges.filter(c => c.source === 'Bed');
     const rest = charges.filter(c => c.source !== 'Bed');
     const bedLine: ReceiptLine[] = beds.length
@@ -77,6 +78,33 @@ function receiptLines(charges: any[], bedLabel: string): ReceiptLine[] {
         ...bedLine,
         ...mergeReceiptLines(rest.map(c => ({ name: c.name, quantity: c.quantity || 1, total: c.total || 0 }))),
     ];
+}
+
+/** «Hisob cheki» — yotish hisobining hamma qatori, jami, to'langani va qolgani.
+ *  Ikki joydan bosiladi: yotish kartasidan va chiqarish oynasidan
+ *  (`DischargeBill`). `false` — brauzer bosma oynani ochmadi. */
+export function printAdmissionBill(
+    admission: Admission, billing: AdmissionBilling,
+    clinic: PrintClinic | null | undefined, t: (key: TranslationKey) => string,
+): boolean {
+    return printReceipt({
+        title: t('inp.bill.title'),
+        clinic,
+        meta: [
+            { label: t('ui.sana'), value: fmtDateTime(new Date()) },
+            { label: t('ui.bemor'), value: admission.patientName },
+            {
+                label: t('inp.bill.stay'),
+                value: `${formatDate(admission.admittedAt)} — ${formatDate(admission.dischargedAt || new Date().toISOString())}`,
+            },
+        ],
+        lines: receiptLines(billing.charges || [], t('inp.bed')),
+        summary: [
+            { label: t('payment.total'), value: `${formatMoney(billing.accrued)} ${t('ui.som')}`, strong: true },
+            { label: t('ui.tolangan'), value: `${formatMoney(billing.paid)} ${t('ui.som')}` },
+            { label: t('inp.bill.due'), value: `${formatMoney(billing.due)} ${t('ui.som')}`, strong: true },
+        ],
+    });
 }
 
 export function AdmissionBill({ admission, billing, bedDays, clinic, canAdd, canRemove, onChanged }: Props) {
@@ -138,25 +166,7 @@ export function AdmissionBill({ admission, billing, bedDays, clinic, canAdd, can
     };
 
     const printBill = () => {
-        const printed = printReceipt({
-            title: t('inp.bill.title'),
-            clinic,
-            meta: [
-                { label: t('ui.sana'), value: fmtDateTime(new Date()) },
-                { label: t('ui.bemor'), value: admission.patientName },
-                {
-                    label: t('inp.bill.stay'),
-                    value: `${formatDate(admission.admittedAt)} — ${formatDate(admission.dischargedAt || new Date().toISOString())}`,
-                },
-            ],
-            lines: receiptLines(billing.charges || [], t('inp.bed')),
-            summary: [
-                { label: t('payment.total'), value: `${formatMoney(billing.accrued)} ${t('ui.som')}`, strong: true },
-                { label: t('ui.tolangan'), value: `${formatMoney(billing.paid)} ${t('ui.som')}` },
-                { label: t('inp.bill.due'), value: `${formatMoney(billing.due)} ${t('ui.som')}`, strong: true },
-            ],
-        });
-        if (!printed) setError(t('print.popupBlocked'));
+        if (!printAdmissionBill(admission, billing, clinic, t)) setError(t('print.popupBlocked'));
     };
 
     const charges = billing.charges || [];

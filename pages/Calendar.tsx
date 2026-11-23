@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { formatDoctorName, formatFullName, formatNumber } from '../utils/format';
 import {
     ComposedChart, Area, Line, BarChart, Bar, XAxis, YAxis,
@@ -23,7 +23,6 @@ import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { CalendarMonth } from '../components/CalendarMonth';
-import { CalendarSide } from '../components/CalendarSide';
 import { monthLabel, dayLabel, weekLabel } from '../utils/calendarLabels';
 
 interface CalendarProps {
@@ -338,13 +337,6 @@ export const Calendar: React.FC<CalendarProps> = ({
     t('calendar.days.fri'), t('calendar.days.sat'), t('calendar.days.sun'),
   ];
 
-  /* Yon panel va oy ko'rinishi uchun sanoqlar. Bekor qilinganlar kirmaydi. */
-  const liveAppointments = filteredAppointments.filter(a => a.status !== 'Cancelled');
-  const countByDay = new Map<string, number>();
-  for (const a of liveAppointments) {
-    const k = dayKey(a.date);
-    countByDay.set(k, (countByDay.get(k) || 0) + 1);
-  }
   /* Shifokor yonidagi son — KO'RINAYOTGAN davr bo'yicha (kun / hafta / oy)
      va filtrdan MUSTAQIL: filtr yoqilganda qolganlari nolga tushib qolmasin. */
   const periodKeys = new Set(view === 'month'
@@ -359,6 +351,14 @@ export const Calendar: React.FC<CalendarProps> = ({
   /* Kunning sig'imi — faol shifokorlarning ish vaqti yig'indisi (daqiqada). */
   const capacityMin = activeDoctors.reduce((sum, d) =>
     sum + Math.max(1, (d.endHour ?? currentClinic?.endHour ?? 20) - (d.startHour ?? currentClinic?.startHour ?? 8)) * 60, 0);
+
+  /* Sana yozuvi bosilganda brauzerning sana tanlagichi ochiladi */
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const openDatePicker = () => {
+    const el = dateInputRef.current;
+    if (!el) return;
+    try { el.showPicker(); } catch { el.focus(); }
+  };
 
   const headerLabel = view === 'month' ? monthLabel(currentDate, language)
     : view === 'week' ? weekLabel(displayDays[0], displayDays[6], language)
@@ -458,7 +458,18 @@ export const Calendar: React.FC<CalendarProps> = ({
           <h1 className="text-2xl font-bold text-ink">{t('calendar.title')}</h1>
           <div className="flex items-center bg-surface rounded-md shadow-sm border border-line flex-1 sm:flex-none justify-between sm:justify-start">
             <button aria-label={t('calendar.oldingi')} onClick={handlePrev} className="p-2 hover:bg-elevated text-muted"><ChevronLeft className="w-4 h-4" /></button>
-            <span className="px-4 text-sm font-medium min-w-[170px] text-center">{headerLabel}</span>
+            {/* SANANI BOSIB ISTALGAN KUNGA O'TISH. Ilgari buning uchun chapda
+                alohida oy kalendari turardi (42 ta tugma) — tepadagi
+                strelkalar bilan bir ishni qilardi va haftani ekrandan
+                siqib chiqarardi: shanba kesilib, yakshanba ko'rinmasdi. */}
+            <button type="button" onClick={openDatePicker} title={t('cal.pickDate')}
+              className="relative px-4 h-9 text-sm font-medium min-w-[170px] text-center hover:bg-elevated">
+              {headerLabel}
+              <input ref={dateInputRef} type="date" tabIndex={-1} aria-label={t('cal.pickDate')}
+                value={formatDateToISO(currentDate)}
+                onChange={e => { if (e.target.value) setCurrentDate(parseLocalDay(e.target.value)); }}
+                className="absolute inset-0 opacity-0 pointer-events-none" />
+            </button>
             <button aria-label={t('calendar.keyingi')} onClick={handleNext} className="p-2 hover:bg-elevated text-muted"><ChevronRight className="w-4 h-4" /></button>
           </div>
           {/* View Toggle for Desktop/Tablet */}
@@ -486,6 +497,23 @@ export const Calendar: React.FC<CalendarProps> = ({
             className="hidden md:inline-flex h-9 px-3 items-center rounded-md border border-line bg-surface text-xs font-bold text-muted hover:text-ink">
             {t('ui.bugun')}
           </button>
+          {/* SHIFOKOR FILTRI — bitta ro'yxat. Ilgari ikki joyda edi: keng
+              ekranda yon panelda (mutaxassislik bo'yicha), torida setka
+              ustida nishonlar qatori. Yonidagi son — ko'rinayotgan davrdagi
+              yozuvlar. Shifokorga kerak emas: u faqat o'zinikini ko'radi. */}
+          {userRole !== UserRole.DOCTOR && (
+            <select value={doctorFilter || ''} onChange={e => setDoctorFilter(e.target.value || null)}
+              aria-label={t('cal.side.doctors')}
+              className={`h-9 px-2.5 rounded-md border text-xs font-bold max-w-[200px] ${doctorFilter
+                ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-ink'
+                : 'border-line bg-surface text-muted'}`}>
+              <option value="">{t('finance.debtorsModal.allDoctors')}</option>
+              {doctors.filter(d => d.status === 'Active').map(doc => {
+                const n = countByDoctor.get(doc.id) || 0;
+                return <option key={doc.id} value={doc.id}>Dr. {doc.lastName}{n ? ` · ${n}` : ''}</option>;
+              })}
+            </select>
+          )}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           {/* `openAddModal(initialDate?, initialTime?, initialDoctorId?)` —
@@ -496,61 +524,14 @@ export const Calendar: React.FC<CalendarProps> = ({
         </div>
       </div>
 
-      {/* SHIFOKOR RANGI VA FILTRI (S5.3, audit B-18).
-
-          Audit: «Legendadagi 6 nuqta ham bir xil ko'k, qabul bloklari
-          ham. Legenda bosilmaydi, shifokor bo'yicha filtr yo'q».
-
-          Rang endi barqaror (`doctorColor` — `Doctor.color` bazada NULL
-          bo'lsa ID dan hisoblanadi), legenda esa FILTR: bosilganda shu
-          shifokorning qabullari qoladi, ikkinchi bosish bekor qiladi. */}
-      <div className={`flex flex-wrap items-center gap-2 px-1 py-1 xl:hidden ${userRole === UserRole.DOCTOR ? 'hidden' : ''}`}>
-        {doctors.filter(d => d.status === 'Active').map(doc => {
-          const on = doctorFilter === doc.id;
-          return (
-            <button
-              key={doc.id}
-              type="button"
-              onClick={() => setDoctorFilter(on ? null : doc.id)}
-              aria-pressed={on}
-              title={on ? t('calendar.filtrni_bekor_qilish') : fill(t('calendar.faqat_dr_x'), doc.lastName)}
-              className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors
-                ${on
-                  ? 'border-primary-600 bg-primary-600 text-white'
-                  : 'border-line text-muted hover:bg-elevated'}`}
-            >
-              <span className="w-3 h-3 rounded-full shadow-sm shrink-0"
-                    style={{ backgroundColor: doctorColor(doc) }} />
-              Dr. {doc.lastName}
-            </button>
-          );
-        })}
-        {doctorFilter && (
-          <button type="button" onClick={() => setDoctorFilter(null)}
-            className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline px-1">
-            {t('ui.hammasi')}
-          </button>
-        )}
-      </div>
-
+      {/* Shifokor filtri (S5.3, audit B-18) — tepada, «Bugun» yonida. Rang
+          barqaror (`doctorColor`) va qabul blokining o'zida ko'rinadi. */}
       {/* DAVOMAT HISOBOTI BU YERDAN KO'CHDI — Moliya → Hisobot →
           «Davomat». Kalendar ish ekrani: unda yoziladi, ko'chiriladi va
           «keldi» belgilanadi. Uch oylik grafik esa egaga oyda bir marta
           kerak, lekin u kalendar bilan bitta tugmalar qatorida turgani
           uchun kalendar har ochilganda og'ir so'rov ham ketardi. */}
       <div className="flex-1 min-h-0 flex gap-4">
-      <CalendarSide
-        current={currentDate}
-        lang={language}
-        weekdays={weekdaysMonFirst}
-        countByDay={countByDay}
-        doctors={doctors.filter(d => d.status === 'Active')}
-        countByDoctor={countByDoctor}
-        doctorFilter={doctorFilter}
-        onFilter={setDoctorFilter}
-        onPick={setCurrentDate}
-        hideDoctors={userRole === UserRole.DOCTOR}
-      />
       {view === 'month' ? (
         <CalendarMonth
           month={currentDate}

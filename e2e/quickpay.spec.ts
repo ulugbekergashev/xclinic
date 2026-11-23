@@ -27,11 +27,12 @@ test('«Bugun» ekranidan: yangi bemor, xizmat, to\'lov va chek', async ({ page 
     await login(page);
     await go(page, '/reception');
 
-    await page.getByRole('button', { name: /^To'lov qabul qilish$/ }).click();
+    await page.getByRole('button', { name: /^To'lov qo'shish$/ }).click();
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible();
 
-    // ── Yangi bemor — shu oynaning o'zida, uchta maydon ────────────────
+    // ── Bemor ixtiyoriy: bo'lim «Bemorni ko'rsatish» ortida ────────────
+    await modal.getByRole('button', { name: /Bemorni ko'rsatish/ }).click();
     await modal.getByRole('button', { name: /^Yangi bemor$/ }).click();
     await modal.getByPlaceholder('Familiya', { exact: true }).fill(surname);
     await modal.getByPlaceholder('Ism', { exact: true }).fill('Sinov');
@@ -63,16 +64,55 @@ test('«Bugun» ekranidan: yangi bemor, xizmat, to\'lov va chek', async ({ page 
 
     // ── «Yana to'lov»: forma toza, yaratilgan bemor esa bazada ─────────
     await modal.getByRole('button', { name: /^Yana to'lov$/ }).click();
+    await modal.getByRole('button', { name: /Bemorni ko'rsatish/ }).click();
     const search = modal.getByPlaceholder(/Ism, telefon yoki karta/);
     await expect(search).toBeVisible();
     await search.fill(surname);
     await expect(modal.getByRole('button', { name: new RegExp(surname) }).first()).toBeVisible({ timeout: 15_000 });
 });
 
-test('bemor tanlanmasa va xizmat belgilanmasa to\'lov tugmasi o\'chiq', async ({ page }) => {
+/* KLINIKA IKKINCHI MARTA SO'RAGANI: «Xizmat tanlanadi va to'lov qilinadi.
+   Bemorning ma'lumotlari kerak emas». Oyna ochilgach IKKI bosish: xizmat va
+   «To'lovni qabul qilish». Hech narsa yozilmaydi. */
+test("bemorsiz: xizmat bosiladi, to'lov qabul qilinadi, chek chiqadi", async ({ page, request, baseURL }) => {
+    test.setTimeout(120_000);
+    await muteprint(page);
     await login(page);
     await go(page, '/reception');
-    await page.getByRole('button', { name: /^To'lov qabul qilish$/ }).click();
+
+    await page.getByRole('button', { name: /^To'lov qo'shish$/ }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+    /* Bemor maydonlari ko'rinmaydi — ular faqat so'ralganda ochiladi */
+    await expect(modal.getByPlaceholder('Familiya', { exact: true })).toHaveCount(0);
+    await expect(modal.getByPlaceholder(/Ism, telefon yoki karta/)).toHaveCount(0);
+
+    await modal.getByPlaceholder(/Xizmat nomini/).fill('konsultatsiya');
+    await modal.getByRole('button', { name: /konsultatsiya/i }).first().click();
+    await modal.getByRole('button', { name: /^To'lovni qabul qilish$/ }).click();
+    await expect(modal.getByText("To'lov qabul qilindi")).toBeVisible({ timeout: 20_000 });
+
+    const popupPromise = page.waitForEvent('popup');
+    await modal.getByRole('button', { name: /^Chekni chiqarish$/ }).click();
+    const receipt = await popupPromise;
+    await expect(receipt.locator('body')).toContainText(/konsultatsiya/i);
+    await expect(receipt.locator('body')).toContainText('Jami');
+    await receipt.close();
+
+    /* Pul kassaga tushgan: to'langan qatorlar orasida bemorsiz «Ismsiz» bor */
+    const auth = await request.post(`${baseURL}/api/auth/login`, { data: { username: 'admin', password: PASSWORD } });
+    const token = (await auth.json())?.token;
+    const paid = await (await request.get(`${baseURL}/api/charges?status=Paid`, {
+        headers: { Authorization: `Bearer ${token}` },
+    })).json();
+    const rows = Array.isArray(paid) ? paid : (paid?.charges || []);
+    expect(rows.some((c: any) => c.patientName === 'Ismsiz' && !c.patientId), "bemorsiz to'langan qator").toBeTruthy();
+});
+
+test("xizmat belgilanmasa to'lov tugmasi o'chiq", async ({ page }) => {
+    await login(page);
+    await go(page, '/reception');
+    await page.getByRole('button', { name: /^To'lov qo'shish$/ }).click();
     const modal = page.getByRole('dialog');
 
     await expect(modal.getByRole('button', { name: /^To'lovni qabul qilish$/ })).toBeDisabled();
@@ -125,6 +165,38 @@ test('statsionar: hisobga qator qo\'shiladi va hisob cheki chiqadi', async ({ pa
         await expect(body).toContainText('Sistema');
         await expect(body).toContainText(/180\s000/);
         await bill.close();
+
+        /* ── Chiqarish oynasi: summa SHU YERDA va shu yerda to'lanadi ───
+           Klinika: «Bemorni chiqarganimda ham to'lov summasi chiqmayapti».
+           Oyna ilgari faqat epikrizni so'rardi. */
+        await page.getByRole('button', { name: /^Chiqarish$/ }).first().click();
+        await expect(page.getByRole('heading', { name: 'Bemorni chiqarish' })).toBeVisible();
+        const due = page.getByRole('region', { name: 'Statsionar hisobi' });
+        await expect(due.getByText(/^180\s000 so'm$/)).toBeVisible({ timeout: 15_000 });
+        await expect(due.getByText('Sistema')).toBeVisible();
+
+        /* Kassadagi o'sha to'lov oynasi ochiladi (Moliya rejasi 9): qisman,
+           bir necha usul, chek — hammasi shu yerda. Avval yarmi, keyin qolgani. */
+        await due.getByRole('button', { name: /^To'lovni qabul qilish$/ }).click();
+        let pay = page.getByRole('dialog', { name: new RegExp(`To'lov — .*${surname}`) });
+        await expect(pay).toBeVisible();
+        await pay.getByRole('button', { name: /^Yarmi$/ }).click();
+        await pay.getByRole('button', { name: /^90\s000 qabul qilish$/ }).click();
+        await expect(pay.getByText(/Qoldiq qarz: 90\s000/)).toBeVisible({ timeout: 20_000 });
+        await pay.getByRole('button', { name: /^Yopish$/ }).last().click();
+        await expect(due.getByText(/^90\s000 so'm$/)).toBeVisible({ timeout: 20_000 });
+
+        await due.getByRole('button', { name: /^To'lovni qabul qilish$/ }).click();
+        pay = page.getByRole('dialog', { name: new RegExp(`To'lov — .*${surname}`) });
+        await pay.getByRole('button', { name: /^90\s000 qabul qilish$/ }).click();
+        await pay.getByRole('button', { name: /^Yopish$/ }).last().click();
+        await expect(due.getByText(/180\s000 so'm qabul qilindi/)).toBeVisible({ timeout: 20_000 });
+        await expect(due.getByText(/^0 so'm$/)).toBeVisible();
+
+        /* Pul serverda ham yozilgan: yotish hisobida qarz qolmagan */
+        const after = await (await request.get(`${baseURL}/api/admissions/${admission.id}/billing`, { headers })).json();
+        expect(Math.round(after.paid), "to'langan").toBe(180000);
+        expect(Math.round(after.due), 'qarz').toBe(0);
     } finally {
         // Koyka va «faol yotish» keyingi sinovlarga qolmasin
         await request.post(`${baseURL}/api/admissions/${admission.id}/discharge`, { headers, data: { confirmDebt: true } });

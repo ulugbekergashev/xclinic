@@ -5,6 +5,7 @@ import {
     isCashDrawerMethod,
     isMoneyInMethod,
 } from './paymentMethods';
+import { dayKey } from './dateUtils';
 
 /* ─── CHEKNI SHIFOKORGA BIRIKTIRISH ────────────────────────────
 
@@ -160,8 +161,10 @@ const emptyTotals = (): CashBookTotals => ({
     paymentCount: 0,
 });
 
-/** ISO sanani (yoki DateTime satrini) 'YYYY-MM-DD' ga keltiradi */
-const dayOf = (value?: string | null): string => (value || '').split('T')[0];
+/** ISO sanani (yoki DateTime satrini) MAHALLIY 'YYYY-MM-DD' ga keltiradi.
+ *  Ilgari `split('T')[0]` edi — bu UTC kun: Toshkentda 00:00–05:00 orasida
+ *  olingan to'lov kassada kechagi kunga tushardi (2026-11-20 tunda topildi). */
+const dayOf = (value?: string | null): string => dayKey(value);
 
 /** createdAt DateTime satridan lokal "HH:MM" chiqaradi */
 function extractTime(createdAt?: string | null): { label: string | null; minutes: number } {

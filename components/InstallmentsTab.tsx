@@ -3,7 +3,7 @@ import { formatMoney, formatDate, formatFullName } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
 import { todayISO } from '../utils/dateUtils';
-import { Plus, Check, Calendar, CreditCard, X, Clock, AlertCircle } from 'lucide-react';
+import { Plus, Check, Calendar, X, Clock, AlertCircle } from 'lucide-react';
 import { Button, Card, Modal, Input, Select, Badge } from './Common';
 import { api } from '../services/api';
 import { InstallmentPlan, Doctor, InstallmentItem, VisitCharge } from '../types';
@@ -157,31 +157,28 @@ export const InstallmentsTab: React.FC<InstallmentsTabProps> = ({
    if (loading) return <div className="p-8 text-center text-muted">{t('ui.yuklanmoqda_2')}</div>;
 
    return (
-      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-         <div className="flex justify-between items-center gap-3">
-            <div>
-               <h3 className="text-lg font-medium text-ink">{t('installmentstab.bolib_tolash')}</h3>
-               <p className="text-xs text-muted">
-                  {t('installmentstab.mavjud_qarzni_oylarga_boladi')}
-               </p>
-            </div>
-            <Button onClick={openCreate}>
-               <Plus className="w-4 h-4 mr-2" /> {t('installmentstab.yangi_reja')}
-            </Button>
-         </div>
-
-         {plans.length === 0 ? (
-            <Card className="p-8 text-center flex flex-col items-center">
-               <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/20 text-primary-500 rounded-full flex items-center justify-center mb-4">
-                  <CreditCard className="w-8 h-8" />
+      <div className="space-y-4">
+         {/* Bemor kartasidagi boshqa bo'limlar kabi: bitta oq quti, sarlavha va
+             yengil tugma (2026-11-21). Ilgari quti tashqarisida katta sarlavha,
+             ko'k «Yangi reja», ichida esa katta belgi va yana ko'k «Reja tuzish»
+             turardi — rejasi yo'q bemorda yarim ekran bo'sh joy. */}
+         <section aria-labelledby="inst-title" className="min-w-0 bg-surface border border-line rounded-2xl overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-line">
+               <div className="min-w-0">
+                  <h3 id="inst-title" className="text-[15px] font-semibold text-ink">{t('installmentstab.bolib_tolash')}</h3>
+                  <p className="text-[13px] text-muted">{t('installmentstab.mavjud_qarzni_oylarga_boladi')}</p>
                </div>
-               <h4 className="text-lg font-medium text-ink mb-2">{t('installmentstab.reja_yoq')}</h4>
-               <p className="text-muted mb-6">
-                  {t('installmentstab.bemorning_tolanmagan_xizmatlarini_oylarg')}
-               </p>
-               <Button onClick={openCreate}>{t('installmentstab.reja_tuzish')}</Button>
-            </Card>
-         ) : (
+               <button type="button" onClick={openCreate}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-primary-200 dark:border-primary-800 text-sm font-semibold text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30">
+                  <Plus className="w-4 h-4" aria-hidden="true" /> {t('installmentstab.yangi_reja')}
+               </button>
+            </div>
+            {plans.length === 0 && (
+               <p className="px-5 py-6 text-center text-sm text-muted">{t('installmentstab.reja_yoq')}</p>
+            )}
+         </section>
+
+         {plans.length > 0 && (
             <div className="space-y-4">
                {plans.map(plan => {
                   /* Qoldiq QATORLARDAN olinadi, rejaning `totalPaid` idan

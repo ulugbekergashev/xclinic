@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ArrowRight, Check, Edit2, Loader2, Plus, Sparkles } from 'lucide-react';
+import { Check, Edit2, Loader2, Plus, Sparkles } from 'lucide-react';
 import { Card } from './Common';
 import { Admission, Bed, Ward } from '../types';
 import { useLanguage, fill } from '../context/LanguageContext';
@@ -56,14 +56,13 @@ interface Props {
     onOpenAdmission: (a: Admission) => void;
     onAdmit: (bed: Bed, ward: Ward) => void;
     onBedReady: (bedId: string) => void;
-    onToggleBlock: (bed: Bed) => void;
     onEditWard: (w: Ward) => void;
     onAddBed: (wardId: string) => void;
     onGive: (order: MedOrderRow) => void;
 }
 
-const FLOOR_PINK: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(181,55,122,0.11) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
-const FLOOR_COOL: React.CSSProperties = { backgroundImage: 'radial-gradient(rgba(0,94,184,0.11) 1px, transparent 1.4px)', backgroundSize: '16px 16px' };
+
+
 const TAB = 'absolute -top-2.5 left-5 inline-flex items-center gap-1.5 h-[18px] px-2 rounded-md bg-surface text-[10.5px] font-extrabold uppercase tracking-wider whitespace-nowrap';
 
 const isToday = (iso?: string | null) => !!iso && new Date(iso).toDateString() === new Date().toDateString();
@@ -75,11 +74,13 @@ const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('uz-UZ', { hour: 
 
 export const WardMap: React.FC<Props> = ({
     wards, admissions, schedule, canManage, canGiveMeds, saving, busyOrder, postActions, wardNote,
-    onOpenAdmission, onAdmit, onBedReady, onToggleBlock, onEditWard, onAddBed, onGive,
+    onOpenAdmission, onAdmit, onBedReady, onEditWard, onAddBed, onGive,
 }) => {
     const { t } = useLanguage();
 
     const admById = useMemo(() => new Map(admissions.map(a => [a.id, a])), [admissions]);
+    const admByBed = useMemo(() => new Map(
+        admissions.filter(a => a.bedId && a.status === 'Active').map(a => [a.bedId as string, a])), [admissions]);
     /* Yotish bo'yicha vaqti kelgan TAYINLOVLAR soni — koykadagi belgi shundan.
        Doza emas, tayinlov: «Bugun» dagi zona ham shunday sanaydi. */
     const dueByAdmission = useMemo(() => {
@@ -126,18 +127,15 @@ export const WardMap: React.FC<Props> = ({
         return { tasks, done, due: tasks.filter(x => x.state === 'due').length };
     }, [schedule]);
 
-    const beds = wards.flatMap(w => w.beds || []);
-    const occupied = beds.filter(b => b.status === 'Occupied').length;
-    const free = beds.filter(b => b.status === 'Free').length;
-    const cleaning = beds.filter(b => b.status === 'Cleaning').length;
-    const notSeen = admissions.filter(a => !seenToday(a)).length;
-
-    const legendItem = (dot: string, text: string) => (
-        <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={`w-2.5 h-2.5 rounded-full ${dot}`} />{text}</span>
-    );
 
     const bedTile = (b: Bed, w: Ward) => {
-        const occ = b.admissions?.[0];
+        /* Koykadagi bemor: avval server bergan `bed.admissions`, bo'lmasa —
+           yotganlar ro'yxatidan koyka bo'yicha. Demoda koykalarda
+           `admissions` yo'q edi va band koykalar «bo'sh + Yotqizish» bo'lib
+           chizilardi, sarlavhada esa «3 koyka band» turardi. */
+        const byBed = admByBed.get(b.id);
+        const occ = b.admissions?.[0]
+            ?? (byBed ? { id: byBed.id, patientId: byBed.patientId, patientName: byBed.patientName, admittedAt: byBed.admittedAt } : undefined);
         const adm = occ ? admById.get(occ.id) : undefined;
         if (occ) {
             const due = dueByAdmission.get(occ.id) || 0;
@@ -187,12 +185,7 @@ export const WardMap: React.FC<Props> = ({
                 ) : (
                     <span className="min-w-0 flex-1 text-[12px] font-bold text-faint truncate">{b.label} · {blocked ? t('zones.inp.bedBlocked') : t('zones.inp.bedFree')}</span>
                 )}
-                {canManage && (
-                    <button type="button" onClick={() => onToggleBlock(b)} disabled={saving}
-                        className="shrink-0 h-8 px-2 rounded-lg text-[11px] font-bold text-faint hover:text-ink disabled:opacity-50">
-                        {blocked ? t('inp.unblockBed') : t('inp.blockBed')}
-                    </button>
-                )}
+                {/* «Ta'mirga chiqarish» — «Palatani tahrirlash» oynasida (qalam) */}
             </div>
         );
     };
@@ -200,26 +193,19 @@ export const WardMap: React.FC<Props> = ({
     return (
         <Card className="p-5 sm:p-6">
             <section aria-labelledby="ward-map-title">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 id="ward-map-title" className="text-lg font-black text-ink">{t('wardmap.title')}</h2>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-muted">
-                        {legendItem('bg-pink-400', fill(t('wardmap.legendOccupied'), occupied))}
-                        <span>{fill(t('zones.inp.free'), free)}</span>
-                        {cleaning > 0 && <span className="text-amber-700 dark:text-amber-400">{fill(t('zones.inp.cleaning'), cleaning)}</span>}
-                        {post.due > 0 && <span className="text-red-600 dark:text-red-400">{legendItem('bg-red-500', fill(t('zones.inp.medsDue'), post.due))}</span>}
-                        {notSeen > 0 && legendItem('bg-amber-500', fill(t('zones.inp.notSeen'), notSeen))}
-                    </div>
-                </div>
+                {/* Sarlavha yonidagi besh sonli izoh olib tashlandi (2026-11-19):
+                    «muolaja vaqti keldi» va «ko'rilmagan» koykaning o'zida,
+                    band/bo'sh — palata nomi yonida (2/4). */}
+                <h2 id="ward-map-title" className="text-lg font-black text-ink">{t('wardmap.title')}</h2>
 
-                <div className="mt-7 grid grid-cols-1 gap-y-7 xl:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,25rem)]">
+                <div className="mt-7 grid grid-cols-1 gap-y-7 xl:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] xl:gap-x-6">
                     {/* ── Palatalar ── */}
                     <div className="min-w-0 grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-7 content-start">
                         {wards.map(w => {
                             const list = w.beds || [];
                             const busy = list.filter(b => b.status === 'Occupied').length;
                             return (
-                                <div key={w.id} className="relative rounded-[22px] border-[1.5px] border-pink-200 dark:border-pink-900/50 bg-pink-50/50 dark:bg-pink-950/15 px-3 pt-[18px] pb-3"
-                                    style={FLOOR_PINK}>
+                                <div key={w.id} className="relative rounded-[22px] border-[1.5px] border-pink-200 dark:border-pink-900/50 bg-pink-50/50 dark:bg-pink-950/15 px-3 pt-[18px] pb-3">
                                     <span className={`${TAB} max-w-[calc(100%-6.5rem)] text-pink-700 dark:text-pink-300`}>
                                         <span className="truncate">{w.name}</span>
                                         <span className="text-muted tabular-nums">{busy}/{list.length}</span>
@@ -245,16 +231,8 @@ export const WardMap: React.FC<Props> = ({
                         })}
                     </div>
 
-                    <div aria-hidden="true" className="hidden xl:flex relative items-center justify-center">
-                        <span className="absolute left-1/2 -translate-x-1/2 top-6 bottom-6 border-l-2 border-dashed border-line" />
-                        <span className="relative w-6 h-6 rounded-full bg-surface border-[1.5px] border-line text-faint inline-flex items-center justify-center">
-                            <ArrowRight className="w-3 h-3" />
-                        </span>
-                    </div>
-
                     {/* ── Hamshira posti ── */}
-                    <div id="nurse-post" className="relative scroll-mt-24 self-start w-full xl:sticky xl:top-24 min-w-0 rounded-[22px] border-[1.5px] border-primary-200 dark:border-primary-800/60 bg-primary-50/60 dark:bg-primary-900/15 px-3 pt-[18px] pb-3 flex flex-col gap-2"
-                        style={FLOOR_COOL}>
+                    <div id="nurse-post" className="relative scroll-mt-24 self-start w-full xl:sticky xl:top-24 min-w-0 rounded-[22px] border-[1.5px] border-primary-200 dark:border-primary-800/60 bg-primary-50/60 dark:bg-primary-900/15 px-3 pt-[18px] pb-3 flex flex-col gap-2">
                         <span className={`${TAB} text-muted`}>
                             <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{t('wardmap.post')}
                         </span>

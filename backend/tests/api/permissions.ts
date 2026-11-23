@@ -57,7 +57,11 @@ async function firstUsername(adminToken: string, endpoint: string): Promise<stri
 type Attempt = [string, string, string, any?];
 
 const DENIED_FOR_RECEPTIONIST: Attempt[] = [
-    ['xarajat qo\'shish', 'POST', '/expenses', { title: 'sinov', amount: 1 }],
+    /* Registrator mayda naqd xarajat yozadi (2026-11-22) — oylik va karta bilan esa yo'q */
+    ['oylik xarajati', 'POST', '/expenses', { title: 'sinov', amount: 1, category: 'Salary', method: 'Cash' }],
+    ['kartadan xarajat', 'POST', '/expenses', { title: 'sinov', amount: 1, category: 'Other', method: 'Card' }],
+    ['xarajatni o\'zgartirish', 'PUT', '/expenses/yoq-bunday-id', { amount: 1 }],
+    ['xarajatni o\'chirish', 'DELETE', '/expenses/yoq-bunday-id'],
     ['to\'lovni o\'chirish', 'DELETE', '/transactions/yoq-bunday-id'],
     ['to\'lovni o\'zgartirish', 'PUT', '/transactions/yoq-bunday-id', { amount: 1 }],
     ['kassa kunini o\'chirish', 'DELETE', '/cash-register/2026-01-01'],

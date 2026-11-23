@@ -51,3 +51,6 @@ playwright-report/
 # saytdan olishi mumkin. O'rnatuvchiga esa qo'shiladi (`package.json`
 # dagi `extraResources`) — README ga qarang.
 resources/cloudflared.exe
+
+.vercel
+.env*
