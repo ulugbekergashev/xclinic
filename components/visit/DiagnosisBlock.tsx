@@ -51,7 +51,7 @@ export const DiagnosisPicker: React.FC<{
             )}
             <div className="flex flex-wrap items-center gap-3">
                 <input value={query} onChange={e => search(e.target.value)} className={`${inputCls} flex-1 min-w-[200px]`}
-                    aria-label={t('visit.diagnosisTitle')} placeholder={t('visit.icdSearchPh')} autoFocus />
+                    aria-label={t('visit.diagnosisTitle')} placeholder={t('visit.icdSearchPh')} />
                 <label className="flex items-center gap-2 text-sm text-muted whitespace-nowrap">
                     <input type="checkbox" checked={chronic} onChange={e => setChronic(e.target.checked)}
                         className="w-4 h-4 rounded text-primary-600" />

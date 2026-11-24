@@ -25,6 +25,7 @@ import { Modal } from '../components/Common';
 import { ClinicMap } from '../components/ClinicMap';
 import { AttentionList, AttentionItem } from '../components/AttentionList';
 import { TodayZones } from '../components/TodayZones';
+import { ReferrerField, referrerFields, rememberReferrer } from '../components/visit/ReferrerField';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
 const LIVE_EVENTS: LiveEventType[] = ['visit.created', 'visit.status', 'charge.paid'];
@@ -145,6 +146,8 @@ export const Reception: React.FC<Props> = ({
     const [doctorId, setDoctorId] = useState('');
     const [serviceId, setServiceId] = useState<number | ''>('');
     const [complaints, setComplaints] = useState('');
+    /** Tashqi yo'llanma: bo'sh — o'zi keldi */
+    const [referrer, setReferrer] = useState('');
     /* MARSHRUT: shifokor qabuliga qo'shimcha — tahlillar va tekshiruvlar.
        Bemor bitta kelishda bir necha joyga boradi; ilgari registrator faqat
        shifokor qabulini ocha olardi, tahlilni esa shifokor kartadan
@@ -467,7 +470,7 @@ export const Reception: React.FC<Props> = ({
 
     const reset = () => {
         setPatient(null); setSearch(''); setDepartmentId(''); setDoctorId('');
-        setServiceId(''); setComplaints(''); setError('');
+        setServiceId(''); setComplaints(''); setReferrer(''); setError('');
         setLabPick([]); setStudyPick([]);
     };
 
@@ -730,7 +733,9 @@ export const Reception: React.FC<Props> = ({
                 complaints: complaints || undefined,
                 date: today(),
                 status: 'Waiting',
+                ...referrerFields(referrer),
             });
+            rememberReferrer(referrer);
 
             // Konsultatsiya narxi darhol qabulga yoziladi — kassa shundan ko'radi
             if (serviceId) {
@@ -780,6 +785,7 @@ export const Reception: React.FC<Props> = ({
                 date: today(),
                 status: 'Waiting',
                 force: true,
+                ...referrerFields(referrer),
             });
             if (serviceId) {
                 try { await api.visits.addProcedure(visit.id, { serviceId: Number(serviceId) }); }
@@ -1351,6 +1357,10 @@ ${routeHtml}
                             <div>
                                 <label htmlFor="rc-complaints" className="block text-xs font-medium text-muted mb-1.5">{t('today.shikoyat_ixtiyoriy')}</label>
                                 <input id="rc-complaints" value={complaints} onChange={e => setComplaints(e.target.value)} className={inputCls} placeholder={t('reception.complaintsPh')} />
+                            </div>
+                            <div className="sm:col-span-2">
+                                <ReferrerField value={referrer} onChange={setReferrer} className={inputCls}
+                                    labelClassName="block text-xs font-medium text-muted mb-1.5" />
                             </div>
                         </div>
                     </div>

@@ -14,20 +14,10 @@
  * yuklanmasligi shu sinovning butun mazmuni.
  */
 import { test, expect, Page, Browser } from '@playwright/test';
-import { login, uniq, openVisitInCard } from './helpers';
+import { login, uniq, openVisitInCard, visitSheet, openOrder, orderStudy } from './helpers';
 
-/* Qabul bloklari (2026-11-21): ko'rik, tashxis, retsept, xizmatlar va
-   yo'llanma — hammasi bir ekranda. Yo'llanma turlari (tahlil, diagnostika,
-   boshqa shifokor) «+ Yo'llanma» oynasida. */
-/* «Bugungi qabul» (2026-11-21, DentaCRM namunasida): bitta «+ Qo'shish» —
-   oynada nima qo'shilishi tepada tanlanadi: Xizmat · Tahlil · Diagnostika ·
-   Dori · Tashxis · Boshqa shifokor. */
-const openAdd = async (p: any, kind: string) => {
-    /* Tashxis va xizmatdan keyin oyna ochiq qoladi — qayta ochilmaydi */
-    if (!(await p.getByRole('dialog').count())) await p.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ }).click();
-    await p.getByRole('dialog').getByRole('button', { name: new RegExp(`^${kind}$`) }).click();
-};
-const openReferral = (p: any) => openAdd(p, 'Tahlil');
+/* Tayinlovlar (2026-11-23): tahlil, diagnostika, dori, xizmat va
+   yo'naltirish — varaqdagi o'z tugmasi bilan (`helpers.ts`, `openOrder`). */
 
 
 /* SAHIFA QAYTA YUKLANMAGANINI ISBOTLASH.
@@ -120,14 +110,7 @@ async function orderStudyInCard(page: Page, surname: string, studyName: string) 
     /* Qabul ochish: Bo'lim → Shifokor → «Qabul ochish — Dr. …» */
     await openVisitInCard(page);
     await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
-    await openReferral(page);
-    await page.getByRole('button', { name: /^Diagnostika$/ }).click();
-    /* Prayslist tugma bo'lib turadi; prayslistda yo'q tekshiruv — «qo'lda yozish» orqali */
-    const manualStudy = page.getByRole('button', { name: /qo'lda yozish/ });
-    if (await manualStudy.isVisible()) await manualStudy.click();
-    await page.getByPlaceholder(/Masalan: Qorin/).fill(studyName);
-    await page.getByPlaceholder(/^Narx$/).fill('90000');
-    await page.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();
+    await orderStudy(page, studyName);
     await expect(page.getByText(/so'm to'lanmagan$/)).toBeVisible();
 }
 
@@ -210,13 +193,14 @@ test.describe('bir kompyuterda', () => {
         await openVisitInCard(page);
         await expect(page.getByRole('heading', { name: /^Bugungi qabul$/ })).toBeVisible();
 
-        await openReferral(page);
-        await page.getByRole('button', { name: /^Tahlil$/ }).click();
+        await openOrder(page, 'Tahlil');
         /* Tanlov qutisining O'ZIDAN: varaqda boshqa belgilash katakchalari ham bor
            (tashxisdagi «surunkali», ko'rik shablonidagi maydonlar). */
         await page.getByRole('group', { name: 'Qaysi tahlillar?' }).locator('label').first().click();
         await page.getByRole('button', { name: /^Laboratoriyaga yuborish$/ }).click();
-        await page.waitForTimeout(1500);
+        // Yuborildi: oyna yopildi, tahlil «Tayinlovlar» ro'yxatida
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect(visitSheet(page).getByRole('list', { name: "Bugun qo'shilganlar" })).toBeVisible();
 
         await nav(page, /^Laboratoriya$/);
         await expect(page.getByText(surname).first()).toBeVisible();
@@ -287,12 +271,14 @@ test.describe('ikki kompyuterda', () => {
            qayta chizilganda bu matn yo'qolardi: avval o'z tugmasini
            bosganda («Tahlilga»), endi esa boshqa kompyuterdan yangilanish
            kelganda ham yo'qolishi mumkin edi. */
-        const typed = `Bosh og'rig'i, uch kundan beri ${n}`;
-        const exam = page.locator('textarea:not([disabled])').first();
+        const typed = `Yurak tonlari aniq, qorin yumshoq ${n}`;
+        const exam = visitSheet(page).getByLabel("Ko'rik", { exact: true });
         await exam.fill(typed);
-        await openReferral(page);
-        await page.getByRole('button', { name: /^Tahlil$/ }).click();
+        await openOrder(page, 'Tahlil');
         await expect(exam).toHaveValue(typed);
+        // Oyna yopiladi — shifokor varaqqa qaytdi
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
 
         // Kassir — boshqa kompyuterda, registrator hisobi bilan
         const cashier = await secondScreen(browser, 'zilola.reg');
@@ -301,8 +287,11 @@ test.describe('ikki kompyuterda', () => {
         await cashier.page.getByRole('button', { name: /^\d[\d\s]* qabul qilish$/ }).click();
         await expect(cashier.page.getByText(/To'lov qabul qilindi/).first()).toBeVisible();
 
-        // Shifokor kartadan chiqmagan — ogohlantirish o'zi yo'qoladi
-        await expect(page.getByText(/to'lanmagan — bemorni kassaga/)).toHaveCount(0, { timeout: 15_000 });
+        /* Shifokor kartadan chiqmagan — qabul sarlavhasidagi «Bu qabul: …
+           to'lanmagan» o'zi «to'liq to'langan» ga o'zgaradi */
+        const bar = visitSheet(page).locator('#visit-title').locator('xpath=../..');
+        await expect(bar.getByText("to'liq to'langan")).toBeVisible({ timeout: 15_000 });
+        await expect(bar.getByText(/so'm to'lanmagan/)).toHaveCount(0);
         // ...va yozilgan matn joyida
         await expect(exam).toHaveValue(typed);
         await stillSamePage(page);

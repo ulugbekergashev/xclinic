@@ -122,12 +122,18 @@ export const PatientTimeline: React.FC<Props> = ({
                         {v.complaints && <p><span className="text-muted">{t('visit.complaint')}</span> {v.complaints}</p>}
                         {(v.diagnoses || []).length > 0 && (
                             <ul className="flex flex-col gap-0.5">
-                                {(v.diagnoses || []).map(d => (
-                                    <li key={d.id}><b className="font-bold text-primary-700 dark:text-primary-300">{d.code}</b> {d.icd10?.name}</li>
+                                {(v.diagnoses || []).map((d, i) => (
+                                    <li key={d.id}>
+                                        <b className="font-bold text-primary-700 dark:text-primary-300">{d.code}</b> {d.icd10?.name}
+                                        {/* Tashxis turi (migratsiya 0040); eski yozuvda — birinchisi asosiy */}
+                                        <span className="text-muted"> · {t(`visit.dxKind.${d.kind || (i === 0 ? 'Main' : 'Concomitant')}` as any)}</span>
+                                    </li>
                                 ))}
                             </ul>
                         )}
                         <EncounterSummary template={templates.find(x => x.id === v.templateId)} value={v.examData} />
+                        {v.objectiveText && <p className="whitespace-pre-wrap"><span className="text-muted">{t('visit.examLabel')}:</span> {v.objectiveText}</p>}
+                        {v.treatmentPlan && <p className="whitespace-pre-wrap"><span className="text-muted">{t('visit.conclusionLabel')}:</span> {v.treatmentPlan}</p>}
                         {prescriptions.map(rx => (
                             <p key={rx.id} className="flex items-start gap-2">
                                 <span className="min-w-0 flex-1">

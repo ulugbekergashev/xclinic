@@ -27,7 +27,7 @@ const BASE = `http://localhost:${PORT}`;
 
 /* Tartib qat'iy: integrity oxirida (yuqoridagi sababga ko'ra),
    auth va restore esa alohida shart talab qiladi — pastda. */
-const SUITES = ['permissions', 'consistency', 'icd10', 'attendance', 'license', 'templates', 'scheduling', 'staff', 'hr', 'expiry', 'validation', 'visitclose', 'inpatient', 'todayzones', 'payments', 'moneybugs', 'stock', 'patients', 'anamnesis', 'events', 'money', 'security', 'integrity', 'network'];
+const SUITES = ['permissions', 'consistency', 'icd10', 'attendance', 'license', 'templates', 'scheduling', 'staff', 'hr', 'expiry', 'validation', 'visitclose', 'inpatient', 'todayzones', 'payments', 'moneybugs', 'stock', 'patients', 'anamnesis', 'vrach', 'events', 'money', 'security', 'integrity', 'network'];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -173,7 +173,9 @@ async function main() {
             process.exit(1);
         }
 
-        for (const name of SUITES) {
+        /* `T_ONLY=vrach,visitclose npm run test:api` — faqat shu to'plamlar */
+        const only = (process.env.T_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
+        for (const name of SUITES.filter(n => !only.length || only.includes(n))) {
             const file = path.join(__dirname, 'api', `${name}.ts`);
             if (!fs.existsSync(file)) { results.push([name, 'fayl yo\'q']); continue; }
             process.stdout.write(`  ${name.padEnd(12)} `);

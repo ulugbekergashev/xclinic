@@ -1,4 +1,4 @@
-import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, TodayZones, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
+import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, DiagnosisKind, ReferralVisit, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, TodayZones, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
 import { medDue } from '../shared/medSchedule';
 import { todayISO, dayKey } from '../utils/dateUtils';
 import * as auth from './authStore';
@@ -1185,7 +1185,37 @@ const demoVisitFull = (v: Visit): Visit => ({
     labOrders: DEMO_LAB_ORDERS.filter(o => o.visitId === v.id),
     studies: DEMO_STUDIES.filter(s => s.visitId === v.id),
     prescriptions: DEMO_PRESCRIPTIONS.filter(p => p.visitId === v.id),
+    /* Yo'naltirishning ikki tomoni — serverdagi `REFERRAL_VISIT_SELECT` shakli */
+    referredFrom: v.referredFromVisitId ? demoReferralVisit(DEMO_VISITS.find(x => x.id === v.referredFromVisitId)) : null,
+    referredVisits: DEMO_VISITS.filter(x => x.referredFromVisitId === v.id).map(x => demoReferralVisit(x)!),
 });
+
+/** Demo: serverdagi `resolveReferral` — kim yuborgani yuboruvchi qabuldan olinadi */
+function demoReferral(data: Partial<Visit>): Partial<Visit> {
+    if (data.referralSource === 'External') {
+        return { referralSource: 'External', referredByName: data.referredByName || null, referralReason: data.referralReason || null };
+    }
+    if (data.referralSource !== 'Internal') return {};
+    const from = DEMO_VISITS.find(v => v.id === data.referredFromVisitId);
+    if (!from) return {};
+    const dep = DEMO_DEPARTMENTS.find(d => d.id === from.departmentId);
+    return {
+        referralSource: 'Internal', referredFromVisitId: from.id,
+        referredByName: [from.doctorName, dep ? `(${dep.name})` : ''].filter(Boolean).join(' ') || null,
+        referralReason: data.referralReason || null,
+    };
+}
+
+function demoReferralVisit(v?: Visit): ReferralVisit | null {
+    if (!v) return null;
+    const dep = DEMO_DEPARTMENTS.find(d => d.id === v.departmentId);
+    return {
+        id: v.id, date: v.date, status: v.status, doctorName: v.doctorName, treatmentPlan: v.treatmentPlan,
+        department: dep ? { id: dep.id, name: dep.name } : null,
+        diagnoses: DEMO_DIAGNOSES.filter(d => d.visitId === v.id)
+            .map(d => ({ id: d.id, code: d.code, kind: d.kind, icd10: d.icd10 ? { name: d.icd10.name } : null })),
+    };
+}
 
 /* ── DEMO: SHU FAYLDAGI TO'PLAMLARNI SAQLASH ─────────────────────────────
    `demoData.ts` dagi ro'yxatlar (bemor, qabul, chek, ombor) brauzerda
@@ -3024,8 +3054,17 @@ export const api = {
         },
         add: (data: Omit<PatientDiagnosis, 'id' | 'icd10'>) => {
             if (isDemoMode()) {
+                /* Server bilan bir xil: qabulda birinchisi asosiy, keyingilari
+                   yondosh; qabulsiz tashxisda tur yo'q (migratsiya 0040). */
+                let kind: PatientDiagnosis['kind'] = null;
+                if (data.visitId) {
+                    const mains = DEMO_DIAGNOSES.filter(d => d.visitId === data.visitId && d.kind === 'Main');
+                    kind = data.kind || (mains.length ? 'Concomitant' : 'Main');
+                    if (kind === 'Main') mains.forEach(d => { d.kind = 'Concomitant'; });
+                }
                 const created = {
                     ...data,
+                    kind,
                     id: demoId('demo-dx'),
                     icd10: DEMO_ICD10.find(c => c.code === data.code),
                 } as PatientDiagnosis;
@@ -3037,6 +3076,24 @@ export const api = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data),
+            });
+        },
+        /** Asosiy / yondosh / asorat. Qabulda asosiy bitta — eskisi yondoshga tushadi */
+        setKind: (id: string, kind: DiagnosisKind) => {
+            if (isDemoMode()) {
+                const dx = DEMO_DIAGNOSES.find(d => d.id === id);
+                if (!dx?.visitId) return Promise.reject(new Error("Qabulsiz tashxisda tur bo'lmaydi"));
+                if (kind === 'Main') {
+                    DEMO_DIAGNOSES.forEach(d => { if (d.visitId === dx.visitId && d.kind === 'Main' && d.id !== id) d.kind = 'Concomitant'; });
+                }
+                dx.kind = kind;
+                saveDemoData();
+                return demoDone({ ...dx });
+            }
+            return fetchJson<PatientDiagnosis>(`/diagnoses/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind }),
             });
         },
         getByPatient: (patientId: string) => {
@@ -3102,6 +3159,7 @@ export const api = {
                     queueNumber: DEMO_VISITS.filter(v => v.date === todayISO()).length + 1,
                     calledAt: null,
                     patient: DEMO_PATIENTS.find(p => p.id === data.patientId),
+                    ...demoReferral(data),
                 };
                 DEMO_VISITS.push(visit);
                 return demoWrote<Visit>(visit);

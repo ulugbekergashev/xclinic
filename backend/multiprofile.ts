@@ -10,6 +10,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { resolveReferral, REFERRAL_VISIT_SELECT } from './referral';
 import { emitEvent } from './events';
 import { validateEncounterField } from '../shared/validation';
 import { createCharge, cancelChargesBySource, payStateBySource, unpaidGate, paidChargeWhere, HttpError } from './billing';
@@ -318,6 +319,10 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 studies: { include: { files: true } },
                 prescriptions: { include: { items: true } },
                 transactions: true,
+                /* Yo'naltirish — ikki tomoni (migratsiya 0040): kim yubordi
+                   va bu qabuldan kimga yuborildi, javobi bilan. */
+                referredFrom: { select: REFERRAL_VISIT_SELECT },
+                referredVisits: { select: REFERRAL_VISIT_SELECT, orderBy: { checkInTime: 'asc' } },
             },
         });
         if (!visit || visit.clinicId !== clinicId) return res.status(404).json({ error: 'Qabul topilmadi' });
@@ -337,6 +342,9 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
 
         const patient = await prisma.patient.findUnique({ where: { id: patientId } });
         if (!patient || patient.clinicId !== clinicId) return res.status(403).json({ error: "Ruxsat yo'q" });
+
+        const referral = await resolveReferral(prisma, req.body, clinicId, patientId);
+        if ('error' in referral) return res.status(referral.status).json({ error: referral.error, code: 'BAD_REFERRAL' });
 
         const visitDate = date || nowDate();
 
@@ -395,6 +403,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 notes: notes || null,
                 diagnosis: diagnosis || null,
                 treatmentPlan: treatmentPlan || null,
+                ...referral.data,
                 // Registratura ochsa — navbatda kutadi; shifokor o'zi ochsa — darhol ish boshlanadi
                 status: status || 'Waiting',
                 ...(status === 'In Progress' && { startedAt: new Date() }),
@@ -563,7 +572,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         const current = await owns('visit', req.params.id, clinicId);
         if (!current) return res.status(403).json({ error: "Ruxsat yo'q" });
         const { departmentId, doctorId, doctorName, templateId, examData, complaints,
-                vitalSigns, notes, diagnosis, treatmentPlan, status } = req.body;
+                vitalSigns, notes, diagnosis, treatmentPlan, status, objectiveText } = req.body;
 
         /* TIBBIY MAYDONLAR va NAVBAT MAYDONLARI.
 
@@ -572,7 +581,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
            Ilgari ular ajratilmagan edi — registrator tashxisni ham, qulflangan
            bayonni ham qayta yoza olardi. */
         const body = req.body || {};
-        const CLINICAL = ['templateId', 'examData', 'complaints', 'vitalSigns', 'notes', 'diagnosis', 'treatmentPlan'];
+        const CLINICAL = ['templateId', 'examData', 'complaints', 'vitalSigns', 'notes', 'diagnosis', 'treatmentPlan', 'objectiveText'];
         const clinicalSent = CLINICAL.filter((k) => body[k] !== undefined);
         /* Shikoyat va vital ko'rsatkichlar — qabulxonada ham yoziladi
            (bemor kelganda «nima bezovta qilyapti», bosim). Bayon, izoh,
@@ -744,6 +753,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 ...(doctorName !== undefined && { doctorName }),
                 ...(templateId !== undefined && { templateId }),
                 ...(examData !== undefined && { examData }),
+                ...(objectiveText !== undefined && { objectiveText: objectiveText === null ? null : String(objectiveText).slice(0, 8000) }),
                 ...(complaints !== undefined && { complaints }),
                 ...(vitalSigns !== undefined && { vitalSigns }),
                 ...(notes !== undefined && { notes }),

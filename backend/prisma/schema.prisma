@@ -227,8 +227,19 @@ model Visit {
   /// Bo'lim shabloni bo'yicha to'ldirilgan ko'rik maydonlari (JSON).
   /// Tish kartasining o'rnini shu egallaydi.
   examData      String?
+  /// Ko'rik matni — shablon «me'yor»ni yozadi, vrach tuzatadi. Migratsiya 0040.
+  objectiveText String?
   diagnosis     String?
   treatmentPlan String?
+  /// Yo'naltirish (migratsiya 0040). NULL — o'zi keldi; 'Internal' — klinika
+  /// ichidagi shifokor yubordi (`referredFromVisitId`); 'External' — boshqa
+  /// klinika yoki shifokor (`referredByName`).
+  referralSource      String?
+  referredFromVisitId String?
+  referredByName      String?
+  referralReason      String?
+  referredFrom        Visit?  @relation("VisitReferral", fields: [referredFromVisitId], references: [id], onDelete: SetNull)
+  referredVisits      Visit[] @relation("VisitReferral")
   /// Qabul nima bilan tugadi: Home | Followup | Admit | Referred. Migratsiya 0010.
   disposition   String?
   /// Yakunlangan bayon qulflanadi — keyin jimgina qayta yozib bo'lmaydi
@@ -259,6 +270,7 @@ model Visit {
   @@index([patientId])
   @@index([date])
   @@index([departmentId])
+  @@index([referredFromVisitId])
 }
 
 /// Bajarilgan xizmat. Ilgari stomatologik muolaja edi (toothNumber/toothSurface),
@@ -664,6 +676,8 @@ model PatientDiagnosis {
   visitId   String?
   /// Surunkali kasallik — bemor kartasida doimiy ro'yxatda turadi. Migratsiya 0011.
   isChronic Boolean   @default(false)
+  /// Tashxis turi: Main | Concomitant | Complication. NULL — eski yozuv. Migratsiya 0040.
+  kind      String?
   clinic    Clinic    @relation(fields: [clinicId], references: [id])
   icd10     ICD10Code @relation(fields: [code], references: [code])
   patient   Patient   @relation(fields: [patientId], references: [id])

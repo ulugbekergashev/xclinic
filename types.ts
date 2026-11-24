@@ -607,6 +607,9 @@ export interface ICD10Code {
   description?: string;
 }
 
+/** Asosiy · yondosh · asorat */
+export type DiagnosisKind = 'Main' | 'Concomitant' | 'Complication';
+
 export interface PatientDiagnosis {
   id: string;
   patientId: string;
@@ -622,6 +625,8 @@ export interface PatientDiagnosis {
      qiladi, lekin bu yerda e'lon qilinmagani uchun front `as any` bilan
      ishlatishga majbur edi — ya'ni typecheck xatoni ushlamasdi. */
   isChronic?: boolean;
+  /** Tashxis turi (migratsiya 0040). `null` — eski yozuv yoki qabulsiz tashxis */
+  kind?: DiagnosisKind | null;
 }
 
 export interface PatientPhoto {
@@ -697,6 +702,17 @@ export interface SMSCampaign {
 }
 
 // Workflow System Types
+/** Yo'naltirishning ikki tomonida ko'rinadigan qabul (server: `REFERRAL_VISIT_SELECT`) */
+export interface ReferralVisit {
+  id: string;
+  date: string;
+  status: string;
+  doctorName?: string | null;
+  treatmentPlan?: string | null;
+  department?: { id: string; name: string } | null;
+  diagnoses?: { id: string; code: string; kind?: DiagnosisKind | null; icd10?: { name: string } | null }[];
+}
+
 export interface Visit {
   id: string;
   patientId: string;
@@ -724,8 +740,19 @@ export interface Visit {
   awaitingSince?: string | null;
   /** Bo'lim shabloni bo'yicha to'ldirilgan ko'rik maydonlari (JSON matn) */
   examData?: string;
+  /** Ko'rik matni — shablon «me'yor»ni yozadi, vrach tuzatadi (migratsiya 0040) */
+  objectiveText?: string | null;
   diagnosis?: string;
   treatmentPlan?: string;
+  /** Yo'naltirish (migratsiya 0040): NULL — o'zi keldi */
+  referralSource?: 'Internal' | 'External' | null;
+  referredFromVisitId?: string | null;
+  referredByName?: string | null;
+  referralReason?: string | null;
+  /** Qaysi qabuldan yuborilgan (ichki yo'llanma) */
+  referredFrom?: ReferralVisit | null;
+  /** Shu qabuldan yuborilganlar — javobi bilan */
+  referredVisits?: ReferralVisit[];
 
   // Serverdan to'liq qabul so'ralganda birga keladi
   patient?: Patient;

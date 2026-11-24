@@ -40,8 +40,14 @@ const list = (title: string, rows: string[]): string => (rows.length
 export function printVisitSummary(
     visit: Visit, patient: Patient, opts: { clinic?: PrintClinic | null; template?: EncounterTemplate; departmentName?: string } = {},
 ): boolean {
+    /* Tashxis turi bilan, asosiysi birinchi (migratsiya 0040). Eski yozuvda
+       tur yo'q — birinchisi asosiy deb olinadi. */
+    const KIND_LABEL: Record<string, string> = { Main: 'asosiy', Concomitant: 'yondosh', Complication: 'asorat' };
+    const KIND_ORDER: Record<string, number> = { Main: 0, Complication: 1, Concomitant: 2 };
     const diagnoses = [...new Map((visit.diagnoses || [])
-        .map(d => [d.code, `${d.code}${d.icd10?.name ? ` — ${d.icd10.name}` : ''}${d.isChronic ? ' (surunkali)' : ''}`] as const)).values()];
+        .map((d, i) => ({ d, kind: d.kind || (i === 0 ? 'Main' : 'Concomitant') }))
+        .sort((a, b) => (KIND_ORDER[a.kind] ?? 3) - (KIND_ORDER[b.kind] ?? 3))
+        .map(({ d, kind }) => [d.code, `${d.code}${d.icd10?.name ? ` — ${d.icd10.name}` : ''} (${KIND_LABEL[kind] || kind}${d.isChronic ? ', surunkali' : ''})`] as const)).values()];
     const labs = (visit.labOrders || []).filter(o => o.status !== 'Cancelled')
         .map(o => (o.items || []).map(i => i.testName).filter(Boolean).join(', '))
         .filter(Boolean);
@@ -62,6 +68,7 @@ export function printVisitSummary(
         ['Jinsi', genderLabel(patient.gender)],
         ...(opts.departmentName ? [['Bo\'lim', opts.departmentName] as [string, string]] : []),
         ...(visit.doctorName ? [['Shifokor', visit.doctorName] as [string, string]] : []),
+        ...(visit.referralSource && visit.referredByName ? [['Yo\'llanma bo\'yicha', visit.referredByName] as [string, string]] : []),
     ];
 
     const body = `
@@ -69,8 +76,9 @@ export function printVisitSummary(
     <div class="title">Qabul xulosasi</div>
     <div class="subtitle">${esc(fmtDate(visit.date))}</div>
     <table class="rows">${rows.map(([k, v]) => `<tr><td class="k">${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table>
-    ${visit.complaints ? `<div class="box"><div class="box-title">Shikoyat</div>${esc(visit.complaints)}</div>` : ''}
+    ${visit.complaints ? `<div class="box"><div class="box-title">Shikoyat va kasallik anamnezi</div><div style="white-space:pre-wrap">${esc(visit.complaints)}</div></div>` : ''}
     ${list('Ko\'rik', exam)}
+    ${visit.objectiveText ? `<div class="box">${exam.length ? '' : '<div class="box-title">Ko\'rik</div>'}<div style="white-space:pre-wrap">${esc(visit.objectiveText)}</div></div>` : ''}
     ${list('Tashxis', diagnoses)}
     ${visit.treatmentPlan ? `<div class="box"><div class="box-title">Xulosa va tavsiyalar</div><div style="white-space:pre-wrap">${esc(visit.treatmentPlan)}</div></div>` : ''}
     ${list('Tahlillar', labs)}

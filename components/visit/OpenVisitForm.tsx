@@ -7,6 +7,7 @@ import { formatNumber } from '../../utils/format';
 import { todayISO } from '../../utils/dateUtils';
 import { pickableDoctors } from '../DoctorPicker';
 import { inputCls } from './sheetParts';
+import { ReferrerField, referrerFields, rememberReferrer } from './ReferrerField';
 
 /* ── BUGUN QABUL OCHILMAGAN ──────────────────────────────────────────────────
    «Bugungi qabul» qutisining bo'sh holati. To'rt maydon: Bo'lim → Shifokor →
@@ -40,7 +41,7 @@ interface Props {
 }
 
 const BOOKABLE_TYPES = ['CLINICAL', 'DIAGNOSTIC'];
-const EMPTY = { departmentId: '', doctorId: '', serviceId: '', complaints: '' };
+const EMPTY = { departmentId: '', doctorId: '', serviceId: '', complaints: '', referrer: '' };
 
 const nameOf = (d: Doctor) => `${d.lastName || ''} ${d.firstName || ''}`.trim();
 
@@ -112,7 +113,9 @@ export const OpenVisitForm: React.FC<Props> = ({
                 /* Shifokor o'ziga ochsa bemor oldida — «Kutmoqda» ni
                    chetlab, qabul darhol boshlanadi (ikkinchi bosish yo'q) */
                 status: forMe ? 'In Progress' : 'Waiting',
+                ...referrerFields(form.referrer),
             } as any);
+            rememberReferrer(form.referrer);
             if (form.serviceId) {
                 try { await api.visits.addProcedure(created.id, { serviceId: Number(form.serviceId) }); }
                 catch { addToast('info', t('visit.serviceNotAdded')); }
@@ -198,6 +201,10 @@ export const OpenVisitForm: React.FC<Props> = ({
                         <label htmlFor={`${ids}-complaints`} className={label}>{t('today.shikoyat_ixtiyoriy')}</label>
                         <input id={`${ids}-complaints`} className={inputCls} value={form.complaints} placeholder={t('visit.complaintPh')}
                             onChange={e => setForm(f => ({ ...f, complaints: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-2">
+                        <ReferrerField value={form.referrer} labelClassName={label} className={inputCls}
+                            onChange={referrer => setForm(f => ({ ...f, referrer }))} />
                     </div>
                 </div>
 

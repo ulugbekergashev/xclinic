@@ -13,20 +13,11 @@
  * Sinov o'z serveridan va baza NUSXASIDAN foydalanadi.
  */
 import { test, expect } from '@playwright/test';
-import { login, go, uniq, openVisitInCard } from './helpers';
+import { login, go, uniq, openVisitInCard, visitSheet, openOrder, orderStudy } from './helpers';
 
-/* Qabul bloklari (2026-11-21): ko'rik, tashxis, retsept, xizmatlar va
-   yo'llanma — hammasi bir ekranda. Yo'llanma turlari (tahlil, diagnostika,
-   boshqa shifokor) «+ Yo'llanma» oynasida. */
-/* «Bugungi qabul» (2026-11-21, DentaCRM namunasida): bitta «+ Qo'shish» —
-   oynada nima qo'shilishi tepada tanlanadi: Xizmat · Tahlil · Diagnostika ·
-   Dori · Tashxis · Boshqa shifokor. */
-const openAdd = async (p: any, kind: string) => {
-    /* Tashxis va xizmatdan keyin oyna ochiq qoladi — qayta ochilmaydi */
-    if (!(await p.getByRole('dialog').count())) await p.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ }).click();
-    await p.getByRole('dialog').getByRole('button', { name: new RegExp(`^${kind}$`) }).click();
-};
-const openReferral = (p: any) => openAdd(p, 'Tahlil');
+/* Vrach ish joyi (2026-11-23): tashxis qidiruvi varaqning o'zida, tahlil,
+   diagnostika, dori, xizmat va yo'naltirish — «Tayinlovlar» sarlavhasidagi
+   o'z tugmasi bilan (`helpers.ts`, `openOrder`). */
 
 
 /* Sinov uchun bemor yaratadi va uning kartasini ochadi.
@@ -129,28 +120,27 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
 
         /* Tashxis maydoni AYNAN KARTADA bo'lishi kerak — boshqa sahifaga
            o'tmasdan. Auditda topilgan nuqson shu edi. */
-        await expect(page.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ })).toBeVisible();
-
-        // Qidiruv — «+ Qo'shish» oynasining «Tashxis» turida
-        await openAdd(page, 'Tashxis');
-        const icd = page.getByPlaceholder(/Kod yoki kasallik nomi/);
+        // Qidiruv — «Tashxis» blokining o'zida, oyna ochilmaydi (2026-11-23)
+        const sheet = visitSheet(page);
+        const icd = sheet.getByPlaceholder(/Kod yoki kasallik nomi/);
         await expect(icd).toBeVisible();
         await icd.fill('gipert');
-        await page.waitForTimeout(1500);
 
         /* Natija chiqmasa — qidiruv ishlamayapti. Bo'sh ro'yxat auditdagi
            B-02 nuqsonining aynan o'zi, shuning uchun bu YUMSHOQ tekshiruv
            emas: kamida bitta kod chiqishi SHART. */
-        const firstHit = page.locator('button', { hasText: /^I1\d/ }).first();
+        const firstHit = sheet.locator('button', { hasText: /^I1\d/ }).first();
         await expect(firstHit).toBeVisible({ timeout: 10_000 });
         const codeText = (await firstHit.innerText()).trim().split(/\s/)[0];
 
         await firstHit.click();
-        await page.waitForTimeout(2500);
 
-        /* Tashxis chip bo'lib qoladi — ya'ni server qabulga bog'lab
-           saqladi va panel uni qayta o'qidi. */
-        await expect(page.getByText(codeText).first()).toBeVisible();
+        /* Tashxis blok ro'yxatida qoladi — ya'ni server qabulga bog'lab
+           saqladi va panel uni qayta o'qidi. Birinchisi — «Asosiy». */
+        const row = sheet.getByRole('list', { name: 'Tashxis' }).getByRole('listitem').filter({ hasText: codeText });
+        await expect(row).toBeVisible({ timeout: 15_000 });
+        await expect(row.getByRole('button', { name: 'Asosiy' })).toBeVisible();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
     });
 
     test('tekshiruvga yuborish paneli prayslistdan narx oladi', async ({ page }) => {
@@ -161,9 +151,7 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await openVisitInCard(page);
         await page.waitForTimeout(2500);
 
-        await openReferral(page);
-        await page.getByRole('button', { name: /^Diagnostika$/ }).click();
-        await page.waitForTimeout(800);
+        await openOrder(page, 'Diagnostika');
 
         // Tanlov oynada; «Qaysi tekshiruv?» — guruhning nomi (sarlavhani oyna beradi)
         await expect(page.getByRole('dialog').getByRole('group', { name: 'Qaysi tekshiruv?' })).toBeVisible();
@@ -211,16 +199,7 @@ test.describe('Bemor kartasi — joriy qabul paneli', () => {
         await page.waitForTimeout(2500);
 
         /* Tekshiruv buyuramiz — server unga `VisitCharge` qatori yaratadi. */
-        await openReferral(page);
-        await page.getByRole('button', { name: /^Diagnostika$/ }).click();
-        await page.waitForTimeout(800);
-        /* Prayslist tugma bo'lib turadi; prayslistda yo'q tekshiruv — «qo'lda yozish» orqali */
-        const manualStudy = page.getByRole('button', { name: /qo'lda yozish/ });
-        if (await manualStudy.isVisible()) await manualStudy.click();
-        await page.getByPlaceholder(/Masalan: Qorin/).fill('Sinov UZI');
-        await page.getByPlaceholder(/^Narx$/).fill('75000');
-        await page.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();
-        await page.waitForTimeout(3000);
+        await orderStudy(page, 'Sinov UZI', '75000');
 
         /* Endi «To'lovlar» bo'limida O'SHA qator ko'rinishi kerak.
            Ilgari bu ro'yxat kalendar yozuvlaridan yasalardi va hisob

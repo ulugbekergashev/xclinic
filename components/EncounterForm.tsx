@@ -35,6 +35,29 @@ interface Props {
     readOnly?: boolean;
     /** Har o'zgarishda. `invalidKeys` — chegaradan chiqqan maydonlar: ular saqlanmaydi */
     onChange?: (data: Record<string, any>, templateId: string | undefined, invalidKeys: string[]) => void;
+    /* 'vitals' — faqat raqamli ko'rsatkichlar (AB, puls, harorat, vazn, bo'y)
+       bitta ixcham qatorda. Qolgan maydonlar ko'rik MATNIGA shablon bo'lib
+       tushadi (`objectiveTemplateText`), alohida qutilar bo'lib emas
+       (vrach ish joyi, 2026-11-23). */
+    only?: 'vitals';
+}
+
+/** Ko'rsatkich maydoni: AB, puls, harorat, SpO2, vazn, bo'y */
+export const isVitalField = (f: EncounterField): boolean =>
+    f.type === 'number' && !!ENCOUNTER_FIELD_TO_VITAL[f.key];
+
+/* Anamnez maydonlari ko'rik matniga tushmaydi: hayot anamnezi — «Anamnez»
+   tabida, kasallik anamnezi — shikoyat bilan bitta qutida. */
+const ANAMNESIS_KEYS = new Set(['anamnesis', 'allergies', 'chronic']);
+
+/** Shablonning ko'rsatkich bo'lmagan maydonlaridan ko'rik matni:
+ *  «Umumiy holat: Qoniqarli» — tanlovning birinchi varianti (me'yor),
+ *  qolganlari «O'pka: » — vrach davom ettiradi. */
+export function objectiveTemplateText(template?: EncounterTemplate): string {
+    return (template?.fields || [])
+        .filter(f => !isVitalField(f) && !ANAMNESIS_KEYS.has(f.key) && f.type !== 'checkbox')
+        .map(f => `${f.label}: ${f.type === 'select' && f.options?.length ? f.options[0] : ''}`.trimEnd())
+        .join(String.fromCharCode(10));
 }
 
 const parseValue = (v: Props['value']): Record<string, any> => {
@@ -64,7 +87,7 @@ const INPUT_CLASS =
 
 export const EncounterForm: React.FC<Props> = ({
     templates, departmentId, templateId, patientGender, patientAge,
-    value, readOnly = false, onChange,
+    value, readOnly = false, onChange, only,
 }) => {
     const { t } = useLanguage();
     const [data, setData] = useState<Record<string, any>>(() => parseValue(value));
@@ -133,7 +156,7 @@ export const EncounterForm: React.FC<Props> = ({
 
     // Maydonlarni guruhlarga ajratamiz — bitta uzun ro'yxat o'qib bo'lmaydigan bo'ladi
     const groups = useMemo(() => {
-        const fields: EncounterField[] = template?.fields || [];
+        const fields: EncounterField[] = (template?.fields || []).filter(f => only !== 'vitals' || isVitalField(f));
         const map = new Map<string, EncounterField[]>();
         for (const f of fields) {
             const g = f.group || 'Umumiy';
@@ -141,7 +164,7 @@ export const EncounterForm: React.FC<Props> = ({
             map.get(g)!.push(f);
         }
         return Array.from(map.entries());
-    }, [template]);
+    }, [template, only]);
 
     /* Chegaradan chiqqan qiymat SAQLANMAYDI: server ham uni rad etadi, va
        «saqlandi» deb o'ylab qolish eng yomon holat. Varaqqa qaysi maydonlar
@@ -240,6 +263,32 @@ export const EncounterForm: React.FC<Props> = ({
                 );
         }
     };
+
+    if (only === 'vitals') {
+        const fields = groups.flatMap(([, f]) => f);
+        if (!template || !fields.length) return null;
+        return (
+            <div className="flex flex-col gap-2">
+                {/* Shablon tanlovi — varaq sarlavhasida (VisitPanel), bu yerda emas */}
+                {fields.length > 0 && (
+                    <div role="group" aria-label={t('visit.vitals')} className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {fields.map(f => (
+                            <label key={f.key} className="flex flex-col gap-1 min-w-0">
+                                <span className="text-[11px] font-medium text-muted truncate">{f.label}</span>
+                                {renderField(f)}
+                            </label>
+                        ))}
+                        {bmi !== null && (
+                            <span className="flex flex-col gap-1 min-w-0">
+                                <span className="text-[11px] font-medium text-muted">VKI</span>
+                                <span className="h-[38px] px-3 rounded-xl bg-elevated text-sm font-bold text-ink inline-flex items-center gap-1.5 tabular-nums" title={bmiLabel(bmi)}>{bmi}</span>
+                            </span>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     if (!template) {
         return (

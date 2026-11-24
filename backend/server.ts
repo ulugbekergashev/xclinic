@@ -6334,6 +6334,9 @@ app.get('/api/icd10', authenticateToken, async (req, res) => {
     }
 });
 
+/** Tashxis turi (milliy standartdagi asosiy uchtasi): asosiy, yondosh, asorat */
+const DIAGNOSIS_KINDS = ['Main', 'Concomitant', 'Complication'];
+
 app.post('/api/diagnoses', authenticateToken, async (req, res) => {
     try {
         const { patientId, code, date, notes, status, visitId, isChronic } = req.body;
@@ -6367,12 +6370,30 @@ app.post('/api/diagnoses', authenticateToken, async (req, res) => {
 
            Yon oqibati kattaroq: bemor kartasida «bu tashrifda qanday
            tashxis qo'yildi?» degan savolga javob yo'q edi. */
+        /* TASHXIS TURI (migratsiya 0040). Qabulda birinchisi — asosiy,
+           keyingilari — yondosh; vrach keyin bosib almashtiradi. Qabulsiz
+           (anamnezdagi surunkali) tashxisda tur yo'q. */
+        const requestedKind = req.body?.kind;
+        if (requestedKind !== undefined && requestedKind !== null && !DIAGNOSIS_KINDS.includes(requestedKind)) {
+            return res.status(400).json({ error: "Tashxis turi noto'g'ri", code: 'BAD_KIND' });
+        }
+        let kind: string | null = null;
+        if (visitId) {
+            const hasMain = await prisma.patientDiagnosis.count({ where: { visitId: String(visitId), kind: 'Main' } });
+            kind = requestedKind || (hasMain ? 'Concomitant' : 'Main');
+            if (kind === 'Main' && hasMain) {
+                await prisma.patientDiagnosis.updateMany({
+                    where: { visitId: String(visitId), kind: 'Main' }, data: { kind: 'Concomitant' },
+                });
+            }
+        }
         const diagnosis = await prisma.patientDiagnosis.create({
             data: {
                 patient: { connect: { id: patientId } },
                 clinic: { connect: { id: clinicId } },
                 ...(visitId ? { visit: { connect: { id: String(visitId) } } } : {}),
                 ...(isChronic !== undefined && { isChronic: !!isChronic }),
+                kind,
                 date,
                 notes,
                 status,
@@ -6413,6 +6434,37 @@ app.get('/api/diagnoses', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Get diagnoses error:', error);
         res.status(500).json({ error: 'Failed to fetch diagnoses' });
+    }
+});
+
+/* Tashxis turini almashtirish: asosiy / yondosh / asorat. Qabulda asosiy
+   bitta — yangisi asosiy bo'lsa, eskisi yondoshga tushadi. Qulfda — yo'q. */
+app.patch('/api/diagnoses/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!(await assertOwnership(req, res, 'patientDiagnosis', req.params.id))) return;
+        const kind = req.body?.kind;
+        if (!DIAGNOSIS_KINDS.includes(kind)) {
+            return res.status(400).json({ error: "Tashxis turi noto'g'ri", code: 'BAD_KIND' });
+        }
+        const dx = await prisma.patientDiagnosis.findUnique({
+            where: { id: req.params.id }, select: { visitId: true, visit: { select: { lockedAt: true } } },
+        });
+        if (!dx?.visitId) return res.status(400).json({ error: "Qabulsiz tashxisda tur bo'lmaydi" });
+        if (dx.visit?.lockedAt) {
+            return res.status(409).json({ error: "Qabul qulflangan — tashxisni o'zgartirib bo'lmaydi", code: 'VISIT_LOCKED' });
+        }
+        if (kind === 'Main') {
+            await prisma.patientDiagnosis.updateMany({
+                where: { visitId: dx.visitId, kind: 'Main', id: { not: req.params.id } }, data: { kind: 'Concomitant' },
+            });
+        }
+        const updated = await prisma.patientDiagnosis.update({
+            where: { id: req.params.id }, data: { kind }, include: { icd10: true },
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error('Update diagnosis error:', error);
+        res.status(500).json({ error: "Tashxis o'zgartirilmadi" });
     }
 });
 

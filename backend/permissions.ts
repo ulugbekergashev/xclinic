@@ -116,6 +116,7 @@ export const RULES: Rule[] = [
        kirita olmaydi. ALLERGIYA bundan mustasno (klinika egasi,
        2026-11-21): uni anamnez bilan birga qabulxona ham so'rab yozadi. */
     { method: 'POST', path: '/api/diagnoses', roles: owner(D) },
+    { method: 'PATCH', path: '/api/diagnoses/:id', roles: owner(D) },
     { method: 'DELETE', path: '/api/diagnoses/:id', roles: owner(D) },
     { method: 'POST', path: '/api/patients/:id/allergies', roles: owner(D, N, R) },
     { method: 'DELETE', path: '/api/patients/:id/allergies/:allergyId', roles: owner(D, R) },

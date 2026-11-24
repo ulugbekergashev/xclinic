@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { BedDouble, Calendar, Camera, CreditCard, Edit, Phone, Plus, Printer, Send, Stethoscope, UserPlus, Wallet } from 'lucide-react';
+import { AlertTriangle, BedDouble, Calendar, CalendarClock, Camera, Edit, HeartPulse, History, Plus, Printer, Send, UserPlus, Wallet } from 'lucide-react';
 import { Patient } from '../../types';
 import { getFileUrl } from '../../services/api';
 import { useLanguage, fill } from '../../context/LanguageContext';
@@ -8,49 +8,51 @@ import { formatNumber } from '../../utils/format';
 import { maskPhone } from '../../utils/accessControl';
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   BEMOR KARTOCHKASI — kartaning chap ustuni, hamma tabda bir joyda turadi.
+   BEMOR QATORI — kartaning tepasida, butun kenglikda, hamma tabda bir joyda
+   (2026-11-24, tasdiqlangan maket «maket-karta.html»).
 
-   Namuna — DentaCRM (2026-11-20, klinika egasi): chapda «kim», o'ngda ish.
-   Ilgari bemor tepadagi bir qatorli sarlavhada edi, kam ishlatiladigan amallar
-   esa «⋯» menyusida yashirin turardi.
+   Ilgari bu chap ustundagi 320px kartochka edi (DentaCRM namunasida,
+   2026-11-20). Shifokorning ish joyi (Qabul tabi) unga siqilib qolardi va
+   klinika egasi «bemor ma'lumotlarini chapga qo'yibsan yana» dedi. Endi
+   «kim» — bitta gorizontal qatorda, qolgan butun kenglik — ishga.
 
-   Tartib yuqoridan pastga — registrator bemor kelganda so'raydigan tartibda
-   (2026-11-22 qayta ko'rildi):
-     · portret (bosilsa rasm yuklanadi), ism, holat, jinsi va yoshi;
-     · PUL: ikki katak — QARZ va OXIRGI TASHRIF, avans bo'lsa uning summasi;
-       ostida to'lov tugmasi HAR DOIM (shifokordan boshqaga): qarz bo'lsa
-       «To'lov qabul qilish», bo'lmasa «To'lov qo'shish». 2026-11-22 gacha
-       tugma faqat qarz bo'lganda chiqardi va klinika egasi «to'lov qo'shish
-       qayerga ketdi?» dedi. Ilgari pul olish qabul sarlavhasidagi «To'lash»
-       edi: «Bu qabul: 180 000» deb turib, butun qarz oynasini ochardi;
-     · KEYINGI QABUL — bo'lsa (bugun bo'lsa «Bugun, 14:00»);
-     · aloqa: telefon, karta raqami, biriktirilgan shifokor;
-     · allergiya va kasalliklar — «Umumiy» tabidagi «Tibbiy tarix» blokida
-       (2026-11-21, DentaCRM dagidek: chapda faqat «kim»); bu yerda faqat
-       «ma'lumot yuklanmadi» ogohlantirishi;
-     · statsionarda yotgan bo'lsa — shu haqda belgi;
-     · bitta katta tugma «Qabulga yozish» va to'rtta kichik amal.
+   Ikki qavat:
+     · yuqorida — portret (bosilsa rasm yuklanadi), ism, ostida kulrang
+       qator (jinsi · yoshi · tug'ilgan sana · telefon · karta raqami ·
+       biriktirilgan shifokor); o'ngda amallar: (ega/registrator) qarz va
+       to'lov — bitta yaxlit blok, «Qabulga yozish», to'rtta kichik amal;
+     · pastda, och fonli tasmada — belgilar: allergiya (qizil, birinchi),
+       surunkali kasalliklar, «Statsionarda», keyingi qabul; o'ng chetda
+       kulrang matn bilan oxirgi tashrif.
+   «Faol» belgisi olib tashlandi (2026-11-24): har bemorda bir xil turib,
+   hech narsa demasdi. Faqat arxivdagi bemorda «Arxiv» chiqadi.
+
+   Shifokor bemorning jami qarzini KO'RMAYDI (2026-11-23 kelishuv): pul —
+   kassirning ishi. Shu qabulning to'langan-to'lanmagani esa qabul
+   varag'ining sarlavhasida qoladi.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
     patient: Patient;
     showPhone: boolean;
-    visitCount: number;
+    /** Ega va registrator — qarz va to'lov tugmasi. Shifokorda false. */
+    showMoney: boolean;
     /** Bemorning jami to'lanmagan qarzi */
     due: number;
     lastVisit?: string | null;
     /** Allergiya ma'lumoti yuklanmadi — «yo'q» emas, «bilmaymiz» */
     allergiesUnknown?: boolean;
+    /** Faol allergiyalar — moddaning nomi */
+    allergies?: string[];
+    /** Surunkali kasalliklar — MKB kodi va nomi */
+    chronic?: { code: string; name: string }[];
     /** Hozir statsionarda yotibdi */
     admitted?: boolean;
-    /* Eng yaqin kelajakdagi yozilish. «Yozuvlar» tabi olib tashlandi
-       (2026-11-22): undan foydali birgina narsa shu edi va u boshqa hech
-       qayerda ko'rinmasdi. DentaCRM ham keyingi qabulni kartaning o'zida beradi. */
     nextAppointment?: { date: string; time: string; doctorName?: string } | null;
     onOpenPayments: () => void;
-    /** Qarzni olish — kassadagi bilan bir xil oyna. Shifokorda yo'q. */
+    /** Qarzni olish — kassadagi bilan bir xil oyna */
     onTakePayment?: () => void;
-    /** Qarz yo'q bo'lganda — yangi xizmatga to'lov yoki avans. Shifokorda yo'q. */
+    /** Qarz yo'q bo'lganda — yangi xizmatga to'lov yoki avans */
     onAddPayment?: () => void;
     onSchedule: () => void;
     onEdit: () => void;
@@ -60,10 +62,11 @@ interface Props {
     onUploadPhoto: (file: File) => void;
 }
 
-const iconBtn = 'h-10 grid place-items-center text-muted hover:text-primary-700 dark:hover:text-primary-300 hover:bg-elevated transition-colors';
+const iconBtn = 'w-11 h-11 grid place-items-center text-muted hover:text-primary-700 dark:hover:text-primary-300 hover:bg-elevated transition-colors';
+const chip = 'inline-flex items-center gap-1.5 min-h-7 px-2.5 rounded-lg text-[13px] font-medium';
 
 export const ProfileCard: React.FC<Props> = ({
-    patient, showPhone, visitCount, due, lastVisit, allergiesUnknown = false, admitted = false,
+    patient, showPhone, showMoney, due, lastVisit, allergiesUnknown = false, allergies = [], chronic = [], admitted = false,
     nextAppointment, onOpenPayments, onTakePayment, onAddPayment, onSchedule, onEdit, onMessage, onAssignDoctor, onPrintCard, onUploadPhoto,
 }) => {
     const { t } = useLanguage();
@@ -71,22 +74,39 @@ export const ProfileCard: React.FC<Props> = ({
 
     const age = calcAge(patient.dob);
     const phone = (value?: string) => (showPhone ? value : maskPhone(value));
-    const sexAge = [
-        patient.gender === 'Male' ? t('patients.modal.male') : t('patients.modal.female'),
-        age !== null ? `${age} ${t('patients.details.age')}` : '',
-    ].filter(Boolean).join(' · ');
     const archived = patient.status === 'Archived';
     const initials = `${patient.lastName?.[0] || ''}${patient.firstName?.[0] || ''}`.toUpperCase();
+    const facts = [
+        patient.gender === 'Male' ? t('patients.modal.male') : t('patients.modal.female'),
+        age !== null ? `${age} ${t('patients.details.age')}` : '',
+        patient.dob ? formatDobDDMMYYYY(patient.dob) : '',
+        phone(patient.phone) || '',
+        patient.secondaryPhone ? `${phone(patient.secondaryPhone)} ${t('patientdetails.qoshimcha')}` : '',
+        patient.cardNumber ? fill(t('card.cardNo'), patient.cardNumber) : '',
+        patient.doctorName || '',
+    ].filter(Boolean);
+    const nextLabel = nextAppointment
+        ? [`${nextAppointment.date === todayISO() ? t('card.today') : formatDobDDMMYYYY(nextAppointment.date)}, ${nextAppointment.time}`,
+            nextAppointment.doctorName].filter(Boolean).join(' · ')
+        : '';
+    /* Surunkali: birinchisi nomi bilan, qolganlari soni bilan — to'liq
+       ro'yxat sichqoncha ustida va «Anamnez» tabida */
+    const chronicLabel = chronic.length
+        ? `${chronic[0].code} ${chronic[0].name}${chronic.length > 1 ? ` +${chronic.length - 1}` : ''}`
+        : '';
+    const hasDebt = due > 0;
 
     return (
         <section aria-labelledby="pt-name"
-            className="min-w-0 bg-surface border border-line rounded-[20px] p-5 flex flex-col gap-4">
+            className="relative min-w-0 overflow-hidden bg-surface border border-line rounded-[20px] shadow-sm">
+            {/* Chap chetdagi ingichka rang — karta «kim» ekanini ko'zga ajratadi */}
+            <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-primary-600" />
 
-            {/* ── Kim ───────────────────────────────────────────────────── */}
-            <div className="flex items-start gap-3.5">
+            <div className="pl-5 pr-4 sm:pl-6 sm:pr-5 py-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+                {/* ── Kim ─────────────────────────────────────────────────── */}
                 <button type="button" onClick={() => photoInputRef.current?.click()}
                     aria-label={t('card.menuPhoto')} title={t('card.menuPhoto')}
-                    className="group relative shrink-0 w-14 h-14 rounded-2xl bg-primary-600 text-white grid place-items-center overflow-hidden text-lg font-bold focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
+                    className="group relative shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white grid place-items-center overflow-hidden text-lg font-bold tracking-wide ring-4 ring-primary-50 dark:ring-primary-900/30 focus-visible:outline-none focus-visible:ring-primary-300">
                     {patient.avatarUrl
                         ? <img src={getFileUrl('patient-avatar', patient.id)} alt="" className="w-full h-full object-cover" />
                         : initials}
@@ -95,137 +115,127 @@ export const ProfileCard: React.FC<Props> = ({
                         <Camera className="w-5 h-5" />
                     </span>
                 </button>
-                <div className="min-w-0 flex-1">
-                    <div className="flex items-start gap-2">
-                        <h1 id="pt-name" className="min-w-0 flex-1 text-lg leading-snug font-semibold text-ink break-words">
+                <div className="min-w-0 flex-1 basis-40 sm:basis-64">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <h1 id="pt-name" className="min-w-0 text-xl leading-tight font-semibold tracking-tight text-ink break-words">
                             {patient.lastName} {patient.firstName}
                         </h1>
-                        <span className={`shrink-0 mt-0.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${archived
-                            ? 'bg-elevated text-muted'
-                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>
-                            {archived ? t('patients.filter.archived') : t('patients.filter.active')}
-                        </span>
+                        {archived && (
+                            <span className="shrink-0 px-2 py-0.5 rounded-md text-[11px] font-medium bg-elevated text-muted">
+                                {t('patients.filter.archived')}
+                            </span>
+                        )}
                     </div>
-                    <p className="mt-0.5 text-sm text-muted">{sexAge}</p>
-                    {patient.dob && <p className="text-xs text-faint tabular-nums">{formatDobDDMMYYYY(patient.dob)}</p>}
+                    {/* Har bir bo'lak bo'linmaydi — telefon raqami ikki qatorga uzilardi */}
+                    <p className="mt-1 text-sm text-muted tabular-nums">
+                        {facts.map((f, i) => (
+                            <React.Fragment key={i}>
+                                {/* Bo'shliqlar — qator shu yerda o'raladi */}
+                                {i > 0 && <>{' '}<span aria-hidden="true" className="mx-0.5 text-faint">·</span>{' '}</>}
+                                <span className="whitespace-nowrap">{f}</span>
+                            </React.Fragment>
+                        ))}
+                    </p>
+                </div>
+
+                {/* ── Amallar ─────────────────────────────────────────────── */}
+                <div className="flex flex-wrap items-center gap-2 ml-auto">
+                    {showMoney && (
+                        /* Qarz va to'lov — bitta blok: summa va uni olish tugmasi yonma-yon */
+                        <div className={`flex h-11 rounded-xl border overflow-hidden ${hasDebt
+                            ? 'border-red-200 dark:border-red-900/60'
+                            : 'border-line'}`}>
+                            <button type="button" onClick={onOpenPayments} title={t('card.secPayments')}
+                                className={`px-3 text-left leading-tight transition-colors whitespace-nowrap ${hasDebt
+                                    ? 'bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30'
+                                    : 'hover:bg-elevated'}`}>
+                                <span className="block text-[11px] font-medium text-muted">{t('pcard.debt')}</span>
+                                <span className="block whitespace-nowrap">
+                                    <span className={`text-[15px] font-bold tabular-nums ${hasDebt ? 'text-red-600 dark:text-red-400' : 'text-ink'}`}>
+                                        {hasDebt ? formatNumber(due) : '0'}
+                                    </span>
+                                    {(patient.balance || 0) > 0 && (
+                                        <span className="ml-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 tabular-nums">
+                                            {fill(t('card.advance'), formatNumber(patient.balance || 0))}
+                                        </span>
+                                    )}
+                                </span>
+                            </button>
+                            {hasDebt && onTakePayment ? (
+                                <button type="button" onClick={onTakePayment}
+                                    className="inline-flex items-center gap-2 px-3.5 border-l border-red-200 dark:border-red-900/60 text-sm font-semibold text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30 whitespace-nowrap">
+                                    <Wallet className="w-4 h-4" aria-hidden="true" /> {t('card.takePayment')}
+                                </button>
+                            ) : onAddPayment && (
+                                <button type="button" onClick={onAddPayment}
+                                    className="inline-flex items-center gap-2 px-3.5 border-l border-line text-sm font-semibold text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30 whitespace-nowrap">
+                                    <Plus className="w-4 h-4" aria-hidden="true" /> {t('card.addPayment')}
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    <button type="button" onClick={onSchedule}
+                        className="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold shadow-sm whitespace-nowrap">
+                        <Calendar className="w-4 h-4" aria-hidden="true" /> {t('pcard.schedule')}
+                    </button>
+                    <div className="flex rounded-xl border border-line overflow-hidden divide-x divide-line">
+                        <button type="button" onClick={onEdit} className={iconBtn}
+                            aria-label={t('patients.details.editProfile')} title={t('patients.details.editProfile')}>
+                            <Edit className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={onMessage} className={iconBtn}
+                            aria-label={t('patients.details.sendMessage')} title={t('patients.details.sendMessage')}>
+                            <Send className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={onAssignDoctor} className={iconBtn}
+                            aria-label={patient.doctorId ? t('patients.details.changeDoctor') : t('patients.details.assignDoctor')}
+                            title={patient.doctorId ? t('patients.details.changeDoctor') : t('patients.details.assignDoctor')}>
+                            <UserPlus className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={onPrintCard} className={iconBtn}
+                            aria-label={t('patientdetails.karta_vipiska')} title={t('patientdetails.karta_vipiska')}>
+                            <Printer className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* ── Qarz va oxirgi tashrif ───────────────────────────────── */}
-            <div className="grid grid-cols-2 rounded-xl border border-line overflow-hidden">
-                <button type="button" onClick={onOpenPayments} title={t('card.secPayments')}
-                    className="text-left px-3.5 py-2.5 hover:bg-elevated transition-colors">
-                    <span className="block text-xs text-muted">{t('pcard.debt')}</span>
-                    {due > 0
-                        ? <span className="block text-lg font-semibold text-red-600 dark:text-red-400 tabular-nums">{formatNumber(due)}</span>
-                        : <span className="block text-lg font-semibold text-ink tabular-nums">0</span>}
-                    {(patient.balance || 0) > 0 && (
-                        <span className="block text-xs text-emerald-700 dark:text-emerald-300 tabular-nums">
-                            {fill(t('card.advance'), formatNumber(patient.balance || 0))}
-                        </span>
-                    )}
-                </button>
-                <div className="px-3.5 py-2.5 border-l border-line">
-                    <span className="block text-xs text-muted">{t('pcard.lastVisit')}</span>
-                    <span className="block text-sm font-medium text-ink leading-7">
-                        {lastVisit ? formatDobDDMMYYYY(lastVisit) : t('pcard.noVisits')}
+            {/* ── Belgilar tasmasi: xavfsizlik birinchi, keyin vaqt ─────── */}
+            <div className="pl-5 pr-4 sm:pl-6 sm:pr-5 py-2.5 border-t border-line-soft bg-elevated/50 flex flex-wrap items-center gap-2">
+                {allergies.length > 0 && (
+                    <span className={`${chip} bg-red-100 text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-900/40 dark:text-red-300 dark:ring-red-900/60`}>
+                        <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
+                        {t('anamnesis.s.allergies')}: {allergies.join(', ')}
                     </span>
-                </div>
-            </div>
-            {due > 0 && onTakePayment ? (
-                <button type="button" onClick={onTakePayment}
-                    className="-mt-1.5 w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl border border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 text-sm font-semibold hover:bg-primary-50 dark:hover:bg-primary-900/30">
-                    <Wallet className="w-4 h-4" aria-hidden="true" /> {t('card.takePayment')}
-                </button>
-            ) : onAddPayment && (
-                <button type="button" onClick={onAddPayment}
-                    className="-mt-1.5 w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl border border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 text-sm font-semibold hover:bg-primary-50 dark:hover:bg-primary-900/30">
-                    <Plus className="w-4 h-4" aria-hidden="true" /> {t('card.addPayment')}
-                </button>
-            )}
-
-            {/* ── Keyingi qabul ─────────────────────────────────────────── */}
-            {nextAppointment && (
-                <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 px-3.5 py-2.5">
-                    <span className="block text-xs font-semibold text-emerald-700 dark:text-emerald-300">{t('card.nextVisit')}</span>
-                    <span className="block text-sm font-medium text-ink tabular-nums">
-                        {[`${nextAppointment.date === todayISO() ? t('card.today') : formatDobDDMMYYYY(nextAppointment.date)}, ${nextAppointment.time}`,
-                            nextAppointment.doctorName].filter(Boolean).join(' · ')}
+                )}
+                {allergiesUnknown && (
+                    <span role="alert" className={`${chip} bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300`}>
+                        {t('card.allergyUnknown')}
                     </span>
-                </div>
-            )}
-
-            {/* ── Aloqa ─────────────────────────────────────────────────── */}
-            <ul className="flex flex-col gap-2 text-sm text-ink">
-                <li className="flex items-center gap-2.5">
-                    <Phone className="w-4 h-4 shrink-0 text-faint" aria-hidden="true" />
-                    <span className="min-w-0 tabular-nums">{phone(patient.phone) || '—'}</span>
-                </li>
-                {patient.secondaryPhone && (
-                    <li className="flex items-center gap-2.5">
-                        <Phone className="w-4 h-4 shrink-0 text-faint" aria-hidden="true" />
-                        <span className="min-w-0 tabular-nums">{phone(patient.secondaryPhone)} <span className="text-muted">{t('patientdetails.qoshimcha')}</span></span>
-                    </li>
                 )}
-                {patient.cardNumber && (
-                    <li className="flex items-center gap-2.5">
-                        <CreditCard className="w-4 h-4 shrink-0 text-faint" aria-hidden="true" />
-                        <span>{fill(t('card.cardNo'), patient.cardNumber)}</span>
-                    </li>
+                {chronic.length > 0 && (
+                    <span className={`${chip} max-w-full bg-surface text-ink ring-1 ring-inset ring-line`}
+                        title={chronic.map(c => `${c.code} — ${c.name}`).join('\n')}>
+                        <HeartPulse className="w-3.5 h-3.5 shrink-0 text-rose-500" aria-hidden="true" />
+                        <span className="text-muted">{t('anamnesis.conditions')}:</span>
+                        <span className="min-w-0 truncate max-w-[18rem]">{chronicLabel}</span>
+                    </span>
                 )}
-                {/* Doimiy shifokor bo'lmasa qator chiqmaydi: «Shifokor
-                    biriktirilmagan» yozuvi bugungi qabuldagi shifokor bilan
-                    yonma-yon turib, xatodek o'qilardi (2026-11-21). Biriktirish —
-                    pastdagi tugma. */}
-                {patient.doctorName && (
-                    <li className="flex items-center gap-2.5">
-                        <Stethoscope className="w-4 h-4 shrink-0 text-faint" aria-hidden="true" />
-                        <span>{patient.doctorName}</span>
-                    </li>
+                {admitted && (
+                    <span className={`${chip} bg-primary-50 text-primary-700 ring-1 ring-inset ring-primary-100 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-900/50`}>
+                        <BedDouble className="w-3.5 h-3.5" aria-hidden="true" /> {t('pcard.admitted')}
+                    </span>
                 )}
-            </ul>
-
-            {/* ── Xavfsizlik: allergiya va statsionar ──────────────────── */}
-            {(allergiesUnknown || admitted) && (
-                <div className="flex flex-wrap gap-1.5">
-                    {allergiesUnknown && (
-                        <span role="alert" className="inline-flex items-center min-h-7 px-2.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[13px] font-medium">
-                            {t('card.allergyUnknown')}
-                        </span>
-                    )}
-                    {admitted && (
-                        <span className="inline-flex items-center gap-1.5 min-h-7 px-2.5 rounded-lg bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 text-[13px] font-medium">
-                            <BedDouble className="w-3.5 h-3.5" aria-hidden="true" /> {t('pcard.admitted')}
-                        </span>
-                    )}
-                </div>
-            )}
-
-            {/* ── Amallar ───────────────────────────────────────────────── */}
-            <div className="flex flex-col gap-2 pt-1 border-t border-line">
-                <button type="button" onClick={onSchedule}
-                    className="mt-3 w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold">
-                    <Calendar className="w-4 h-4" aria-hidden="true" /> {t('pcard.schedule')}
-                </button>
-                <div className="grid grid-cols-4 rounded-xl border border-line overflow-hidden divide-x divide-line">
-                    <button type="button" onClick={onEdit} className={iconBtn}
-                        aria-label={t('patients.details.editProfile')} title={t('patients.details.editProfile')}>
-                        <Edit className="w-4 h-4" />
-                    </button>
-                    <button type="button" onClick={onMessage} className={iconBtn}
-                        aria-label={t('patients.details.sendMessage')} title={t('patients.details.sendMessage')}>
-                        <Send className="w-4 h-4" />
-                    </button>
-                    <button type="button" onClick={onAssignDoctor} className={iconBtn}
-                        aria-label={patient.doctorId ? t('patients.details.changeDoctor') : t('patients.details.assignDoctor')}
-                        title={patient.doctorId ? t('patients.details.changeDoctor') : t('patients.details.assignDoctor')}>
-                        <UserPlus className="w-4 h-4" />
-                    </button>
-                    <button type="button" onClick={onPrintCard} className={iconBtn}
-                        aria-label={t('patientdetails.karta_vipiska')} title={t('patientdetails.karta_vipiska')}>
-                        <Printer className="w-4 h-4" />
-                    </button>
-                </div>
+                {nextAppointment && (
+                    <span className={`${chip} bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/50 tabular-nums`}>
+                        <CalendarClock className="w-3.5 h-3.5" aria-hidden="true" />
+                        {t('card.nextVisit')}: {nextLabel}
+                    </span>
+                )}
+                <span className="ml-auto inline-flex items-center gap-1.5 text-[13px] text-muted tabular-nums whitespace-nowrap">
+                    <History className="w-3.5 h-3.5" aria-hidden="true" />
+                    {t('pcard.lastVisit')}: {lastVisit ? formatDobDDMMYYYY(lastVisit) : t('pcard.noVisits')}
+                </span>
             </div>
 
             <input ref={photoInputRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true"

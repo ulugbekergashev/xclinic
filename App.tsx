@@ -1877,7 +1877,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
       </header>
 
       <main className="min-h-screen flex flex-col lg:pl-rail lg:pt-topbar">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-7 flex-1 overflow-x-hidden pb-24 lg:pb-10">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-7 flex-1 overflow-x-clip pb-24 lg:pb-10">
           <ErrorBoundary key={location.pathname} section={t(getPageLabelKey(location.pathname, userRole))}>
           {/* `Suspense` — `React.lazy` bilan bo'lingan sahifalar uchun (S5.5).
               Yuklash indikatori ERROR BOUNDARY ICHIDA: chunk yuklanmasa

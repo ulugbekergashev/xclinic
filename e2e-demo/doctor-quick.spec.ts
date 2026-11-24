@@ -14,11 +14,11 @@
 import { test, expect, Page } from '@playwright/test';
 import { openVisitInCard } from '../e2e/helpers';
 
-/* «Bugungi qabul» (2026-11-21): bitta «+ Qo'shish» — oynada Xizmat · Tahlil ·
-   Diagnostika · Dori · Tashxis · Boshqa shifokor. */
+/* Vrach ish joyi (2026-11-23): «Tayinlovlar» da har birining o'z tugmasi —
+   Tahlil · Diagnostika · Dori · Xizmat · Yo'naltirish. Tashxis qidiruvi
+   varaqning o'zida (oynasiz). */
 const openAdd = async (p: Page, kind: string) => {
-    if (!(await p.getByRole('dialog').count())) await sheet(p).getByRole('button', { name: /^Qo'shish$/ }).click();
-    await p.getByRole('dialog').getByRole('button', { name: new RegExp(`^${kind}$`) }).click();
+    await sheet(p).getByRole('button', { name: new RegExp(`^${kind}$`) }).click();
 };
 
 
@@ -44,7 +44,7 @@ const openVisitSheet = async (page: Page, row: number) => {
         await openVisitInCard(page);
         await page.waitForTimeout(2500);
     }
-    await expect(sheet(page).getByRole('button', { name: /^Qo'shish$/ })).toBeVisible({ timeout: 15_000 });
+    await expect(sheet(page).getByRole('heading', { name: 'Tayinlovlar' })).toBeVisible({ timeout: 15_000 });
 };
 
 test('Demo: yozilgan dori keyingi safar bir bosishda butun qatorni to\'ldiradi', async ({ page }) => {
@@ -78,15 +78,14 @@ test('Demo: qo\'yilgan tashxis qidirmasdan bir bosishda qayta qo\'yiladi', async
     await openVisitSheet(page, 2);
     const s = sheet(page);
 
-    // Birinchi marta — MKB-10 qidiruvidan. Qabulda tashxis bo'lsa qidiruv yopiq turadi.
+    // Birinchi marta — MKB-10 qidiruvidan (varaqning o'zida, oynasiz)
     const search = s.getByPlaceholder(/Kod yoki kasallik nomi/);
-    if (!(await search.isVisible())) await openAdd(page, 'Tashxis');
     await search.fill('gipert');
     await page.waitForTimeout(1200);
     await s.locator('button', { hasText: /^I10/ }).first().click();
     await expect(page.getByText("Tashxis qo'shildi").first()).toBeVisible({ timeout: 10_000 });
-    // Oyna ochiq qoladi — «Tayyor» bilan yopiladi
-    await page.getByRole('dialog').getByRole('button', { name: /^Tayyor$/ }).click();
+    // Birinchi tashxis — asosiy
+    await expect(s.getByRole('list', { name: 'Tashxis' }).getByRole('button', { name: 'Asosiy' })).toBeVisible();
 
     // Olib tashlanadi — qidiruv qutisi yana ochiladi
     await s.getByRole('button', { name: "O'chirish: I10" }).click();
@@ -95,7 +94,6 @@ test('Demo: qo\'yilgan tashxis qidirmasdan bir bosishda qayta qo\'yiladi', async
 
     // Endi qidiruvsiz: «Ko'p qo'yadiganlaringiz» dagi tugma
     const quick = s.getByText("Ko'p qo'yadiganlaringiz");
-    if (!(await quick.isVisible())) await openAdd(page, 'Tashxis');
     await expect(quick).toBeVisible();
     await s.getByRole('button', { name: /I10/ }).first().click();
     await expect(s.getByRole('button', { name: "O'chirish: I10" })).toBeVisible({ timeout: 10_000 });
@@ -108,7 +106,7 @@ test('Demo: vrach navbatda «Ochish» bosganda qabul varag\'i darhol ochiq', asy
 
     /* Kabinetdagi bemor — bitta bosish, karta orqali yana «Ochish» yo'q */
     await page.getByRole('button', { name: /qabul kartasini ochish$/ }).first().click();
-    await expect(sheet(page).getByRole('button', { name: /^Qo'shish$/ })).toBeVisible({ timeout: 15_000 });
+    await expect(sheet(page).getByRole('heading', { name: 'Tayinlovlar' })).toBeVisible({ timeout: 15_000 });
 });
 
 test('Demo: xizmat ro\'yxatdan emas, tugmadan qo\'shiladi', async ({ page }) => {

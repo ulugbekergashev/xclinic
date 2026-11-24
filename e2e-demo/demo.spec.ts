@@ -259,9 +259,7 @@ test.describe('Demo: bemor kartasida tashxis', () => {
             await page.waitForTimeout(2000);
         }
 
-        // Tashxis — «+ Qo'shish» oynasining bir turi (2026-11-21)
-        await page.locator('section[aria-labelledby="visit-title"]').getByRole('button', { name: /^Qo'shish$/ }).click();
-        await page.getByRole('dialog').getByRole('button', { name: /^Tashxis$/ }).click();
+        // Tashxis qidiruvi — varaqning «Tashxis» blokida (2026-11-23, oynasiz)
         const icd = page.getByPlaceholder(/Kod yoki kasallik nomi/);
         await expect(icd).toBeVisible();
         await icd.fill('gipert');

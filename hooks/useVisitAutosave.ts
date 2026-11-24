@@ -48,6 +48,10 @@ export interface VisitAutosave {
     conclusion: string;
     onConclusionChange: (text: string) => void;
     onConclusionBlur: () => void;
+    /** Ko'rik matni (`Visit.objectiveText`, migratsiya 0040) — xuddi shu qoidalar bilan */
+    objective: string;
+    onObjectiveChange: (text: string) => void;
+    onObjectiveBlur: () => void;
     onExamChange: (data: Record<string, any>, templateId: string | undefined, invalidKeys: string[]) => void;
     /** Taymerdagi va yo'ldagi hamma yozuvni yuboradi. `false` — nimadir saqlanmadi. */
     flush: () => Promise<boolean>;
@@ -61,8 +65,6 @@ export interface VisitAutosave {
 }
 
 export function useVisitAutosave({ visit, visitId, onError }: Options): VisitAutosave {
-    const [complaint, setComplaint] = useState('');
-    const [conclusion, setConclusion] = useState('');
     const [save, setSave] = useState<SaveState>({ state: 'idle' });
     /* `save` dan ALOHIDA: u yorliq holati va keyingi har qanday saqlash uni
        o'zgartiradi — to'siq esa qiymat tuzatilmaguncha turishi shart. */
@@ -70,12 +72,8 @@ export function useVisitAutosave({ visit, visitId, onError }: Options): VisitAut
     const examInvalidRef = useRef(false);
 
     /* `null` — ketadigan narsa yo'q */
-    const complaintDraft = useRef<{ visitId: string; text: string } | null>(null);
     const examDraft = useRef<{ visitId: string; data: Record<string, any>; templateId?: string } | null>(null);
     const examTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-    const complaintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-    const conclusionDraft = useRef<{ visitId: string; text: string } | null>(null);
-    const conclusionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const writeEpoch = useRef(0);
     const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
     /** «Kutmoqda → Qabulda» o'tishi yuborilgan qabullar */
@@ -129,26 +127,24 @@ export function useVisitAutosave({ visit, visitId, onError }: Options): VisitAut
         return ok;
     }, [quietSave]);
 
-    const saveComplaint = useCallback(async (keepalive = false): Promise<boolean> => {
-        clearTimeout(complaintTimer.current);
-        const draft = complaintDraft.current;
-        if (!draft) return true;
-        const ok = await quietSave(draft.visitId, { complaints: draft.text.trim() }, keepalive);
-        // Saqlash davomida yana yozilgan bo'lsa — u keyingi safar ketadi
-        if (ok && complaintDraft.current === draft) complaintDraft.current = null;
-        return ok;
-    }, [quietSave]);
+    const markTyping = useCallback(() => setSave(s => (s.state === 'typing' ? s : { state: 'typing' })), []);
 
-    const saveConclusion = useCallback(async (keepalive = false): Promise<boolean> => {
-        clearTimeout(conclusionTimer.current);
-        const draft = conclusionDraft.current;
-        if (!draft) return true;
-        const ok = await quietSave(draft.visitId, { treatmentPlan: draft.text.trim() }, keepalive);
-        if (ok && conclusionDraft.current === draft) conclusionDraft.current = null;
-        return ok;
-    }, [quietSave]);
-
-    const markTyping = () => setSave(s => (s.state === 'typing' ? s : { state: 'typing' }));
+    /* Uchta matn maydoni — bitta qoida (yuqoridagi 1 va 2-qoidalar). */
+    const complaint = useAutosavedText('complaints', visit?.id, visit?.complaints, visitRef, quietSave, markTyping);
+    const conclusion = useAutosavedText('treatmentPlan', visit?.id, visit?.treatmentPlan, visitRef, quietSave, markTyping);
+    /* Ko'rik matni yozila boshladi — bemor kabinetda («Kutmoqda → Qabulda»,
+       3-qoida). Ilgari bu faqat ko'rik maydonlaridan (`saveExam`) bo'lardi. */
+    const promotion = useCallback((targetId: string): Record<string, unknown> => {
+        const current = visitRef.current;
+        return current?.id === targetId && current.status === 'Waiting' && !promoted.current.has(targetId)
+            ? { status: 'In Progress' } : {};
+    }, []);
+    const markPromoted = useCallback((targetId: string) => { promoted.current.add(targetId); }, []);
+    const objective = useAutosavedText('objectiveText', visit?.id, visit?.objectiveText, visitRef, quietSave, markTyping,
+        { promotion, markPromoted });
+    const saveComplaint = complaint.saveNow;
+    const saveConclusion = conclusion.saveNow;
+    const saveObjective = objective.saveNow;
 
     const onExamChange = (data: Record<string, any>, templateId: string | undefined, invalidKeys: string[]) => {
         clearTimeout(examTimer.current);
@@ -169,42 +165,14 @@ export function useVisitAutosave({ visit, visitId, onError }: Options): VisitAut
         examTimer.current = setTimeout(() => { void saveExam(); }, AUTOSAVE_MS);
     };
 
-    const onComplaintChange = (text: string) => {
-        setComplaint(text);
-        clearTimeout(complaintTimer.current);
-        const current = visitRef.current;
-        if (!current) return;
-        complaintDraft.current = { visitId: current.id, text };
-        markTyping();
-        complaintTimer.current = setTimeout(() => { void saveComplaint(); }, AUTOSAVE_MS);
-    };
-
-    const onConclusionChange = (text: string) => {
-        setConclusion(text);
-        clearTimeout(conclusionTimer.current);
-        const current = visitRef.current;
-        if (!current) return;
-        conclusionDraft.current = { visitId: current.id, text };
-        markTyping();
-        conclusionTimer.current = setTimeout(() => { void saveConclusion(); }, AUTOSAVE_MS);
-    };
-
     const flush = useCallback(async (): Promise<boolean> => {
         const examSaved = await saveExam();
         const complaintSaved = await saveComplaint();
         const conclusionSaved = await saveConclusion();
+        const objectiveSaved = await saveObjective();
         // Taymer oldinroq yuborgan yozuv hali yo'lda bo'lishi mumkin — u ham kutiladi
-        return examSaved && complaintSaved && conclusionSaved && await saveQueue.current;
-    }, [saveExam, saveComplaint, saveConclusion]);
-
-    /* Serverdagi shikoyat — faqat bu yerda saqlanmagan qiymat bo'lmasa olinadi:
-       aks holda kechikkan javob yozilayotgan matnning o'rniga tushardi. */
-    useEffect(() => {
-        if (complaintDraft.current === null) setComplaint(visit?.complaints || '');
-    }, [visit?.id, visit?.complaints]);
-    useEffect(() => {
-        if (conclusionDraft.current === null) setConclusion(visit?.treatmentPlan || '');
-    }, [visit?.id, visit?.treatmentPlan]);
+        return examSaved && complaintSaved && conclusionSaved && objectiveSaved && await saveQueue.current;
+    }, [saveExam, saveComplaint, saveConclusion, saveObjective]);
 
     /* Boshqa qabulga o'tilganda yoki kartadan chiqilganda — yozilgani ketsin.
        Qoralamalar o'z qabulining id si bilan ketadi, keyin tozalanadi. */
@@ -212,28 +180,83 @@ export function useVisitAutosave({ visit, visitId, onError }: Options): VisitAut
         void saveExam();
         void saveComplaint();
         void saveConclusion();
-        complaintDraft.current = null;
-        conclusionDraft.current = null;
+        void saveObjective();
+        complaint.reset();
+        conclusion.reset();
+        objective.reset();
         examInvalidRef.current = false;
         setExamInvalid(false);
         setSave({ state: 'idle' });
-    }, [visitId, saveExam, saveComplaint, saveConclusion]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visitId, saveExam, saveComplaint, saveConclusion, saveObjective]);
 
     /* Oyna yopilayotgan yoki sahifa qayta yuklanayotgan bo'lsa — oxirgi
        soniyada yozilgani ham ketsin (taymer hali ishlamagan bo'lishi mumkin). */
     useEffect(() => {
-        const onLeave = () => { void saveExam(true); void saveComplaint(true); void saveConclusion(true); };
+        const onLeave = () => { void saveExam(true); void saveComplaint(true); void saveConclusion(true); void saveObjective(true); };
         window.addEventListener('pagehide', onLeave);
         return () => window.removeEventListener('pagehide', onLeave);
-    }, [saveExam, saveComplaint, saveConclusion]);
+    }, [saveExam, saveComplaint, saveConclusion, saveObjective]);
 
     return {
-        complaint, onComplaintChange,
-        onComplaintBlur: () => { void saveComplaint(); },
-        conclusion, onConclusionChange,
-        onConclusionBlur: () => { void saveConclusion(); },
+        complaint: complaint.value, onComplaintChange: complaint.onChange, onComplaintBlur: complaint.onBlur,
+        conclusion: conclusion.value, onConclusionChange: conclusion.onChange, onConclusionBlur: conclusion.onBlur,
+        objective: objective.value, onObjectiveChange: objective.onChange, onObjectiveBlur: objective.onBlur,
         onExamChange, flush, save, examInvalid,
         isExamInvalid: () => examInvalidRef.current,
         writeEpoch,
+    };
+}
+
+/* ── Bitta o'zi saqlanadigan matn maydoni ─────────────────────────────────
+   Qoralama o'z qabulining id si bilan turadi; serverdagi qiymat faqat bu
+   yerda saqlanmagan qiymat bo'lmasa olinadi (kechikkan javob yozilayotgan
+   matnning o'rniga tushmasin). */
+type TextField = 'complaints' | 'treatmentPlan' | 'objectiveText';
+
+function useAutosavedText(
+    field: TextField,
+    visitId: string | undefined,
+    serverValue: string | null | undefined,
+    visitRef: MutableRefObject<Visit | null>,
+    quietSave: (targetId: string, patch: Record<string, unknown>, keepalive?: boolean) => Promise<boolean>,
+    markTyping: () => void,
+    promote?: { promotion: (targetId: string) => Record<string, unknown>; markPromoted: (targetId: string) => void },
+) {
+    const [value, setValue] = useState('');
+    const draft = useRef<{ visitId: string; text: string } | null>(null);
+    const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+    const saveNow = useCallback(async (keepalive = false): Promise<boolean> => {
+        clearTimeout(timer.current);
+        const d = draft.current;
+        if (!d) return true;
+        const extra = promote ? promote.promotion(d.visitId) : {};
+        const ok = await quietSave(d.visitId, { [field]: d.text.trim(), ...extra }, keepalive);
+        if (ok && 'status' in extra) promote?.markPromoted(d.visitId);
+        // Saqlash davomida yana yozilgan bo'lsa — u keyingi safar ketadi
+        if (ok && draft.current === d) draft.current = null;
+        return ok;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [field, quietSave]);
+
+    const onChange = (text: string) => {
+        setValue(text);
+        clearTimeout(timer.current);
+        const current = visitRef.current;
+        if (!current) return;
+        draft.current = { visitId: current.id, text };
+        markTyping();
+        timer.current = setTimeout(() => { void saveNow(); }, AUTOSAVE_MS);
+    };
+
+    useEffect(() => {
+        if (draft.current === null) setValue(serverValue || '');
+    }, [visitId, serverValue]);
+
+    return {
+        value, onChange, saveNow,
+        onBlur: () => { void saveNow(); },
+        reset: () => { draft.current = null; },
     };
 }

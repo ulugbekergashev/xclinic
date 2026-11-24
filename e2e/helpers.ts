@@ -61,6 +61,49 @@ export function toast(page: Page, text: RegExp) {
     return page.getByText(text).first();
 }
 
+/** Bemor kartasidagi qabul varag'i («Qabul» tabi) */
+export const visitSheet = (page: Page) => page.locator('section[aria-labelledby="visit-title"]');
+
+/* VRACH ISH JOYI (2026-11-23): varaq bitta ustun — Shikoyat va kasallik
+   anamnezi → Ko'rik → Tashxis → Tayinlovlar → Xulosa. «Tayinlovlar»
+   sarlavhasida beshta tugma: Tahlil · Diagnostika · Dori · Xizmat ·
+   Yo'naltirish. Har biri o'z oynasini ochadi, oynada ichki tab qatori yo'q.
+   Ilgari hammasi bitta «+ Qo'shish» oynasining ichki tablarida edi. */
+export async function openOrder(page: Page, kind: string) {
+    await visitSheet(page).getByRole('button', { name: new RegExp(`^${kind}$`) }).click();
+    await expect(page.getByRole('dialog', { name: kind })).toBeVisible();
+}
+
+/** Tashxis — MKB-10 qidiruvi varaqning O'ZIDA (oyna yo'q). Qo'yilgan kodni qaytaradi. */
+export async function addDiagnosis(page: Page, query = 'gipert'): Promise<string> {
+    const sheet = visitSheet(page);
+    await sheet.getByPlaceholder(/Kod yoki kasallik nomi/).fill(query);
+    /* Natija chiqmasa — qidiruv ishlamayapti: kamida bitta kod chiqishi SHART */
+    const hit = sheet.locator('button', { hasText: /^I1\d/ }).first();
+    await expect(hit).toBeVisible({ timeout: 10_000 });
+    const code = (await hit.innerText()).trim().split(/\s/)[0];
+    await hit.click();
+    // Tashxis «Tashxis» blokidagi ro'yxatga tushdi — server qabulga bog'lab saqladi
+    await expect(sheet.getByRole('list', { name: 'Tashxis' }).getByText(code, { exact: true }))
+        .toBeVisible({ timeout: 15_000 });
+    return code;
+}
+
+/** Tekshiruvga yuborish: «Diagnostika» oynasi; prayslistda yo'q — «qo'lda yozish» orqali */
+export async function orderStudy(page: Page, name: string, price = '90000') {
+    await openOrder(page, 'Diagnostika');
+    const dialog = page.getByRole('dialog', { name: 'Diagnostika' });
+    const manual = dialog.getByRole('button', { name: /qo'lda yozish/ });
+    if (await manual.isVisible()) await manual.click();
+    await dialog.getByPlaceholder(/Masalan: Qorin/).fill(name);
+    await dialog.getByPlaceholder(/^Narx$/).fill(price);
+    await dialog.getByRole('button', { name: /^Diagnostikaga yuborish$/ }).click();
+    // Yuborilgach oyna yopiladi, tekshiruv «Tayinlovlar» ro'yxatida turadi
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(visitSheet(page).getByRole('list', { name: "Bugun qo'shilganlar" }).getByText(name))
+        .toBeVisible({ timeout: 15_000 });
+}
+
 /**
  * Bemor kartasida bugungi qabulni ochadi: Bo'lim → Shifokor → «Qabul ochish».
  * `dept` berilmasa — shifokori bor birinchi bo'lim. Shifokor tanlanmagan

@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { formatMoney, formatDate, formatDoctorName, formatFullName } from '../utils/format';
 import { getPaymentMethodLabel } from '../utils/paymentMethods';
-import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CreditCard, Printer, UserCheck, Plus, Pill, Trash2, Search, ChevronRight, FlaskConical, Scan } from 'lucide-react';
-import { Button, Card, Badge, Modal, Input, Select } from '../components/Common';
+import { ArrowLeft, CreditCard, Printer, UserCheck, Plus, ChevronRight, FlaskConical, Scan } from 'lucide-react';
+import { Button, Badge, Modal } from '../components/Common';
 import { EncounterSummary } from '../components/EncounterForm';
 import { PatientPhotos } from '../components/PatientPhotos';
 import { ProfileCard } from '../components/patient/ProfileCard';
@@ -17,17 +16,16 @@ import type { TimelineStay } from '../utils/patientTimeline';
 import { PatientDocuments } from '../components/PatientDocuments';
 import { LabDynamics } from '../components/LabDynamics';
 import { InstallmentsTab } from '../components/InstallmentsTab';
-import { VisitPanel, VisitSheetState, AddKind } from '../components/VisitPanel';
+import { VisitPanel, VisitSheetState } from '../components/VisitPanel';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import { ServicePaymentModal } from '../components/ServicePaymentModal';
 import { PatientFormModal } from '../components/PatientFormModal';
 import { AppointmentFormModal } from '../components/AppointmentFormModal';
 import { SendMessageModal } from '../components/SendMessageModal';
-import { printPrescription } from '../utils/printForms';
-import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, Prescription, VisitCharge, LabOrder, DiagnosticStudy } from '../types';
+import { Patient, Appointment, Transaction, Doctor, Service, ICD10Code, PatientDiagnosis, Clinic, ServiceCategory, UserRole, Visit, Department, EncounterTemplate, VisitCharge, LabOrder, DiagnosticStudy } from '../types';
 import { api, getStoredClinicId, getAuthToken } from '../services/api';
 import { useResourceSync } from '../hooks/useDataSync';
-import { useLanguage, fill } from '../context/LanguageContext';
+import { useLanguage } from '../context/LanguageContext';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
 import type { TranslationKey } from '../i18n/translations';
 import { maskPhone } from '../utils/accessControl';
@@ -90,9 +88,7 @@ interface PatientDetailsProps {
    kalendardagi yozilishlar: o'tganlari «Tarix» ni takrorlardi, keyingisi
    endi chap kartochkada. Materiallar uch bemorda ham bo'sh edi — material
    xizmat bilan omborda o'zi yechiladi, jurnali Omborda. */
-type HistorySection =
-   | 'diagnoses' | 'labs' | 'prescriptions'
-   | 'payments' | 'documents';
+type HistorySection = 'labs' | 'anamnez' | 'payments' | 'documents';
 
 /* `visit` — birinchi tab, ekranda «Bemor»: anamnez va qabul varag'i birga
    (2026-11-20). «Anamnez» ilgari to'qqizinchi tab edi; klinika egasi uni
@@ -112,11 +108,10 @@ type CardTab = 'visit' | 'history' | HistorySection;
 const TABS: [CardTab, TranslationKey][] = [
    ['visit', 'card.tabVisit'],
    ['history', 'card.historyTitle'],
-   ['diagnoses', 'card.secDiagnoses'],
    ['labs', 'card.tabLabs'],
-   ['prescriptions', 'card.secPrescriptions'],
-   ['payments', 'card.secPayments'],
+   ['anamnez', 'card.tabAnamnez'],
    ['documents', 'card.tabFiles'],
+   ['payments', 'card.secPayments'],
 ];
 
 /** Statsionar yozuvi yo'q bemor uchun — har renderda yangi massiv tug'ilmasin */
@@ -184,26 +179,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       sarlavhadagi marshrut ikkinchi marta so'ramaydi. */
    const [sheet, setSheet] = useState<VisitSheetState | null>(null);
 
-   /* Tashxis qidiruvi — kartadan qo'shish uchun. Qabul panelidagi bilan
-      bir xil manba (`api.diagnoses.searchCodes`). */
-   const [dxQuery, setDxQuery] = useState('');
-   const [dxResults, setDxResults] = useState<ICD10Code[]>([]);
-   const [dxChronic, setDxChronic] = useState(false);
-   React.useEffect(() => {
-      const q = dxQuery.trim();
-      if (q.length < 2) { setDxResults([]); return; }
-      let alive = true;
-      const timer = setTimeout(() => {
-         api.diagnoses.searchCodes(q)
-            .then(r => { if (alive) setDxResults(r); })
-            .catch(() => { if (alive) setDxResults([]); });
-      }, 250);
-      return () => { alive = false; clearTimeout(timer); };
-   }, [dxQuery]);
    /* Panelga tushadigan qabul. Standart — bugungi ochiq qabul; tarixdagi
       eski qabulni bosib ko'rish ham mumkin. */
    const [panelVisitId, setPanelVisitId] = useState<string | null>(null);
-   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
    /* To'lanmagan hisob qatorlari — kassa bilan BITTA manba (`VisitCharge`).
       Ilgari karta buni kalendar yozuvlaridan taxmin qilardi. */
    const [unpaidCharges, setUnpaidCharges] = useState<VisitCharge[]>([]);
@@ -383,10 +361,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
    // Payment Edit State
 
-   /* Tablardagi «+» — bugungi qabulning «+ Qo'shish» oynasini ochadi */
-   const [addRequest, setAddRequest] = useState<{ kind: AddKind; n: number } | null>(null);
-   /* «Tashxislar» tabidagi qidiruv «+ Tashxis qo'yish» bosilgandagina ochiladi */
-   const [dxOpen, setDxOpen] = useState(false);
 
    // Prevents double submission
 
@@ -508,7 +482,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       api.clinical.summary(patientId)
          .then(mine((s: ClinicalSummary) => { setSummary(s); setSummaryFailed(false); }))
          .catch(mine(() => setSummaryFailed(true)));
-      api.prescriptions.getAll(patientId).then(mine(setPrescriptions)).catch(mine(() => setPrescriptions([])));
       api.charges.getAll({ patientId, status: 'Unpaid' })
          .then(mine((cs: VisitCharge[]) => setUnpaidCharges(cs || []))).catch(mine(() => setUnpaidCharges([])));
       api.visits.getAll({ patientId }).then(mine((vs: Visit[]) => {
@@ -546,7 +519,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          setPanelVisitId(requestedVisitId || null);
          /* Yangi bemorning ma'lumoti kelguncha eskisiniki ko'rinib turmasin */
          setSummary(null); setSummaryFailed(false);
-         setVisits([]); setDiagnoses([]); setPrescriptions([]); setUnpaidCharges([]); setSheet(null);
+         setVisits([]); setDiagnoses([]); setUnpaidCharges([]); setSheet(null);
          api.encounterTemplates.getAll().then(setHistoryTemplates).catch(() => setHistoryTemplates([]));
          api.departments.getAll().then(setDepartments).catch(console.error);
          reloadClinical();
@@ -637,44 +610,6 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       }
    };
 
-   /* KARTADAN TASHXIS QO'SHISH.
-
-      Ochiq qabul bo'lsa unga bog'lanadi (`panelVisitId`) — shunda
-      «bu tashrifda qanday tashxis qo'yildi» degan savolga javob saqlanadi
-      va qabulni yakunlashdagi «tashxis qo'yilganmi?» tekshiruvi ishlaydi.
-      Qabul bo'lmasa tashxis bemorning o'ziga yoziladi: surunkali
-      kasallikni bemor kelmagan kunda ham kiritish kerak bo'ladi. */
-   /* Varaqda yopilgan (yoki tarixdan ochilgan eski) qabul turgan bo'lishi
-      mumkin — tashxis unga orqadan bog'lanmasligi kerak. */
-   const openSheetVisitId = sheet?.visit && sheet.visit.status !== 'Completed' && sheet.visit.status !== 'Cancelled'
-      ? sheet.visit.id : null;
-   const addDiagnosisFromCard = async (code: ICD10Code) => {
-      if (!patient) return;
-      try {
-         await api.diagnoses.add({
-            patientId: patient.id, code: code.code,
-            date: todayISO(), notes: '', status: 'Active',
-            clinicId: patient.clinicId,
-            ...(openSheetVisitId ? { visitId: openSheetVisitId } : {}),
-            isChronic: dxChronic,
-         } as any);
-         setDxQuery(''); setDxResults([]); setDxChronic(false);
-         await reloadClinical();
-         toast.success(t('visit.diagnosisAdded'));
-      } catch (e: any) {
-         toast.error(e?.message || t('patients.details.alerts.error'));
-      }
-   };
-
-   const handleDeleteDiagnosis = async (id: string) => {
-      if (!await confirmAction({ title: t('patients.details.alerts.deleteDiagnosisConfirm') })) return;
-      try {
-         await api.diagnoses.delete(id);
-         setDiagnoses(diagnoses.filter(d => d.id !== id));
-      } catch (e) {
-         toast.error(t('patients.details.alerts.error'));
-      }
-   };
 
 
 
@@ -724,28 +659,12 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       setPanelVisitId(visitId);
       setTab('visit');
    };
+   /* Oxirgi yakunlangan qabul (varaqdagidan boshqasi) — «O'tgan safar» */
+   const previousVisit = [...visits]
+      .filter(v => v.status === 'Completed' && v.id !== panelVisitId)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.checkInTime || '').localeCompare(String(a.checkInTime || '')))[0] || null;
    const notify = (type: 'success' | 'error' | 'info', msg: string) =>
       (type === 'error' ? toast.error(msg) : toast.success(msg));
-
-   /* Bir kasallik har qabulda qayta qo'yiladi — ro'yxatda u BIR qator:
-      oxirgi sanasi, kim qo'ygani va necha marta. Ilgari bitta tashxis uch
-      qator bo'lib turardi va qaysi shifokor qo'ygani yo'q edi. */
-   const visitById = new Map(visits.map(v => [v.id, v] as const));
-   const dxRows = (() => {
-      const byCode = new Map<string, { last: PatientDiagnosis; ids: string[]; chronic: boolean }>();
-      [...diagnoses].sort((a, b) => String(b.date).localeCompare(String(a.date))).forEach(d => {
-         const row = byCode.get(d.code);
-         if (row) { row.ids.push(d.id); row.chronic = row.chronic || !!d.isChronic; }
-         else byCode.set(d.code, { last: d, ids: [d.id], chronic: !!d.isChronic });
-      });
-      return [...byCode.values()];
-   })();
-   /* Tashxisni faqat shifokor va ega qo'yadi/o'chiradi (server boshqaga 403).
-      Ilgari registrator o'chirish tugmasini ko'rardi, bossa xato chiqardi. */
-   const canDiagnose = userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN;
-   /* Retsept ham shunday; tahlil va tekshiruvni registrator ham yuboradi. */
-   const canPrescribe = canDiagnose;
-   const canOrder = canDiagnose || userRole === UserRole.RECEPTIONIST;
 
    /* Buyurilgan tahlil va tekshiruvlar — hamma qabullardan, yangisi tepada */
    const orders = [
@@ -761,20 +680,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
    const sectionCount = (id: CardTab): number =>
-      id === 'diagnoses' ? dxRows.length
-         : id === 'prescriptions' ? prescriptions.length
-            : id === 'labs' ? orders.length
-               : id === 'payments' ? patientTransactions.length
-                  : 0;
-
-   /* Tabdagi «+» — bugungi ochiq qabulning «+ Qo'shish» oynasi o'sha
-      bo'limda ochiladi. Qabul yo'q bo'lsa — «Umumiy» tabiga, qabul ochish
-      formasiga (yangi oyna yoki ikkinchi forma yo'q). */
-   const requestAdd = (kind: AddKind) => {
-      setTab('visit');
-      if (!openSheetVisitId) { toast.info(t('card.openVisitFirst')); return; }
-      setAddRequest(r => ({ kind, n: (r?.n || 0) + 1 }));
-   };
+      id === 'labs' ? orders.length
+         : id === 'payments' ? patientTransactions.length
+            : 0;
 
    /* Eng yaqin kelajakdagi yozuv — varaqdagi «Keyingi tashrif» qatori */
    const nowMs = Date.now();
@@ -816,6 +724,31 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
          .flatMap(o => (o.items || []).map(i => ({ serviceName: i.testName }))),
       ...(cardVisit.studies || []).filter(s => s.status !== 'Cancelled').map(s => ({ serviceName: s.name })),
    ].filter(p => p.serviceName) : [];
+   /* Anamnez — o'z tabida (2026-11-23): bemorga tegishli, qabulga emas.
+      Ilgari qabul varag'ining o'ng ustunida edi va har qabulda ko'z oldida
+      turardi. Allergiya va kasalliklar endi bemor qatorida ham ko'rinadi. */
+   const anamnesisBlock = (
+      <Anamnesis
+                  key={patient.id}
+                  patientId={patient.id}
+                  gender={patient.gender}
+                  summary={summary}
+                  failed={summaryFailed}
+                  historyText={historyText}
+                  anamnesisRaw={anamnesisRaw}
+                  updatedAt={summaryStamp?.at ?? patient.anamnesisUpdatedAt}
+                  updatedBy={summaryStamp?.at ? summaryStamp.by : patient.anamnesisUpdatedBy}
+                  /* Registrator ham to'ldiradi (klinika egasi, 2026-11-21) */
+                  canEditAllergies={canEditAnamnesis}
+                  canEditHistory={canEditAnamnesis}
+                  addToast={notify}
+                  onChanged={() => reloadClinical()}
+                  onHistoryChange={changeHistory}
+                  onAnamnesisChange={changeAnamnesis}
+               />
+   );
+   /* To'lovlar tabi — faqat ega va registrator (server boshqalarga 403) */
+   const seesMoney = userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST;
    const admittedNow = (summary?.admissions || []).some(a => !a.dischargedAt && a.status !== 'Discharged' && a.status !== 'Cancelled');
 
    return (
@@ -833,22 +766,25 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                <span className="min-w-0 truncate font-semibold text-ink">{patient.lastName} {patient.firstName}</span>
             </nav>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-5 items-start">
-            {/* Chap ustun: bemor kartochkasi va uning ostida allergiya va
-                kasalliklar — ikkalasi ham «kim», hamma tabda bir joyda. */}
-            <div className="min-w-0 flex flex-col gap-4">
+            {/* Bir ustun (2026-11-24): tepada bemor qatori, ostida tablar va ish.
+                Ilgari bemor chapdagi 320px kartochkada edi va shifokorning
+                qabul varag'i unga siqilib qolardi. */}
+            <div className="flex flex-col gap-4">
+            <div className="min-w-0">
             <ProfileCard
                patient={patient}
                showPhone={showPatientPhone}
-               visitCount={visits.filter(v => v.status !== 'Cancelled').length}
+               showMoney={seesMoney}
                due={unpaidTotal}
                lastVisit={lastVisitDate}
                allergiesUnknown={summaryFailed && !summary}
+               allergies={(summary?.allergies || []).map(a => a.substance)}
+               chronic={summary?.chronic || []}
                admitted={admittedNow}
                nextAppointment={nextAppointment}
                onOpenPayments={() => setTab('payments')}
-               onTakePayment={userRole === UserRole.DOCTOR ? undefined : () => setIsChargeModalOpen(true)}
-               onAddPayment={userRole === UserRole.DOCTOR ? undefined : () => setIsAdvanceOpen(true)}
+               onTakePayment={() => setIsChargeModalOpen(true)}
+               onAddPayment={() => setIsAdvanceOpen(true)}
                onSchedule={openApptModal}
                onEdit={() => setIsEditModalOpen(true)}
                onMessage={() => setIsMessageModalOpen(true)}
@@ -889,7 +825,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                 1366 kenglikdagi ekranga sig'masdi va qator suriladigan bo'lib qolardi. */}
             <div role="tablist" aria-label={t('card.tabs')}
                className="flex gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] border-b border-line">
-               {TABS.map(([id, key]) => {
+               {TABS.filter(([id]) => id !== 'payments' || seesMoney).map(([id, key]) => {
                   const count = sectionCount(id);
                   const on = tab === id;
                   return (
@@ -928,30 +864,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   onShowToday={showToday}
                   onSchedule={openApptModal}
                   clinic={currentClinic}
-                  addRequest={addRequest}
-                  /* «Tibbiy tarix» blokining boshi (DentaCRM namunasida, 2026-11-21):
-                     allergiya va kasalliklar chap kartochkadan shu yerga ko'chdi —
-                     chapda faqat «kim» qoldi. */
-                  history={(
-                     <Anamnesis
-                        key={patient.id}
-                        patientId={patient.id}
-                        gender={patient.gender}
-                        summary={summary}
-                        failed={summaryFailed}
-                        historyText={historyText}
-                        anamnesisRaw={anamnesisRaw}
-                        updatedAt={summaryStamp?.at ?? patient.anamnesisUpdatedAt}
-                        updatedBy={summaryStamp?.at ? summaryStamp.by : patient.anamnesisUpdatedBy}
-                        /* Registrator ham to'ldiradi (klinika egasi, 2026-11-21) */
-                        canEditAllergies={canEditAnamnesis}
-                        canEditHistory={canEditAnamnesis}
-                        addToast={notify}
-                        onChanged={() => reloadClinical()}
-                        onHistoryChange={changeHistory}
-                        onAnamnesisChange={changeAnamnesis}
-                     />
-                  )}
+                  /* «O'tgan safar» — qayta kelgan bemorda vrach shundan boshlaydi */
+                  previousVisit={previousVisit}
+                  onOpenVisit={openInSheet}
                />
             </div>
 
@@ -994,140 +909,15 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   </div>
                )}
 
-               {/* ── Tashxislar ─────────────────────────────────────────────── */}
-               {openSec === 'diagnoses' && (
-                  <Card className="p-0 overflow-hidden">
-                     {/* TASHXIS QO'SHISH — KARTADAN HAM.
-
-                         Ilgari bu bo'limda faqat O'CHIRISH tugmasi bor edi:
-                         tashxisni qo'shish uchun ochiq qabul kerak edi.
-                         Ya'ni bemor kelmagan kunda kartaga surunkali
-                         kasallikni yozib qo'yish imkoni yo'q edi, va bo'sh
-                         ro'yxatda «Tashxis qo'yilmagan» degan yozuvdan
-                         boshqa hech narsa yo'q edi — nima qilish kerakligi
-                         ko'rinmasdi.
-
-                         Server `visitId` ni IXTIYORIY qabul qiladi
-                         (`server.ts`, `POST /api/diagnoses`), shuning uchun
-                         qabulsiz ham yoziladi. Ochiq qabul bo'lsa — unga
-                         bog'lanadi, aks holda bemorning o'ziga. */}
-                     {/* «+ Tashxis qo'yish» (2026-11-22). Ilgari tepada nomsiz
-                         kulrang qidiruv maydoni turardi — uni tugma deb hech kim
-                         tanimasdi. Endi tugma, bosilsa ostida qidiruv ochiladi. */}
-                     <div className={secHead}>
-                        <h3 className={secTitle}>{t('card.secDiagnoses')}</h3>
-                        {canDiagnose && (
-                           <button type="button" onClick={() => setDxOpen(o => !o)} aria-expanded={dxOpen} className={secBtn}>
-                              <Plus className="w-4 h-4" aria-hidden="true" /> {t('card.addDiagnosis')}
-                           </button>
-                        )}
-                     </div>
-                     {canDiagnose && dxOpen && (
-                        <div className="p-4 border-b border-line-soft">
-                           <div className="relative">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-faint" />
-                              <input
-                                 autoFocus
-                                 aria-label={t('card.dxSearch')}
-                                 value={dxQuery}
-                                 onChange={e => setDxQuery(e.target.value)}
-                                 placeholder={t('card.dxSearch')}
-                                 className="w-full h-11 pl-10 pr-3 rounded-xl border border-line bg-elevated text-sm text-ink placeholder:text-faint outline-none focus:border-primary-500/50"
-                              />
-                           </div>
-                           {dxResults.length > 0 && (
-                              <div className="mt-2 border border-line rounded-xl divide-y divide-line max-h-56 overflow-y-auto">
-                                 {dxResults.slice(0, 12).map(c => (
-                                    <button key={c.code} onClick={() => addDiagnosisFromCard(c)}
-                                       className="w-full text-left p-2.5 text-sm hover:bg-elevated">
-                                       <b className="text-ink">{c.code}</b>
-                                       <span className="text-muted"> — {c.name}</span>
-                                    </button>
-                                 ))}
-                              </div>
-                           )}
-                           <label className="mt-2 flex items-center gap-2 text-xs text-muted cursor-pointer">
-                              <input type="checkbox" checked={dxChronic} onChange={e => setDxChronic(e.target.checked)}
-                                 className="w-4 h-4 rounded" />
-                              {t('visit.chronic')}
-                           </label>
-                        </div>
-                     )}
-                     {dxRows.length === 0 ? (
-                        <p className={secEmpty}>{t('card.noDiagnoses')}</p>
-                     ) : (
-                        <ul className="divide-y divide-line">
-                           {dxRows.map(({ last: d, ids, chronic }) => {
-                              const by = d.visitId ? visitById.get(d.visitId)?.doctorName : '';
-                              return (
-                                 <li key={d.code} className="flex flex-wrap items-center gap-3 px-5 py-3">
-                                    <span className="min-w-0 flex-1">
-                                       <span className="block text-sm text-ink">
-                                          <b>{d.code}</b>{d.icd10?.name ? ` — ${d.icd10.name}` : ''}
-                                       </span>
-                                       <span className="block text-xs text-muted">
-                                          {[formatDate(d.date), by, ids.length > 1 ? fill(t('card.dxTimes'), ids.length) : '']
-                                             .filter(Boolean).join(' · ')}
-                                       </span>
-                                       {d.notes && <span className="block text-xs text-muted">{formatDiagnosisNotes(d.notes)}</span>}
-                                    </span>
-                                    {chronic && (
-                                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                                          {t('visit.chronic')}
-                                       </span>
-                                    )}
-                                    {/* Takrorlangan tashxisda oxirgi qo'yilgani o'chadi */}
-                                    {canDiagnose && (
-                                       <button type="button" onClick={() => handleDeleteDiagnosis(d.id)} aria-label={`${t('common.delete')}: ${d.code}`}
-                                          className="p-1 text-faint hover:text-red-500">
-                                          <Trash2 className="w-4 h-4" />
-                                       </button>
-                                    )}
-                                 </li>
-                              );
-                           })}
-                        </ul>
-                     )}
-                  </Card>
-               )}
-
-               {/* ── Retseptlar ──────────────────────────────────────────────
-                   Retsept yozilardi, lekin uni ko'rish va chop etish
-                   IMKONI YO'Q edi: bemor qo'lida hech narsasiz chiqib ketardi. */}
-               {openSec === 'prescriptions' && (
-                  <Card className="p-0 overflow-hidden">
-                     <div className={secHead}>
-                        <h3 className={secTitle}>{t('card.secPrescriptions')}</h3>
-                        {canPrescribe && (
-                           <button type="button" onClick={() => requestAdd('rx')} className={secBtn}>
-                              <Plus className="w-4 h-4" aria-hidden="true" /> {t('card.addRx')}
-                           </button>
-                        )}
-                     </div>
-                     {prescriptions.length === 0 ? (
-                        <p className={secEmpty}>{t('card.noPrescriptions')}</p>
-                     ) : (
-                        <div className="divide-y divide-line">
-                           {prescriptions.map(rx => (
-                              <div key={rx.id} className="flex flex-wrap items-center gap-3 p-4">
-                                 <Pill className="w-4 h-4 text-faint shrink-0" />
-                                 <span className="min-w-0 flex-1">
-                                    <span className="block text-sm text-ink">
-                                       {(rx.items || []).map(i => i.name).filter(Boolean).join(', ') || t('visit.prescription')}
-                                    </span>
-                                    <span className="block text-xs text-muted">
-                                       {formatDate(rx.date)}{rx.doctorName ? ` · ${rx.doctorName}` : ''}
-                                    </span>
-                                 </span>
-                                 <Button variant="secondary" size="sm"
-                                    onClick={() => printPrescription({ ...rx, patient }, currentClinic)}>
-                                    <Printer className="w-4 h-4 mr-2" /> {t('common.print')}
-                                 </Button>
-                              </div>
-                           ))}
-                        </div>
-                     )}
-                  </Card>
+               {/* «Tashxislar» va «Retseptlar» tablari olib tashlandi (2026-11-23,
+                   vrach ish joyi): tashxis va retsept QABULDA yoziladi, har
+                   qabulniki «Tarix» da (o'sha yerda qayta chop etiladi),
+                   surunkali kasalliklar — «Anamnez» da. Uchinchi joy keraksiz. */}
+               {openSec === 'anamnez' && (
+                  <section aria-labelledby="anam-title" className="min-w-0 bg-surface border border-line rounded-2xl p-5 flex flex-col gap-4">
+                     <h2 id="anam-title" className="text-[17px] font-semibold text-ink">{t('card.tabAnamnez')}</h2>
+                     {anamnesisBlock}
+                  </section>
                )}
 
                {/* ── Tahlillar (2026-11-22) ──────────────────────────────────
@@ -1139,16 +929,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                   <section aria-labelledby="orders-title" className={secCls}>
                      <div className={secHead}>
                         <h3 id="orders-title" className={secTitle}>{t('card.ordersTitle')}</h3>
-                        {canOrder && (
-                           <div className="flex flex-wrap gap-2">
-                              <button type="button" onClick={() => requestAdd('lab')} className={secBtn}>
-                                 <Plus className="w-4 h-4" aria-hidden="true" /> {t('card.addLab')}
-                              </button>
-                              <button type="button" onClick={() => requestAdd('study')} className={secBtn}>
-                                 <Plus className="w-4 h-4" aria-hidden="true" /> {t('card.addStudy')}
-                              </button>
-                           </div>
-                        )}
+                        {/* Buyurish — faqat Qabulda; bu yerda natijalar */}
                      </div>
                      {orders.length === 0 ? (
                         <p className={secEmpty}>{t('card.noOrders')}</p>
