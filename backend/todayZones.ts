@@ -27,6 +27,7 @@
       zona chizilmaydi.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs } from './permissions';
 import type express from 'express';
 import { tashkentDateStr, tashkentDayBounds, tashkentMinuteOfDay, tashkentMinuteOf } from './tashkentTime';
 import { medDue } from '../shared/medSchedule';
@@ -84,7 +85,8 @@ export function registerTodayZonesRoutes(app: express.Express, deps: Deps) {
         try {
             const clinicId = getScopedClinicId(req);
             if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
-            if (!['CLINIC_ADMIN', 'RECEPTIONIST', 'NURSE'].includes(req.user?.role)) {
+            if (!actsAs(req, 'CLINIC_ADMIN', 'RECEPTIONIST', 'NURSE')
+                && !(req.user?.role === 'LAB_TECHNICIAN' && req.perms?.menu('reception'))) {
                 return res.status(403).json({ error: "Ruxsat yo'q" });
             }
 

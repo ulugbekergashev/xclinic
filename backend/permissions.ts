@@ -29,6 +29,8 @@
    sinaydi: kodda mavjud, jadvalda yo'q marshrut sinovni yiqitadi.
    ───────────────────────────────────────────────────────────────────────── */
 
+import { makePermChecker, PermChecker, PermRole, resolveRolePerms, legacyFlags } from './staffPerms';
+
 export const ROLES = {
     ADMIN: 'CLINIC_ADMIN',
     DOCTOR: 'DOCTOR',
@@ -371,12 +373,13 @@ export type Decision =
  * orqali klinikaga bog'langan. Yozuv — faqat jadvalda mos qoida bo'lsa va
  * rol shu qoidada ko'rsatilgan bo'lsa.
  */
-export function check(method: string, path: string, role: string | undefined): Decision {
+export function check(method: string, path: string, role: string | string[] | undefined): Decision {
     const m = method.toUpperCase();
+    const roles = Array.isArray(role) ? role : role ? [role] : [];
 
     const rule = COMPILED.find(r => (r.method === m || r.method === '*') && r.re.test(path));
     if (rule) {
-        return role && rule.roles.includes(role)
+        return roles.some(r => rule.roles.includes(r))
             ? { allow: true }
             : { allow: false, reason: 'role', allowed: rule.roles };
     }
@@ -394,7 +397,7 @@ export function check(method: string, path: string, role: string | undefined): D
    hamshira xarajatlar va kassa jurnalini to'g'ridan-to'g'ri olardi.
 
    Qoida interfeysdagi `canSeeFinance` (utils/accessControl.ts) bilan bir xil:
-     · hamshira va laborant — hech qachon;
+     · hamshira va laborant — faqat ega aniq ochib bergan bo'lsa (`showFinance: true`);
      · shifokor va registrator — ega `showFinance: false` qo'ygan bo'lsa;
      · ega — har doim.
    To'lovlar ro'yxati (`/api/transactions`) shifokor va registratorga
@@ -405,6 +408,16 @@ const FINANCE_READ: RegExp[] = [
     /^\/api\/cash-movements(\/|$)/,
     /^\/api\/cash-audit(\/|$)/,
     /^\/api\/reports\/summary(\/|$)/,
+    /* Bular ham pul qaytaradi: tushum, qarz summasi, qarzdorlar ro'yxati.
+       Ilgari faqat kirishni tekshirardi — hamshira ham, «pulni ko'rmasin»
+       deb belgilangan registrator ham ularni o'qiy olardi. */
+    /* `/api/reports/snapshot` bu ro'yxatda YO'Q: undagi bemor sonlari
+       (jami, yangi) pul emas va Bemorlar sahifasida hamma rolga kerak.
+       Pulni ko'rmaydigan rolga u puldan tozalangan holda beriladi —
+       `hidesMoney` va `reports.ts` dagi snapshot marshruti. */
+    /^\/api\/reports\/dashboard(\/|$)/,
+    /^\/api\/reports\/debtors(\/|$)/,
+    /^\/api\/reports\/attendance(\/|$)/,
 ];
 const TRANSACTIONS_READ = /^\/api\/transactions(\/|$)/;
 
@@ -414,10 +427,225 @@ export function isFinanceRead(method: string, path: string): boolean {
     return FINANCE_READ.some(re => re.test(path)) || TRANSACTIONS_READ.test(path);
 }
 
+/* ─── RUXSATLAR SOZLAMASINI TOZALASH ─────────────────────────────────
+   Ekran har rol uchun `perms` yuboradi (`staffPerms.ts`). Server ularni
+   katalog bo'yicha tozalaydi va eski bayroqlarni (hiddenModules,
+   showFinance, showPatientPhone) O'ZI hisoblaydi — mijoz yuborgan
+   bayroqlarga ishonilmaydi. `perms` siz eski shakl ham qabul qilinadi
+   (eski ilova versiyasi), u ham katalogdan o'tkaziladi. */
+const ACCESS_ROLE_FIELDS: PermRole[] = ['doctor', 'receptionist', 'labTechnician', 'nurse'];
+
+export function sanitizeAccessControl(raw: unknown): Record<string, any> | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const src = raw as Record<string, unknown>;
+    const out: Record<string, any> = {};
+    for (const key of ACCESS_ROLE_FIELDS) {
+        const entry = src[key];
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        const perms = resolveRolePerms(key, { [key]: entry });
+        out[key] = { ...legacyFlags(key, perms), perms };
+    }
+    return out;
+}
+
+/* ─── XODIM RUXSATLARI BO'YICHA TEKSHIRUV (2026-11-25) ───────────────────
+
+   Ega «Xodimlar → Ruxsatlar» jadvalida har rolga har amalni beradi yoki
+   oladi (`staffPerms.ts`, DentaCRM modeli). Shu ro'yxatdagi marshrutlar
+   uchun egadan boshqa xodimda QAROR SHU YERDA: yuqoridagi `RULES` dagi rol
+   qoidasi ishlatilmaydi. «Standart» shablon RULES dagi eski xatti-harakatni
+   aynan takrorlaydi — sozlamaga tegmagan klinikada hech narsa o'zgarmaydi.
+
+   Ro'yxatda YO'Q marshrutlar RULES bo'yicha qoladi: tashxis, retsept, dori
+   buyurish (faqat shifokor), maosh, ruxsatlar, zaxira nusxa (faqat ega).
+
+   `actsAs` — marshrut ichidagi qo'lda yozilgan rol tekshiruvi. Ruxsat shu
+   jadval bo'yicha berilgan bo'lsa (`req.permAllowed`), u ham o'tkazadi. */
+
+type PermCheck = (p: PermChecker, req: any) => boolean;
+interface PermRoute { method: string; path: string; check: PermCheck; what: string }
+
+const r = (method: string, path: string, what: string, check: PermCheck): PermRoute => ({ method, path, what, check });
+
+export const PERM_ROUTES: PermRoute[] = [
+    /* Bugun — navbat va qabul */
+    r('POST', '/api/visits', 'qabul ochish', p => p.can('reception', 'queue', 'create') || p.can('calendar', 'appts', 'create')),
+    r('POST', '/api/visits/:id/call', 'bemorni chaqirish', p => p.can('reception', 'queue', 'edit')),
+    r('PUT', '/api/visits/:id', 'qabulni yuritish', p => p.can('reception', 'queue', 'edit')),
+    r('DELETE', '/api/visits/:id', 'qabulni bekor qilish', p => p.can('reception', 'queue', 'delete')),
+    r('POST', '/api/visits/:id/procedures', 'xizmat qo\'shish', p => p.can('reception', 'queue', 'edit')),
+    r('DELETE', '/api/visit-procedures/:id', 'xizmatni olib tashlash', p => p.can('reception', 'queue', 'edit')),
+
+    /* Bemorlar */
+    r('POST', '/api/patients', 'bemor qo\'shish', p => p.can('patients', 'card', 'create')),
+    r('PUT', '/api/patients/:id', 'bemor kartasini tahrirlash', p => p.can('patients', 'card', 'edit')),
+    r('DELETE', '/api/patients/:id', 'bemorni o\'chirish', p => p.can('patients', 'card', 'delete')),
+    r('POST', '/api/patients/:id/photos', 'surat yuklash', p => p.can('patients', 'photos', 'create')),
+    r('POST', '/api/patients/:id/avatar', 'surat yuklash', p => p.can('patients', 'photos', 'create') || p.can('patients', 'card', 'edit')),
+    r('POST', '/api/patients/:id/portrait', 'surat yuklash', p => p.can('patients', 'photos', 'create') || p.can('patients', 'card', 'edit')),
+    r('DELETE', '/api/photos/:id', 'suratni o\'chirish', p => p.can('patients', 'photos', 'delete')),
+    r('POST', '/api/patients/:id/allergies', 'allergiya yozish', p => p.can('patients', 'history', 'edit')),
+    /* O'chirish — hamshirada yo'q (u faqat yozadi), eski qoida shunday */
+    r('DELETE', '/api/patients/:id/allergies/:allergyId', 'allergiyani o\'chirish', p => p.role !== 'nurse' && p.can('patients', 'history', 'edit')),
+    r('POST', '/api/patient-documents', 'hujjat yaratish', p => p.can('patients', 'docs', 'create')),
+    r('POST', '/api/patient-documents/:id/sign', 'hujjatni imzolash', p => p.can('patients', 'docs', 'create')),
+    r('POST', '/api/patients/:id/send-message', 'bemorga xabar', p => p.flag('patients', 'message')),
+    r('POST', '/api/patients/:id/remind-debt', 'qarz eslatmasi', p => p.flag('patients', 'message')),
+
+    /* Kalendar */
+    r('POST', '/api/appointments', 'qabulga yozish', p => p.can('calendar', 'appts', 'create') || p.can('reception', 'queue', 'create')),
+    r('PUT', '/api/appointments/:id', 'qabulni ko\'chirish', p => p.can('calendar', 'appts', 'edit') || p.can('reception', 'queue', 'edit')),
+    r('DELETE', '/api/appointments/:id', 'qabulni o\'chirish', p => p.can('calendar', 'appts', 'delete')),
+    r('POST', '/api/appointments/:id/remind', 'eslatma yuborish', p => p.flag('calendar', 'remind')),
+
+    /* Pul */
+    r('POST', '/api/transactions', 'to\'lov qabul qilish', p => p.flag('money', 'payCreate')),
+    r('POST', '/api/payments', 'to\'lov qabul qilish', p => p.flag('money', 'payCreate')),
+    r('POST', '/api/payments/advance', 'avans qabul qilish', p => p.flag('money', 'payCreate')),
+    r('POST', '/api/installments', 'bo\'lib to\'lash', p => p.flag('money', 'payCreate')),
+    r('POST', '/api/installments/:id/pay', 'to\'lov qabul qilish', p => p.flag('money', 'payCreate')),
+    r('PUT', '/api/transactions/:id', 'to\'lovni tahrirlash', p => p.flag('money', 'payEdit')),
+    r('DELETE', '/api/transactions/:id', 'to\'lovni o\'chirish', p => p.flag('money', 'payDelete')),
+    r('DELETE', '/api/installments/:id', 'shartnomani o\'chirish', p => p.flag('money', 'payDelete')),
+    r('POST', '/api/charges/:id/refund', 'pulni qaytarish', p => p.flag('money', 'refund')),
+    r('PUT', '/api/charges/:id/discount', 'chegirma berish', p => p.limit('money', 'discount') > 0),
+
+    /* Kassa */
+    r('POST', '/api/cash-register/open', 'kassani ochish', p => p.flag('finance', 'closeday')),
+    r('POST', '/api/cash-register/close', 'kunni yopish', p => p.flag('finance', 'closeday')),
+    r('DELETE', '/api/cash-register/:date', 'yopilgan kunni qayta ochish', p => p.flag('finance', 'reopen')),
+    r('POST', '/api/cash-movements', 'inkassatsiya', p => p.flag('finance', 'encash')),
+    r('DELETE', '/api/cash-movements/:id', 'kassa harakatini o\'chirish', p => p.flag('finance', 'reopen')),
+    r('POST', '/api/expenses', 'xarajat qo\'shish', p => p.can('finance', 'expenses', 'create')),
+    r('PUT', '/api/expenses/:id', 'xarajatni tahrirlash', p => p.can('finance', 'expenses', 'edit')),
+    r('DELETE', '/api/expenses/:id', 'xarajatni o\'chirish', p => p.can('finance', 'expenses', 'delete')),
+
+    /* Hisobot — faqat ko'rish (ega uchun yozilgan hisobot marshrutlari) */
+    ...['writeoffs', 'doctors', 'departments', 'compare', 'months', 'lab-shift', 'attention', 'summary']
+        .map(name => r('GET', `/api/reports/${name}`, 'hisobot', p => p.menu('dashboard'))),
+    r('GET', '/api/hr/shares', 'hisobot', p => p.menu('dashboard')),
+
+    /* Laboratoriya */
+    r('POST', '/api/lab-orders', 'tahlilga yozish', p => p.can('lab', 'orders', 'create') || p.can('patients', 'card', 'edit')),
+    r('PUT', '/api/lab-orders/:id', 'buyurtmani o\'zgartirish', p => p.can('lab', 'orders', 'edit') || p.flag('lab', 'results') || p.can('patients', 'card', 'edit')),
+    r('DELETE', '/api/lab-orders/:id', 'buyurtmani o\'chirish', p => p.can('lab', 'orders', 'delete')),
+    r('POST', '/api/lab-orders/:id/collect', 'qon olinganini belgilash', p => p.can('lab', 'orders', 'edit')),
+    r('POST', '/api/lab-orders/:id/results', 'natija kiritish', p => p.flag('lab', 'results')),
+
+    /* Diagnostika — yozish. Xulosa (PUT) shifokorniki va RULES da qoladi */
+    r('POST', '/api/studies', 'tekshiruvga yozish', p => p.can('diagnostics', 'studies', 'create') || p.can('patients', 'card', 'edit')),
+    r('POST', '/api/studies/:id/files', 'fayl qo\'shish', p => p.can('diagnostics', 'studies', 'create') || p.can('patients', 'card', 'edit')),
+
+    /* Statsionar */
+    r('POST', '/api/admissions', 'yotqizish', p => p.can('inpatient', 'admissions', 'create')),
+    r('PUT', '/api/admissions/:id', 'yotqizishni tahrirlash', p => p.can('inpatient', 'admissions', 'edit')),
+    r('POST', '/api/admissions/:id/discharge', 'chiqarish', p => p.can('inpatient', 'admissions', 'edit')),
+    /* Ko'chirish — shifokor qarori (marshrutdagi eski cheklov) */
+    r('POST', '/api/admissions/:id/transfer', 'ko\'chirish', p => p.role === 'doctor' && p.can('inpatient', 'admissions', 'edit')),
+    r('POST', '/api/admissions/:id/rounds', 'ko\'rik yozish', p => p.flag('inpatient', 'care')),
+    r('POST', '/api/medication-orders/:id/administer', 'dori berish', p => p.flag('inpatient', 'care')),
+    r('POST', '/api/vitals', 'ko\'rsatkich kiritish', p => p.flag('inpatient', 'care')),
+    /* Koykani tayyorlash — hamshira va registrator ishi (shifokor emas) */
+    r('POST', '/api/beds/:id/ready', 'koykani tayyorlash', p => p.role !== 'doctor'
+        && (p.flag('inpatient', 'care') || p.can('inpatient', 'admissions', 'edit'))),
+
+    /* Ombor */
+    r('POST', '/api/inventory', 'mahsulot qo\'shish', p => p.can('inventory', 'items', 'create')),
+    r('PUT', '/api/inventory/:id', 'mahsulotni tahrirlash', p => p.can('inventory', 'items', 'edit')),
+    r('PUT', '/api/inventory-items/:id', 'mahsulotni tahrirlash', p => p.can('inventory', 'items', 'edit')),
+    r('PUT', '/api/inventory/:id/stock', 'qoldiqni o\'zgartirish', p => p.can('inventory', 'moves', 'create')),
+    r('DELETE', '/api/inventory/:id', 'mahsulotni o\'chirish', p => p.can('inventory', 'items', 'delete')),
+    r('POST', '/api/inventory/:id/batches', 'kirim', p => p.can('inventory', 'moves', 'create') || (p.role === 'nurse' && p.flag('inpatient', 'care'))),
+    r('POST', '/api/stock-movements/in', 'kirim', p => p.can('inventory', 'moves', 'create') || (p.role === 'nurse' && p.flag('inpatient', 'care'))),
+    r('POST', '/api/stock-movements/out', 'chiqim', p => p.can('inventory', 'moves', 'create') || p.flag('inpatient', 'care')),
+    r('POST', '/api/stock-movements/transfer', 'ko\'chirish', p => p.can('inventory', 'moves', 'create') || (p.role === 'nurse' && p.flag('inpatient', 'care'))),
+
+    /* Xabarlar */
+    ...['/api/message-templates', '/api/message-templates/:id', '/api/message-templates/:id/sync-eskiz-status',
+        '/api/automation-rules', '/api/automation-rules/:id'].flatMap(path =>
+        ['POST', 'PUT', 'DELETE'].map(m => r(m, path, 'shablon va avtomatik xabarlar', p => p.flag('messages', 'automation')))),
+    ...['/api/messages/send-bulk', '/api/messages/saved-segments', '/api/messages/saved-segments/:id',
+        '/api/messages/audience', '/api/messages/test-send', '/api/messages/retry', '/api/batch/remind-debts'].flatMap(path =>
+        ['POST', 'DELETE'].map(m => r(m, path, 'ko\'p bemorga xabar', p => p.flag('messages', 'bulk')))),
+
+    /* Xodimlar — ro'yxat. Maosh, ulush, ruxsatlar RULES da (faqat ega) */
+    ...['doctors', 'receptionists', 'lab-technicians', 'nurses'].flatMap(kind => [
+        r('POST', `/api/${kind}`, 'xodim qo\'shish', p => p.can('staff', 'list', 'create')),
+        r('PUT', `/api/${kind}/:id`, 'xodimni tahrirlash', p => p.can('staff', 'list', 'edit')),
+        r('DELETE', `/api/${kind}/:id`, 'xodimni o\'chirish', p => p.can('staff', 'list', 'delete')),
+    ]),
+
+    /* Sozlamalar */
+    r('POST', '/api/services', 'xizmat qo\'shish', p => p.can('settings', 'services', 'create')),
+    r('PUT', '/api/services/:id', 'narxni o\'zgartirish', p => p.can('settings', 'services', 'edit')),
+    r('DELETE', '/api/services/:id', 'xizmatni o\'chirish', p => p.can('settings', 'services', 'delete')),
+    r('POST', '/api/categories', 'toifa qo\'shish', p => p.can('settings', 'services', 'create')),
+    r('PUT', '/api/categories/:id', 'toifani o\'zgartirish', p => p.can('settings', 'services', 'edit')),
+    r('DELETE', '/api/categories/:id', 'toifani o\'chirish', p => p.can('settings', 'services', 'delete')),
+    r('POST', '/api/lab-tests', 'tahlil katalogi', p => p.can('settings', 'clinic', 'edit')),
+    r('PUT', '/api/lab-tests/:id', 'tahlil katalogi', p => p.can('settings', 'clinic', 'edit')),
+    r('DELETE', '/api/lab-tests/:id', 'tahlil katalogi', p => p.can('settings', 'clinic', 'edit')),
+    /* Integratsiyalar (bot tokeni, SMS, DMED, oldindan to'lov kartasi) bu
+       ro'yxatda YO'Q — sirlar va pul yo'nalishi faqat egada (RULES). Koyka
+       to'ri (wards/:id/beds, beds/:id) ham RULES da — registrator ishi. */
+    r('PUT', '/api/clinics/:id/general', 'klinika sozlamalari', p => p.can('settings', 'clinic', 'edit')),
+    ...['/api/departments', '/api/departments/:id', '/api/encounter-templates', '/api/encounter-templates/:id',
+        '/api/wards', '/api/wards/:id'].flatMap(path =>
+        ['POST', 'PUT', 'DELETE'].map(m => r(m, path, 'klinika sozlamalari', p => p.can('settings', 'clinic', 'edit')))),
+];
+
+const PERM_COMPILED = PERM_ROUTES.map(x => ({ ...x, re: compile(x.path) }));
+
+export type PermDecision = { matched: false } | { matched: true; allow: boolean; what: string };
+
+/**
+ * Ega emas xodim uchun ruxsatlar jadvali bo'yicha qaror. Marshrut jadvalda
+ * bo'lmasa `matched: false` — RULES ishlaydi.
+ */
+export function checkStaffPerm(method: string, path: string, role: string | undefined, accessControl: unknown, req?: any): PermDecision {
+    if (!role || role === A) return { matched: false };
+    const m = method.toUpperCase();
+    const hit = PERM_COMPILED.find(x => x.method === m && x.re.test(path));
+    if (!hit) return { matched: false };
+    const p = makePermChecker(role, accessControl);
+    if (p.owner) return { matched: false };
+    return { matched: true, allow: !!hit.check(p, req), what: hit.what };
+}
+
+/** Chegirma ruxsatlardagi chegaradan oshmaydimi («Pul → Chegirma», masalan 10% gacha).
+    Ega — cheklanmaydi. Hisob qatori, xizmat va to'lov — uchala yo'lda ham shu. */
+export function discountWithinLimit(req: any, gross: number, discount: number): { ok: boolean; max: number } {
+    const p = req?.perms;
+    if (!p || p.owner || !(discount > 0)) return { ok: true, max: 100 };
+    const max = p.limit('money', 'discount');
+    return { ok: gross > 0 && discount <= (gross * max) / 100 + 0.001, max };
+}
+
+export const discountDenied = (max: number) => ({
+    error: max > 0 ? `Chegirma ${max}% dan oshmasin` : "Chegirma berishga ruxsat yo'q",
+    code: 'DISCOUNT_LIMIT',
+});
+
+/** Marshrut ichidagi rol tekshiruvi — ruxsatlar jadvali bergan ruxsatni ham hisobga oladi */
+export function actsAs(req: any, ...roles: string[]): boolean {
+    if (req?.permAllowed === true) return true;
+    const role = req?.user?.role;
+    return !!role && roles.includes(role);
+}
+
+/** Javobi puldan TOZALANADIGAN o'qishlar — taqiqlanmaydi, faqat summalar olinadi */
+const MONEY_STRIPPED_READ = /^\/api\/reports\/snapshot(\/|$)/;
+export function isMoneyStrippedRead(method: string, path: string): boolean {
+    const m = method.toUpperCase();
+    return (m === 'GET' || m === 'HEAD') && MONEY_STRIPPED_READ.test(path);
+}
+
 /** Moliyaviy o'qishga ruxsat. `showFinance` — klinika sozlamasidagi shu rol bayrog'i. */
 export function canReadFinance(path: string, role: string | undefined, showFinance: boolean | undefined): boolean {
     if (role === 'CLINIC_ADMIN') return true;
-    if (role === 'NURSE' || role === 'LAB_TECHNICIAN') return false;
+    /* Hamshira va laborant — odatda yopiq, faqat ega aniq ochib bergan
+       bo'lsa (`showFinance: true`). Shifokor va registrator — odatda ochiq. */
+    if (role === 'NURSE' || role === 'LAB_TECHNICIAN') return showFinance === true;
     if (TRANSACTIONS_READ.test(path)) return true;
     return showFinance !== false;
 }

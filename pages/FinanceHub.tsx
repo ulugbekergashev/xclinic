@@ -5,6 +5,7 @@ import { UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
     LabOrder, Receptionist, CashRegisterDay, CashMovement, VisitCharge, Department, Service } from '../types';
 import type { CashCloseArgs } from './CashBook';
 import { useLanguage } from '../context/LanguageContext';
+import { permsFor } from '../utils/accessControl';
 
 /* KASSA (menyuda ilgari «Moliya»; modul nomi va manzil — `finance`).
    Kassaga qancha pul kirdi va qancha qoldi (faktik pul harakati). Shifokor
@@ -93,7 +94,7 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                     currentClinic={currentClinic}
                     onPatientClick={onPatientClick}
                     closures={props.closures}
-                    canReopen={userRole === UserRole.CLINIC_ADMIN}
+                    canReopen={permsFor(userRole, currentClinic).flag('finance', 'reopen')}
                     onCloseDay={props.onCloseDay}
                     onReopenDay={props.onReopenDay}
                     patients={props.patients}

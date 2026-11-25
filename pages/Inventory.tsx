@@ -43,6 +43,8 @@ interface InventoryProps {
     items: InventoryItem[];
     userName: string;
     userRole?: UserRole;
+    /** Ega Omborni shu rolga ochib bergan — u registrator kabi ishlaydi */
+    canManage?: boolean;
     /** Bo'limlar — ko'chirish uchun (migratsiya 0005) */
     departments?: { id: string; name: string; isActive?: boolean }[];
     onAddItem: (item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'> & { initialCost?: number }) => void;
@@ -78,14 +80,15 @@ const REASON_LABEL: Record<string, string> = {
 const OUT_REASONS = ['Expired', 'Damaged', 'Manual'];
 
 export const Inventory: React.FC<InventoryProps> = ({
-    items, userName, userRole, departments = [], onAddItem, onDeleteItem, onRefreshItems,
+    items, userName, userRole, canManage = false, departments = [], onAddItem, onDeleteItem, onRefreshItems,
 }) => {
     const { t } = useLanguage();
     const [tab, setTab] = useState<Tab>('stock');
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
 
-    const readOnly = userRole === UserRole.DOCTOR || userRole === UserRole.LAB_TECHNICIAN;
+    /* Ruxsatlar jadvali: «Ombor → Mahsulotlar» O'zgartiradi bo'lmasa — faqat ko'radi */
+    const readOnly = !canManage;
 
     // ─── Qo'shish ───────────────────────────────────────────────────────────
     const [addOpen, setAddOpen] = useState(false);

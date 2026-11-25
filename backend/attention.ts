@@ -25,6 +25,7 @@
    Bandlar SHOSHILINCHLIK bo'yicha tartiblanadi: pul → ombor → ish.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs } from './permissions';
 import type express from 'express';
 import { som } from './money';
 import { tashkentDateStr, TASHKENT_OFFSET_MS } from './tashkentTime';
@@ -69,7 +70,7 @@ export function registerAttentionRoutes(app: express.Express, deps: Deps) {
         try {
             const clinicId = getScopedClinicId(req);
             if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
-            if (req.user?.role !== 'CLINIC_ADMIN') {
+            if (!actsAs(req, 'CLINIC_ADMIN')) {
                 return res.status(403).json({ error: "Ruxsat yo'q" });
             }
 

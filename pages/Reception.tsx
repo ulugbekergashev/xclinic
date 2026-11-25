@@ -13,7 +13,7 @@ import { Patient, Doctor, Department, Service, Visit, Clinic, UserRole, Appointm
 import { visitWork, modalityOfName } from '../utils/visitWork';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
-import { maskPhone } from '../utils/accessControl';
+import { maskPhone, permsFor } from '../utils/accessControl';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { usePatientSearch } from '../hooks/usePatientSearch';
 import { useHotkeys, useScannerInput } from '../hooks/useHotkeys';
@@ -124,7 +124,10 @@ export const Reception: React.FC<Props> = ({
 
     /* Kim nima ko'radi. Ega ikkalasini ham ko'radi: kichik klinikada u
        ham registrator, ham shifokor bo'lishi mumkin. */
-    const canRegister = userRole === UserRole.RECEPTIONIST || userRole === UserRole.CLINIC_ADMIN;
+    /* Navbatni yuritish — «Xodimlar → Ruxsatlar → Bugun» bo'yicha. Shifokor
+       o'z navbatini ko'radi (alohida ko'rinish), boshqalar — registrator kabi. */
+    const canRegister = userRole === UserRole.CLINIC_ADMIN
+        || (userRole !== UserRole.DOCTOR && permsFor(userRole, currentClinic).can('reception', 'queue', 'create'));
     const isDoctorView = userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN
         || userRole === UserRole.NURSE;
     const isOwner = userRole === UserRole.CLINIC_ADMIN;

@@ -10,6 +10,7 @@
    aralashmaydi.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs, discountWithinLimit, discountDenied } from './permissions';
 import type express from 'express';
 import { tashkentDateStr } from './tashkentTime';
 import { emitEvent } from './events';
@@ -790,12 +791,14 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
            qatorlari `POST /medication-orders/:id/administer` orqali
            SERVER o'zi yaratadi, qo'lda kiritish kerak emas. */
         const user = (req as any).user;
-        if (!['DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN'].includes(user?.role)) {
+        if (!actsAs(req, 'DOCTOR', 'RECEPTIONIST', 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
 
         const { visitId, patientId, patientName, name, unitPrice, quantity, discount, source, serviceId } = req.body;
         if (!name || !unitPrice) return res.status(400).json({ error: 'Nom va narx majburiy' });
+        const lim = discountWithinLimit(req, Number(unitPrice) * (Number(quantity) || 1), Number(discount) || 0);
+        if (!lim.ok) return res.status(403).json(discountDenied(lim.max));
 
         if (visitId) {
             const visit = await prisma.visit.findUnique({ where: { id: visitId } });
@@ -1026,8 +1029,8 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
      */
     route('post', '/api/charges/:id/refund', async (req, res, clinicId) => {
         const user = (req as any).user;
-        if (user?.role !== 'CLINIC_ADMIN') {
-            return res.status(403).json({ error: "Ruxsat yo'q — qaytarishni faqat klinika admini qiladi" });
+        if (!actsAs(req, 'CLINIC_ADMIN')) {
+            return res.status(403).json({ error: "Ruxsat yo'q — pulni qaytarishga ruxsatingiz yo'q" });
         }
 
         const { amount, method, reason } = req.body;
@@ -1146,8 +1149,7 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
      */
     route('put', '/api/charges/:id/discount', async (req, res, clinicId) => {
         const user = (req as any).user;
-        const allowed = ['CLINIC_ADMIN', 'RECEPTIONIST'];
-        if (!allowed.includes(user?.role)) {
+        if (!actsAs(req, 'CLINIC_ADMIN')) {
             return res.status(403).json({ error: "Ruxsat yo'q" });
         }
 
@@ -1167,6 +1169,9 @@ export function registerBillingRoutes(app: express.Express, deps: Deps) {
         if (discount > gross) {
             return res.status(400).json({ error: `Chegirma narxdan ko'p (narx: ${gross})` });
         }
+        /* Ruxsatlardagi chegirma chegarasi (masalan, 10% gacha) */
+        const lim = discountWithinLimit(req, gross, discount);
+        if (!lim.ok) return res.status(403).json(discountDenied(lim.max));
         const newTotal = round(gross - discount);
         if (newTotal < round(charge.paidAmount || 0)) {
             return res.status(400).json({ error: "Chegirmadan keyingi summa to'langandan kam bo'lib qoladi" });

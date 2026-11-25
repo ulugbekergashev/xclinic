@@ -91,6 +91,10 @@ export const SendMessageModal: React.FC<Props> = ({
 
     const preview = useMemo(() => fillTokens(text, vars), [text, vars]);
 
+    /* Qarz noma'lum (pulni ko'rish yopiq yoki server javob bermadi), lekin
+       matnda {qarz} bor — bemorga «Qarzingiz:  so'm» ketmasin. */
+    const debtMissing = debt == null && text.includes('{qarz}');
+
     const pickTemplate = (id: string) => {
         setTemplateId(id);
         const tpl = templates.find(t => t.id === id);
@@ -174,9 +178,15 @@ export const SendMessageModal: React.FC<Props> = ({
                     </div>
                 )}
 
+                {debtMissing && (
+                    <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">
+                        {t('sendmessagemodal.qarz_nomalum')}
+                    </p>
+                )}
+
                 <div className="flex justify-end gap-2 pt-2">
                     <Button type="button" variant="secondary" onClick={onClose} disabled={sending}>{t('ui.bekor')}</Button>
-                    <Button type="submit" disabled={sending || !preview.trim()}>
+                    <Button type="submit" disabled={sending || !preview.trim() || debtMissing}>
                         {sending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
                         {t('ui.yuborish')}
                     </Button>

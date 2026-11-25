@@ -24,6 +24,7 @@
    Bu modul beshini ham yopadi.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs } from './permissions';
 import type express from 'express';
 import { serializeWorkDays } from './hr';
 import { som } from './money';
@@ -220,7 +221,8 @@ export function registerInpatientRoutes(app: express.Express, deps: Deps) {
         return a && a.clinicId === clinicId ? a : null;
     };
 
-    const hasRole = (req: any, ...roles: string[]) => roles.includes((req as any).user?.role);
+    /* Ochib berilgan bo'limlarni ham hisobga oladi (`permissions.ts`, actsAs) */
+    const hasRole = (req: any, ...roles: string[]) => actsAs(req, ...roles);
 
     // ═══ KOYKA HAQI ══════════════════════════════════════════════════════════
 

@@ -14,7 +14,7 @@ import { KassaToolbar } from '../components/cashbook/KassaToolbar';
 import {
     Transaction, Expense, ExpenseCategory, Doctor, Clinic, Patient, Appointment,
     CashRegisterDay, CashMovement, CashMovementType, CashAuditLog, PaymentMethod,
-    EXPENSE_CATEGORY_LABELS, CASH_MOVEMENT_LABELS, VisitCharge, PendingPatient, Department, Service,
+    EXPENSE_CATEGORY_LABELS, CASH_MOVEMENT_LABELS, VisitCharge, PendingPatient, Department, Service, UserRole,
 } from '../types';
 import { ReceiptModal } from '../components/ReceiptModal';
 import {
@@ -32,6 +32,7 @@ import { exportCashBookDay, exportCashBookMonth } from '../utils/cashbookExport'
 import { PAYMENT_METHODS, EXPENSE_PAYMENT_METHODS, INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { formatDateToISO, dayKey } from '../utils/dateUtils';
 import { api } from '../services/api';
+import { permsFor } from '../utils/accessControl';
 
 // Kassada kundalik chiqimlar yoziladi. Oylik va shifokor ulushi ataylab yo'q —
 // ular oyda bir marta, murakkab hisob-kitob bilan Hisobot tabida rasmiylashtiriladi.
@@ -987,18 +988,20 @@ export const CashBook: React.FC<CashBookProps> = ({
        joyda, tanlab, qisman, bir necha usul bilan to'lanadi. Ilgari bu tugma
        to'g'ridan-to'g'ri hamma summani NAQD deb yozib qo'yardi. */
     // Qaytarishni faqat klinika admini qiladi — server ham shuni talab qiladi
-    const canRefundCharges = userRole === 'CLINIC_ADMIN';
+    /* Hamma tugma «Xodimlar → Ruxsatlar» bo'yicha (server ham shunday) */
+    const perms = permsFor(userRole, currentClinic);
+    const canRefundCharges = perms.flag('money', 'refund');
     /* Xarajat — faqat ega. Server ham shunday (`permissions.ts`):
        registrator xarajat yozib kassa farqini yopib qo'ymasin. Ilgari
        tugma HAMMAGA ko'rinardi va bosilganda jimgina 403 qaytardi —
        registrator xarajatni yozdim deb o'ylab qolardi. */
-    const canEditExpenses = userRole === 'CLINIC_ADMIN';
+    const canEditExpenses = perms.can('finance', 'expenses', 'edit');
     /* Yozish — registratorga ham: faqat MAYDA NAQD (suv, qog'oz, taksi).
        Tuzatish va o'chirish egada. Server ham shunday (2026-11-22). */
-    const canAddExpense = canEditExpenses || userRole === 'RECEPTIONIST';
+    const canAddExpense = perms.can('finance', 'expenses', 'create');
     /* Chekni tuzatish va o'chirish — faqat egada (server ham shunday,
        `permissions.ts`). Ilgari tugmalar registratorga ham ko'rinardi. */
-    const canEditPayments = userRole === 'CLINIC_ADMIN';
+    const canEditPayments = perms.flag('money', 'payEdit') || perms.flag('money', 'payDelete');
 
     /* TO'LOV NAVBATI — faqat bugun. Uch manba, bitta ro'yxat:
 
@@ -1300,7 +1303,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                 onPay={onAddTransaction ? () => setIsAdvanceOpen(true) : undefined}
                 onExpense={onAddExpense && canAddExpense ? openExpenseModal : undefined}
                 onEncashment={onAddCashMovement ? () => openMovement('Encashment') : undefined}
-                onExport={userRole === 'CLINIC_ADMIN' ? handleExport : undefined}
+                onExport={perms.can('finance', 'cashbook', 'export') ? handleExport : undefined}
                 onDate={changeDate}
                 onShiftDate={step => changeDate(shiftDate(date, step))}
             />

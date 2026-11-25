@@ -5,7 +5,7 @@ import { toast } from '../services/toast';
 import { Card, Button, Badge, Modal } from '../components/Common';
 import { StatCard } from '../components/StatCard';
 import { Search, Plus, Eye, Pencil, Trash2, Loader2, Download, Filter, UserCheck, AlertCircle, ChevronDown, Cake, Wallet, Users as UsersIcon, UserPlus as UserPlusIcon, Activity } from 'lucide-react';
-import { Patient, Doctor, Appointment, Transaction, Clinic } from '../types';
+import { Patient, Doctor, Appointment, Transaction, Clinic, UserRole } from '../types';
 import { api, getFileUrl } from '../services/api';
 import type { Snapshot } from '../services/api';
 import { usePatientSearch } from '../hooks/usePatientSearch';
@@ -13,7 +13,7 @@ import { PatientFormModal } from '../components/PatientFormModal';
 import { useLanguage } from '../context/LanguageContext';
 import { calcAge, formatDay, formatDateToISO, todayISO } from '../utils/dateUtils';
 import { csvRow } from '../utils/csv';
-import { maskPhone } from '../utils/accessControl';
+import { maskPhone, canSeeFinance, parseAccessControl, permsFor } from '../utils/accessControl';
 import { DoctorPicker } from '../components/DoctorPicker';
 
 interface PatientsProps {
@@ -101,11 +101,17 @@ export const Patients: React.FC<PatientsProps> = ({
      Endi uchalasi ham `/api/reports/snapshot` dan, ya'ni bosh sahifadagi
      raqamlar bilan AYNAN bir xil. */
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  /* Pul kartalari (qarzdorlar, to'lov kutmoqda) — faqat pulni ko'radigan rolga. */
+  const seesMoney = canSeeFinance(parseAccessControl(currentClinic), userRole as UserRole);
+  /* Tugmalar «Xodimlar → Ruxsatlar → Bemorlar» bo'yicha (server ham shunday) */
+  const perms = permsFor(userRole, currentClinic);
   /* Qarzdorlar ro'yxati — serverdan, to'lanmagan qatorlardan yig'ilgan. */
   const [debtorIds, setDebtorIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let alive = true;
     api.reports.snapshot().then(s => { if (alive) setSnapshot(s); }).catch(() => {});
+    /* Qarzdorlar ro'yxati — pul. Pulni ko'rmaydigan rol uni so'ramaydi (server 403 qaytaradi). */
+    if (!seesMoney) return () => { alive = false; };
     api.reports.debtors()
       .then((d: any) => {
         if (!alive) return;
@@ -114,7 +120,7 @@ export const Patients: React.FC<PatientsProps> = ({
       })
       .catch(() => { });
     return () => { alive = false; };
-  }, []);
+  }, [seesMoney]);
 
   /* «Yangi» chegarasi — server bilan bir xil: 7 kun oldingi sananing
      00:00 (UTC) dan keyin yaratilganlar. Sahifa ochilganda bir marta.
@@ -193,7 +199,7 @@ export const Patients: React.FC<PatientsProps> = ({
        bo'sh turmasin. Kelgach, serverdagi raqam ustun turadi. */
     const total = snapshot?.patients.total ?? patients.length;
     const newPatients = snapshot?.patients.newLast7Days ?? 0;
-    const debtors = snapshot?.debt.patients ?? 0;
+    const debtors = snapshot?.debt?.patients ?? 0;
 
     /* «To'lov kutmoqda» — bosilganda ochiladigan ro'yxat bilan BITTA manba:
        serverdagi qarzdorlar ro'yxati. Ilgari son brauzerda, 45 kunlik
@@ -298,27 +304,27 @@ export const Patients: React.FC<PatientsProps> = ({
         </div>
         
         <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-          <Button
+          {perms.can('patients', 'card', 'export') && <Button
             variant="secondary" 
             className="flex-1 lg:flex-none justify-center gap-2 bg-surface border-line shadow-sm hover:shadow-md transition-all active:scale-95 py-2.5"
             onClick={handleExport}
           >
             <Download className="w-4 h-4" />
             <span className="whitespace-nowrap">{t('patients.buttons.export')}</span>
-          </Button>
+          </Button>}
           
-          <Button 
+          {perms.can('patients', 'card', 'create') && <Button 
             className="flex-1 lg:flex-none justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white transition-all active:scale-95 py-2.5 border-none"
             onClick={() => setIsAddModalOpen(true)}
           >
             <Plus className="w-4 h-4" /> 
             <span className="whitespace-nowrap">{t('patients.buttons.add')}</span>
-          </Button>
+          </Button>}
         </div>
       </div>
 
       {/* Stats Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-5 ${seesMoney ? 'lg:grid-cols-4' : ''}`}>
         <StatCard
           label={t('patients.stats.total')} value={stats.total} icon={UsersIcon} color="primary"
           active={activeStatFilter === null} subtitle={t('patients.stats.allTime')}
@@ -329,6 +335,7 @@ export const Patients: React.FC<PatientsProps> = ({
           active={activeStatFilter === 'new'} subtitle={t('patients.stats.last7Days')}
           onClick={() => setActiveStatFilter(activeStatFilter === 'new' ? null : 'new')}
         />
+        {seesMoney && <>
         <StatCard
           label={t('patients.stats.debtors')} value={stats.debtors} icon={Wallet} color="success"
           active={activeStatFilter === 'debtor'} subtitle={t('patients.stats.activeDebt')}
@@ -339,6 +346,7 @@ export const Patients: React.FC<PatientsProps> = ({
           active={activeStatFilter === 'waiting'} subtitle={t('patients.stats.paymentPending')}
           onClick={() => setActiveStatFilter(activeStatFilter === 'waiting' ? null : 'waiting')}
         />
+        </>}
       </div>
 
       {/* Search + Filter toggle row */}
@@ -544,14 +552,14 @@ export const Patients: React.FC<PatientsProps> = ({
                           ma'lumotini o'zgartirish uchun uning kartasiga
                           kirish shart edi, u yerda esa atigi 5 maydon
                           bor edi. */}
-                      <button
+                      {perms.can('patients', 'card', 'edit') && <button
                         onClick={(e) => { e.stopPropagation(); setEditing(patient); }}
                         className="text-muted hover:text-primary-600 dark:hover:text-primary-400 p-1.5 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
                         title={t('ui.tahrirlash')}
                       >
                         <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
+                      </button>}
+                      {perms.can('patients', 'card', 'delete') && <button
                         onClick={async (e) => {
                           e.stopPropagation();
                           if (await confirmAction({ title: t('patients.deleteConfirm') })) onDeletePatient(patient.id);
@@ -560,7 +568,7 @@ export const Patients: React.FC<PatientsProps> = ({
                         title={t('patients.actions.delete')}
                       >
                         <Trash2 className="w-4 h-4" />
-                      </button>
+                      </button>}
                     </div>
                   </td>
                 </tr>

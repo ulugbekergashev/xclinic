@@ -17,6 +17,7 @@
    klinikaning bemoriga tegishlimi", "nomi to'g'rimi" emas.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs } from './permissions';
 import type express from 'express';
 import path from 'path';
 import { logAccess } from './compliance';
@@ -86,7 +87,7 @@ export function registerFileRoutes(app: express.Express, deps: Deps) {
             }
 
             const user = req.user;
-            if (!ALLOWED_ROLES.includes(user?.role)) {
+            if (!actsAs(req, ...ALLOWED_ROLES)) {
                 return res.status(403).json({ error: 'Ruxsat yo\'q' });
             }
 

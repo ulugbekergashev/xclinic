@@ -41,6 +41,8 @@ interface Props {
     clinicId?: string;
     addToast?: (type: 'success' | 'error' | 'info', msg: string) => void;
     onStaffChanged?: () => void;
+    /** Maosh va stavkalar — faqat egaga (Xodimlar registratorga ochilsa ham) */
+    canSeePay?: boolean;
 }
 
 type Tab = 'general' | 'salary' | 'schedule' | 'rates';
@@ -84,7 +86,7 @@ const ATT_UI: Record<string, { label: string; cls: string }> = {
 };
 
 export const StaffCard: React.FC<Props> = ({
-    departments = [], services = [], clinicId, addToast, onStaffChanged,
+    departments = [], services = [], clinicId, addToast, onStaffChanged, canSeePay = true,
 }) => {
     const { t } = useLanguage();
     const { role, id } = useParams<{ role: string; id: string }>();
@@ -276,9 +278,9 @@ export const StaffCard: React.FC<Props> = ({
 
     const TABS: [Tab, string, React.ElementType][] = [
         ['general', t('ui.umumiy_tab'), Layers],
-        ['salary', t('staffcard.maosh_malumoti'), Wallet],
+        ...(canSeePay ? [['salary', t('staffcard.maosh_malumoti'), Wallet] as [Tab, string, React.ElementType]] : []),
         ['schedule', t('staffcard.ish_grafigi'), CalendarDays],
-        ...(isDoctor ? [['rates', 'Stavkalar', Percent] as [Tab, string, React.ElementType]] : []),
+        ...(isDoctor && canSeePay ? [['rates', 'Stavkalar', Percent] as [Tab, string, React.ElementType]] : []),
     ];
 
     return (
@@ -426,7 +428,7 @@ export const StaffCard: React.FC<Props> = ({
                                     </div>
 
                                     {/* Shifokorning ulushi — vedomostdan, MA'LUMOT uchun */}
-                                    {isDoctor && month?.share && (
+                                    {isDoctor && canSeePay && month?.share && (
                                         <div className="rounded-xl border border-line p-4">
                                             <div className="flex items-center justify-between gap-3 mb-3">
                                                 <p className="text-sm font-bold text-ink">
@@ -465,7 +467,7 @@ export const StaffCard: React.FC<Props> = ({
                             )}
 
                             {/* ═══ MAOSH ════════════════════════════════ */}
-                            {tab === 'salary' && (
+                            {tab === 'salary' && canSeePay && (
                                 <div className="space-y-5">
                                     <div className="flex items-center justify-between gap-3">
                                         <p className="text-sm font-bold text-ink">{t('staffcard.maosh_hisobi')}</p>
@@ -726,7 +728,7 @@ export const StaffCard: React.FC<Props> = ({
                             )}
 
                             {/* ═══ STAVKALAR ════════════════════════════ */}
-                            {tab === 'rates' && isDoctor && (
+                            {tab === 'rates' && isDoctor && canSeePay && (
                                 <DoctorRatesEditor
                                     doctorId={row.id}
                                     fallbackPercent={row.percentage ?? null}

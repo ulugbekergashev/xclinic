@@ -12,6 +12,7 @@
    buyurdi, qancha, to'landimi. `Transaction` esa kassa harakati bo'lib qoladi.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs } from './permissions';
 import type express from 'express';
 import { som } from './money';
 import { tashkentDateStr, tashkentMonthStart, tashkentRangeBounds, TASHKENT_OFFSET_MS } from './tashkentTime';
@@ -274,7 +275,9 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
            rejasi 7). Bitta so'rov, bemor sonicha emas. */
         /* Faqat egaga: bu manzilni Bemorlar va xabar oynasi ham chaqiradi —
            hamshira yoki laborantga telefon shu yo'l bilan ketmasin. */
-        const isOwner = (req as any).user?.role === 'CLINIC_ADMIN';
+        const perms = (req as any).perms;
+        const isOwner = (req as any).user?.role === 'CLINIC_ADMIN'
+            || (!!perms?.menu('dashboard') && !!perms?.flag('patients', 'phone'));
         const ids = isOwner ? Array.from(byPatient.values()).map(g => g.patientId).filter(Boolean) : [];
         const phones = ids.length
             ? await prisma.patient.findMany({ where: { clinicId, id: { in: ids } }, select: { id: true, phone: true } })
@@ -295,8 +298,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
 
     /** Faqat klinika egasi ko'radigan hisobotlar */
     const ownerOnly = (req: any, res: any) => {
-        const role = (req as any).user?.role;
-        if (role !== 'CLINIC_ADMIN') {
+        if (!actsAs(req, 'CLINIC_ADMIN')) {
             res.status(403).json({ error: "Ruxsat yo'q" });
             return false;
         }
@@ -955,7 +957,14 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
     route('get', '/api/reports/snapshot', async (req, res, clinicId) => {
         const from = req.query.from ? String(req.query.from) : undefined;
         const to = req.query.to ? String(req.query.to) : undefined;
-        res.json(await financialSnapshot(prisma, clinicId, from, to));
+        const snap = await financialSnapshot(prisma, clinicId, from, to);
+        /* Pulni ko'rmaydigan rol (hamshira, laborant yoki ega yopgan
+           shifokor/registrator) — faqat bemor sonlari. `hideMoney` ni
+           server.ts dagi umumiy tekshiruv qo'yadi. */
+        if (req.hideMoney) {
+            return res.json({ range: snap.range, patients: snap.patients, debt: null, period: null });
+        }
+        res.json(snap);
     });
 
     /* Eski manzil. Bosh sahifaning avvalgi javob SHAKLI saqlanadi, lekin

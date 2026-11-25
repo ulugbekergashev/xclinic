@@ -7,7 +7,7 @@
   "main": "electron-main/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/checkI18n.mjs && vite build",
+    "build": "node scripts/checkI18n.mjs && node scripts/checkStaffPerms.mjs && vite build",
     "build:demo": "cross-env VITE_DEMO_BUILD=true npm run build",
     "check:i18n": "node scripts/checkI18n.mjs",
     "test:e2e": "playwright test",

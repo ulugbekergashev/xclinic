@@ -28,8 +28,8 @@ const DEPT_COLORS = [
 ];
 
 import { ServiceRecipeEditor } from '../components/ServiceRecipeEditor';
-import { AccessControlTab } from '../components/AccessControlTab';
 import { EncounterTemplatesTab } from '../components/EncounterTemplatesTab';
+import { permsFor } from '../utils/accessControl';
 
 const DOCTOR_COLORS = [
    { name: 'Ko\'k', value: '#005EB8' },
@@ -83,11 +83,13 @@ export const Settings: React.FC<SettingsProps> = ({
    /* Kompyuterdagi bulut papkalari — «Xizmat ko'rsatish» bo'limi ochilganda
       bir marta so'raladi. Topilmasa oddiy papka tanlash qoladi. */
    const [cloudFolders, setCloudFolders] = useState<{ path: string; label: string }[]>([]);
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'integrations' | 'access' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'templates'>('services');
+   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'integrations' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'templates'>('services');
 
    /* Kassa smenalari — «Ruxsatlar» bo'limining oxirida turadi, lekin
       ruxsat EMAS: bu kassaning kunlik tartibi. Shuning uchun u
       `AccessControlTab` ga ko'chmadi va Xodimlar bo'limida chiqmaydi. */
+   /* Bo'limlar, tahlil katalogi, ko'rik shablonlari — «Sozlamalar → Klinika sozlamalari» ruxsati */
+   const canClinicEdit = permsFor(userRole, currentClinic).can('settings', 'clinic', 'edit');
    const [cashShifts, setCashShifts] = useState<number>(currentClinic?.cashShiftsPerDay || 1);
    const [cashShiftsSaving, setCashShiftsSaving] = useState(false);
 
@@ -520,7 +522,10 @@ export const Settings: React.FC<SettingsProps> = ({
       }
    };
 
-   if (userRole === UserRole.DOCTOR) {
+   /* Shifokorga ega Sozlamalarni ochib bergan bo'lsa — u registrator
+      ko'radigan sozlamalarni ko'radi; aks holda faqat o'z profili. */
+   if (userRole === UserRole.DOCTOR
+      && !permsFor(userRole, currentClinic).menu('settings')) {
       return (
          <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
             <h1 className="text-2xl font-bold text-ink">{t('settings.general.myProfile')}</h1>
@@ -742,7 +747,7 @@ export const Settings: React.FC<SettingsProps> = ({
    React.useEffect(() => {
       if ((activeTab === 'departments' || activeTab === 'services'
          || activeTab === 'templates' || activeTab === 'labCatalog')
-         && userRole === UserRole.CLINIC_ADMIN) loadDepartments();
+         && canClinicEdit) loadDepartments();
       if (activeTab === 'services' && inventoryItems.length === 0 && currentClinic?.id) {
          api.inventory.getAll(currentClinic.id).then(setInventoryItems).catch(() => setInventoryItems([]));
       }
@@ -985,19 +990,16 @@ export const Settings: React.FC<SettingsProps> = ({
                      hammasi TASHQI XIZMAT ulanishi. «DMED (IT-MED)» nima
                      ekanini faqat u bilan ishlagan odam bilardi. */
                   { id: 'integrations', name: 'Integratsiyalar', icon: MessageSquare },
-                  /* Qoida va uning IZI bir joyda: «kim nimani ko'radi» va
-                     «kim nimani ko'rdi» — bitta savolning ikki tomoni. */
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'access', name: t('ui.ruxsatlar'), icon: Shield }] : []),
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'departments', name: t('settings.bolimlar'), icon: Building2 }] : []),
+                  ...(canClinicEdit ? [{ id: 'departments', name: t('settings.bolimlar'), icon: Building2 }] : []),
                   /* Tahlillar katalogi. Laboratoriya ekrani katalog bo'sh
                      bo'lganda AYNAN shu yerga yuborardi, lekin bunday
                      vkladka mavjud emas edi. */
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'labCatalog', name: t('lab.tab'), icon: FlaskConical }] : []),
+                  ...(canClinicEdit ? [{ id: 'labCatalog', name: t('lab.tab'), icon: FlaskConical }] : []),
                   /* KO'RIK BAYONI SHABLONLARI. Shablonlar bazada bor va
                      qabul paneli ularni ochadi, lekin YARATADIGAN ekran
                      yo'q edi: klinika o'rnatishda kelganlari bilan qolib
                      ketardi va bironta maydon qo'sha olmasdi. */
-                  ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'templates', name: t('settings.korik_shablonlari'), icon: FileText }] : []),
+                  ...(canClinicEdit ? [{ id: 'templates', name: t('settings.korik_shablonlari'), icon: FileText }] : []),
                   ...(userRole === UserRole.CLINIC_ADMIN ? [{ id: 'maintenance', name: t('settings.xizmat_korsatish'), icon: HardDrive }] : []),
                ].map((item) => (
                   <button
@@ -1020,6 +1022,40 @@ export const Settings: React.FC<SettingsProps> = ({
                 {/* General Tab */}
                {activeTab === 'general' && (
                   <div className="space-y-6">
+                     {/* KASSA SMENALARI — klinika sozlamasi. Ilgari «Ruxsatlar»
+                         ichida turardi, lekin u ruxsat emas; Ruxsatlar endi
+                         faqat Xodimlar bo'limida. */}
+                     {userRole === UserRole.CLINIC_ADMIN && (
+                        <Card className="p-6">
+                           <div className="mb-4">
+                              <h3 className="text-base font-bold text-ink">{t('settings.kassa_smenalari')}</h3>
+                              <p className="text-xs text-muted mt-1">
+                                 {t('settings.smena_kassir_kunni_yopish')}
+                              </p>
+                           </div>
+                           <div className="flex flex-wrap items-center gap-2">
+                              {[1, 2].map(n => (
+                                 <button
+                                    key={n}
+                                    type="button"
+                                    disabled={cashShiftsSaving}
+                                    onClick={() => saveCashShifts(n)}
+                                    className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all disabled:opacity-50 ${cashShifts === n
+                                       ? 'bg-primary-600 text-white border-primary-600'
+                                       : 'bg-surface text-muted border-line hover:border-primary-400'}`}
+                                 >
+                                    {n === 1 ? t('settings.kuniga_1_smena') : t('settings.kuniga_2_smena')}
+                                 </button>
+                              ))}
+                              {cashShiftsSaving && <span className="text-xs text-faint">{t('ui.saqlanmoqda')}</span>}
+                           </div>
+                           <p className="text-[11px] text-faint mt-3">
+                              {cashShifts === 1
+                                 ? t('settings.kassa_sahifasida_kun_butunligicha')
+                                 : t('settings.kassa_sahifasida_1_smena')}
+                           </p>
+                        </Card>
+                     )}
                      <Card className="p-6">
                         <div className="flex items-center justify-between">
                            <div>
@@ -1368,7 +1404,7 @@ export const Settings: React.FC<SettingsProps> = ({
                {/* Bo'limlar ro'yxati BO'SH massiv bilan uzatilardi: katalogda
                    «bo'lim» tanlovi bor, lekin unda hech qachon hech narsa
                    yo'q edi. */}
-               {activeTab === 'labCatalog' && userRole === UserRole.CLINIC_ADMIN && (
+               {activeTab === 'labCatalog' && canClinicEdit && (
                   <LabCatalogTab departments={deptList} />
                )}
 
@@ -1378,7 +1414,7 @@ export const Settings: React.FC<SettingsProps> = ({
                )}
 
                {/* Bo'limlar — ko'p profilli klinikaning asosiy o'qi */}
-               {activeTab === 'departments' && userRole === UserRole.CLINIC_ADMIN && (
+               {activeTab === 'departments' && canClinicEdit && (
                   <div className="space-y-6">
                      <Card className="p-6">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
@@ -1898,53 +1934,11 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                )}
 
-               {/* RUXSATLAR — Xodimlar bo'limi bilan BITTA komponent.
+               {/* RUXSATLAR bu yerda yo'q — ular faqat Xodimlar bo'limida
+                   (`components/AccessControlTab.tsx`). Kassa smenalari
+                   «Umumiy» ga ko'chdi. */}
 
-                   Ilgari bu ~250 qator JSX shu yerda turardi. Xodimlar
-                   moduliga ham kerak bo'lgach, nusxalash o'rniga
-                   `components/AccessControlTab.tsx` ga ko'chirildi —
-                   aks holda ikkita nusxa vaqt o'tib ajralib ketardi
-                   (bu loyihada menyu va modul ro'yxati bilan aynan
-                   shunday bo'lgan).
-
-                   Kirish jurnali ham o'sha komponent ichida: «kim nimani
-                   ko'radi» va «kim nimani ko'rdi» — bitta savolning ikki
-                   tomoni. */}
-               {activeTab === 'access' && userRole === UserRole.CLINIC_ADMIN && (
-                  <AccessControlTab currentClinic={currentClinic} onClinicUpdated={onClinicUpdated}>
-                        <Card className="p-6">
-                           <div className="mb-4">
-                              <h3 className="text-base font-bold text-ink">{t('settings.kassa_smenalari')}</h3>
-                              <p className="text-xs text-muted mt-1">
-                                 {t('settings.smena_kassir_kunni_yopish')}
-                              </p>
-                           </div>
-                           <div className="flex flex-wrap items-center gap-2">
-                              {[1, 2].map(n => (
-                                 <button
-                                    key={n}
-                                    type="button"
-                                    disabled={cashShiftsSaving}
-                                    onClick={() => saveCashShifts(n)}
-                                    className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all disabled:opacity-50 ${cashShifts === n
-                                       ? 'bg-primary-600 text-white border-primary-600'
-                                       : 'bg-surface text-muted border-line hover:border-primary-400'}`}
-                                 >
-                                    {n === 1 ? t('settings.kuniga_1_smena') : t('settings.kuniga_2_smena')}
-                                 </button>
-                              ))}
-                              {cashShiftsSaving && <span className="text-xs text-faint">{t('ui.saqlanmoqda')}</span>}
-                           </div>
-                           <p className="text-[11px] text-faint mt-3">
-                              {cashShifts === 1
-                                 ? t('settings.kassa_sahifasida_kun_butunligicha')
-                                 : t('settings.kassa_sahifasida_1_smena')}
-                           </p>
-                        </Card>
-                  </AccessControlTab>
-               )}
-
-               {activeTab === 'templates' && userRole === UserRole.CLINIC_ADMIN && (
+               {activeTab === 'templates' && canClinicEdit && (
                   <EncounterTemplatesTab departments={deptList} />
                )}
 

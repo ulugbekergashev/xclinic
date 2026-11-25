@@ -150,6 +150,110 @@ async function main() {
         await assertDenied('hamshira', nurseToken, DENIED_FOR_NURSE);
         const vitals = await call('POST', '/vitals', { patientId: 'yoq', measurements: [] }, nurseToken);
         ok('hamshira ko\'rsatkich kiritishga haqli (403 emas)', vitals.status !== 403, `status: ${vitals.status}`);
+
+        /* Pul hisobotlari: ilgari faqat kirish tekshirilardi va hamshira
+           tushum, qarz va qarzdorlar ro'yxatini o'qiy olardi. */
+        for (const path of ['/reports/dashboard', '/reports/debtors', '/reports/attendance']) {
+            const r = await call('GET', path, undefined, nurseToken);
+            ok(`hamshira ${path} ni o'qiy olmaydi`,
+                r.status === 403 && r.data?.code === 'FINANCE_HIDDEN', `status: ${r.status}, code: ${r.data?.code}`);
+        }
+        /* Snapshot — bemor sonlari kerak (Bemorlar sahifasi), pul emas. */
+        const snap = await call('GET', '/reports/snapshot', undefined, nurseToken);
+        ok('hamshira snapshot dan bemor sonini oladi', snap.status === 200 && typeof snap.data?.patients?.total === 'number',
+            `status: ${snap.status}`);
+        ok('hamshira snapshot da pul ko\'rmaydi', snap.data?.debt === null && snap.data?.period === null,
+            JSON.stringify({ debt: snap.data?.debt, period: snap.data?.period }).slice(0, 120));
+    }
+    const adminSnap = await call('GET', '/reports/snapshot', undefined, admin);
+    ok('ega snapshot da pulni ko\'radi', typeof adminSnap.data?.debt?.amount === 'number', `status: ${adminSnap.status}`);
+
+    console.log('\n═══ 3a. RUXSATLAR SOZLAMASI SHAKLI ═════════════════');
+    /* Tana tekshiruvsiz saqlanardi. Endi faqat to'rt rol va uchta maydon. */
+    const clinicId = (await call('GET', '/clinics', undefined, admin)).data?.[0]?.id;
+    if (clinicId) {
+        const before = await call('GET', `/clinics/${clinicId}`, undefined, admin);
+        const prev = before.data?.accessControl ?? null;
+        const restore = typeof prev === 'string' ? JSON.parse(prev) : prev;
+        try {
+            const put = await call('PUT', `/clinics/${clinicId}/access-control`, {
+                accessControl: {
+                    doctor: { hiddenModules: ['calendar', '<script>', 7], showFinance: false, extra: 'x' },
+                    hacker: { showFinance: true },
+                },
+            }, admin);
+            const saved = typeof put.data?.clinic?.accessControl === 'string'
+                ? JSON.parse(put.data.clinic.accessControl) : put.data?.clinic?.accessControl;
+            ok('ruxsatlar saqlandi', put.status === 200, `status: ${put.status}`);
+            ok('notanish rol tashlandi', saved && !('hacker' in saved), JSON.stringify(saved));
+            ok('yashirilgan modul ruxsatlarga o\'tdi (Kalendar yopiq)', saved?.doctor?.perms?.calendar?.on === false,
+                JSON.stringify(saved?.doctor?.perms?.calendar));
+            ok('noto\'g\'ri modul nomi tashlandi', !JSON.stringify(saved).includes('<script>'), '');
+            ok('ortiqcha maydon tashlandi', saved?.doctor && !('extra' in saved.doctor));
+
+            /* Buzuq tana cheklovlarni jimgina o'chirmasin */
+            const bad = await call('PUT', `/clinics/${clinicId}/access-control`, { accessControl: 'hammasi' }, admin);
+            ok('buzuq ruxsat tanasi rad etildi (400)', bad.status === 400, `status: ${bad.status}`);
+            const still = await call('GET', `/clinics/${clinicId}`, undefined, admin);
+            const stillAc = typeof still.data?.accessControl === 'string' ? JSON.parse(still.data.accessControl) : still.data?.accessControl;
+            ok('rad etilgandan keyin cheklov joyida', stillAc?.doctor?.showFinance === false, JSON.stringify(stillAc));
+
+            /* ─── OCHIB BERISH SERVERDA HAM ISHLAYDI ─────────────────────
+               Shifokorga Sozlamalar (xizmat toifasi yaratish — registrator
+               ishi), hamshiraga pul ko'rsatkichlari. */
+            if (docToken && nurseToken) {
+                const name = `Sinov toifa ${Date.now()}`;
+                const denied = await call('POST', '/categories', { name }, docToken);
+                ok('ochib berilmaguncha shifokor toifa yarata olmaydi', denied.status === 403, `status: ${denied.status}`);
+                const nurseDash0 = await call('GET', '/reports/dashboard', undefined, nurseToken);
+                ok('ochib berilmaguncha hamshira tushumni ko\'rmaydi', nurseDash0.status === 403, `status: ${nurseDash0.status}`);
+
+                /* Yangi shakl: har rolda `perms` (Xodimlar → Ruxsatlar). Shifokorga
+                   Sozlamalar «O'zgartiradi» (o'chirishsiz), Xodimlar (shifokorda
+                   bunday bo'lim yo'q) va noma'lum bo'lim; hamshiraga — summalar. */
+                const grant = await call('PUT', `/clinics/${clinicId}/access-control`, {
+                    accessControl: {
+                        doctor: { perms: { settings: { on: true, cells: { services: 'vce' } }, staff: { on: true }, yoq: { on: true } } },
+                        nurse: { perms: { money: { sp: { amounts: true } } } },
+                    },
+                }, admin);
+                const g = typeof grant.data?.clinic?.accessControl === 'string'
+                    ? JSON.parse(grant.data.clinic.accessControl) : grant.data?.clinic?.accessControl;
+                ok('Sozlamalar shifokorga ochildi', g?.doctor?.perms?.settings?.on === true, JSON.stringify(g?.doctor?.perms?.settings));
+                ok('Xodimlar va noma\'lum bo\'lim ochilmaydi', !g?.doctor?.perms?.staff && !g?.doctor?.perms?.yoq,
+                    Object.keys(g?.doctor?.perms || {}).join(','));
+                ok('eski bayroqni server o\'zi hisobladi', g?.nurse?.showFinance === true && !g?.doctor?.hiddenModules?.includes('settings'),
+                    JSON.stringify({ nurse: g?.nurse?.showFinance, docHidden: g?.doctor?.hiddenModules }));
+
+                const allowed = await call('POST', '/categories', { name }, docToken);
+                ok('Sozlamalar ochib berilgach shifokor toifa yaratadi', allowed.status === 200, `status: ${allowed.status}`);
+                if (allowed.data?.id) await call('DELETE', `/categories/${allowed.data.id}`, undefined, admin);
+                const stillOwnerOnly = await call('DELETE', '/categories/yoq', undefined, docToken);
+                ok('o\'chirish berilmagan — shifokor toifani o\'chira olmaydi', stillOwnerOnly.status === 403, `status: ${stillOwnerOnly.status}`);
+
+                const staffWrite = await call('POST', '/doctors', { firstName: 'X', lastName: 'Y' }, docToken);
+                ok('shifokor xodim qo\'sha olmaydi', staffWrite.status === 403, `status: ${staffWrite.status}`);
+
+                const nurseDash = await call('GET', '/reports/dashboard', undefined, nurseToken);
+                ok('pul ochib berilgach hamshira tushumni ko\'radi', nurseDash.status === 200, `status: ${nurseDash.status}`);
+
+                /* Olib qo'yish ham ishlaydi: registratordan bemor qo'shishni olamiz.
+                   (Bu PUT butun sozlamani almashtiradi — shuning uchun oxirida.) */
+                const recTok = recName ? await login(recName) : null;
+                if (recTok) {
+                    await call('PUT', `/clinics/${clinicId}/access-control`, {
+                        accessControl: { receptionist: { perms: { patients: { on: true, cells: { card: 'v' } } } } },
+                    }, admin);
+                    const recAdd = await call('POST', '/patients', { firstName: 'Sinov', lastName: 'Ruxsat', phone: '+998901112299' }, recTok);
+                    ok('bemor qo\'shish olib qo\'yilgach registrator qo\'sha olmaydi', recAdd.status === 403, `status: ${recAdd.status}`);
+                }
+            }
+
+        } finally {
+            await call('PUT', `/clinics/${clinicId}/access-control`, { accessControl: restore }, admin);
+        }
+    } else {
+        ok('klinika topildi', false, 'GET /clinics bo\'sh');
     }
 
     console.log('\n═══ 4. JADVALDA YO\'Q MARSHRUT ═════════════════════');

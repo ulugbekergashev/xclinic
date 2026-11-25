@@ -21,6 +21,7 @@ import { SendMessageModal } from '../components/SendMessageModal';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
+import { permsFor } from '../utils/accessControl';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { CalendarMonth } from '../components/CalendarMonth';
 import { monthLabel, dayLabel, weekLabel } from '../utils/calendarLabels';
@@ -1096,7 +1097,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                 {(selectedAppointment.status === 'Completed' || selectedAppointment.status === 'Cancelled' || selectedAppointment.status === 'No-Show') && (
                   <div className="flex gap-2">
                     <Button variant="secondary" onClick={() => setSelectedAppointment(null)}>{t('common.close')}</Button>
-                    <Button
+                    {permsFor(userRole, currentClinic).can('calendar', 'appts', 'delete') && <Button
                       variant="ghost"
                       className="text-red-500 hover:text-red-700"
                       onClick={async () => {
@@ -1114,7 +1115,7 @@ export const Calendar: React.FC<CalendarProps> = ({
                       }}
                     >
                       {t('common.delete')}
-                    </Button>
+                    </Button>}
                   </div>
                 )}
               </div>

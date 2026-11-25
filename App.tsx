@@ -64,7 +64,7 @@ import { NotFound } from './pages/NotFound';
 import { confirmAction } from './services/confirm';
 import { api } from './services/api';
 import type { CashCloseInput } from './services/api';
-import { parseAccessControl, canSeeFinance, canSeePatientPhone } from './utils/accessControl';
+import { parseAccessControl, canSeeFinance, canSeePatientPhone, permsFor } from './utils/accessControl';
 import { visibleNavigation as buildNavigation, canOpenModule, homeFor, navLabelKey } from './utils/navigation';
 import { LanguageProvider, useLanguage, tr, fill } from './context/LanguageContext';
 import { Language } from './i18n/translations';
@@ -370,8 +370,6 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
           if (e?.status === 403) return fallback;
           throw e;
         };
-        const canReadTransactions = userRole !== UserRole.NURSE && userRole !== UserRole.LAB_TECHNICIAN;
-
         const clinicP = api.clinics.getById(clinicId);
         const financeP = clinicP.then(async (clinic) => {
           if (!canSeeFinance(parseAccessControl(clinic), userRole)) {
@@ -407,9 +405,9 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
              qisqargan ro'yxatdan sanalgan son yolg'on bo'lardi. */
           api.patients.getAllForClinic(clinicId, INITIAL_PATIENTS),
           api.appointments.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }),
-          canReadTransactions
-            ? api.transactions.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }).catch(deniedAs([] as Transaction[]))
-            : Promise.resolve([] as Transaction[]),
+          /* Hamshira/laborantga pul yopiq bo'lsa server 403 beradi — bo'sh ro'yxat.
+             Ega Kassani ochib bergan bo'lsa — ro'yxat keladi. */
+          api.transactions.getAll(clinicId, { from: sinceDate(INITIAL_DAYS) }).catch(deniedAs([] as Transaction[])),
           api.services.getAll(clinicId),
           api.doctors.getAll(clinicId),
           api.receptionists.getAll(clinicId),
@@ -719,7 +717,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
        · oynadan eski qatorlar qoladi. */
   const refreshRecentTransactions = (): Promise<void> => {
     if (!clinicId) return Promise.resolve();
-    if (userRole === UserRole.NURSE || userRole === UserRole.LAB_TECHNICIAN) return Promise.resolve();
+    if (!canSeeFinance(parseAccessControl(currentClinic), userRole)) return Promise.resolve();
     const from = sinceDate(INITIAL_DAYS);
     const idsAtStart = new Set(transactions.map(x => x.id));
     return api.transactions.getAll(clinicId, { from })
@@ -1181,7 +1179,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
     }
     return canOpenModule(userRole, accessControl, moduleId)
       ? element
-      : <Navigate to={homeFor(userRole)} replace />;
+      : <Navigate to={homeFor(userRole, accessControl)} replace />;
   };
   const showPatientPhoneForRole = canSeePatientPhone(accessControl, userRole);
 
@@ -1895,7 +1893,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
               {/* BOSH SAHIFA — rolga qarab (`homeFor`): ega, registrator va
                   shifokor «Bugun» ga, laborant Laboratoriyaga, hamshira
                   Statsionarga tushadi. */}
-              <Route path="/" element={<Navigate to={homeFor(userRole)} replace />} />
+              <Route path="/" element={<Navigate to={homeFor(userRole, accessControl)} replace />} />
 
               {/* ── HISOBOT — faqat egaga ────────────────────────────────
                   Davr bo'yicha tahlil: hisobot va davomat. Bugungi holat
@@ -2037,6 +2035,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                     clinicId={clinicId}
                     addToast={addToast}
                     onStaffChanged={refreshStaffLists}
+                    canSeePay={userRole === UserRole.CLINIC_ADMIN}
                   />)
               } />
 
@@ -2134,7 +2133,10 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                 />
               )} />
 
-              {(userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST) && (
+              {/* Ombor, Xabarlar, Sozlamalar — boshqa bo'limlar kabi `guard` orqali.
+                  Ilgari bu yerda «faqat ega va registrator» sharti turardi:
+                  ega shifokorga Omborni ochib bersa ham sahifa topilmasdi. */}
+              {(
                 <>
                   {/* SHIFOKORLAR ANALITIKASI OLIB TASHLANDI.
 
@@ -2152,6 +2154,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                       items={inventoryItems}
                       userName={userName}
                       userRole={userRole}
+                      canManage={permsFor(userRole, currentClinic).can('inventory', 'items', 'create')}
                       departments={departments}
                       onAddItem={addInventoryItem}
                       onDeleteItem={deleteInventoryItem}
@@ -2173,9 +2176,8 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                       ochilardi: shablonlar, segmentlar va bemor ro'yxati
                       ko'rinib turardi. */}
                   <Route path="/messages" element={
-                    userRole !== UserRole.CLINIC_ADMIN
-                      ? <Navigate to={homeFor(userRole)} replace />
-                      : <MessagesManagement
+                    guard('messages',
+                      <MessagesManagement
                       clinicId={clinicId}
                       currentClinic={currentClinic}
                       doctors={doctors}
@@ -2186,7 +2188,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                         catch { /* xato toast orqali ko'rsatilgan bo'ladi */ }
                       }}
                     />
-                  } />
+                    )} />
 
                   <Route path="/settings" element={
                     guard('settings',

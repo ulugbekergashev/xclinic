@@ -10,6 +10,7 @@ import { confirmAction } from '../services/confirm';
 import { Ward, Bed, Admission, Patient, Department, InventoryItem } from '../types';
 import { api } from '../services/api';
 import { EmptyState } from '../components/Common';
+import { permsFor } from '../utils/accessControl';
 import { useLanguage, tr, fill, TranslationKey } from '../context/LanguageContext';
 /* PALATA TURI. Bazada o'zbekcha qiymat turadi («Umumiy», «Lyuks» …) —
    eski yozuvlar buzilmasin. Ekranda esa tildagi yorliq. */
@@ -158,7 +159,8 @@ export const Inpatient: React.FC<Props> = ({
     /* Palata ochish, yotqizish va chiqarish — hamshiraning ishi emas; server
        ham 403 beradi. Ro'yxat "kimga mumkin" emas, "kimga mumkin emas" bo'yicha:
        shunda qolgan rollarda hech narsa o'zgarmaydi. */
-    const canManageStay = userRole !== 'NURSE';
+    /* «Xodimlar → Ruxsatlar → Statsionar»: yotqizish, ko'chirish, chiqarish */
+    const canManageStay = permsFor(userRole, currentClinic).can('inpatient', 'admissions', 'edit');
 
     // Bitta bemorning kunlik dori varag'i
     const [mar, setMar] = useState<any>(null);

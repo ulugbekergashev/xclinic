@@ -22,6 +22,7 @@
    bo'lgan jurnalga ishonch yo'q.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs } from './permissions';
 import type express from 'express';
 import { tashkentDateStr } from './tashkentTime';
 
@@ -231,7 +232,8 @@ export function registerComplianceRoutes(app: express.Express, deps: Deps) {
         });
     };
 
-    const hasRole = (req: any, ...roles: string[]) => roles.includes((req as any).user?.role);
+    /* Ochib berilgan bo'limlarni ham hisobga oladi (`permissions.ts`, actsAs) */
+    const hasRole = (req: any, ...roles: string[]) => actsAs(req, ...roles);
 
     // ═══ HUJJATLAR ═══════════════════════════════════════════════════════════
 

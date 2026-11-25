@@ -1,5 +1,6 @@
 import { AccessControl, RoleAccess, Clinic, UserRole } from '../types';
 import { tr } from '../context/LanguageContext';
+import { makePermChecker, PermChecker } from './staffPerms';
 
 // Klinika sozlamalaridagi ruxsatlarni o'qish uchun yagona manba.
 // accessControl bo'lmasa (eski klinikalar, backend hali yangilanmagan) — hammasi ochiq.
@@ -54,8 +55,15 @@ export function canSeeFinance(ac: AccessControl, role: UserRole): boolean {
     // Laborant ham — server (`backend/permissions.ts`, `canReadFinance`)
     // ikkalasiga moliyaviy o'qishni doim 403 bilan yopadi; ekran undan
     // keng bo'lsa, bo'sh sahifa va xato so'rovlar chiqardi.
-    if (role === UserRole.NURSE || role === UserRole.LAB_TECHNICIAN) return false;
+    // 2026-11-25: ega aniq ochib bersa (`showFinance: true`) — ularga ham ochiladi.
+    if (role === UserRole.NURSE || role === UserRole.LAB_TECHNICIAN) return getRoleAccess(ac, role)?.showFinance === true;
     return getRoleAccess(ac, role)?.showFinance !== false;
+}
+
+/** Xodim ruxsatlari (Xodimlar → Ruxsatlar). Ega uchun — hammasi ochiq.
+    Server ham aynan shu katalog bilan tekshiradi (`backend/staffPerms.ts`). */
+export function permsFor(role: UserRole | string | undefined, clinic?: Clinic | null): PermChecker {
+    return makePermChecker(role, clinic?.accessControl);
 }
 
 export function canSeePatientPhone(ac: AccessControl, role: UserRole): boolean {

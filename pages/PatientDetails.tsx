@@ -28,7 +28,7 @@ import { useResourceSync } from '../hooks/useDataSync';
 import { useLanguage } from '../context/LanguageContext';
 import { formatDobDDMMYYYY, calcAge, todayISO } from '../utils/dateUtils';
 import type { TranslationKey } from '../i18n/translations';
-import { maskPhone } from '../utils/accessControl';
+import { maskPhone, permsFor } from '../utils/accessControl';
 import { printPatientCard } from '../utils/printPatientCard';
 
 import { ReceiptModal } from '../components/ReceiptModal';
@@ -234,8 +234,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    /* Tibbiy tarixni (allergiya ham) shifokor, ega va registrator to'ldiradi —
       klinika egasi, 2026-11-21. Hamshira emas: server bemor yozuvini unga
       ochmaydi (`PUT /api/patients/:id`), tugma ko'rinib saqlamasa yomonroq. */
-   const canEditAnamnesis = userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.DOCTOR
-      || userRole === UserRole.RECEPTIONIST;
+   const perms = permsFor(userRole, currentClinic);
+   /* «Xodimlar → Ruxsatlar → Bemorlar» bo'yicha (server ham shunday) */
+   const canEditAnamnesis = perms.can('patients', 'card', 'edit');
    /* «yangilandi … · …» — allergiya o'zgarsa yangi belgi `summary` bilan
       keladi, kasallik va qolgani o'zgarsa — bemor yozuvi bilan. Qaysi biri
       keyinroq bo'lsa, o'sha. */
@@ -748,7 +749,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                />
    );
    /* To'lovlar tabi — faqat ega va registrator (server boshqalarga 403) */
-   const seesMoney = userRole === UserRole.CLINIC_ADMIN || userRole === UserRole.RECEPTIONIST;
+   /* To'lovlar — «Bemorlar → To'lovlar tarixi» ruxsati bo'yicha (standartda: ega va registrator) */
+   const seesMoney = perms.can('patients', 'payhist', 'view');
    const admittedNow = (summary?.admissions || []).some(a => !a.dischargedAt && a.status !== 'Discharged' && a.status !== 'Cancelled');
 
    return (

@@ -92,7 +92,8 @@ import { registerTodayZonesRoutes } from './todayZones';
 import { requestStableTunnel } from './tunnelClient';
 import { readTunnelAddresses, notifyBackupAddress } from './tunnelAddresses';
 import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
-import { check as checkPermission, isFinanceRead, canReadFinance } from './permissions';
+import { check as checkPermission, isFinanceRead, isMoneyStrippedRead, canReadFinance, sanitizeAccessControl, checkStaffPerm, actsAs, discountWithinLimit, discountDenied } from './permissions';
+import { makePermChecker } from './staffPerms';
 import { validatePatient, validatePhone } from '../shared/validation';
 const cron = require('node-cron');
 const { botManager } = require('./botManager');
@@ -552,9 +553,9 @@ const ACCESS_ROLE_KEY: Record<string, string> = {
 };
 const accessControlCache = new Map<string, { at: number; value: any }>();
 
-async function financeFlagFor(user: any): Promise<boolean | undefined> {
-    const key = ACCESS_ROLE_KEY[user?.role];
-    if (!key || !user?.clinicId) return undefined;
+/** Klinikaning butun «Ruxsatlar» sozlamasi (keshlangan) */
+async function clinicAccessControl(user: any): Promise<any> {
+    if (!user?.clinicId) return {};
     let hit = accessControlCache.get(user.clinicId);
     if (!hit || Date.now() - hit.at > ACCOUNT_CACHE_MS) {
         const row: any = await prisma.clinic.findUnique({
@@ -565,7 +566,18 @@ async function financeFlagFor(user: any): Promise<boolean | undefined> {
         hit = { at: Date.now(), value };
         accessControlCache.set(user.clinicId, hit);
     }
-    return hit.value?.[key]?.showFinance;
+    return hit.value || {};
+}
+
+/** Shu rolning «Ruxsatlar» dagi yozuvi */
+async function roleAccessFor(user: any): Promise<any> {
+    const key = ACCESS_ROLE_KEY[user?.role];
+    if (!key || !user?.clinicId) return undefined;
+    return (await clinicAccessControl(user))?.[key];
+}
+
+async function financeFlagFor(user: any): Promise<boolean | undefined> {
+    return (await roleAccessFor(user))?.showFinance;
 }
 
 /** Token hali kuchdami: akkaunt bor, faol va paroli almashtirilmagan. */
@@ -663,7 +675,38 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
            Marshrutlardagi mavjud `requireRole` middleware'lari o'z o'rnida
            qoldirildi: ular endi ikkinchi qatlam, va bir-biriga zid emas —
            jadval ularning ruxsatini takrorlaydi. */
-        const decision = checkPermission(req.method, req.path, user?.role);
+        /* ISH ROLLARI — ega ochib bergan bo'limda xodim o'sha bo'limning
+           odatiy ishchisi bo'lib ishlaydi (`permissions.ts`, MODULE_GRANTS).
+           Sozlamani o'qib bo'lmasa — faqat asl roli (yopiq tomonga). */
+        /* XODIM RUXSATLARI (Xodimlar → Ruxsatlar, DentaCRM modeli). Jadvalda
+           bor amal uchun egadan boshqa xodimda qaror SHU YERDA — rol qoidasi
+           ishlatilmaydi. Sozlamani o'qib bo'lmasa — rad (yopiq tomonga). */
+        let ac: any = {};
+        try { ac = await clinicAccessControl(user); }
+        catch (e: any) {
+            console.error("Ruxsatlar o'qilmadi:", e?.message || e);
+            return res.status(500).json({ error: "Ruxsatni tekshirib bo'lmadi" });
+        }
+        (req as any).roleAccess = ac?.[ACCESS_ROLE_KEY[user?.role]];
+        (req as any).perms = makePermChecker(user?.role, ac);
+        const staffDecision = checkStaffPerm(req.method, req.path, user?.role, ac, req);
+        if (staffDecision.matched) {
+            if (!staffDecision.allow) {
+                return res.status(403).json({ error: `Ruxsat yo'q: ${staffDecision.what}`, code: 'FORBIDDEN' });
+            }
+            (req as any).permAllowed = true;
+            /* Xodimlar ro'yxati ochilgan registrator — maosh va (mavjud
+               xodimning) parolini o'zgartira olmaydi: bu faqat egada. */
+            if (user?.role !== 'CLINIC_ADMIN' && /^\/api\/(doctors|receptionists|lab-technicians|nurses)(\/|$)/.test(req.path)
+                && req.body && typeof req.body === 'object') {
+                for (const f of STAFF_SALARY_FIELDS) delete (req.body as any)[f];
+                if (req.method.toUpperCase() !== 'POST') delete (req.body as any).password;
+            }
+        }
+
+        const decision = staffDecision.matched
+            ? { allow: true as const }
+            : checkPermission(req.method, req.path, user?.role);
         if (!decision.allow) {
             if (decision.reason === 'unlisted') {
                 /* Bu dasturchining xatosi, foydalanuvchiniki emas: marshrut
@@ -693,6 +736,19 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
             } catch (e: any) {
                 console.error('Moliya ruxsati tekshiruvi:', e?.message || e);
                 return res.status(500).json({ error: "Ruxsatni tekshirib bo'lmadi" });
+            }
+        }
+
+        /* Bemor sonlari + pul bitta javobda (`/api/reports/snapshot`).
+           Pulni ko'rmaydigan rol uni oladi, lekin summalarsiz — marshrut
+           `req.hideMoney` ga qarab tozalaydi. Tekshirib bo'lmasa — yopiq. */
+        if (isMoneyStrippedRead(req.method, req.path)) {
+            try {
+                const showFinance = await financeFlagFor(user);
+                (req as any).hideMoney = !canReadFinance(req.path, user?.role, showFinance);
+            } catch (e: any) {
+                console.error('Moliya ruxsati tekshiruvi:', e?.message || e);
+                (req as any).hideMoney = true;
             }
         }
 
@@ -760,7 +816,7 @@ const staffForRole = (row: any, role: string | undefined) => {
 // Faqat ko'rsatilgan rollar uchun ruxsat beruvchi middleware.
 const requireRole = (...roles: string[]) => {
     return (req: any, res: any, next: any) => {
-        if (!roles.includes((req as any).user?.role)) {
+        if (!actsAs(req, ...roles)) {
             return res.status(403).json({ error: 'Ruxsat yo\'q' });
         }
         next();
@@ -2454,7 +2510,7 @@ app.get('/api/patients', authenticateToken, async (req, res) => {
            ya'ni mavjud ekranlar buzilmaydi. Bemorlar ro'yxati ekrani shu
            parametrni yuboradi. */
         const wantsClinicScope = String(req.query.scope || '') === 'clinic';
-        if (user?.role === 'DOCTOR' && user?.doctorId && !wantsClinicScope) {
+        if (user?.role === 'DOCTOR' && user?.doctorId && !wantsClinicScope && !(req as any).perms?.scopeAll()) {
             whereClause.doctorId = user.doctorId;
         }
 
@@ -3305,6 +3361,14 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
         if (discountAmount < 0 || discountPercent < 0 || discountPercent > 100) {
             return res.status(400).json({ error: "Chegirma noto'g'ri" });
         }
+        /* Ruxsatlardagi chegirma chegarasi — foiz ham, summa ham */
+        {
+            const gross = som(Number(b.amount) || 0) + discountAmount;
+            const byPct = discountWithinLimit(req, 100, discountPercent);
+            const byAmt = discountWithinLimit(req, gross, discountAmount);
+            if (!byPct.ok) return res.status(403).json(discountDenied(byPct.max));
+            if (!byAmt.ok) return res.status(403).json(discountDenied(byAmt.max));
+        }
 
         // Bog'lanishlar o'z klinikamizga tegishli bo'lishi shart
         if (b.patientId && !(await assertPatientOwnership(req, res, b.patientId))) return;
@@ -3583,7 +3647,12 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
            bugun, faqat mayda toifalar; kim yozgani izohga tushadi; tuzatish
            va o'chirish — egada (`permissions.ts`). Ega hammasini ko'radi. */
         const actor = (req as any).user;
-        const isReceptionist = actor?.role === 'RECEPTIONIST';
+        /* Kassa ochib berilgan shifokor/hamshira/laborant ham registrator
+           kabi ishlaydi — cheklovlar ham unga tegishli. */
+        /* Cheklov egadan boshqa HAR KIMGA (Kassa ochilgan shifokor ham).
+           Ega xarajatlarni «To'liq» qilib bergan xodimdan cheklov olinadi. */
+        const isReceptionist = actor?.role !== 'CLINIC_ADMIN'
+            && !((req as any).perms?.can('finance', 'expenses', 'edit') && (req as any).perms?.can('finance', 'expenses', 'delete'));
         if (isReceptionist) {
             if (!RECEPTION_EXPENSE_CATEGORIES.includes(category)) {
                 return res.status(403).json({ error: "Bu turdagi xarajatni faqat klinika egasi yozadi", code: 'EXPENSE_CATEGORY_DENIED' });
@@ -4037,7 +4106,7 @@ app.post('/api/cash-register/close', authenticateToken, async (req, res) => {
         const existing = await prisma.cashRegisterDay.findUnique({
             where: { clinicId_date_shift: { clinicId, date, shift: shiftNo } },
         });
-        if (existing?.isClosed && user?.role !== 'CLINIC_ADMIN') {
+        if (existing?.isClosed && !(req as any).perms?.flag('finance', 'reopen')) {
             return res.status(409).json({
                 error: "Bu smena allaqachon yopilgan. O'zgartirish uchun klinika egasi uni qayta ochishi kerak.",
                 code: 'ALREADY_CLOSED',
@@ -6150,7 +6219,15 @@ app.put('/api/clinics/:id/cash-settings', authenticateToken, requireRole('CLINIC
 app.put('/api/clinics/:id/access-control', authenticateToken, requireRole('CLINIC_ADMIN'), async (req, res) => {
     try {
         if (!canAccessClinic(req, req.params.id)) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
-        const { accessControl } = req.body;
+        /* Tanadan faqat ma'lum shakl olinadi: to'rt rol, uchta maydon.
+           Ilgari tana tekshiruvsiz saqlanardi — istalgan JSON bazaga tushardi. */
+        const raw = req.body?.accessControl;
+        const accessControl = sanitizeAccessControl(raw);
+        /* Faqat aniq `null` tozalaydi. Buzuq tana «hammasi ochiq» bo'lib
+           jimgina saqlanmasin — cheklovlarni yo'qotish xavfli tomonga. */
+        if (accessControl === null && raw !== null) {
+            return res.status(400).json({ error: "Ruxsatlar shakli noto'g'ri", code: 'BAD_ACCESS_CONTROL' });
+        }
         const clinic = await prisma.clinic.update({
             where: { id: req.params.id },
             data: { accessControl: accessControl ? JSON.stringify(accessControl) : null } as any

@@ -9,6 +9,7 @@
    `getScopedClinicId` orqali o'tadi — clinicId hech qachon mijozdan olinmaydi.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs, discountWithinLimit, discountDenied } from './permissions';
 import type express from 'express';
 import { resolveReferral, REFERRAL_VISIT_SELECT } from './referral';
 import { emitEvent } from './events';
@@ -120,7 +121,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
        shifokor qarori. Qolgan rollarning huquqi o'zgarmaydi — bu yerda
        faqat NURSE qaytariladi. */
     const nurseDenied = (req: any, res: any) => {
-        if (req?.user?.role !== 'NURSE') return false;
+        if (req?.user?.role !== 'NURSE' || req?.permAllowed === true) return false;
         res.status(403).json({ error: "Hamshirada bunga ruxsat yo'q" });
         return true;
     };
@@ -435,6 +436,8 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         if (!name) return res.status(400).json({ error: 'Xizmat nomi majburiy' });
 
         const disc = Number(discount) || 0;
+        const lim = discountWithinLimit(req, basePrice, disc);
+        if (!lim.ok) return res.status(403).json(discountDenied(lim.max));
         const proc = await prisma.treatmentProcedure.create({
             data: {
                 visitId: visit.id,
@@ -589,7 +592,11 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         const RECEPTION_OK = ['complaints', 'vitalSigns'];
         const doctorOnlySent = clinicalSent.filter((k) => !RECEPTION_OK.includes(k));
 
-        if (req.user?.role === 'RECEPTIONIST' && doctorOnlySent.length) {
+        /* «Bugun» ochib berilgan laborant ham registrator kabi — bayonga tegmaydi */
+        /* Bayon, tashxis va reja — faqat shifokor va ega (asl roli bo'yicha).
+           Navbatni yuritishga ruxsat berilgan boshqa xodim ularga tegmaydi. */
+        const asReception = !['DOCTOR', 'CLINIC_ADMIN'].includes(req.user?.role);
+        if (asReception && doctorOnlySent.length) {
             return res.status(403).json({
                 error: "Registrator faqat navbatni yuritadi (holat, shifokor, bo'lim) — bayon va tashxis shifokorniki",
                 code: 'CLINICAL_FIELDS_DENIED',

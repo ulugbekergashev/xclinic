@@ -49,6 +49,49 @@ test.describe('Xodimlar moduli', () => {
         }
     });
 
+    test('Ruxsatlar: bo\'lim ochiladi, tanlov saqlanadi, Sozlamalarda takrori yo\'q', async ({ page }) => {
+        const errors: string[] = [];
+        page.on('pageerror', e => errors.push(e.message.split('\n')[0].slice(0, 200)));
+
+        await login(page);
+        await go(page, '/staff?tab=access');
+        const main = page.locator('main');
+        await expect(main.getByRole('heading', { name: 'Ruxsatlar' })).toBeVisible({ timeout: 15000 });
+
+        /* Bo'limlar OCHIQ turadi — ichidagi amallar darrov ko'rinadi (DentaCRM kabi) */
+        await expect(main.getByText("Bemorni o'chirish").first()).toBeVisible();
+        await expect(main.getByText('Chegirma').first()).toBeVisible();
+
+        /* Shifokorga Omborni ochib beramiz: guruh katagi → «To'liq» */
+        const chip = main.getByRole('button', { name: 'Ombor, Shifokor: Yo\'q' });
+        await chip.click();
+        await page.getByRole('dialog', { name: 'Ombor · Shifokor' }).getByRole('button', { name: /^To'liq/ }).click();
+        await expect(main.getByText(/o'zgarish saqlanmagan/)).toBeVisible();
+        await main.getByRole('button', { name: /^Saqlash$/ }).click();
+        await expect(main.getByText("O'zgarishlar yo'q")).toBeVisible({ timeout: 15000 });
+        try {
+            await page.reload();
+            await expect(page.locator('main').getByRole('button', { name: 'Ombor, Shifokor: To\'liq' }))
+                .toBeVisible({ timeout: 15000 });
+        } finally {
+            /* Qaytarib qo'yamiz — sinov yiqilsa ham, umumiy bazada qolib ketmasin */
+            const m = page.locator('main');
+            const full = m.getByRole('button', { name: 'Ombor, Shifokor: To\'liq' });
+            if (await full.count()) {
+                await full.click();
+                await page.getByRole('dialog', { name: 'Ombor · Shifokor' }).getByRole('button', { name: /^Yo'q/ }).click();
+                await m.getByRole('button', { name: /^Saqlash$/ }).click();
+                await expect(m.getByText("O'zgarishlar yo'q")).toBeVisible({ timeout: 15000 });
+            }
+        }
+
+        await go(page, '/settings');
+        /* Sozlamalar menyusi chizilgach tekshiramiz — bo'sh sahifada «yo'q» har doim to'g'ri */
+        await expect(page.locator('main').getByRole('button', { name: 'Integratsiyalar' })).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('main').getByRole('button', { name: 'Ruxsatlar' })).toHaveCount(0);
+        expect(errors, 'Ruxsatlar ekrani JS xatosisiz ishlashi kerak').toEqual([]);
+    });
+
     test('rol filtri va qidiruv ishlaydi', async ({ page }) => {
         await login(page);
         await go(page, '/staff');
@@ -70,7 +113,8 @@ test.describe('Xodimlar moduli', () => {
         const tag = uniq();
         await page.getByRole('button', { name: /Yangi xodim/ }).click();
         await page.waitForTimeout(500);
-        await page.getByRole('button', { name: /^Laborant/ }).first().click();
+        /* Rol tanlash menyusi — filtrdagi «Laborant 2» tugmasi bilan adashmasin */
+        await page.getByRole('menuitem', { name: /^Laborant/ }).click();
         await page.waitForTimeout(800);
 
         const form = page.locator('form').filter({ has: page.getByLabel(/^familiya/i) }).first();

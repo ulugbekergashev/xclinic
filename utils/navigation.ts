@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { UserRole, AccessControl } from '../types';
 import type { TranslationKey } from '../i18n/translations';
-import { isModuleHidden, canSeeFinance } from './accessControl';
+import { makePermChecker } from './staffPerms';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    MENYU — YAGONA RO'YXAT.
@@ -121,13 +121,33 @@ export function accessModulesFor(role: UserRole): NavItemDef[] {
         item.roles.includes(role) && role !== UserRole.CLINIC_ADMIN);
 }
 
+/* ─── QAYSI BO'LIM OCHIQ ─────────────────────────────────────────────────
+
+   «Xodimlar → Ruxsatlar» (DentaCRM modeli, `utils/staffPerms.ts`) har rol
+   uchun har bo'limni ochadi yoki yopadi. `roles` endi «odatda kimda bor»
+   degani — «Standart» shablon shundan tuzilgan. Ega hammasini ko'radi.
+   Server ham xuddi shu katalogga qaraydi (`backend/permissions.ts`). */
+
+function rawOpen(role: UserRole, ac: AccessControl, item: NavItemDef): boolean {
+    if (role === UserRole.CLINIC_ADMIN) return item.roles.includes(role);
+    return makePermChecker(role, ac).menu(item.id);
+}
+
+/** Rolga ochiq bo'limlar. Hammasi yopilgan bo'lsa — bosh sahifa ochiq
+    qoladi: aks holda xodim kira olmay, qo'riqchi aylanib qolardi. */
+function openModuleIds(role: UserRole, ac: AccessControl): Set<string> {
+    const ids = new Set(NAVIGATION.filter(i => !i.hidden && rawOpen(role, ac, i)).map(i => i.id));
+    if (ids.size === 0) {
+        const home = homeModuleId(role);
+        if (home) ids.add(home);
+    }
+    return ids;
+}
+
 /** Rol va «Ruxsatlar» sozlamasiga ko'ra ko'rinadigan punktlar */
 export function visibleNavigation(role: UserRole, ac: AccessControl): NavItemDef[] {
-    return NAVIGATION.filter(item =>
-        item.roles.includes(role) && !item.hidden
-        && !isModuleHidden(ac, role, item.id)
-        && (item.id !== 'finance' || canSeeFinance(ac, role)),
-    );
+    const open = openModuleIds(role, ac);
+    return NAVIGATION.filter(item => !item.hidden && open.has(item.id));
 }
 
 /* TELEFONDAGI PASTKI PANEL — to'rtta joy.
@@ -148,15 +168,29 @@ export function phoneNavigation(items: NavItemDef[], slots = 4): NavItemDef[] {
 export function canOpenModule(role: UserRole, ac: AccessControl, moduleId: string): boolean {
     const item = NAVIGATION.find(n => n.id === moduleId);
     if (!item) return true;                       // menyuda yo'q sahifalar cheklanmaydi
-    if (!item.roles.includes(role)) return false;
-    if (isModuleHidden(ac, role, moduleId)) return false;
-    if (moduleId === 'finance' && !canSeeFinance(ac, role)) return false;
-    return true;
+    return openModuleIds(role, ac).has(moduleId);
 }
 
-/** Rolning bosh sahifasi — kirganda shu yerga tushadi, ruxsat bo'lmaganda shu yerga qaytariladi */
-export function homeFor(role: UserRole): string {
+/** Rolning ODATIY bosh sahifasi */
+function defaultHome(role: UserRole): string {
     if (role === UserRole.NURSE) return '/inpatient';
     if (role === UserRole.LAB_TECHNICIAN) return '/lab';
     return '/reception';
+}
+
+/** Rolning bosh sahifasi — kirganda shu yerga tushadi, ruxsat bo'lmaganda
+    shu yerga qaytariladi. Ega odatiy bosh sahifani yopgan bo'lsa — menyudagi
+    birinchi ochiq bo'lim. */
+export function homeFor(role: UserRole, ac?: AccessControl): string {
+    const home = defaultHome(role);
+    if (!ac) return home;
+    const visible = visibleNavigation(role, ac);
+    if (visible.some(i => i.path === home)) return home;
+    return visible[0]?.path || home;
+}
+
+/** Odatiy bosh sahifa qaysi menyu bandi */
+export function homeModuleId(role: UserRole): string | undefined {
+    const path = defaultHome(role);
+    return NAVIGATION.find(n => n.path === path)?.id;
 }

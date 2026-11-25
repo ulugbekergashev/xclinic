@@ -587,7 +587,8 @@ export interface Clinic {
 // Maydon yo'q bo'lsa — hozirgi (hammasi ochiq) xatti-harakat saqlanadi.
 export interface RoleAccess {
   hiddenModules?: string[];   // yashirilgan modul id lari (nav id: 'finance', 'leads', ...)
-  showFinance?: boolean;      // pul ko'rsatkichlari (dashboard KPI, tushum grafigi); default true
+  grantedModules?: string[];  // rolga odatda berilmaydigan, ega ochib bergan modullar (shifokorga Kassa ...)
+  showFinance?: boolean;      // pul ko'rsatkichlari; shifokor/registratorda default true, hamshira/laborantda default false
   showPatientPhone?: boolean; // bemor telefon raqamlari; default true
 }
 

@@ -10,6 +10,7 @@ import { fmtDateTime, PrintClinic } from '../utils/printDocument';
 import { printReceipt } from '../utils/printReceipt';
 
 import { useLanguage, fill } from '../context/LanguageContext';
+import { permsFor } from '../utils/accessControl';
 /* ─────────────────────────────────────────────────────────────────────────────
    QARZNI TO'LASH — BITTA BEMOR, BITTA CHEK.
 
@@ -62,8 +63,10 @@ export const ChargePaymentModal: React.FC<Props> = ({
     isOpen, onClose, patientName, charges, patientId, receivedByName, role, clinic, onDone, addToast,
 }) => {
     const { t } = useLanguage();
-    const canDiscount = role === 'CLINIC_ADMIN';
-    const canRefund = role === 'CLINIC_ADMIN';
+    /* «Xodimlar → Ruxsatlar → Pul» bo'yicha (server ham shunday tekshiradi) */
+    const perms = permsFor(role, clinic as any);
+    const canDiscount = perms.limit('money', 'discount') > 0;
+    const canRefund = perms.flag('money', 'refund');
 
     // To'langan qatorlar — faqat qaytarish uchun, alohida so'rov bilan
     const [paidRows, setPaidRows] = useState<VisitCharge[]>([]);

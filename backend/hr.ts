@@ -30,6 +30,7 @@
    savol javobsiz qoladi.
    ───────────────────────────────────────────────────────────────────────────── */
 
+import { actsAs } from './permissions';
 import type express from 'express';
 import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
@@ -182,7 +183,7 @@ export function registerHrRoutes(app: express.Express, deps: Deps) {
             try {
                 const clinicId = getScopedClinicId(req);
                 if (!clinicId) return res.status(400).json({ error: 'clinicId aniqlanmadi' });
-                if ((req as any).user?.role !== 'CLINIC_ADMIN') {
+                if (!actsAs(req, 'CLINIC_ADMIN')) {
                     return res.status(403).json({ error: "Ruxsat yo'q" });
                 }
                 await handler(req, res, clinicId);
