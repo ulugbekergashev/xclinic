@@ -1,319 +1,194 @@
 import React, { useState, useEffect } from 'react';
-import {
-    ComposedChart, Area, Line, BarChart, Bar, XAxis, YAxis,
-    CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
-} from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CalendarX2 } from 'lucide-react';
 import { formatNumber } from '../utils/format';
-import { doctorColor } from '../utils/chartColors';
 import { api } from '../services/api';
-
 import { useLanguage, fill, tr, TranslationKey } from '../context/LanguageContext';
+import { KpiStrip, CardHead, ChartTip, Calculating, Empty, useIsDark, chartTheme } from './report/shared';
+
 /* Server `name` ni o'zbekcha beradi; ekranda hafta kuni raqamidan tildagi nom olinadi (0 = yakshanba). */
-/* Hafta kuni raqami kelmasa (demo javobida faqat `name`) — server bergan nom; ilgari «ui.wd_undefined» chiqardi */
 const wdName = (n: number | undefined, fallback = '') => (n == null || Number.isNaN(Number(n)) ? fallback : tr(`ui.wd_${n}` as TranslationKey));
+/** 10.7 → «10,7» (o'nlik vergul bilan) */
+const dec = (n: number) => String(Math.round((Number(n) || 0) * 10) / 10).replace('.', ',');
 
 /* ─────────────────────────────────────────────────────────────────────
-   DAVOMAT HISOBOTI.
+   DAVOMAT HISOBOTI — «qaysi kunlarda va soatlarda bemor ko'p keladi,
+   kim kelmay qoladi?» Klinika egasining jadval tuzishdagi savoli.
 
-   «Qaysi kunlarda mijoz yaxshi kelyapti?» — klinika egasining jadval
-   tuzishdagi asosiy savoli. Kam keladigan kunga ko'p shifokor qo'yish
-   ham, gavjum kunga kam qo'yish ham zarar.
-
-   Hisobot kalendarning ichida turadi (uchinchi ko'rinish), chunki savol
-   aynan shu ekranga qarab tug'iladi.
-   Grafiklar `recharts` da — loyihada allaqachon shu ishlatiladi
-   (Boshqaruv paneli, Shifokorlar tahlili, Moliya hisoboti), ya'ni
-   yangi kutubxona qo'shilmadi va uslub bir xil bo'lib qoldi.
+   2026-11-26 (olti maslahatchi):
+   • Davr — Hisobotning UMUMIY davri. Ilgari bu yerda o'z «30 kun /
+     90 kun / 1 yil» tanlovi bor edi: Umumiy «Olindi 4,4 mln» yonida
+     Davomat «Tushum 19,1 mln» — ikki xil davr, bir xil ekran.
+   • «Tushum» plitkasi va chizig'i olib tashlandi: pul — Umumiyda.
+   • «Hafta kunlari — raqamlar» jadvali olib tashlandi: u grafikni
+     takrorlardi. Shifokorlar — grafik emas, «kim kelmay qoldi» ro'yxati.
    ───────────────────────────────────────────────────────────────── */
-const StatTile: React.FC<{ label: string; value: string; hint?: string; tone?: 'ok' | 'warn' | 'plain' }> =
-  ({ label, value, hint, tone = 'plain' }) => (
-    <div className="bg-surface rounded-xl border border-line p-4">
-      <div className="text-xs text-muted">{label}</div>
-      <div className={`text-2xl font-bold mt-1 ${
-        tone === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
-        : tone === 'warn' ? 'text-amber-600 dark:text-amber-400'
-        : 'text-ink'}`}>{value}</div>
-      {hint && <div className="text-xs text-faint mt-0.5">{hint}</div>}
-    </div>
-  );
 
-/* Grafiklar `recharts` da — loyihada allaqachon shu ishlatiladi
-   (Boshqaruv paneli, Shifokorlar tahlili, Moliya hisoboti). Yangi
-   kutubxona qo'shish kerak emas va uslub bir xil bo'lib qoladi. */
-const AXIS = '#768692';
-const GRID = '#354550';
+const AttendanceReport: React.FC<{ data: any }> = ({ data }) => {
+    const { t } = useLanguage();
+    const dark = useIsDark();
+    const c = chartTheme(dark);
 
-/* Grafik ustidagi izoh oynasi. Recharts ning o'zinikisi oq fonli va
-   to'q mavzuda o'qilmaydi, shuning uchun o'zimizniki. */
-const ChartTip: React.FC<any> = ({ active, payload, label, suffix }) => {
-  if (!active || !payload || !payload.length) return null;
-  return (
-    <div className="rounded-lg border border-line bg-surface px-3 py-2 shadow-lg text-xs">
-      <div className="font-semibold text-ink mb-1">{label}</div>
-      {payload.map((x: any) => (
-        <div key={x.dataKey} className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: x.color || x.fill }} />
-          <span className="text-muted">{x.name}:</span>
-          <span className="font-medium text-ink tabular-nums">
-            {formatNumber(x.value)}{suffix || ''}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-};
+    const tot = data.totals || {};
+    const wd: any[] = data.byWeekday || [];
+    const docs: any[] = (data.byDoctor || []).filter((d: any) => d.booked > 0);
+    const daily = (data.byDay || []).map((d: any) => ({ ...d, label: `${d.date.slice(8, 10)}.${d.date.slice(5, 7)}` }));
+    const hours = (data.byHour || []).filter((h: any) => h.booked > 0)
+        .map((h: any) => ({ ...h, label: `${h.hour}:00`, noShow: Math.max(0, h.booked - h.arrived) }));
+    const wdChart = wd.map((w: any) => ({ ...w, short: wdName(w.weekday, w.name).slice(0, 3) }));
+    const maxWd = Math.max(1, ...wd.map((w: any) => w.avgVisits || 0));
+    const maxDoc = Math.max(1, ...docs.map(d => d.booked || 0));
 
-const AttendanceReport: React.FC<{
-  data: any; busy: boolean; days: number; onDays: (d: number) => void; error: string | null;
-}> = ({ data, busy, days, onDays, error }) => {
-    const { t: tr } = useLanguage();
-  if (busy && !data) {
-    return <div className="flex-1 grid place-items-center text-faint py-20">{tr('attendancereport.hisobot_yigilmoqda')}</div>;
-  }
-  if (!data) {
-    /* Sabab KO'RSATILADI. Ilgari bu yerda quruq «yuklab bo'lmadi»
-       turardi va nima bo'lganini bilishning iloji yo'q edi — server
-       eskimi, tarmoqmi, ruxsatmi, hech narsa aytilmasdi. */
+    if (!tot.booked) return <Empty icon={CalendarX2} text={t('ui.bu_davrda_yozuv_yoq')} />;
+
+    const best = data.best, worst = data.worst;
+    const footer = best && worst && best.weekday !== worst.weekday
+        ? fill(t('report.att.bestWorst'), wdName(best.weekday, best.name), dec(best.avgVisits), wdName(worst.weekday, worst.name), dec(worst.avgVisits))
+        : undefined;
+
+    const axis = { tick: { fill: c.axis, fontSize: 11 }, tickLine: false, axisLine: false } as const;
+
     return (
-      <div className="flex-1 grid place-items-center py-20 px-4">
-        <div className="text-center max-w-md">
-          <div className="text-muted mb-2">{tr('attendancereport.hisobotni_yuklab_bolmadi')}</div>
-          {error && (
-            <div className="text-xs font-mono text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2 mb-2">
-              {error}
-            </div>
-          )}
-          <div className="text-xs text-faint">
-            {tr('attendancereport.agar_404_yozilgan_bolsa')}
-          </div>
-        </div>
-      </div>
-    );
-  }
+        <div className="space-y-4">
+            <KpiStrip footer={footer} items={[
+                { key: 'booked', label: t('attendancereport.yozilgan'), value: formatNumber(tot.booked), hint: t('attendancereport.kalendardagi_yozuvlar') },
+                { key: 'arrived', label: t('attendancereport.kelgan'), value: formatNumber(tot.arrived), tone: 'ok', hint: fill(t('report.att.ofBooked'), tot.arrivalRate ?? 0) },
+                { key: 'noShow', label: t('report.att.noShow'), value: formatNumber(tot.noShow), tone: tot.noShowRate > 15 ? 'warn' : undefined, hint: fill(t('report.att.noShowHint'), tot.noShowRate ?? 0) },
+                { key: 'cancelled', label: t('attendancereport.bekor_qilingan'), value: formatNumber(tot.cancelled), hint: t('attendancereport.oldindan_aytgan') },
+            ]} />
 
-  const t = data.totals || {};
-  const wd = data.byWeekday || [];
-  const docs = data.byDoctor || [];
-
-  /* Kunlik qator. Sana «24.08» ko'rinishida — grafik o'qi ostida
-     to'liq sana sig'maydi. */
-  const daily = (data.byDay || []).map((d: any) => ({
-    ...d,
-    label: d.date.slice(8, 10) + '.' + d.date.slice(5, 7),
-    revenueK: Math.round((d.revenue || 0) / 1000),
-  }));
-
-  const hours = (data.byHour || []).filter((h: any) => h.booked > 0)
-    .map((h: any) => ({ ...h, label: h.hour + ':00', kelmagan: Math.max(0, h.booked - h.arrived) }));
-
-  const wdChart = wd.map((w: any) => ({ ...w, short: wdName(w.weekday, w.name).slice(0, 3) }));
-  const maxWd = Math.max(1, ...wd.map((w: any) => w.avgVisits || 0));
-
-  return (
-    <div className="flex-1 overflow-auto space-y-4 pb-4">
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted">{tr('common.period')}:</span>
-        {[30, 90, 365].map(d => (
-          <button key={d} type="button" onClick={() => onDays(d)}
-            className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-              days === d
-                ? 'border-primary-600 bg-primary-600 text-white'
-                : 'border-line text-muted hover:bg-elevated'}`}>
-            {d === 365 ? tr('attendancereport.1_yil') : fill(tr('ui.x_kun'), d)}
-          </button>
-        ))}
-        <span className="text-xs text-faint ml-1">
-          {data.range?.from} — {data.range?.to} · {data.range?.days} {tr('attendancereport.kunda_yozuv_bor')}
-        </span>
-        {busy && <span className="text-xs text-faint">{tr('attendancereport.yangilanmoqda')}</span>}
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatTile label={tr('attendancereport.yozilgan')} value={formatNumber(t.booked)} hint={tr('attendancereport.kalendardagi_yozuvlar')} />
-        <StatTile label={tr('attendancereport.kelgan')} value={formatNumber(t.arrived)} tone="ok" hint={`${t.arrivalRate}%`} />
-        <StatTile label="Kelmagan" value={formatNumber(t.noShow)} tone={t.noShowRate > 15 ? 'warn' : 'plain'}
-                  hint={`${t.noShowRate}% — ogohlantirmasdan`} />
-        <StatTile label={tr('attendancereport.bekor_qilingan')} value={formatNumber(t.cancelled)} hint={tr('attendancereport.oldindan_aytgan')} />
-        <StatTile label={tr('attendancereport.tushum')} value={formatNumber(t.revenue)} hint={tr('attendancereport.som_shu_davrda')} />
-      </div>
-
-      {data.best && data.worst && data.best.weekday !== data.worst.weekday && (
-        <div className="rounded-xl border border-line bg-surface p-4">
-          <div className="text-sm text-muted">
-            {tr('attendancereport.eng_gavjum_kun')} <b className="text-emerald-600 dark:text-emerald-400">{wdName(data.best.weekday, data.best.name)}</b>,
-            {tr('attendancereport.kuniga_ortacha_2')} <b>{data.best.avgVisits}</b> {tr('attendancereport.ta_qabul_eng_boshi')} — <b className="text-amber-600 dark:text-amber-400">{wdName(data.worst.weekday, data.worst.name)}</b>,
-            <b> {data.worst.avgVisits}</b> {tr('attendancereport.ta')}
-            {data.worst.avgVisits > 0 && (
-              <> {tr('attendancereport.farqi')} <b>{Math.round((data.best.avgVisits / data.worst.avgVisits) * 10) / 10} barobar</b>.</>
+            {daily.length > 1 && (
+                <section className="card" aria-labelledby="att-daily">
+                    <CardHead id="att-daily" title={t('attendancereport.kunma_kun')}
+                        right={
+                            <div className="flex items-center gap-4 text-[12px] text-muted" aria-hidden="true">
+                                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: c.primarySoft }} />{t('ui.yozilgan')}</span>
+                                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: c.primary }} />{t('attendancereport.kelgan')}</span>
+                            </div>
+                        } />
+                    <div className="px-2 pb-3">
+                        <ResponsiveContainer width="100%" height={220}>
+                            <BarChart data={daily} margin={{ top: 6, right: 16, left: 0, bottom: 0 }} barGap={2}>
+                                <CartesianGrid stroke={c.grid} vertical={false} />
+                                <XAxis dataKey="label" {...axis} interval="preserveStartEnd" minTickGap={18} />
+                                <YAxis {...axis} width={32} allowDecimals={false} />
+                                <Tooltip content={<ChartTip formatter={formatNumber} />} cursor={{ fill: c.grid }} />
+                                <Bar dataKey="booked" name={t('ui.yozilgan')} fill={c.primarySoft} radius={[3, 3, 0, 0]} maxBarSize={18} />
+                                <Bar dataKey="arrived" name={t('attendancereport.kelgan')} fill={c.primary} radius={[3, 3, 0, 0]} maxBarSize={18} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </section>
             )}
-          </div>
-          <div className="text-xs text-faint mt-1">
-            {tr('attendancereport.shifokorlar_jadvalini_shu_nisbatga')}
-          </div>
+
+            <div className="grid lg:grid-cols-2 gap-4">
+                <section className="card" aria-labelledby="att-wd">
+                    <CardHead id="att-wd" title={t('attendancereport.hafta_kunlari')} hint={t('report.att.wdHint')} />
+                    <div className="px-2 pb-3">
+                        <ResponsiveContainer width="100%" height={200}>
+                            <BarChart data={wdChart} margin={{ top: 6, right: 16, left: 0, bottom: 0 }}>
+                                <CartesianGrid stroke={c.grid} vertical={false} />
+                                <XAxis dataKey="short" {...axis} />
+                                <YAxis {...axis} width={28} />
+                                <Tooltip content={<ChartTip formatter={dec} />} cursor={{ fill: c.grid }} />
+                                <Bar dataKey="avgVisits" name={t('attendancereport.kuniga_ortacha')} radius={[4, 4, 0, 0]} maxBarSize={36}>
+                                    {wdChart.map((w: any, i: number) => (
+                                        <Cell key={w.weekday ?? i}
+                                            fill={w.avgVisits >= maxWd * 0.85 ? c.success : w.avgVisits <= maxWd * 0.45 ? c.warning : c.primary} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </section>
+
+                <section className="card" aria-labelledby="att-hours">
+                    <CardHead id="att-hours" title={t('attendancereport.kun_davomida')} hint={t('attendancereport.qaysi_soatda_gavjum')} />
+                    {hours.length === 0 ? (
+                        <p className="px-5 pb-6 text-sm text-faint">{t('ui.malumot_yoq')}</p>
+                    ) : (
+                        <div className="px-2 pb-3">
+                            <ResponsiveContainer width="100%" height={200}>
+                                <BarChart data={hours} margin={{ top: 6, right: 16, left: 0, bottom: 0 }}>
+                                    <CartesianGrid stroke={c.grid} vertical={false} />
+                                    <XAxis dataKey="label" {...axis} />
+                                    <YAxis {...axis} width={28} allowDecimals={false} />
+                                    <Tooltip content={<ChartTip formatter={formatNumber} />} cursor={{ fill: c.grid }} />
+                                    <Bar dataKey="arrived" name={t('attendancereport.kelgan')} stackId="h" fill={c.primary} maxBarSize={28} />
+                                    <Bar dataKey="noShow" name={t('report.att.noShow')} stackId="h" fill={c.muted} radius={[3, 3, 0, 0]} maxBarSize={28} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    )}
+                </section>
+            </div>
+
+            {docs.length > 0 && (
+                <section className="card" aria-labelledby="att-docs">
+                    <CardHead id="att-docs" title={t('attendancereport.shifokorlar_boyicha')} hint={t('report.att.docsHint')} />
+                    <ul className="divide-y divide-line-soft border-t border-line-soft">
+                        {docs.map((d: any) => {
+                            const noShow = d.noShow ?? Math.max(0, d.booked - d.arrived);
+                            const rate = d.booked ? Math.round((noShow / d.booked) * 100) : 0;
+                            return (
+                                <li key={d.doctorId || d.doctorName} className="px-5 h-12 flex items-center gap-4 text-sm">
+                                    <span className="w-48 shrink-0 truncate font-medium text-ink">{d.doctorName}</span>
+                                    <div className="flex-1 min-w-0 flex h-2 rounded-full overflow-hidden bg-elevated" aria-hidden="true">
+                                        <div style={{ width: `${(d.arrived / maxDoc) * 100}%`, background: c.primary }} />
+                                        <div style={{ width: `${(noShow / maxDoc) * 100}%`, background: c.warning }} />
+                                    </div>
+                                    <span className="w-28 text-right text-muted tabular-nums shrink-0 whitespace-nowrap">{fill(t('report.att.cameOf'), d.arrived, d.booked)}</span>
+                                    <span className={`w-36 text-right tabular-nums shrink-0 whitespace-nowrap ${rate > 15 ? 'font-semibold text-warning-700 dark:text-warning-300' : 'text-faint'}`}>
+                                        {noShow > 0 ? fill(t('report.att.noShowN'), noShow, rate) : '—'}
+                                    </span>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </section>
+            )}
         </div>
-      )}
-
-      {/* ── Kunlik dinamika ─────────────────────────────────────── */}
-      <div className="rounded-xl border border-line bg-surface p-4">
-        <h3 className="font-semibold text-ink">{tr('attendancereport.kunma_kun')}</h3>
-        <p className="text-xs text-faint mb-3">
-          {tr('attendancereport.ustunlar_yozilgan_va_kelgan')}
-        </p>
-        {daily.length === 0 ? (
-          <div className="text-sm text-faint py-10 text-center">{tr('ui.bu_davrda_yozuv_yoq')}</div>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <ComposedChart data={daily} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} vertical={false} />
-              <XAxis dataKey="label" stroke={AXIS} fontSize={10} tickLine={false} interval="preserveStartEnd" minTickGap={18} />
-              <YAxis yAxisId="l" stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} width={32} />
-              <YAxis yAxisId="r" orientation="right" stroke="#009639" fontSize={10} tickLine={false} axisLine={false} width={44} />
-              <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar yAxisId="l" dataKey="booked" name={tr('ui.yozilgan')} fill="#93B4F5" radius={[3, 3, 0, 0]} />
-              <Bar yAxisId="l" dataKey="arrived" name={tr('attendancereport.kelgan')} fill="#005EB8" radius={[3, 3, 0, 0]} />
-              <Line yAxisId="r" type="monotone" dataKey="revenueK" name={tr('attendancereport.tushum_ming')} stroke="#009639" strokeWidth={2} dot={false} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-4">
-        {/* ── Hafta kunlari ────────────────────────────────────── */}
-        <div className="rounded-xl border border-line bg-surface p-4">
-          <h3 className="font-semibold text-ink">{tr('attendancereport.hafta_kunlari')}</h3>
-          <p className="text-xs text-faint mb-3">{tr('attendancereport.kuniga_ortacha_nechta_qabul')}</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={wdChart} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} vertical={false} />
-              <XAxis dataKey="short" stroke={AXIS} fontSize={11} tickLine={false} />
-              <YAxis stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} width={28} />
-              <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
-              <Bar dataKey="avgVisits" name={tr('attendancereport.kuniga_ortacha')} radius={[4, 4, 0, 0]}>
-                {wdChart.map((w: any) => (
-                  <Cell key={w.weekday}
-                        fill={w.avgVisits >= maxWd * 0.85 ? '#009639'
-                            : w.avgVisits <= maxWd * 0.45 ? '#C96F00' : '#005EB8'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <p className="text-xs text-faint mt-1">
-            {tr('attendancereport.yashil_eng_gavjum_sariq')}
-          </p>
-        </div>
-
-        {/* ── Soatlar ──────────────────────────────────────────── */}
-        <div className="rounded-xl border border-line bg-surface p-4">
-          <h3 className="font-semibold text-ink">{tr('attendancereport.kun_davomida')}</h3>
-          <p className="text-xs text-faint mb-3">{tr('attendancereport.qaysi_soatda_gavjum')}</p>
-          {hours.length === 0 ? (
-            <div className="text-sm text-faint py-16 text-center">{tr('ui.malumot_yoq')}</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={hours} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} vertical={false} />
-                <XAxis dataKey="label" stroke={AXIS} fontSize={10} tickLine={false} />
-                <YAxis stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} width={28} />
-                <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="arrived" name={tr('attendancereport.kelgan')} stackId="h" fill="#005EB8" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="kelmagan" name="Kelmagan" stackId="h" fill="#768692" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      {/* ── Shifokorlar ────────────────────────────────────────── */}
-      <div className="rounded-xl border border-line bg-surface p-4">
-        <h3 className="font-semibold text-ink">{tr('attendancereport.shifokorlar_boyicha')}</h3>
-        <p className="text-xs text-faint mb-3">{tr('attendancereport.yozuvlar_soni_va_nechtasi')}</p>
-        {docs.length === 0 ? (
-          <div className="text-sm text-faint py-10 text-center">{tr('ui.malumot_yoq')}</div>
-        ) : (
-          <ResponsiveContainer width="100%" height={Math.max(160, docs.length * 38)}>
-            <BarChart data={docs} layout="vertical" margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID} opacity={0.15} horizontal={false} />
-              <XAxis type="number" stroke={AXIS} fontSize={10} tickLine={false} axisLine={false} />
-              <YAxis type="category" dataKey="doctorName" stroke={AXIS} fontSize={11}
-                     tickLine={false} axisLine={false} width={130} />
-              <Tooltip content={<ChartTip />} cursor={{ fill: GRID, opacity: 0.1 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="arrived" name={tr('attendancereport.kelgan')} stackId="d" fill="#005EB8" />
-              <Bar dataKey="noShow" name="Kelmagan" stackId="d" fill="#C96F00" radius={[0, 3, 3, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* ── Raqamli jadval ─────────────────────────────────────── */}
-      <div className="rounded-xl border border-line bg-surface p-4">
-        <h3 className="font-semibold text-ink mb-3">{tr('attendancereport.hafta_kunlari_raqamlar')}</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
-            <thead>
-              <tr className="text-xs text-muted">
-                <th className="text-left font-normal pb-2">{tr('common.day')}</th>
-                <th className="text-right font-normal pb-2">{tr('attendancereport.kuniga_ortacha')}</th>
-                <th className="text-right font-normal pb-2">{tr('attendancereport.yozilgan')}</th>
-                <th className="text-right font-normal pb-2">{tr('attendancereport.kelgan')}</th>
-                <th className="text-right font-normal pb-2">Kelmagan</th>
-                <th className="text-right font-normal pb-2">{tr('attendancereport.kuniga_tushum')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {wd.map((w: any) => (
-                <tr key={w.weekday} className="border-t border-line-soft">
-                  <td className="py-2 font-medium text-ink whitespace-nowrap">
-                    {wdName(w.weekday, w.name)}<span className="text-xs text-faint font-normal ml-1">{w.days} {tr('ui.kun')}</span>
-                  </td>
-                  <td className="py-2 text-right tabular-nums font-semibold">{w.avgVisits}</td>
-                  <td className="py-2 text-right tabular-nums">{formatNumber(w.booked)}</td>
-                  <td className="py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatNumber(w.arrived)}</td>
-                  <td className="py-2 text-right tabular-nums text-amber-600 dark:text-amber-400">{formatNumber(w.noShow)}</td>
-                  <td className="py-2 text-right tabular-nums">{formatNumber(w.avgRevenue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-    </div>
-  );
+    );
 };
 
-/* Ma'lumotni komponentning O'ZI so'raydi.
-
-   Ilgari so'rov kalendarning ichida edi va uning `view` holatiga
-   bog'liq turardi. Hisobot boshqa ekranga ko'chgach, o'sha bog'liqlikni
-   ham olib kelishning ma'nosi yo'q: bu komponent mustaqil. */
-export const AttendanceTab: React.FC = () => {
-    const [data, setData] = useState<any>(null);
+/* Ma'lumotni komponentning O'ZI so'raydi — davr Hisobotdan keladi. */
+export const AttendanceTab: React.FC<{ from: string; to: string; refreshKey?: number }> = ({ from, to, refreshKey = 0 }) => {
+    const { t } = useLanguage();
+    /* `key` — qaysi davr uchun yuklangani: davr almashganda eski raqamlar
+       yangi sarlavha ostida turmaydi (jim yangilashda esa joyida qoladi). */
+    const [loaded, setLoaded] = useState<{ key: string; data: any } | null>(null);
     const [busy, setBusy] = useState(false);
-    const [days, setDays] = useState(90);
     const [error, setError] = useState<string | null>(null);
+    const key = `${from}|${to}`;
+    const data = loaded?.key === key ? loaded.data : null;
 
     useEffect(() => {
         let alive = true;
         setBusy(true);
         setError(null);
-        const to = new Date();
-        const from = new Date(to.getTime() - days * 86400000);
-        const iso = (d: Date) => d.toISOString().split('T')[0];
-        api.reports.attendance(iso(from), iso(to))
-            .then(d => { if (alive) { setData(d); setError(null); } })
+        api.reports.attendance(from, to)
+            .then(d => { if (alive) { setLoaded({ key: `${from}|${to}`, data: d }); setError(null); } })
             .catch(e => {
                 /* Sabab SAQLANADI va ekranda ko'rsatiladi. Quruq «yuklab
                    bo'lmadi» nima bo'lganini aytmaydi: server eskimi,
                    tarmoqmi, ruxsatmi — hammasi bir xil ko'rinardi. */
-                if (alive) { setData(null); setError(e?.message || String(e)); }
+                if (alive) { setLoaded(null); setError(e?.message || String(e)); }
             })
             .finally(() => { if (alive) setBusy(false); });
         return () => { alive = false; };
-    }, [days]);
+    }, [from, to, refreshKey]);
 
-    return <AttendanceReport data={data} busy={busy} days={days} onDays={setDays} error={error} />;
+    if (busy && !data) return <Calculating />;
+    if (!data) {
+        return (
+            <div className="card py-12 px-4 text-center">
+                <p className="text-muted mb-2">{t('attendancereport.hisobotni_yuklab_bolmadi')}</p>
+                {error && (
+                    <p className="inline-block text-xs font-mono text-danger-600 dark:text-danger-300 bg-danger-50 dark:bg-danger-500/10 border border-danger-500/30 rounded-lg px-3 py-2 mb-2">{error}</p>
+                )}
+                <p className="text-xs text-faint">{t('attendancereport.agar_404_yozilgan_bolsa')}</p>
+            </div>
+        );
+    }
+    return <AttendanceReport data={data} />;
 };

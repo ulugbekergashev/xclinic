@@ -15,6 +15,8 @@
  * `where` bor maydonlar avtomatik tez yo'ldan ketadi va UI o'zgarmaydi.
  */
 
+import { visitDay, monthsAgoDay } from './patientVisits';
+
 export type FieldType = 'enum' | 'bool' | 'number' | 'months_ago' | 'days_ago' | 'text' | 'month_of_year' | 'enum_months';
 
 export interface FieldOption { value: string; label: string; }
@@ -105,11 +107,6 @@ const parsedVisit = (lastVisit?: string): Date | null => {
     return isNaN(d.getTime()) ? null : d;
 };
 
-const monthsAgoDate = (months: number, now: Date): Date => {
-    const d = new Date(now);
-    d.setMonth(d.getMonth() - months);
-    return d;
-};
 
 const numCompare = (val: number | null, op: string, value: any): boolean => {
     if (val === null) return false;
@@ -241,12 +238,16 @@ export const SEGMENT_FIELDS: SegmentFieldDef[] = [
         unit: 'oy',
         defaultOp: 'before',
         defaultValue: 6,
+        /* Sana SATRI bilan, Toshkent kuni bo'yicha (2026-11-26) — Hisobot →
+           Bemorlar «Yo'qolgan» (`patientVisits.ts`) bilan aynan bir qoida.
+           Ilgari vaqt bilan solishtirilardi va tunda bir kishiga farq qilardi. */
         predicate: (p, op, v, ctx) => {
-            const visit = parsedVisit(p.lastVisit);
-            const cutoff = monthsAgoDate(Number(v) || 0, ctx.now);
-            if (!visit) return op === 'before_or_never';
-            if (op === 'within') return visit > cutoff;
-            return visit <= cutoff; // before / before_or_never
+            const day = visitDay(p.lastVisit);
+            if (!day) return op === 'before_or_never';
+            const today = new Date(ctx.now.getTime() + 5 * 3600e3).toISOString().slice(0, 10);
+            const cutoff = monthsAgoDay(Number(v) || 0, today);
+            if (op === 'within') return day > cutoff;
+            return day <= cutoff; // before / before_or_never
         },
     },
     {

@@ -40,6 +40,7 @@ export interface CashCloseInput {
     note?: string;
 }
 import { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_DOCTORS, DEMO_SERVICES, DEMO_CLINIC, DEMO_CLINICS, DEMO_PLAN, DEMO_INVENTORY, DEMO_INVENTORY_LOGS, DEMO_RECEPTIONISTS, DEMO_DIAGNOSES, DEMO_ICD10, DEMO_CATEGORIES, DEMO_LEADS, DEMO_INSTALLMENTS, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_MESSAGE_TEMPLATES, DEMO_AUTOMATION_RULES, DEMO_MESSAGE_LOGS, DEMO_TRIGGERS, DEMO_SEGMENT_FIELDS, saveDemoData } from './demoData';
+import { demoAudience } from './demoAudience';
 
 // XClinic offline rejimda ishlaydi — hech qanday bulut manzili yo'q.
 // Backend shu kompyuterda turadi; uch xil kirish usuli qo'llab-quvvatlanadi.
@@ -235,7 +236,8 @@ const demoSnapshot = (from?: string, to?: string): Snapshot => {
         patients: {
             total: DEMO_PATIENTS.length,
             active: DEMO_PATIENTS.filter(p => p.status === 'Active').length,
-            newLast7Days: DEMO_PATIENTS.filter(p => (p.lastVisit || '') >= weekAgo).length,
+            /* Server kabi — ro'yxatdan o'tgan sana bo'yicha (`snapshot.ts`), `lastVisit` emas */
+            newLast7Days: DEMO_PATIENTS.filter(p => String(p.createdAt || '').slice(0, 10) >= weekAgo).length,
         },
     };
 };
@@ -963,55 +965,221 @@ const demoLabDynamics = (patientId: string) => {
     return series.sort((a, b) => bad(b) - bad(a) || b.count - a.count);
 };
 
-/** Davomat hisoboti — Kalendardagi «Hisobot» ko'rinishi. */
-const demoAttendance = () => {
-    const days = Array.from({ length: 14 }, (_, i) => ({
-        date: dayShift(-(13 - i)).slice(0, 10),
-        booked: 6 + ((i * 3) % 5),
-        arrived: 5 + ((i * 2) % 4),
-        revenue: 900000 + (i % 5) * 250000,
-    }));
-    const booked = days.reduce((a, d) => a + d.booked, 0);
-    const arrived = days.reduce((a, d) => a + d.arrived, 0);
-    const cancelled = 6;
-    const noShow = booked - arrived - cancelled;
-    const wd = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
-        .map((name, i) => ({ name, avgVisits: [9, 8, 10, 7, 11, 6, 3][i], booked: 0, arrived: 0 }));
+/** `/api/reports/services` javobi (`backend/serviceReport.ts`) */
+export interface ServiceReportRow {
+    key: string;
+    serviceId: number | null;
+    name: string;
+    /** Service | Lab | Study | Medication | Bed | Other */
+    source: string;
+    departmentId: string | null;
+    count: number;
+    revenue: number;
+    discount: number;
+    listPrice: number | null;
+    /** null — material (retsept) kiritilmagan */
+    materialCost: number | null;
+    prevRevenue: number;
+    prevCount: number;
+}
+export interface ServiceReport {
+    range: { from: string; to: string };
+    previous: { from: string; to: string } | null;
+    totals: { revenue: number; discount: number; prevRevenue: number };
+    /** Bo'lim id (yoki 'none') → o'tgan davrning HAMMA xizmatlari summasi */
+    prevByDepartment: Record<string, number>;
+    departments: { id: string; name: string; color: string | null }[];
+    services: ServiceReportRow[];
+    unsold: { serviceId: number; name: string; departmentId: string | null; listPrice: number }[];
+}
+
+/** `/api/reports/patients` javobi (`backend/patientVisits.ts`) */
+export interface PatientReport {
+    range: { from: string; to: string };
+    previous: { from: string; to: string };
+    current: { visited: number; new: number; returning: number };
+    prev: { visited: number; new: number; returning: number };
+    lost: {
+        months: number; total: number; withTelegram: number;
+        patients: { patientId: string; patientName: string; phone: string | null; lastVisit: string; lastDoctor: string | null; nextAppointment: string | null }[];
+    };
+    newByDoctor: { doctorId: string | null; doctorName: string; newPatients: number; cameBack: number }[];
+}
+
+/** Solishtirish davri — `backend/period.ts` ning nusxasi. Umumiy va Bemorlar
+    tabi bitta qoidadan: «1–26 noyabr» ↔ «1–26 oktyabr». */
+const demoPreviousPeriod = (from: string, to: string): { from: string; to: string } => {
+    const len = Math.max(1, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 864e5) + 1);
+    const fromT = Date.parse(`${from}T00:00:00Z`);
+    let prevTo = new Date(fromT - 864e5).toISOString().slice(0, 10);
+    let prevFrom = new Date(fromT - len * 864e5).toISOString().slice(0, 10);
+    const [fy, fm, fd] = from.split('-').map(Number);
+    const [ty, tm, td] = to.split('-').map(Number);
+    if (fd === 1 && fy === ty && fm === tm) {
+        const py = fm === 1 ? fy - 1 : fy;
+        const pm = fm === 1 ? 12 : fm - 1;
+        const lastPrev = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        prevFrom = `${py}-${pad(pm)}-01`;
+        const lastCur = new Date(Date.UTC(ty, tm, 0)).getUTCDate();
+        prevTo = `${py}-${pad(pm)}-${pad(td >= lastCur ? lastPrev : Math.min(td, lastPrev))}`;
+    }
+    return { from: prevFrom, to: prevTo };
+};
+
+/** Bemorlar hisoboti — server qoidasi bilan (`backend/patientVisits.ts`).
+    Demoda «qabul» — to'lov qatori (`DEMO_TRANSACTIONS`) va bugungi navbat
+    (`DEMO_VISITS`); «yo'qolgan» — `lastVisit` bo'yicha, Xabarlardagi
+    «6 oydan beri kelmagan» segmenti (`demoAudience`) bilan bir xil. */
+const demoPatientReport = (from: string, to: string): PatientReport => {
+    const today = todayISO();
+    const { from: prevFrom, to: prevTo } = demoPreviousPeriod(from, to);
+
+    const visits = [
+        ...DEMO_TRANSACTIONS.map(t => ({ patientId: (t as any).patientId as string, date: String(t.date).slice(0, 10), doctorId: (t as any).doctorId || null, doctorName: t.doctorName || null })),
+        ...DEMO_VISITS.map(v => ({ patientId: v.patientId, date: String(v.date).slice(0, 10), doctorId: v.doctorId || null, doctorName: v.doctorName || null })),
+    ].filter(v => v.patientId).sort((a, b) => a.date.localeCompare(b.date));
+    const createdDay = (id: string) => String((DEMO_PATIENTS.find(p => p.id === id) as any)?.createdAt || '2025-01-01').slice(0, 10);
+
+    const counts = (a: string, b: string) => {
+        const inP = visits.filter(v => v.date >= a && v.date <= b);
+        const ids = [...new Set(inP.map(v => v.patientId))];
+        const newIds = ids.filter(id => createdDay(id) >= a && !visits.some(v => v.patientId === id && v.date < a));
+        return { inP, newIds, c: { visited: ids.length, new: newIds.length, returning: ids.length - newIds.length } };
+    };
+    const cur = counts(from, to);
+    const prev = counts(prevFrom, prevTo);
+
+    const byDoc = new Map<string, PatientReport['newByDoctor'][number]>();
+    for (const id of cur.newIds) {
+        const first = cur.inP.find(v => v.patientId === id)!;
+        const key = first.doctorId || 'none';
+        const row = byDoc.get(key) || { doctorId: first.doctorId, doctorName: (first.doctorName || "Belgilanmagan").replace(/^Dr\.\s*/, ''), newPatients: 0, cameBack: 0 };
+        row.newPatients++;
+        if (new Set(visits.filter(v => v.patientId === id).map(v => v.date)).size >= 2) row.cameBack++;
+        byDoc.set(key, row);
+    }
+
+    const [cy, cm, cd] = today.split('-').map(Number);
+    const cut = new Date(Date.UTC(cy, cm - 1, cd));
+    cut.setUTCMonth(cut.getUTCMonth() - 6);
+    const cutoff = cut.toISOString().slice(0, 10);
+    const lost = DEMO_PATIENTS
+        .filter(p => p.status === 'Active' && /^\d{4}-\d{2}-\d{2}/.test(p.lastVisit || '') && p.lastVisit.slice(0, 10) <= cutoff)
+        .sort((a, b) => b.lastVisit.localeCompare(a.lastVisit));
+    const lastDoctor = (id: string) => {
+        const own = [...visits].reverse().find(v => v.patientId === id)?.doctorName;
+        if (own) return own.replace(/^Dr\.\s*/, '');
+        const d = DEMO_DOCTORS.find(x => x.id === (DEMO_PATIENTS.find(p => p.id === id) as any)?.doctorId);
+        return d ? `${d.firstName} ${d.lastName}` : null;
+    };
+    const nextAppt = (id: string) => DEMO_APPOINTMENTS.filter(a => a.patientId === id && a.date > today && a.status !== 'Cancelled')
+        .sort((a, b) => a.date.localeCompare(b.date))[0]?.date || null;
+
     return {
-        totals: {
-            booked, arrived, noShow: Math.max(0, noShow), cancelled,
-            revenue: days.reduce((a, d) => a + d.revenue, 0),
-            arrivalRate: Math.round((arrived / booked) * 100),
-            noShowRate: Math.round((Math.max(0, noShow) / booked) * 100),
+        range: { from, to },
+        previous: { from: prevFrom, to: prevTo },
+        current: cur.c,
+        prev: prev.c,
+        lost: {
+            months: 6,
+            total: lost.length,
+            withTelegram: lost.filter(p => !!p.telegramChatId).length,
+            patients: lost.map(p => ({
+                patientId: p.id, patientName: `${p.firstName} ${p.lastName}`, phone: p.phone || null,
+                lastVisit: p.lastVisit.slice(0, 10), lastDoctor: lastDoctor(p.id), nextAppointment: nextAppt(p.id),
+            })),
         },
-        byDay: days,
-        byWeekday: wd,
-        byHour: Array.from({ length: 10 }, (_, i) => ({
-            hour: 9 + i, booked: [7, 9, 11, 8, 4, 6, 10, 8, 5, 2][i], arrived: [6, 8, 9, 7, 3, 5, 9, 6, 4, 2][i],
-        })),
-        byDoctor: DEMO_DOCTORS.map((d, i) => ({
-            doctorId: d.id, name: `${d.firstName} ${d.lastName}`,
-            booked: 20 - i * 3, arrived: 17 - i * 3,
-        })),
-        best: wd[4], worst: wd[6],
+        newByDoctor: [...byDoc.values()].sort((a, b) => b.newPatients - a.newPatients),
     };
 };
 
-/** Hisobot → Chiqim (ombor harakati bo'yicha). */
-const demoWriteoffs = () => ({
-    wasteCost: 340000,
-    serviceCost: 1860000,
-    totalCost: 2200000,
-    movementCount: DEMO_STOCK_MOVES.length,
-    byReason: [
-        { reason: 'Writeoff', label: "Muddati o'tgan", count: 3, cost: 340000 },
-        { reason: 'Out', label: 'Qabulda ishlatildi', count: 9, cost: 1860000 },
-    ],
-    byItem: DEMO_INVENTORY.map((it, i) => ({
+/** Davomat hisoboti — server shaklida (`backend/reports.ts` → /reports/attendance).
+
+    2026-11-26: ilgari bu yerda davrga qaramaydigan o'n to'rt kunlik qolip
+    turardi va shakli serverniki emas edi: `doctorName` o'rniga `name`,
+    hafta kunida `weekday`/`days`/`noShow` yo'q, `range` yo'q. Natijada
+    namoyishda shifokorlar grafigi bo'sh, jadval nollar, sarlavhada
+    «— · kunda yozuv bor». Endi har kun sanadan barqaror hisoblanadi. */
+const demoAttendance = (from: string, to: string) => {
+    const parse = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+    const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const end = to > todayISO() ? todayISO() : to;
+    const WD_BASE = [3, 9, 8, 10, 7, 11, 6]; // yakshanba … shanba
+    const WD_NAMES = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'];
+
+    const byDay: { date: string; booked: number; arrived: number; noShow: number; cancelled: number; revenue: number; visits: number }[] = [];
+    for (let d = parse(from), n = 0; isoOf(d) <= end && n < 400; d.setDate(d.getDate() + 1), n++) {
+        const key = Math.floor(d.getTime() / 864e5);
+        const booked = WD_BASE[d.getDay()] + (key % 3);
+        const noShow = booked > 3 ? (key % 4 === 0 ? 2 : 1) : 0;
+        const cancelled = key % 5 === 0 ? 1 : 0;
+        const arrived = Math.max(0, booked - noShow - cancelled);
+        byDay.push({ date: isoOf(d), booked, arrived, noShow, cancelled, revenue: 0, visits: arrived });
+    }
+    const sum = (k: 'booked' | 'arrived' | 'noShow' | 'cancelled') => byDay.reduce((a, d) => a + d[k], 0);
+    const booked = sum('booked'), arrived = sum('arrived'), noShow = sum('noShow'), cancelled = sum('cancelled');
+
+    const byWeekday = [1, 2, 3, 4, 5, 6, 0].map(w => {
+        const rows = byDay.filter(d => parse(d.date).getDay() === w);
+        const a = rows.reduce((s, d) => s + d.arrived, 0);
+        return {
+            weekday: w, name: WD_NAMES[w], days: rows.length,
+            booked: rows.reduce((s, d) => s + d.booked, 0), arrived: a,
+            noShow: rows.reduce((s, d) => s + d.noShow, 0),
+            avgVisits: rows.length ? Math.round((a / rows.length) * 10) / 10 : 0, avgRevenue: 0,
+        };
+    });
+    const ranked = byWeekday.filter(w => w.days > 0).sort((a, b) => b.avgVisits - a.avgVisits);
+
+    const HOUR_W = [7, 9, 11, 8, 4, 6, 10, 8, 5, 2];
+    const wSum = HOUR_W.reduce((a, b) => a + b, 0);
+    const byHour = HOUR_W.map((w, i) => {
+        const b = Math.round((booked * w) / wSum);
+        return { hour: 9 + i, booked: b, arrived: Math.round((arrived * w) / wSum) };
+    });
+    const DOC_W = [0.34, 0.28, 0.22, 0.16];
+    const byDoctor = DEMO_DOCTORS.slice(0, DOC_W.length).map((d, i) => {
+        const b = Math.round(booked * DOC_W[i]);
+        const ns = Math.round(noShow * [0.2, 0.25, 0.15, 0.4][i]);
+        return { doctorId: d.id, doctorName: `${d.firstName} ${d.lastName}`, booked: b, arrived: Math.max(0, b - ns - (i === 0 ? 1 : 0)), noShow: ns };
+    });
+
+    return {
+        range: { from, to, days: byDay.length },
+        totals: {
+            booked, arrived, noShow, cancelled, revenue: 0,
+            arrivalRate: booked ? Math.round((arrived / booked) * 100) : 0,
+            noShowRate: booked ? Math.round((noShow / booked) * 100) : 0,
+        },
+        byDay, byWeekday, byHour, byDoctor,
+        best: ranked[0] || null, worst: ranked[ranked.length - 1] || null,
+    };
+};
+
+/** Hisobot → Ombor isrofi (server shaklida: sabab kalitlari `Expired`,
+    `Service` …). Ilgari sabab `Out` edi — ekran uni isrof deb qizil
+    yozardi; pozitsiyalarda esa «0 ampula — 120 000» kabi soxta qator
+    turardi. Endi pozitsiyalar yig'indisi plitkalar bilan bir xil. */
+const demoWriteoffs = () => {
+    const items = DEMO_INVENTORY.slice(0, 6).map((it, i) => ({
         itemId: it.id, name: it.name, unit: (it as any).unit || 'dona',
-        qty: 12 - i * 2, cost: 420000 - i * 90000,
-    })),
-});
+        qty: [12, 10, 8, 6, 4, 3][i], cost: [520000, 430000, 380000, 290000, 240000, 340000][i],
+    }));
+    const totalCost = items.reduce((s, i) => s + i.cost, 0);
+    const wasteCost = 340000;
+    return {
+        wasteCost,
+        serviceCost: totalCost - wasteCost,
+        totalCost,
+        movementCount: 12,
+        byReason: [
+            { reason: 'Service', label: 'Xizmatga ishlatilgan', count: 9, cost: totalCost - wasteCost },
+            { reason: 'Expired', label: "Muddati o'tgan", count: 3, cost: wasteCost },
+        ],
+        byItem: items.sort((a, b) => b.cost - a.cost),
+    };
+};
 
 /** Hisobot → Bo'limlar.
     Umumiy tab bilan BITTA manba — `demoReportSummary` (2026-11-23, Moliya
@@ -1026,7 +1194,7 @@ const demoDepartmentsReport = (from?: string, to?: string) => {
             const d = DEMO_DEPARTMENTS.find(x => x.id === id);
             rows.set(key, {
                 departmentId: id, name: d?.name || "Bo'limsiz", color: d?.color || null,
-                revenue: 0, paid: 0, expense: 0, profit: 0,
+                revenue: 0, paid: 0, expense: 0, profit: 0, patients: 0, checks: 0, avgCheck: 0,
             });
         }
         return rows.get(key);
@@ -1039,7 +1207,28 @@ const demoDepartmentsReport = (from?: string, to?: string) => {
         const r = ensure((e as any).departmentId || null);
         r.expense += e.amount || 0;
     }
-    for (const r of rows.values()) r.profit = r.revenue - r.expense;
+    /* Bemorlar va o'rtacha chek — server qoidasi: demoda bitta to'lov qatori = bitta chek */
+    const allPatients = new Set<string>();
+    const perDept = new Map<string, Set<string>>();
+    for (const t of DEMO_TRANSACTIONS.filter(x => inRange(x.date as any, from, to))) {
+        const dep = demoDeptOfDoctor((t as any).doctorId);
+        const r = ensure(dep);
+        r.checks += 1;
+        const pid = (t as any).patientId || t.patientName;
+        allPatients.add(pid);
+        const set = perDept.get(dep || 'none') || new Set<string>();
+        set.add(pid);
+        perDept.set(dep || 'none', set);
+    }
+    for (const [k, r] of rows) {
+        r.profit = r.revenue - r.expense;
+        r.patients = perDept.get(k)?.size || 0;
+        r.avgCheck = r.checks > 0 ? Math.round(r.revenue / r.checks) : 0;
+    }
+    /* Koyka-kun statsionar qatorida ham — ilgari plitka «34 koyka-kun»
+       derdi, ustun esa butunlay «—» edi. */
+    const inp = rows.get('demo-inp');
+    if (inp) inp.bedDays = 34;
     return {
         departments: Array.from(rows.values()).sort((a, b) => b.revenue - a.revenue),
         totals: {
@@ -1050,7 +1239,71 @@ const demoDepartmentsReport = (from?: string, to?: string) => {
             occupancy: 62,
             bedDays: 34,
             bedCount: DEMO_BEDS.length,
+            patients: allPatients.size,
         },
+    };
+};
+
+const demoDeptOfDoctor = (doctorId?: string) => DEMO_DOCTORS.find(d => d.id === doctorId)?.departmentId || null;
+
+/** Hisobot → Xizmatlar — server qoidasi bilan (`backend/serviceReport.ts`).
+    Demoda «xizmat qatori» — to'lov qatori; bo'lim — shifokorning bo'limi
+    (Umumiy va Bo'limlar ham shunday), material — demo retseptlaridan
+    (Sozlamalarda to'ldirilsa shu yerda ko'rinadi). */
+const demoServiceReport = (from: string, to: string): ServiceReport => {
+    const prev = demoPreviousPeriod(from, to);
+    const byName = new Map(DEMO_SERVICES.map(sv => [sv.name.trim().toLowerCase(), sv]));
+    const recipeCost = new Map<number, number>();
+    for (const r of DEMO_RECIPES) recipeCost.set(r.serviceId, (recipeCost.get(r.serviceId) || 0) + (demoItem(r.itemId)?.price || 0) * r.quantity);
+    const rows = new Map<string, ServiceReportRow & { list: number }>();
+    const keyOf = (t: Transaction) => {
+        const svc = byName.get(String(t.service || '').trim().toLowerCase());
+        return { svc, key: `${svc ? `svc:${svc.id}` : `name:${t.service}`}|${demoDeptOfDoctor((t as any).doctorId) || ''}` };
+    };
+    for (const t of DEMO_TRANSACTIONS.filter(x => inRange(x.date as any, from, to))) {
+        const { svc, key } = keyOf(t);
+        let r = rows.get(key);
+        if (!r) {
+            r = {
+                key, serviceId: svc?.id ?? null, name: svc?.name || t.service || '—', source: 'Service',
+                departmentId: demoDeptOfDoctor((t as any).doctorId), count: 0, revenue: 0, discount: 0,
+                listPrice: svc?.price ?? null, materialCost: svc && recipeCost.has(svc.id as number) ? 0 : null,
+                prevRevenue: 0, prevCount: 0, list: 0,
+            };
+            rows.set(key, r);
+        }
+        r.count += 1;
+        r.revenue += t.amount || 0;
+        r.list += (t.amount || 0) + ((t as any).discountAmount || 0);
+        if (r.materialCost != null && svc) r.materialCost += recipeCost.get(svc.id as number) || 0;
+    }
+    const prevByDepartment: Record<string, number> = {};
+    for (const t of DEMO_TRANSACTIONS.filter(x => inRange(x.date as any, prev.from, prev.to))) {
+        const dk = demoDeptOfDoctor((t as any).doctorId) || 'none';
+        prevByDepartment[dk] = (prevByDepartment[dk] || 0) + (t.amount || 0);
+        const r = rows.get(keyOf(t).key);
+        if (!r) continue;
+        r.prevRevenue += t.amount || 0;
+        r.prevCount += 1;
+    }
+    const services = Array.from(rows.values())
+        .map(({ list, ...r }) => ({ ...r, discount: Math.max(0, list - r.revenue) }))
+        .sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name));
+    const sold = new Set(services.map(r => r.serviceId));
+    return {
+        range: { from, to },
+        previous: prev,
+        totals: {
+            revenue: services.reduce((a, r) => a + r.revenue, 0),
+            discount: services.reduce((a, r) => a + r.discount, 0),
+            prevRevenue: Object.values(prevByDepartment).reduce((a, v) => a + v, 0),
+        },
+        prevByDepartment,
+        departments: DEMO_DEPARTMENTS.map(d => ({ id: d.id, name: d.name, color: d.color || null })),
+        services,
+        unsold: DEMO_SERVICES.filter(sv => sv.id != null && !sold.has(sv.id))
+            .map(sv => ({ serviceId: sv.id as number, name: sv.name, departmentId: sv.departmentId || null, listPrice: sv.price }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
     };
 };
 /** Kirish jurnali — kim, qachon, nimaga qaradi. */
@@ -1614,6 +1867,19 @@ const demoDoctorsReport = (from: string, to: string) => {
             accrued: l.accrued,
         };
     });
+    /* Shifokorsiz qatorlar (statsionar, ulushsiz shifokorlar) — server kabi
+       «Belgilanmagan» qatori. Ilgari ular tushib qolardi va Shifokorlar
+       «Xizmatlar 4 650 000» Umumiydagi 6 450 000 bilan to'qnashardi. */
+    const restTx = charged.filter(t => !doctors.some(d => d.doctorId === (t as any).doctorId));
+    const restRevenue = restTx.reduce((s, t) => s + (t.amount || 0), 0);
+    if (restRevenue > 0) {
+        const restPaid = restTx.filter(t => t.status === 'Paid').reduce((s, t) => s + (t.amount || 0), 0);
+        const restPatients = new Set(restTx.map(t => (t as any).patientId || t.patientName)).size;
+        doctors.push({
+            doctorId: null as any, name: 'Belgilanmagan', revenue: restRevenue, paid: restPaid, due: restRevenue - restPaid,
+            patientCount: restPatients, avgCheck: restPatients ? Math.round(restPaid / restPatients) : 0, accrued: 0,
+        });
+    }
     return {
         doctors,
         totals: {
@@ -4072,6 +4338,20 @@ export const api = {
                     if (day < g.oldestDate) g.oldestDate = day;
                     byPatient.set(key, g);
                 }
+                /* O'tgan kunlarning to'lanmagan to'lovlari ham qarz (2026-11-26).
+                   Busiz namoyishda hamma qarzdor «Bugun» edi va qarz yoshi
+                   chizig'ida faqat «0–30 kun» bo'lardi. */
+                const today = todayISO();
+                for (const tx of DEMO_TRANSACTIONS) {
+                    const day = String(tx.date).slice(0, 10);
+                    if (tx.status === 'Paid' || day >= today) continue;
+                    const key = (tx as any).patientId || `noname:${tx.patientName}`;
+                    const g = byPatient.get(key) || { patientId: (tx as any).patientId, patientName: tx.patientName, due: 0, count: 0, oldestDate: day };
+                    g.due += tx.amount || 0;
+                    g.count += 1;
+                    if (day < g.oldestDate) g.oldestDate = day;
+                    byPatient.set(key, g);
+                }
                 const patients = [...byPatient.values()].filter(g => g.due > 0)
                     .map(g => ({ ...g, phone: DEMO_PATIENTS.find(p => p.id === g.patientId)?.phone || null }))
                     .sort((a, b) => b.due - a.due);
@@ -4146,23 +4426,8 @@ export const api = {
                    Endi shakl `backend/reports.ts` dagi `measure()` ning
                    nusxasi. O'sha yerga maydon qo'shsangiz, BU YERGA HAM
                    qo'shing. */
-                const len = Math.max(1, Math.round(
-                    (new Date(to).getTime() - new Date(from).getTime()) / 86400000
-                ) + 1);
-                let prevTo = new Date(new Date(from).getTime() - 86400000).toISOString().slice(0, 10);
-                let prevFrom = new Date(new Date(from).getTime() - len * 86400000).toISOString().slice(0, 10);
                 /* Oyning boshidan — o'tgan oyning o'sha kunlari (server bilan bir xil) */
-                const [fy, fm, fd] = from.split('-').map(Number);
-                const [ty, tm, td] = to.split('-').map(Number);
-                if (fd === 1 && fy === ty && fm === tm) {
-                    const py = fm === 1 ? fy - 1 : fy;
-                    const pm = fm === 1 ? 12 : fm - 1;
-                    const lastPrev = new Date(Date.UTC(py, pm, 0)).getUTCDate();
-                    const pad = (n: number) => String(n).padStart(2, '0');
-                    prevFrom = `${py}-${pad(pm)}-01`;
-                    const lastCur = new Date(Date.UTC(ty, tm, 0)).getUTCDate();
-                    prevTo = `${py}-${pad(pm)}-${pad(td >= lastCur ? lastPrev : Math.min(td, lastPrev))}`;
-                }
+                const { from: prevFrom, to: prevTo } = demoPreviousPeriod(from, to);
 
                 const measure = (a: string, b: string) => {
                     const snap = demoSnapshot(a, b);
@@ -4213,8 +4478,18 @@ export const api = {
 
         /** Davomat: qaysi kunlarda va soatlarda bemor ko'p keladi */
         attendance: (from: string, to: string) => {
-            if (isDemoMode()) return demoRead<any>(demoAttendance());
+            if (isDemoMode()) return demoRead<any>(demoAttendance(from, to));
             return fetchJson<any>(`/reports/attendance?from=${from}&to=${to}`);
+        },
+
+        /** Bemorlar: kelgan / yangi / qaytgan, yangi bemorlar qaytdimi, yo'qolganlar */
+        patients: (from: string, to: string) => {
+            if (isDemoMode()) return demoRead<PatientReport>(demoPatientReport(from, to));
+            return fetchJson<PatientReport>(`/reports/patients?from=${from}&to=${to}`);
+        },
+        services: (from: string, to: string) => {
+            if (isDemoMode()) return demoRead<ServiceReport>(demoServiceReport(from, to));
+            return fetchJson<ServiceReport>(`/reports/services?from=${from}&to=${to}`);
         },
     },
 
@@ -5477,27 +5752,8 @@ export const api = {
         // Auditoriyani doim server hisoblaydi — "qarzdor" ta'rifi bitta bo'lsin
         audience: (clinicId: string, segment: AudienceSegment, channel: MessageChannel) => {
             if (isDemoMode()) {
-                const n = DEMO_PATIENTS.length;
-                const preview: AudiencePreview = {
-                    total: n,
-                    matched: n,
-                    unreachable: 0,
-                    unreachableList: [],
-                    clinicTotal: n,
-                    conditionCounts: (segment.conditions || []).map(() => n),
-                    conditions: segment.conditions || [],
-                    recipients: DEMO_PATIENTS.map(p => ({
-                        id: p.id, firstName: p.firstName, lastName: p.lastName,
-                        phone: p.phone, channel: 'telegram' as const, debt: 0,
-                    })),
-                    recipientsTruncated: false,
-                    viaTelegram: n,
-                    viaSms: 0,
-                    description: 'Demo',
-                    patientIds: DEMO_PATIENTS.map(p => p.id),
-                    sample: DEMO_PATIENTS.slice(0, 3).map(p => ({ id: p.id, firstName: p.firstName, lastName: p.lastName, debt: 0 })),
-                };
-                return Promise.resolve(preview);
+                // Demoda filtr haqiqatan ishlaydi (services/demoAudience.ts)
+                return Promise.resolve(demoAudience(DEMO_PATIENTS, segment, channel, !!DEMO_CLINIC.botToken));
             }
             return fetchJson<AudiencePreview>('/messages/audience', {
                 method: 'POST',

@@ -91,8 +91,8 @@ test.describe('Menyu va ruxsatlar', () => {
         await go(page, '/dashboard');
         await expect(page.getByRole('heading', { name: 'Hisobot', exact: true })).toBeVisible({ timeout: 15_000 });
         await expect(page.getByRole('tab', { name: /Davomat/ })).toBeVisible();
-        // Bitta qator: Umumiy · Shifokorlar · Bo'limlar · Ombor isrofi · Davomat (2026-11-22)
-        await expect(page.getByRole('tab')).toHaveCount(5);
+        // Bitta qator: Umumiy · Bemorlar · Shifokorlar · Bo'limlar · Xizmatlar · Ombor isrofi · Davomat (2026-11-26)
+        await expect(page.getByRole('tab')).toHaveCount(7);
         await expect(page.getByRole('heading', { name: 'Bugun klinikada' })).toHaveCount(0);
     });
 

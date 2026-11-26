@@ -1,23 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { formatDoctorName, formatFullName, formatNumber } from '../utils/format';
-import {
-    ComposedChart, Area, Line, BarChart, Bar, XAxis, YAxis,
-    CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
-} from 'recharts';
 import { doctorColor } from '../utils/chartColors';
-import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
-import { todayISO, formatDateToISO, dayKey } from '../utils/dateUtils';
-import { Card, Button, Modal, Input, Select, Badge, SearchableSelect } from '../components/Common';
-import {
-  ChevronLeft, ChevronRight, Plus, Clock, User, FileText,
-  XCircle, CheckCircle, Send, Bell, Edit2, Loader2,
-  Search
-} from 'lucide-react';
+import { formatDateToISO, dayKey } from '../utils/dateUtils';
+import { Button } from '../components/Common';
+import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Appointment, Patient, Doctor, UserRole, Clinic, ServiceCategory, Service } from '../types';
 import { PatientFormModal } from '../components/PatientFormModal';
 import { AppointmentFormModal } from '../components/AppointmentFormModal';
 import { SendMessageModal } from '../components/SendMessageModal';
+import { AppointmentBlock } from '../components/calendar/AppointmentBlock';
+import { AppointmentDetailsModal } from '../components/calendar/AppointmentDetailsModal';
+import { DoctorChips } from '../components/calendar/DoctorChips';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
@@ -25,15 +18,13 @@ import { permsFor } from '../utils/accessControl';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { CalendarMonth } from '../components/CalendarMonth';
 import { monthLabel, dayLabel, weekLabel } from '../utils/calendarLabels';
+import { gridHours, isClosedAppt, layoutLanes, startMinutes } from '../utils/calendarLayout';
 
 interface CalendarProps {
   appointments: Appointment[];
   patients: Patient[];
   doctors: Doctor[];
-  /* `Service` — yagona haqiqat manbai (`types.ts`). Bu yerda uning
-  QISQARTIRILGAN nusxasi yozilgan edi va u haqiqatdan farq qilardi:
-  `duration` u yerda ixtiyoriy, bu yerda majburiy. Nusxa turlar
-  ajralib ketishiga olib keladi. */
+  /* `Service` — yagona haqiqat manbai (`types.ts`). */
   services: Service[];
   categories: ServiceCategory[];
   onAddAppointment: (appt: Omit<Appointment, 'id' | 'clinicId'>) => Promise<void>;
@@ -46,8 +37,21 @@ interface CalendarProps {
   onPatientClick?: (id: string) => void;
 }
 
+type CalView = 'day' | 'week' | 'month';
 
-
+/** Vaqt ustunining kengligi (px) — kun va hafta ko'rinishida bir xil */
+const GUTTER_PX = 56;
+/** Ustun sarlavhasi balandligi (px) — `h-14` */
+const HEADER_PX = 56;
+/** Bir soat balandligi chegaralari: ish kuni ekranga sig'adigan qilib
+ *  hisoblanadi, lekin 30 daqiqalik blokda bir qator o'qiladigan darajadan
+ *  kichraymaydi. */
+const HOUR_MIN_PX = 48;
+const HOUR_MAX_PX = 96;
+/** Hafta ko'rinishida bir vaqtda chiziladigan eng ko'p yozuv (qolgani «+N») */
+const WEEK_LANES = 1;
+const VIEW_KEY = 'xclinic_cal_view';
+const PHONE_QUERY = '(max-width: 767px)';
 
 /** `YYYY-MM-DD` → MAHALLIY yarim tun. `new Date('2026-09-04')` UTC yarim
  *  tuni sifatida o'qiladi va kun solishtirishda siljib ketishi mumkin. */
@@ -64,28 +68,57 @@ const startOfWeekLocal = (date: Date): Date => {
   return d;
 };
 
+const initials = (doc: Doctor) =>
+  `${(doc.lastName || '').charAt(0)}${(doc.firstName || '').charAt(0)}`.toUpperCase() || 'DR';
+
+/* ISH VAQTIDAN TASHQARI — och chiziqlar. Yozib bo'ladi (ba'zan shifokor
+   kechroq qoladi), lekin ko'z darhol ko'radi: bu soatda u ishlamaydi. */
+const OFF_HOURS_BG =
+  'repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--color-line) 55%, transparent) 7px 8px)';
+
+/* BIRINCHI OCHILISHDA QAYSI KO'RINISH.
+   Registrator va boshqalar — KUN: shifokorlar yonma-yon, «kim qachon bo'sh?»
+   degan savolga shu javob beradi. Shifokor — HAFTA: o'z kuni «Bugun»da
+   bor, kalendar unga oldindagi kunlarni ko'rsatadi. Foydalanuvchi
+   tanlagan ko'rinish eslab qolinadi. Telefonda har doim kun. */
+const initialView = (role: UserRole): CalView => {
+  if (window.matchMedia(PHONE_QUERY).matches) return 'day';
+  try {
+    const saved = localStorage.getItem(VIEW_KEY);
+    if (saved === 'day' || saved === 'week' || saved === 'month') return saved;
+  } catch { /* xotira yopiq — sukut bo'yicha */ }
+  return role === UserRole.DOCTOR ? 'week' : 'day';
+};
+
 export const Calendar: React.FC<CalendarProps> = ({
   appointments, patients, doctors, services, categories, onAddAppointment, onUpdateAppointment, onDeleteAppointment, onAddPatient, userRole, doctorId, currentClinic, onPatientClick
 }) => {
   const { t, language } = useLanguage();
+  const isDoctor = userRole === UserRole.DOCTOR && !!doctorId;
 
-  // State
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [view, setView] = useState<CalView>(() => initialView(userRole));
+  const chooseView = (v: CalView) => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* eslab qolinmaydi */ }
+  };
+  /* Telefonga torayganda — kun. Ilgari HAR QANDAY o'lcham o'zgarishida
+     ko'rinish «Hafta»ga qaytarilardi va tanlangan «Kun» yo'qolardi. */
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_QUERY);
+    const sync = () => { if (mq.matches) setView('day'); };
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
   /* ─── OYNA TASHQARISI (FIX-PLAN 10.3) ────────────────────────────────────
-     `App.tsx` kirishda oxirgi 45 kunni yuklaydi. Bu ekranda esa undan
-     eskiroq davr tanlanishi mumkin — o'shanda propdagi ro'yxatda o'sha davr
-     UMUMAN yo'q va ekran "hech narsa bo'lmagan" deb ko'rsatardi.
-     Jimgina yolg'on — eng yomon xato turi. Shuning uchun serverdan olamiz. */
+     `App.tsx` kirishda oxirgi 45 kunni yuklaydi. Undan eskiroq davr
+     tanlansa — serverdan olamiz, aks holda ekran «hech narsa bo'lmagan»
+     deb yolg'on ko'rsatardi. Chegaralar MAHALLIY sana bo'yicha (oy va
+     hafta birga: hafta ikki oyga tushishi mumkin). */
   const WINDOW_START = useMemo(
     () => formatDateToISO(new Date(Date.now() - 45 * 86400000)), []);
-
   const [rangeAppts, setRangeAppts] = useState<Appointment[] | null>(null);
-  /* KO'RINAYOTGAN ORALIQ — oy VA hafta birga.
-
-     Chegaralar MAHALLIY sana bo'yicha: ilgari `toISOString()` edi va
-     Toshkentda (UTC+5) oy boshi oldingi oyning oxirgi kuniga siljirdi.
-     Hafta ikki oyga tushsa (29-sentabr — 5-oktabr) faqat oy olinganda
-     haftaning boshi so'rovdan tushib qolardi. */
   const rangeFrom = (() => {
     const monthStart = formatDateToISO(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
     const weekStart = formatDateToISO(startOfWeekLocal(currentDate));
@@ -108,248 +141,172 @@ export const Calendar: React.FC<CalendarProps> = ({
 
   const effectiveAppointments = rangeAppts ?? appointments;
 
-  /* Shifokor filtri (S5.3). `null` — hammasi.
-     E'lon shu yerda, chunki quyidagi `filteredAppointments` unga tayanadi. */
+  /* Shifokor filtri (S5.3). `null` — hammasi. */
   const [doctorFilter, setDoctorFilter] = useState<string | null>(null);
 
-  /* ─── SETKA SHIFOKOR SOATLARI BO'YICHA ────────────────────────────────
+  /* USTUNDAGI SHIFOKORLAR. Shifokor o'zi kirganda — faqat o'zi: ilgari
+     unga hamkasblarining bo'sh ustunlari ham chizilardi va ustiga
+     bosilsa o'sha hamkasb nomiga yozuv ochilardi. */
+  const allActive = doctors.filter(d => d.status === 'Active');
+  const activeDoctors = isDoctor
+    ? doctors.filter(d => d.id === doctorId)
+    : allActive.filter(d => !doctorFilter || d.id === doctorFilter);
 
-     Ilgari u FAQAT klinikaning umumiy soatidan qurilardi (8:00–20:00),
-     holbuki har shifokorning o'z ish vaqti bor. Natijada ertalab 7 da
-     boshlaydigan shifokorning birinchi qabuli setkadan tashqarida
-     qolardi: yozuv bazada bor, kalendarda ko'rinmaydi — va buni
-     tekshirishning yo'li yo'q edi.
-
-     Bitta shifokor tanlangan bo'lsa uning soatlari; aks holda hamma faol
-     shifokorning eng keng oralig'i. Hech kimda soat ko'rsatilmagan bo'lsa
-     klinikanikiga qaytamiz. */
-  const { startHour, endHour } = useMemo(() => {
-    const pool = doctors.filter(d =>
-      d.status === 'Active' && (!doctorFilter || d.id === doctorFilter));
-    const starts = pool.map(d => d.startHour).filter((h): h is number => h != null);
-    const ends = pool.map(d => d.endHour).filter((h): h is number => h != null);
-
+  /* Ish soatlari — ko'rinayotgan shifokorlarning eng keng oralig'i
+     (bittasi bo'lsa — o'ziniki); hech kimda yo'q bo'lsa — klinikaniki. */
+  const { workStart, workEnd } = useMemo(() => {
     const clinicStart = currentClinic?.startHour ?? 8;
     const clinicEnd = currentClinic?.endHour ?? 20;
+    const starts = activeDoctors.map(d => d.startHour).filter((h): h is number => h != null);
+    const ends = activeDoctors.map(d => d.endHour).filter((h): h is number => h != null);
     let from = starts.length ? Math.min(...starts) : clinicStart;
     let to = ends.length ? Math.max(...ends) : clinicEnd;
-
-    // Buzuq qiymatdan himoya: setka teskari yoki bo'sh bo'lib qolmasin
     if (!(from >= 0 && from <= 23)) from = clinicStart;
-    if (!(to >= 0 && to <= 23) || to <= from) to = Math.max(from + 1, clinicEnd);
-    return { startHour: from, endHour: to };
-  }, [doctors, doctorFilter, currentClinic?.startHour, currentClinic?.endHour]);
+    if (!(to >= 1 && to <= 24) || to <= from) to = Math.max(from + 1, clinicEnd);
+    return { workStart: from, workEnd: to };
+  }, [activeDoctors.map(d => `${d.id}:${d.startHour}:${d.endHour}`).join('|'), currentClinic?.startHour, currentClinic?.endHour]);
 
-  const HOURS = Array.from({ length: Math.max(1, endHour - startHour + 1) }, (_, i) => i + startHour);
-
-  /* Ikki xil cheklov, ikkalasi ham qo'llanadi:
-       • SHIFOKOR o'zi kirganda faqat o'z qabullarini ko'radi (ruxsat);
-       • legenda filtri — ko'rinishni toraytirish (qulaylik). */
-  const filteredAppointments = (userRole === UserRole.DOCTOR && doctorId
+  /* Ikki cheklov: SHIFOKOR faqat o'z yozuvlarini ko'radi (ruxsat);
+     chip filtri — ko'rinishni toraytirish (qulaylik). */
+  const filteredAppointments = (isDoctor
     ? effectiveAppointments.filter(a => a.doctorId === doctorId)
     : effectiveAppointments
   ).filter(a => !doctorFilter || a.doctorId === doctorFilter);
 
-  /* UCH KO'RINISH. Kun — shifokorlar ustunlarda (registratorning ish
-     ko'rinishi); Hafta — kunlar ustunlarda; Oy — ism emas, kunning bandligi
-     (`components/CalendarMonth.tsx`). */
-  const [view, setView] = useState<'day' | 'week' | 'month'>('week');
+  const displayDays: Date[] = view === 'day'
+    ? [new Date(currentDate)]
+    : Array.from({ length: 7 }, (_, i) => {
+      const s = startOfWeekLocal(currentDate);
+      return new Date(s.getFullYear(), s.getMonth(), s.getDate() + i);
+    });
+  const displayKeys = displayDays.map(d => formatDateToISO(d));
+  /* Ta'tildagi / o'chirilgan shifokorning shu kunga yozuvi bo'lsa — unga
+     ham ustun: aks holda yozuv kunlik ko'rinishdan jimgina yo'qolardi
+     (hafta va oyda esa ko'rinib turardi). */
+  const extraDoctors = view === 'day' && !isDoctor
+    ? doctors.filter(d => d.status !== 'Active' && (!doctorFilter || d.id === doctorFilter)
+      && filteredAppointments.some(a => a.doctorId === d.id && dayKey(a.date) === displayKeys[0]))
+    : [];
+  const columnDoctors = [...activeDoctors, ...extraDoctors];
+  const activeIds = new Set(columnDoctors.map(d => d.id));
+  /* To'rda chiziladigan yozuvlar: ko'rinayotgan kunlar; kunlik
+     ko'rinishda — ustuni bor shifokorlarniki. */
+  const inView = filteredAppointments.filter(a =>
+    displayKeys.includes(dayKey(a.date)) && (view !== 'day' || activeIds.has(a.doctorId)));
 
-  /* «HOZIR» CHIZIG'I — setkada hozirgi vaqt. Daqiqada bir siljiydi. */
+  /* To'r: ish soatlari + undan tashqaridagi yozuvlar (ilgari ular
+     to'rdan chiqib, ko'rinmay qolardi). Oxirgi soat KIRMAYDI: 18:00 da
+     tugaydigan kun 17:00–18:00 qatori bilan yopiladi. */
+  const { gridStart, gridEnd } = gridHours(workStart, workEnd, inView);
+  const HOURS = Array.from({ length: gridEnd - gridStart }, (_, i) => gridStart + i);
+
+  /* SOAT BALANDLIGI — ekranga qarab. Ilgari 96px qotirilgan edi va
+     1280×800 oynada kunning yarmi ham ko'rinmasdi; to'r esa 1200px ga
+     qotirilib, kech soatlar kesilardi. */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [viewportH, setViewportH] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setViewportH(el.clientHeight));
+    ro.observe(el);
+    setViewportH(el.clientHeight);
+    return () => ro.disconnect();
+  }, [view === 'month']);
+  const fitted = viewportH ? Math.floor((viewportH - HEADER_PX) / HOURS.length / 2) * 2 : 64;
+  const hourPx = Math.min(HOUR_MAX_PX, Math.max(HOUR_MIN_PX, fitted));
+  const halfPx = hourPx / 2;
+  const topFor = (minutes: number) => (minutes / 60 - gridStart) * hourPx;
+
+  /* «HOZIR» — daqiqada bir yangilanadi */
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
+  const nowDate = new Date(nowTick);
+  const nowMin = nowDate.getHours() * 60 + nowDate.getMinutes();
+  const nowDayIndex = displayKeys.indexOf(formatDateToISO(nowDate));
+  const showNow = view !== 'month' && nowDayIndex !== -1 && nowMin >= gridStart * 60 && nowMin < gridEnd * 60;
+  const nowLabel = `${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`;
 
-  /* HISOBOT. Kalendar «kim qachon yozilgan» ni ko'rsatadi, lekin
-     «qaysi kunlarda mijoz ko'p keladi» degan savolga javob bermaydi —
-     buning uchun tarixni yig'ish kerak. Shuning uchun hisobot aynan shu
-     yerda, kalendarning uchinchi ko'rinishi sifatida turadi: savol shu
-     ekranda tug'iladi, javobi ham shu yerda bo'lgani ma'qul. */
+  /* OCHILGANDA — kerakli joyga aylantiramiz: bugun bo'lsa hozirdan bir
+     soat oldinga, aks holda birinchi yozuvga. */
+  const firstStart = inView.reduce<number | null>((m, a) => {
+    const s = startMinutes(a.time);
+    return s == null ? m : m == null ? s : Math.min(m, s);
+  }, null);
+  const anchorMin = nowDayIndex !== -1 ? nowMin - 60 : firstStart != null ? firstStart - 30 : null;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || view === 'month') return;
+    el.scrollTop = anchorMin == null ? 0 : Math.max(0, topFor(anchorMin));
+    // Faqat kun/ko'rinish/o'lcham o'zgarganda — har daqiqada emas
+  }, [view, displayKeys[0], hourPx, gridStart, firstStart != null]);
+
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [editingApptId, setEditingApptId] = useState<string | null>(null);
-
-  // Message Modal State
-  /* Xabar oynasi — YAGONA komponent (`SendMessageModal`). Bu yerda
-     o'z nusxasi bor edi va matn kodga yozilgan shablondan yig'ilardi:
-     klinika uni o'zgartira olmasdi. */
+  /* Xabar oynasi — YAGONA komponent (`SendMessageModal`). */
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [messageAppt, setMessageAppt] = useState<Appointment | null>(null);
-
-  // Add Form State
-  const [formData, setFormData] = useState({
-    patientId: '',
-    doctorId: '',
-    type: '',
-    categoryId: '',
-    date: todayISO(),
-    time: '09:00',
-    duration: 60,
-    notes: ''
-  });
-
-  /* Yangi bemor — yagona forma (`PatientFormModal`). Bu yerda o'zining
-     nusxasi bor edi: tekshiruvsiz, JSHSHIRsiz va takror bemor haqidagi
-     savolsiz. */
+  /* Yozuv formasiga beriladigan boshlang'ich qiymatlar */
+  const [formDefaults, setFormDefaults] = useState({ date: formatDateToISO(new Date()), time: '09:00', doctorId: '' });
+  /* Yangi bemor — yagona forma (`PatientFormModal`). */
   const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
 
-  // Handle Resize for Responsive View
-  React.useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setView('day');
-      } else {
-        setView('week');
-      }
-    };
-
-    // Initial check
-    handleResize();
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Open Add Modal with default values selected if available
   const openAddModal = (initialDate?: string, initialTime?: string, initialDoctorId?: string) => {
     setEditingApptId(null);
-    /* `individual` tarifi merosi olib tashlandi: o'zgaruvchi hisoblanardi,
-       lekin hech qayerda ishlatilmasdi. XClinic bitta klinikaga
-       o'rnatiladi — tarif tushunchasi yo'q. */
-    setFormData({
-      patientId: patients.length > 0 ? patients[0].id : '',
-      // Defolt shifokor: berilgan → kirgan shifokor (DOCTOR roli) → birinchi shifokor
-      doctorId: initialDoctorId || (userRole === UserRole.DOCTOR && doctorId ? doctorId : '') || (doctors.length > 0 ? doctors[0].id : ''),
-      type: '',
-      categoryId: '',
-      date: initialDate || todayISO(),
+    setFormDefaults({
+      date: initialDate || formatDateToISO(new Date()),
       time: initialTime || '09:00',
-      duration: 60,
-      notes: ''
+      // berilgan → kirgan shifokor → birinchi shifokor
+      doctorId: initialDoctorId || (isDoctor ? doctorId : '') || (doctors[0]?.id ?? ''),
     });
     setIsAddModalOpen(true);
   };
 
   const openEditModal = (appt: Appointment) => {
     setEditingApptId(appt.id);
-    setFormData({
-      patientId: appt.patientId,
-      doctorId: appt.doctorId || (doctors.length > 0 ? doctors[0].id : ''),
-      type: appt.type,
-      categoryId: '',
-      date: appt.date,
-      time: appt.time,
-      duration: appt.duration,
-      notes: appt.notes || ''
-    });
+    setFormDefaults({ date: appt.date, time: appt.time, doctorId: appt.doctorId || (doctors[0]?.id ?? '') });
     setIsAddModalOpen(true);
     setSelectedAppointment(null);
   };
 
-  // Helper: Get days to display
-  const getDisplayDays = (date: Date, currentView: 'day' | 'week' | 'month') => {
-    if (currentView === 'day') {
-      return [new Date(date)];
-    }
-
-    const days = [];
-    // Hafta boshi — so'rov oralig'i bilan BIR XIL funksiyadan
-    const start = startOfWeekLocal(date);
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(start);
-      day.setDate(start.getDate() + i);
-      days.push(day);
-    }
-    return days;
-  };
-
-  const displayDays = getDisplayDays(currentDate, view);
-
-
-  /* Kunlik ko'rinishda ustunlar ham filtrga bo'ysunadi — aks holda
-     filtr yoqilganda bo'sh ustunlar qatori qolib ketardi. */
-  const activeDoctors = doctors
-    .filter(d => d.status === 'Active')
-    .filter(d => !doctorFilter || d.id === doctorFilter);
-  /* HAFTA + HAMMA SHIFOKOR = O'QIB BO'LMAYDIGAN EKRAN.
-
-     Hafta ko'rinishida bir kunning USTUNI ~140px. Bir vaqtda 6 ta
-     shifokorda qabul bo'lsa, oltalasi shu 140px ni bo'lishadi — har
-     biriga 23px tushadi va bemor ismi «Tosh...» ga aylanadi. Ya'ni
-     ekran to'la, lekin undan hech narsa o'qib bo'lmaydi.
-
-     Sabab pastdagi `getGroupKey`: hafta ko'rinishida u faqat SANA
-     bo'yicha guruhlaydi, shifokorni hisobga olmaydi — shuning uchun
-     turli shifokorlarning bir vaqtdagi qabullari bir-biriga raqib
-     bo'lib qoladi. Kunlik ko'rinishda esa shifokor alohida ustun.
-
-     Yechim: siqilgan holatda ism yozishga URINMAYMIZ. Blok rangli
-     chiziqqa aylanadi (kun qanchalik band ekani baribir ko'rinadi),
-     ism esa sichqoncha ustiga kelganda chiqadi. Ismlarni ro'yxat
-     bo'lib o'qish uchun shifokor tanlanadi — o'shanda ustun bo'linmaydi. */
-
-  /* USTUNLAR — KLASS EMAS, INLINE STIL.
-
-     Ilgari bu yerda shunday yozilgan edi:
-         `grid-cols-[60px_repeat(${activeDoctors.length},minmax(200px,1fr))]`
-
-     Tailwind klasslarni MANBA MATNIDAN qidirib topadi va shu topilganlari
-     uchun CSS yozadi. `${...}` bilan yig'ilgan nom manbada hech qachon
-     to'liq holda uchramaydi — ya'ni bu klass uchun CSS umuman
-     yaratilmagan. Natijada kunlik ko'rinishda grid'ning ustunlari
-     e'lon qilinmay qolgan va shifokorlar yonma-yon emas, bir-birining
-     ostiga tik qatorga tushib qolgan; vaqt ustuni ham joyidan chiqqan.
-
-     Inline stil Tailwind'ga bog'liq emas — u to'g'ridan-to'g'ri
-     brauzerga boradi va har qanday shifokorlar soni bilan ishlaydi. */
-  const gridCols: React.CSSProperties = view === 'week'
-    ? { gridTemplateColumns: 'repeat(8, minmax(0, 1fr))' }
-    : activeDoctors.length > 0
-      ? { gridTemplateColumns: `60px repeat(${activeDoctors.length}, minmax(200px, 1fr))` }
-      : { gridTemplateColumns: '60px 1fr' };
-
-  // Handlers
-  /* Oy bo'yicha siljish: oyning shu kuni yo'q bo'lsa (31 → 30 kunlik oy) —
-     oxirgi kuni. `setMonth` bunday holda keyingi oyga sakrab ketardi. */
+  /* Oy bo'yicha siljish: oyning shu kuni yo'q bo'lsa (31 → 30) — oxirgi kuni */
   const shiftMonth = (delta: number) => {
     const last = new Date(currentDate.getFullYear(), currentDate.getMonth() + delta + 1, 0).getDate();
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + delta, Math.min(currentDate.getDate(), last)));
   };
-
-  const handlePrev = () => {
-    if (view === 'month') { shiftMonth(-1); return; }
-    const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() - (view === 'week' ? 7 : 1));
-    setCurrentDate(newDate);
+  const shift = (dir: 1 | -1) => {
+    if (view === 'month') { shiftMonth(dir); return; }
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() + dir * (view === 'week' ? 7 : 1));
+    setCurrentDate(d);
   };
+  const openDay = (day: Date) => { setCurrentDate(day); setView('day'); };
 
-  const handleNext = () => {
-    if (view === 'month') { shiftMonth(1); return; }
-    const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() + (view === 'week' ? 7 : 1));
-    setCurrentDate(newDate);
-  };
-
-  // Dushanbadan boshlab — oy ko'rinishi va yon paneldagi kichik kalendar uchun
   const weekdaysMonFirst = [
     t('calendar.days.mon'), t('calendar.days.tue'), t('calendar.days.wed'), t('calendar.days.thu'),
     t('calendar.days.fri'), t('calendar.days.sat'), t('calendar.days.sun'),
   ];
+  const dayNames = [
+    t('calendar.days.sun'), t('calendar.days.mon'), t('calendar.days.tue'),
+    t('calendar.days.wed'), t('calendar.days.thu'), t('calendar.days.fri'), t('calendar.days.sat'),
+  ];
 
-  /* Shifokor yonidagi son — KO'RINAYOTGAN davr bo'yicha (kun / hafta / oy)
-     va filtrdan MUSTAQIL: filtr yoqilganda qolganlari nolga tushib qolmasin. */
+  /* Chip va ustun sarlavhasidagi son — KO'RINAYOTGAN davr bo'yicha va
+     filtrdan MUSTAQIL: filtr yoqilganda qolganlari nolga tushmasin. */
   const periodKeys = new Set(view === 'month'
     ? Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() },
-        (_, i) => formatDateToISO(new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1)))
-    : displayDays.map(d => formatDateToISO(d)));
+      (_, i) => formatDateToISO(new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1)))
+    : displayKeys);
   const countByDoctor = new Map<string, number>();
   for (const a of effectiveAppointments) {
-    if (a.status === 'Cancelled' || !periodKeys.has(dayKey(a.date))) continue;
+    if (isClosedAppt(a) || !periodKeys.has(dayKey(a.date))) continue;
     countByDoctor.set(a.doctorId, (countByDoctor.get(a.doctorId) || 0) + 1);
   }
-  /* Kunning sig'imi — faol shifokorlarning ish vaqti yig'indisi (daqiqada). */
+  /* Kunning sig'imi — ko'rinayotgan shifokorlar ish vaqti yig'indisi (daqiqa) */
   const capacityMin = activeDoctors.reduce((sum, d) =>
     sum + Math.max(1, (d.endHour ?? currentClinic?.endHour ?? 20) - (d.startHour ?? currentClinic?.startHour ?? 8)) * 60, 0);
 
@@ -360,17 +317,13 @@ export const Calendar: React.FC<CalendarProps> = ({
     if (!el) return;
     try { el.showPicker(); } catch { el.focus(); }
   };
-
   const headerLabel = view === 'month' ? monthLabel(currentDate, language)
     : view === 'week' ? weekLabel(displayDays[0], displayDays[6], language)
       : dayLabel(displayDays[0], language);
-
-  /* «Hozir» chizig'ining o'rni: soat balandligi 96px (yarim soat — 48px). */
-  const nowDate = new Date(nowTick);
-  const nowTop = (nowDate.getHours() - startHour) * 96 + (nowDate.getMinutes() / 60) * 96;
-  const nowDayIndex = displayDays.findIndex(d => formatDateToISO(d) === formatDateToISO(nowDate));
-  const showNow = view !== 'month' && nowDayIndex !== -1 && nowDate.getHours() >= startHour && nowDate.getHours() <= endHour;
-  const nowLabel = `${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`;
+  const todayKey = formatDateToISO(new Date());
+  const showsToday = view === 'month'
+    ? currentDate.getFullYear() === new Date().getFullYear() && currentDate.getMonth() === new Date().getMonth()
+    : displayKeys.includes(todayKey);
 
   const [arriving, setArriving] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -379,9 +332,7 @@ export const Calendar: React.FC<CalendarProps> = ({
     setArriving(appt.id);
     try {
       const r = await markAppointmentArrived(appt, { doctors, services });
-      if (r.appointmentNotClosed) {
-        toast.error("Qabul ochildi, lekin kalendardagi yozuv holati yangilanmadi");
-      }
+      if (r.appointmentNotClosed) toast.error(t('calendar.qabul_ochildi_holat_yangilanmadi'));
       setSelectedAppointment(null);
       /* Darhol bemor kartasiga — qabul o'sha yerda olib boriladi. */
       navigate(`/patients/${appt.patientId}?visit=${r.visit.id}`);
@@ -399,32 +350,18 @@ export const Calendar: React.FC<CalendarProps> = ({
   };
 
   const handleStatusUpdate = async (status: Appointment['status']) => {
-    if (selectedAppointment) {
-      try {
-        await onUpdateAppointment(selectedAppointment.id, { status });
-        setSelectedAppointment({ ...selectedAppointment, status }); // Optimistic update for modal
-      } catch (error) {
-        /* `App.tsx` toast ko'rsatadi va xatoni qayta uloqtiradi. Bu yerda
-           MODALDAGI holatni orqaga qaytarish kerak: yuqoridagi optimistik
-           yangilanish qolib ketsa, oyna «bajarildi» deb ko'rsatadi, baza
-           esa eski holatda turadi. */
-        setSelectedAppointment(prev => prev ? { ...prev } : prev);
-      }
+    if (!selectedAppointment) return;
+    try {
+      await onUpdateAppointment(selectedAppointment.id, { status });
+      setSelectedAppointment({ ...selectedAppointment, status });
+    } catch {
+      /* `App.tsx` toast ko'rsatadi; oynadagi holat eski qiymatda qoladi. */
     }
   };
 
-  /* ESLATMA — SERVER shabloni bilan.
-
-     Ilgari eslatma matni SHU YERDA, brauzerda yig'ilardi va oddiy
-     «xabar yuborish» yo'lidan ketardi. Ikki oqibati bor edi:
-     jurnalda xabar qaysi YOZUVGA tegishli ekani qolmasdi (`refId`,
-     `type: 'Reminder'` yo'q edi), va matn serverdagi shablondan
-     ajralib ketgan edi — avtomatik eslatma boshqacha yozardi.
-
-     Endi `POST /appointments/:id/remind`: bitta shablon, jurnalda
-     bog'lam, va yozuvda «eslatma yuborilgan» bayrog'i. */
+  /* ESLATMA — SERVER shabloni bilan (`POST /appointments/:id/remind`):
+     bitta shablon, jurnalda bog'lam, yozuvda «eslatma yuborilgan». */
   const [reminding, setReminding] = useState<string | null>(null);
-
   const handleRemind = async (appt: Appointment) => {
     setReminding(appt.id);
     try {
@@ -438,694 +375,305 @@ export const Calendar: React.FC<CalendarProps> = ({
     }
   };
 
-  const openMessageModal = (appt: Appointment) => {
-    setMessageAppt(appt);
-    setIsMessageModalOpen(true);
+  /* ─── TO'R GEOMETRIYASI ───────────────────────────────────────────────
+     Ustunlar INLINE stil bilan: Tailwind `${...}` bilan yig'ilgan klass
+     nomini manbadan topa olmaydi va CSS yaratmaydi. */
+  const nCols = view === 'week' ? 7 : Math.max(1, columnDoctors.length);
+  const gridCols: React.CSSProperties = {
+    gridTemplateColumns: view === 'week'
+      ? `${GUTTER_PX}px repeat(7, minmax(0, 1fr))`
+      : `${GUTTER_PX}px repeat(${nCols}, minmax(200px, 1fr))`,
+  };
+  const colLeft = (col: number, frac = 0) => `calc(${GUTTER_PX}px + (100% - ${GUTTER_PX}px) * ${(col + frac) / nCols} + 2px)`;
+  const colWidth = (frac: number) => `calc((100% - ${GUTTER_PX}px) * ${frac / nCols} - 4px)`;
+  const bodyHeight = HOURS.length * hourPx;
+
+  const renderHalfCells = (dateStr: string, docId?: string) => HOURS.map(hour => {
+    const hh = String(hour).padStart(2, '0');
+    const cell = 'cursor-pointer hover:bg-primary-500/[0.06] transition-colors';
+    return (
+      <React.Fragment key={hour}>
+        <div style={{ height: halfPx }} className={`${cell} border-b border-dashed border-line-soft`} onClick={() => openAddModal(dateStr, `${hh}:00`, docId)} />
+        <div style={{ height: halfPx }} className={`${cell} border-b border-line-soft`} onClick={() => openAddModal(dateStr, `${hh}:30`, docId)} />
+      </React.Fragment>
+    );
+  });
+
+  const offHours = (doc: Doctor) => {
+    const s = Math.max(gridStart, doc.startHour ?? workStart);
+    const e = Math.min(gridEnd, doc.endHour ?? workEnd);
+    const bands: { top: number; height: number }[] = [];
+    if (s > gridStart) bands.push({ top: 0, height: (s - gridStart) * hourPx });
+    if (e < gridEnd) bands.push({ top: (e - gridStart) * hourPx, height: (gridEnd - e) * hourPx });
+    return bands.map((b, i) => (
+      <div key={i} aria-hidden="true" className="absolute inset-x-0 pointer-events-none" style={{ ...b, background: OFF_HOURS_BG }} />
+    ));
   };
 
-  // UI Data
-  const dayNames = [
-    t('calendar.days.sun'), t('calendar.days.mon'), t('calendar.days.tue'), 
-    t('calendar.days.wed'), t('calendar.days.thu'), t('calendar.days.fri'), 
-    t('calendar.days.sat')
-  ];
+  const renderAppointments = () => {
+    /* Kunlik ko'rinishda har shifokor — o'z ustuni; haftada bir kun
+       ustunida hamma shifokor, shuning uchun bir yo'lak va «+N». */
+    const { lanes, overflow } = layoutLanes(
+      inView,
+      a => view === 'day' ? `${dayKey(a.date)}-${a.doctorId}` : dayKey(a.date),
+      view === 'week' ? WEEK_LANES : undefined,
+    );
+
+    const blocks = inView.map(app => {
+      const s = startMinutes(app.time);
+      if (s == null) return null;
+      const col = view === 'week'
+        ? displayKeys.indexOf(dayKey(app.date))
+        : columnDoctors.findIndex(d => d.id === app.doctorId);
+      if (col === -1) return null;
+      const lane = lanes[app.id] ?? { col: 0, total: 1 };
+      const lanesShown = view === 'week' ? Math.min(lane.total, WEEK_LANES) : lane.total;
+      if (lane.col >= lanesShown) return null;
+      const frac = 1 / lanesShown;
+      const height = Math.max(halfPx * (app.duration || 30) / 30, 18) - 2;
+      return (
+        <AppointmentBlock
+          key={app.id}
+          appt={app}
+          color={doctorColor(doctors.find(d => d.id === app.doctorId))}
+          top={topFor(s) + 1}
+          height={height}
+          left={colLeft(col, lane.col * frac)}
+          width={colWidth(frac)}
+          onOpen={setSelectedAppointment}
+        />
+      );
+    });
+
+    /* «+N» — yashirilgan yozuvlar yo'qolmaydi, yig'iladi. Bosilsa o'sha
+       kun kunlik ko'rinishda ochiladi: u yerda har shifokorning ustuni bor. */
+    const chips = overflow.map(o => {
+      const col = displayKeys.indexOf(dayKey(o.date));
+      if (col === -1) return null;
+      return (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => openDay(parseLocalDay(o.date))}
+          title={fill(t('calendar.yana_x_ta_qabul'), o.count, o.names)}
+          className="absolute z-[12] h-[18px] min-w-[26px] px-1 rounded-full bg-ink text-surface text-[10px] font-bold tabular-nums shadow-sm hover:opacity-90"
+          style={{ top: topFor(o.startMin) + 4, left: `calc(${colLeft(col + 1)} - 34px)` }}
+        >
+          +{o.count}
+        </button>
+      );
+    });
+
+    /* «HOZIR» CHIZIG'I — bloklar OSTIDA (ustidan o'tsa yozuv o'chirilgandek
+       ko'rinadi). Vaqt yorlig'i chap ustunda. */
+    const nowLine = showNow ? (
+      <div aria-hidden="true" className="absolute z-[5] pointer-events-none flex items-center"
+        style={view === 'week'
+          ? { top: topFor(nowMin), left: colLeft(nowDayIndex), width: colWidth(1) }
+          : { top: topFor(nowMin), left: GUTTER_PX, right: 0 }}>
+        <span className="-ml-1 w-2 h-2 rounded-full bg-red-500" />
+        <span className="flex-1 border-t-2 border-red-500" />
+      </div>
+    ) : null;
+
+    return <>{blocks}{chips}{nowLine}</>;
+  };
+
+  const liveInView = inView.filter(a => !isClosedAppt(a)).length;
+  const headCell = 'h-14 border-r border-line-soft last:border-r-0';
 
   return (
-    <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col animate-fade-in">
+    <div className="h-[calc(100vh-8.5rem)] min-h-[520px] flex flex-col gap-3 animate-fade-in">
 
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center gap-4 w-full sm:w-auto">
-          <h1 className="text-2xl font-bold text-ink">{t('calendar.title')}</h1>
-          <div className="flex items-center bg-surface rounded-md shadow-sm border border-line flex-1 sm:flex-none justify-between sm:justify-start">
-            <button aria-label={t('calendar.oldingi')} onClick={handlePrev} className="p-2 hover:bg-elevated text-muted"><ChevronLeft className="w-4 h-4" /></button>
-            {/* SANANI BOSIB ISTALGAN KUNGA O'TISH. Ilgari buning uchun chapda
-                alohida oy kalendari turardi (42 ta tugma) — tepadagi
-                strelkalar bilan bir ishni qilardi va haftani ekrandan
-                siqib chiqarardi: shanba kesilib, yakshanba ko'rinmasdi. */}
-            <button type="button" onClick={openDatePicker} title={t('cal.pickDate')}
-              className="relative px-4 h-9 text-sm font-medium min-w-[170px] text-center hover:bg-elevated">
-              {headerLabel}
-              <input ref={dateInputRef} type="date" tabIndex={-1} aria-label={t('cal.pickDate')}
-                value={formatDateToISO(currentDate)}
-                onChange={e => { if (e.target.value) setCurrentDate(parseLocalDay(e.target.value)); }}
-                className="absolute inset-0 opacity-0 pointer-events-none" />
-            </button>
-            <button aria-label={t('calendar.keyingi')} onClick={handleNext} className="p-2 hover:bg-elevated text-muted"><ChevronRight className="w-4 h-4" /></button>
-          </div>
-          {/* View Toggle for Desktop/Tablet */}
-          <div className="hidden md:flex bg-elevated rounded-lg p-1">
-            <button
-              onClick={() => setView('day')}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'day' ? 'bg-surface shadow text-ink' : 'text-muted hover:text-ink'}`}
-            >
-              {t('calendar.day')}
-            </button>
-            <button
-              onClick={() => setView('week')}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'week' ? 'bg-surface shadow text-ink' : 'text-muted hover:text-ink'}`}
-            >
-              {t('calendar.week')}
-            </button>
-            <button
-              onClick={() => setView('month')}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${view === 'month' ? 'bg-surface shadow text-ink' : 'text-muted hover:text-ink'}`}
-            >
-              {t('cal.month.tab')}
-            </button>
-          </div>
-          <button type="button" onClick={() => setCurrentDate(new Date())}
-            className="hidden md:inline-flex h-9 px-3 items-center rounded-md border border-line bg-surface text-xs font-bold text-muted hover:text-ink">
-            {t('ui.bugun')}
+      {/* ─── ASBOBLAR QATORI ─────────────────────────────────────────────
+          Sahifa nomi chap menyuda belgilangan — bu yerda katta sarlavha
+          o'rniga SANA turadi: kalendarda «qaysi kun?» savoli muhimroq. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <button type="button" onClick={() => setCurrentDate(new Date())}
+          className={`h-9 px-3.5 rounded-xl border text-[13px] font-semibold transition-colors ${showsToday
+            ? 'border-line bg-surface text-muted hover:text-ink hover:bg-elevated'
+            : 'border-primary-500/40 bg-primary-500/10 text-primary-700 dark:text-primary-300 hover:bg-primary-500/15'}`}>
+          {t('ui.bugun')}
+        </button>
+        <h1 className="sr-only">{t('calendar.title')}</h1>
+        <div className="flex items-center gap-0.5 min-w-0">
+          <button aria-label={t('calendar.oldingi')} onClick={() => shift(-1)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-muted hover:text-ink hover:bg-elevated transition-colors">
+            <ChevronLeft className="w-5 h-5" />
           </button>
-          {/* SHIFOKOR FILTRI — bitta ro'yxat. Ilgari ikki joyda edi: keng
-              ekranda yon panelda (mutaxassislik bo'yicha), torida setka
-              ustida nishonlar qatori. Yonidagi son — ko'rinayotgan davrdagi
-              yozuvlar. Shifokorga kerak emas: u faqat o'zinikini ko'radi. */}
-          {userRole !== UserRole.DOCTOR && (
-            <select value={doctorFilter || ''} onChange={e => setDoctorFilter(e.target.value || null)}
-              aria-label={t('cal.side.doctors')}
-              className={`h-9 px-2.5 rounded-md border text-xs font-bold max-w-[200px] ${doctorFilter
-                ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-ink'
-                : 'border-line bg-surface text-muted'}`}>
-              <option value="">{t('finance.debtorsModal.allDoctors')}</option>
-              {doctors.filter(d => d.status === 'Active').map(doc => {
-                const n = countByDoctor.get(doc.id) || 0;
-                return <option key={doc.id} value={doc.id}>Dr. {doc.lastName}{n ? ` · ${n}` : ''}</option>;
-              })}
-            </select>
-          )}
+          <button aria-label={t('calendar.keyingi')} onClick={() => shift(1)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-muted hover:text-ink hover:bg-elevated transition-colors">
+            <ChevronRight className="w-5 h-5" />
+          </button>
+          {/* SANANI BOSIB ISTALGAN KUNGA O'TISH (alohida oy kalendari
+              o'rniga — u haftani ekrandan siqib chiqarardi). */}
+          <button type="button" onClick={openDatePicker} title={t('cal.pickDate')}
+            className="relative ml-1 inline-flex items-center gap-1.5 h-9 px-2 rounded-xl text-xl font-semibold text-ink hover:bg-elevated transition-colors min-w-0">
+            <span className="truncate">{headerLabel}</span>
+            <ChevronDown className="w-4 h-4 text-faint shrink-0" />
+            <input ref={dateInputRef} type="date" tabIndex={-1} aria-label={t('cal.pickDate')}
+              value={formatDateToISO(currentDate)}
+              onChange={e => { if (e.target.value) setCurrentDate(parseLocalDay(e.target.value)); }}
+              className="absolute inset-0 opacity-0 pointer-events-none" />
+          </button>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          {/* `openAddModal(initialDate?, initialTime?, initialDoctorId?)` —
-              to'g'ridan-to'g'ri `onClick` ga berilsa, React unga SICHQONCHA
-              HODISASINI birinchi argument qilib uzatadi va u `initialDate`
-              bo'lib tushadi. Argumentsiz chaqiramiz. */}
-          <Button onClick={() => openAddModal()} className="flex-1 sm:flex-none"><Plus className="w-4 h-4 mr-2" /> {t('calendar.newAppointment')}</Button>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="hidden md:flex items-center bg-elevated/70 rounded-xl p-1">
+            {([['day', t('calendar.day')], ['week', t('calendar.week')], ['month', t('cal.month.tab')]] as const).map(([v, label]) => (
+              <button key={v} type="button" onClick={() => chooseView(v)} aria-pressed={view === v}
+                className={`h-7 px-3.5 rounded-lg text-[13px] transition-colors ${view === v ? 'bg-surface shadow-sm text-ink font-semibold' : 'text-muted hover:text-ink font-medium'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Argumentsiz: `onClick` ga to'g'ridan berilsa, React hodisani
+              `initialDate` o'rniga uzatardi. */}
+          <Button onClick={() => openAddModal()} className="h-10"><Plus className="w-4 h-4" /> {t('calendar.newAppointment')}</Button>
         </div>
       </div>
 
-      {/* Shifokor filtri (S5.3, audit B-18) — tepada, «Bugun» yonida. Rang
-          barqaror (`doctorColor`) va qabul blokining o'zida ko'rinadi. */}
-      {/* DAVOMAT HISOBOTI BU YERDAN KO'CHDI — Moliya → Hisobot →
-          «Davomat». Kalendar ish ekrani: unda yoziladi, ko'chiriladi va
-          «keldi» belgilanadi. Uch oylik grafik esa egaga oyda bir marta
-          kerak, lekin u kalendar bilan bitta tugmalar qatorida turgani
-          uchun kalendar har ochilganda og'ir so'rov ham ketardi. */}
-      <div className="flex-1 min-h-0 flex gap-4">
-      {view === 'month' ? (
-        <CalendarMonth
-          month={currentDate}
-          appointments={filteredAppointments}
-          capacityMin={capacityMin}
-          weekdays={weekdaysMonFirst}
-          onOpenDay={day => { setCurrentDate(day); setView('day'); }}
+      {/* Shifokor filtri — chiplar; shifokorga kerak emas (u faqat
+          o'zinikini ko'radi). */}
+      {!isDoctor && allActive.length > 0 && (
+        <DoctorChips
+          doctors={allActive}
+          value={doctorFilter}
+          counts={countByDoctor}
+          label={t('cal.side.doctors')}
+          allLabel={t('ui.hammasi')}
+          onChange={setDoctorFilter}
         />
-      ) : (
-      /* Calendar Grid */
-      <div className="flex-1 min-w-0 bg-surface rounded-xl border border-line overflow-hidden flex flex-col relative">
-        <div className="flex-1 overflow-auto">
-          <div className={`h-full relative ${view === 'week' ? 'min-w-[1000px]' : activeDoctors.length > 2 ? 'min-w-fit' : 'w-full'}`}>
-            {/* Header Row */}
-            <div style={gridCols} className="grid border-b border-line sticky top-0 z-30 bg-surface">
-              <div className="p-4 border-r border-line-soft bg-canvas sticky left-0 z-40"></div>
-              {view === 'week' ? (
-                displayDays.map((day, i) => {
-                  const isToday = day.toDateString() === new Date().toDateString();
-                  return (
-                    <div key={i} className={`p-4 text-center border-r border-line-soft last:border-0 ${isToday ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''}`}>
-                      <p className={`text-sm font-semibold ${isToday ? 'text-primary-600' : 'text-ink'}`}>{dayNames[day.getDay()]}</p>
-                      <p className={`text-xs ${isToday ? 'text-primary-500' : 'text-muted'}`}>{day.getDate()}</p>
-                    </div>
-                  );
-                })
-              ) : (
-                activeDoctors.length > 0 ? (
-                  activeDoctors.map((doc, i) => (
-                    <div key={doc.id} className="p-3 text-center border-r border-line-soft last:border-0">
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: doctorColor(doc) }} />
-                        <p className="text-sm font-semibold text-ink truncate">Dr. {doc.lastName}</p>
-                      </div>
-                      <p className="text-[10px] text-muted truncate">{doc.specialty}</p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-4 text-center border-r border-line-soft">
-                    <p className="text-sm font-semibold text-ink">{dayNames[displayDays[0].getDay()]}</p>
-                    <p className="text-xs text-muted">{displayDays[0].getDate()}</p>
-                  </div>
-                )
-              )}
-            </div>
+      )}
 
-            {/* Body */}
-            <div style={gridCols} className="grid h-[1200px] relative">
-              {/* Time Column */}
-              <div className="border-r border-line bg-canvas sticky left-0 z-20">
-                {HOURS.map(hour => (
-                  <React.Fragment key={hour}>
-                    <div className="h-12 border-b border-line-soft text-xs text-faint p-2 text-right">{hour}:00</div>
-                    <div className="h-12 border-b border-line-soft"></div>
-                  </React.Fragment>
-                ))}
-              </div>
+      <div className="flex-1 min-h-0 flex">
+        {view === 'month' ? (
+          <CalendarMonth
+            month={currentDate}
+            appointments={filteredAppointments}
+            capacityMin={capacityMin}
+            weekdays={weekdaysMonFirst}
+            onOpenDay={openDay}
+          />
+        ) : (
+          <div className="relative flex-1 min-w-0 bg-surface rounded-2xl border border-line overflow-hidden flex flex-col">
+            <div ref={scrollRef} className="flex-1 overflow-auto">
+              <div className={`relative w-full ${view === 'week' ? 'min-w-[860px]' : 'min-w-fit'}`}>
 
-              {/* Days/Doctors Columns */}
-              {view === 'week' ? (
-                displayDays.map((day, i) => {
-                  const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-                  return (
-                    <div key={i} className="border-r border-line-soft last:border-0 relative">
-                      {HOURS.map(hour => {
-                        const formattedHour = hour.toString().padStart(2, '0');
-                        return (
-                          <React.Fragment key={hour}>
-                            <div
-                              className="h-12 border-b border-line-soft cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
-                              onClick={() => openAddModal(dateStr, `${formattedHour}:00`)}
-                            ></div>
-                            <div
-                              className="h-12 border-b border-line-soft cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
-                              onClick={() => openAddModal(dateStr, `${formattedHour}:30`)}
-                            ></div>
-                          </React.Fragment>
-                        );
-                      })}
-                    </div>
-                  );
-                })
-              ) : (
-                activeDoctors.length > 0 ? (
-                  activeDoctors.map((doc, i) => {
-                    const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+                {/* Ustun sarlavhalari */}
+                <div style={gridCols} className="grid border-b border-line sticky top-0 z-30 bg-surface">
+                  <div className={`${headCell} sticky left-0 z-40 bg-surface`} />
+                  {view === 'week' ? displayDays.map((day, i) => {
+                    const isToday = displayKeys[i] === todayKey;
                     return (
-                      <div key={doc.id} className="border-r border-line-soft last:border-0 relative">
-                        {HOURS.map(hour => {
-                          const formattedHour = hour.toString().padStart(2, '0');
-                          return (
-                            <React.Fragment key={hour}>
-                              <div
-                                className="h-12 border-b border-line-soft cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
-                                onClick={() => openAddModal(dateStr, `${formattedHour}:00`, doc.id)}
-                              ></div>
-                              <div
-                                className="h-12 border-b border-line-soft cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-900/10 transition-colors"
-                                onClick={() => openAddModal(dateStr, `${formattedHour}:30`, doc.id)}
-                              ></div>
-                            </React.Fragment>
-                          );
-                        })}
+                      <button key={i} type="button" onClick={() => openDay(day)} title={t('cal.openDay')}
+                        className={`${headCell} flex items-center justify-center gap-2 hover:bg-elevated transition-colors ${isToday ? 'bg-primary-500/[0.05]' : ''}`}>
+                        <span className={`text-[13px] font-medium ${isToday ? 'text-primary-700 dark:text-primary-300' : 'text-muted'}`}>{dayNames[day.getDay()]}</span>
+                        <span className={`inline-flex items-center justify-center min-w-7 h-7 px-1 rounded-full text-[14px] font-semibold tabular-nums ${isToday ? 'bg-primary-600 text-white' : 'text-ink'}`}>{day.getDate()}</span>
+                      </button>
+                    );
+                  }) : columnDoctors.map(doc => {
+                    const color = doctorColor(doc);
+                    const n = countByDoctor.get(doc.id) || 0;
+                    const hours = `${doc.startHour ?? workStart}:00–${doc.endHour ?? workEnd}:00`;
+                    return (
+                      <div key={doc.id} className={`${headCell} flex items-center gap-2.5 px-3 min-w-0`}>
+                        <span aria-hidden="true" className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-white text-[11px] font-bold"
+                          style={{ backgroundColor: color }}>{initials(doc)}</span>
+                        <div className="min-w-0 flex-1 leading-tight">
+                          <p className="text-[13px] font-semibold text-ink truncate">Dr. {doc.lastName}</p>
+                          <p className="text-[11px] text-faint truncate">{doc.specialty ? `${doc.specialty} · ` : ''}{hours}</p>
+                        </div>
+                        {n > 0 && (
+                          <span className="shrink-0 h-5 min-w-5 px-1.5 rounded-full text-[11px] font-semibold text-ink tabular-nums flex items-center justify-center"
+                            style={{ background: `color-mix(in srgb, ${color} 16%, var(--color-surface))` }}>{n}</span>
+                        )}
                       </div>
                     );
-                  })
-                ) : (
-                  <div className="border-r border-line-soft last:border-0 relative">
-                    {HOURS.map(hour => {
-                      const formattedHour = hour.toString().padStart(2, '0');
-                      const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
-                      return (
-                        <React.Fragment key={hour}>
-                          <div className="h-12 border-b border-line-soft cursor-pointer" onClick={() => openAddModal(dateStr, `${formattedHour}:00`)}></div>
-                          <div className="h-12 border-b border-line-soft cursor-pointer" onClick={() => openAddModal(dateStr, `${formattedHour}:30`)}></div>
-                        </React.Fragment>
-                      );
-                    })}
-                  </div>
-                )
-              )}
+                  })}
+                  {view === 'day' && columnDoctors.length === 0 && <div className={headCell} />}
+                </div>
 
-              {/* Appointments Overlay */}
-              {/* Appointments Overlay */}
-              {(() => {
-                // Calculate layout data for overlapping appointments
-                const layoutData: Record<string, { col: number; total: number }> = {};
-
-                /* Hafta ko'rinishida bir vaqtda ko'rsatiladigan eng ko'p
-                   qabul — BITTA.
-
-                   Avval ikkita edi. Ekranga qarab tekshirilganda ma'lum
-                   bo'ldiki, 140px lik ustunni ikkiga bo'lib, yana «+N»
-                   yorlig'iga ham joy ajratilsa, har blokka ~50px qoladi
-                   va ism yana «T.. Bog…» bo'lib kesiladi. Ya'ni ikkita
-                   o'qib bo'lmaydigan ism paydo bo'ladi.
-
-                   Bitta blokka ~104px tegadi va ism to'liq o'qiladi.
-                   Bitta o'qiladigan ism ikkita o'qilmaydiganidan afzal:
-                   hafta ko'rinishining vazifasi — mo'ljal olish, to'liq
-                   ro'yxat kunlik ko'rinishda. */
-                const WEEK_LANES = 1;
-                const overflow: { id: string; date: string; time: string; minutes: number; count: number; names: string }[] = [];
-
-                // Group by day (+ doctor if in day view) to handle overlaps independently
-                const getGroupKey = (app: Appointment) => view === 'day' ? `${app.date}-${app.doctorId}` : app.date;
-                const dayGroups: Record<string, Appointment[]> = {};
-                filteredAppointments.forEach(app => {
-                  const key = getGroupKey(app);
-                  if (!dayGroups[key]) dayGroups[key] = [];
-                  dayGroups[key].push(app);
-                });
-
-                Object.values(dayGroups).forEach(dayAppts => {
-                  const sorted = [...dayAppts].sort((a, b) => a.time.localeCompare(b.time));
-                  const groups: Appointment[][] = [];
-
-                  sorted.forEach(app => {
-                    let placed = false;
-                    for (const group of groups) {
-                      const overlaps = group.some(other => {
-                        const startA = new Date(`${app.date}T${app.time}`).getTime();
-                        const endA = startA + app.duration * 60000;
-                        const startB = new Date(`${other.date}T${other.time}`).getTime();
-                        const endB = startB + other.duration * 60000;
-                        return Math.max(startA, startB) < Math.min(endA, endB);
-                      });
-                      if (overlaps) { group.push(app); placed = true; break; }
-                    }
-                    if (!placed) groups.push([app]);
-                  });
-
-                  groups.forEach(group => {
-                    const columns: string[][] = [];
-                    group.forEach(app => {
-                      let colIndex = 0;
-                      while (true) {
-                        if (!columns[colIndex]) { columns[colIndex] = [app.id]; break; }
-                        const overlapsInCol = columns[colIndex].some(otherId => {
-                          const other = group.find(o => o.id === otherId)!;
-                          const startA = new Date(`${app.date}T${app.time}`).getTime();
-                          const endA = startA + app.duration * 60000;
-                          const startB = new Date(`${other.date}T${other.time}`).getTime();
-                          const endB = startB + other.duration * 60000;
-                          return Math.max(startA, startB) < Math.min(endA, endB);
-                        });
-                        if (!overlapsInCol) { columns[colIndex].push(app.id); break; }
-                        colIndex++;
-                      }
-                    });
-                    group.forEach(app => {
-                      layoutData[app.id] = { col: columns.findIndex(c => c.includes(app.id)), total: columns.length };
-                    });
-
-                    /* HAMMASINI CHIZMAYMIZ.
-
-                       Hafta ustuni ~140px. Bir vaqtga 6 ta qabul to'g'ri
-                       kelsa, oltalasini sig'dirishga urinish ikkala
-                       ma'noda ham ishlamaydi: ism yozilsa «Tosh…» bo'lib
-                       kesiladi, rangli to'rtburchakka aylantirilsa esa
-                       ekran o'qib bo'lmaydigan yamoqqa aylanadi.
-
-                       Shuning uchun ikkitasi ODDIY ko'rinishda qoladi
-                       (ism o'qiladi), qolganlari bitta «+N ta» yorlig'iga
-                       yig'iladi. Yorliq bosilsa o'sha kun kunlik
-                       ko'rinishda ochiladi — u yerda har shifokorning
-                       o'z ustuni bor va joy yetadi.
-
-                       Kunlik ko'rinishda cheklov yo'q: u yerda ustunlar
-                       shifokorlarga bo'lingan, siqilish yuzaga kelmaydi. */
-                    if (view === 'week' && columns.length > WEEK_LANES) {
-                      const hidden = group.filter(a => layoutData[a.id].col >= WEEK_LANES);
-                      if (hidden.length) {
-                        const ms = (a: Appointment) => new Date(`${a.date}T${a.time}`).getTime();
-                        const s0 = Math.min(...hidden.map(ms));
-                        const e0 = Math.max(...hidden.map(a => ms(a) + a.duration * 60000));
-                        const d0 = new Date(s0);
-                        overflow.push({
-                          id: 'ov-' + group[0].id,
-                          date: hidden[0].date,
-                          time: `${String(d0.getHours()).padStart(2, '0')}:${String(d0.getMinutes()).padStart(2, '0')}`,
-                          minutes: Math.max(30, (e0 - s0) / 60000),
-                          count: hidden.length,
-                          names: hidden.map(a => `${a.time} · ${a.patientName}`).join('\n'),
-                        });
-                      }
-                    }
-                  });
-                });
-
-                const blocks = filteredAppointments.map(app => {
-                  /* Sana SATR bo'yicha solishtiriladi (mahalliy). Ilgari kunlik
-                     ko'rinish `currentDate.toISOString()` bilan solishtirardi —
-                     Toshkentda 00:00–05:00 oralig'ida bu KECHAGI sana edi va
-                     tanlangan kunning qabullari ko'rinmay qolardi. */
-                  const appKey = dayKey(app.date);
-                  const dayIndex = displayDays.findIndex(d => formatDateToISO(d) === appKey);
-                  if (dayIndex === -1 && view === 'week') return null;
-                  if (view === 'day' && appKey !== formatDateToISO(currentDate)) return null;
-
-                  const [h, m] = app.time.split(':').map(Number);
-                  if (isNaN(h)) return null;
-
-                  const topOffset = ((h - startHour) * 96) + (m >= 30 ? 48 : 0) + (m % 30 / 30 * 48);
-                  const height = (app.duration / 30) * 48;
-
-                  const { col = 0, total = 1 } = layoutData[app.id] || {};
-
-                  /* Chegaradan tashqaridagilar chizilmaydi — ular «+N ta»
-                     yorlig'ida hisobga olingan. */
-                  const over = view === 'week' && total > WEEK_LANES;
-                  if (over && col >= WEEK_LANES) return null;
-
-                  /* Yorliq uchun o'ng chetdan joy ajratamiz, qolgani
-                     ko'rinadigan ikkitasiga teng bo'linadi. */
-                  const span = over ? 74 : 100;
-                  const lanes = over ? WEEK_LANES : total;
-                  const colWidth = span / lanes;
-                  const colOffset = col * colWidth;
-
-                  let left = '';
-                  let width = '';
-
-                  if (view === 'week') {
-                    left = `calc(${(dayIndex + 1) * (100 / 8)}% + 2px + ${(colOffset / 100) * (100 / 8)}%)`;
-                    width = `calc(${(colWidth / 100) * (100 / 8)}% - 4px)`;
-                  } else {
-                    const docIndex = activeDoctors.findIndex(d => d.id === app.doctorId);
-                    if (docIndex === -1 && activeDoctors.length > 0) return null; // Shouldn't happen with filtered appointments
-
-                    const numDocs = Math.max(1, activeDoctors.length);
-                    const docColumnWidth = `(100% - 60px) / ${numDocs}`;
-                    
-                    left = `calc(60px + (${docIndex === -1 ? 0 : docIndex} * (${docColumnWidth})) + ${(colOffset / 100)} * (${docColumnWidth}) + 2px)`;
-                    width = `calc(${(colWidth / 100)} * (${docColumnWidth}) - 4px)`;
-                  }
-
-                  const doctor = doctors.find(d => d.id === app.doctorId);
-                  const blockColor = doctorColor(doctor);
-
-                  /* SIQILGANMI? `total` — shu vaqtda nechta qabul yonma-yon
-                     turgani. Hafta ustuni ~140px, ya'ni uchtadan boshlab
-                     har biriga 45px dan kam joy qoladi va ism kesiladi.
-
-                     Shart `total` ga tayanadi, ekran kengligiga emas:
-                     kun bo'sh bo'lsa (bir-ikkita qabul) ism hafta
-                     ko'rinishida ham to'liq ko'rinaveradi. */
-
-
-                  /* Shaffoflikni faqat HEX ga qo'shsa bo'ladi. Shifokor
-                     rangi bazadan keladi (`Doctor.color`) va Sozlamalardan
-                     `rgb(...)` yoki nom ko'rinishida kiritilishi mumkin —
-                     unga `20` qo'shilsa CSS butunlay yaroqsiz bo'lib,
-                     blok yana fonsiz qolardi. */
-                  const withAlpha = (c: string, a: string) =>
-                      /^#[0-9a-fA-F]{6}$/.test(c) ? c + a : c;
-                  const tip = `${app.time} · ${app.patientName} · ${app.type}${app.doctorName ? ' · Dr. ' + app.doctorName : ''}`;
-
-                  const statusColors = {
-                    'Confirmed': 'border-current',
-                    'Checked-In': 'border-current',
-                    'Completed': 'border-current opacity-80',
-                    'Pending': 'border-current border-dashed',
-                    'Cancelled': 'border-red-500 bg-red-50 text-red-700 opacity-50',
-                    'No-Show': 'border-line bg-elevated text-muted opacity-50'
-                  }[app.status] || 'border-current';
-
-                  const isSpecialStatus = app.status === 'Cancelled' || app.status === 'No-Show';
-
-                  return (
-                    <div
-                      key={app.id}
-                      onClick={() => setSelectedAppointment(app)}
-                      title={tip}
-                      className={`absolute m-1 p-2 rounded-md border-l-4 text-xs shadow-sm cursor-pointer transition-all z-10 hover:brightness-95 ${isSpecialStatus ? statusColors : ''}`}
-                      style={!isSpecialStatus ? {
-                        top: `${topOffset}px`,
-                        left: left,
-                        width: width,
-                        height: `${height - 4}px`,
-                        /* `doctorColor` — FUNKSIYA, rang emas. Bu yerda u
-                           to'g'ridan-to'g'ri qo'yilgan edi: shablonga
-                           qo'yilganda funksiyaning kodi satrga aylanardi
-                           («(doc)=>{...}15»), CSS uni tashlab yuborardi va
-                           bloklar fonsiz qolardi. Natijada oltala
-                           shifokorning qabuli bir xil ko'k ko'rinardi —
-                           audit legenda haqida aytgan gap aslida
-                           BLOKLARGA ham tegishli edi.
-
-                           `blockColor` — 826-qatorda hisoblangan haqiqiy
-                           rang; `20` — shaffoflik (hex alpha). */
-                        backgroundColor: withAlpha(blockColor, '20'),
-                        borderLeftColor: blockColor,
-                        color: blockColor,
-                      } : {
-                        top: `${topOffset}px`,
-                        left: left,
-                        width: width,
-                        height: `${height - 4}px`,
-                      }}
-                    >
-                      <div className="font-bold truncate pr-4 flex items-center justify-between">
-                        <span className="truncate">{app.patientName}</span>
-                        {app.status === 'Completed' && <CheckCircle className="w-3 h-3 flex-shrink-0" />}
+                {/* To'r */}
+                <div style={{ ...gridCols, height: bodyHeight }} className="grid relative">
+                  {/* Vaqt ustuni: yorliq soat chizig'ining USTIDA */}
+                  <div className="relative border-r border-line bg-surface sticky left-0 z-20">
+                    {HOURS.map((hour, i) => (
+                      <div key={hour} style={{ height: hourPx }} className="relative">
+                        <span className={`absolute right-2 text-[11px] text-faint tabular-nums ${i === 0 ? 'top-1' : '-top-2'}`}>{hour}:00</span>
                       </div>
-                      {app.reminderSent && (
-                        <div className="absolute top-1 right-1">
-                          <Bell className="w-3 h-3 text-primary-600 dark:text-primary-400 fill-current" />
-                        </div>
-                      )}
-                      <div className="truncate opacity-75">{app.type}</div>
-                      {height > 40 && (
-                        <div className="flex items-center mt-1 gap-1 text-[10px]">
-                          <div className="w-4 h-4 rounded-full bg-white/30 flex items-center justify-center text-[9px]">{app.doctorName[0]}</div>
-                          {app.time}
-                        </div>
-                      )}
-                    </div>
-                  );
-                });
-
-                /* «+N ta» YORLIG'I. Ko'rsatilmagan qabullar shu yerda
-                   hisobga olinadi — ular yo'qolmaydi, yig'iladi.
-                   Bosilsa o'sha kun kunlik ko'rinishda ochiladi. */
-                const chips = overflow.map(o => {
-                  const dayIndex = displayDays.findIndex(d => formatDateToISO(d) === dayKey(o.date));
-                  if (dayIndex === -1) return null;
-                  const [h, m] = o.time.split(':').map(Number);
-                  if (isNaN(h)) return null;
-                  const topOffset = ((h - startHour) * 96) + (m / 60) * 96;
-                  const height = Math.max(26, (o.minutes / 30) * 48);
-
-                  return (
-                    <div
-                      key={o.id}
-                      onClick={() => { setCurrentDate(parseLocalDay(o.date)); setView('day'); }}
-                      title={fill(t('calendar.yana_x_ta_qabul'), o.count, o.names)}
-                      className="absolute m-1 rounded-md border border-dashed border-line bg-elevated/80 text-[10px] font-semibold text-muted flex items-center justify-center cursor-pointer hover:bg-elevated transition-colors z-10"
-                      style={{
-                        top: `${topOffset}px`,
-                        left: `calc(${(dayIndex + 1) * (100 / 8)}% + 2px + ${(74 / 100) * (100 / 8)}%)`,
-                        width: `calc(${(26 / 100) * (100 / 8)}% - 4px)`,
-                        height: `${height - 4}px`,
-                      }}
-                    >
-                      +{o.count}
-                    </div>
-                  );
-                });
-
-                /* «HOZIR» CHIZIG'I. Hafta ko'rinishida faqat bugungi ustunda,
-                   kunlikda — butun kenglikda (tanlangan kun bugun bo'lsa). */
-                const nowLine = showNow ? (
-                  <div aria-hidden="true" className="absolute z-20 pointer-events-none flex items-center"
-                    style={view === 'week'
-                      ? { top: `${nowTop}px`, left: `${(nowDayIndex + 1) * (100 / 8)}%`, width: `${100 / 8}%` }
-                      : { top: `${nowTop}px`, left: '60px', right: 0 }}>
-                    <span className="-ml-1 w-2 h-2 rounded-full bg-red-500" />
-                    <span className="flex-1 border-t-2 border-red-500" />
-                    <span className="absolute -top-2.5 left-2 px-1 rounded bg-red-500 text-white text-[10px] font-bold tabular-nums">{nowLabel}</span>
+                    ))}
+                    {showNow && (
+                      <span aria-hidden="true" className="absolute left-1 right-1 -translate-y-1/2 z-10 rounded-full bg-red-500 text-white text-[10px] font-bold tabular-nums text-center leading-4"
+                        style={{ top: topFor(nowMin) }}>{nowLabel}</span>
+                    )}
                   </div>
-                ) : null;
 
-                return <>{blocks}{chips}{nowLine}</>;
-              })()}
+                  {view === 'week' ? displayDays.map((day, i) => (
+                    <div key={i} className={`relative border-r border-line-soft last:border-r-0 ${displayKeys[i] === todayKey ? 'bg-primary-500/[0.03]' : ''}`}>
+                      {renderHalfCells(displayKeys[i])}
+                    </div>
+                  )) : columnDoctors.length > 0 ? columnDoctors.map(doc => (
+                    <div key={doc.id} className="relative border-r border-line-soft last:border-r-0">
+                      {renderHalfCells(displayKeys[0], doc.id)}
+                      {offHours(doc)}
+                    </div>
+                  )) : (
+                    <div className="relative">{renderHalfCells(displayKeys[0])}</div>
+                  )}
 
+                  {renderAppointments()}
+                </div>
+              </div>
             </div>
+
+            {/* Bo'sh kun — yalang'och to'r o'rniga bitta jimgina ishora */}
+            {liveInView === 0 && (
+              <div className="absolute inset-x-0 top-1/2 flex justify-center pointer-events-none z-30">
+                <span className="px-3 py-1.5 rounded-full bg-surface/90 border border-line text-[12px] text-muted shadow-sm">
+                  {t('cal.emptyHint')}
+                </span>
+              </div>
+            )}
           </div>
-        </div>
-      </div>
-      )}
+        )}
       </div>
 
-      {/* Yozuv formasi — YAGONA (`AppointmentFormModal`). Bemor
-          kartasidagi nusxa ham shu komponentga o'tdi: u yerda o'zining
-          to'qnashuv tekshiruvi bor edi va u brauzerga yuklangan
-          ro'yxatga qarab ishlardi. */}
+      {/* Yozuv formasi — YAGONA (`AppointmentFormModal`) */}
       <AppointmentFormModal
         isOpen={isAddModalOpen}
         onClose={() => { setIsAddModalOpen(false); setEditingApptId(null); }}
-        appointment={editingApptId ? appointments.find(a => a.id === editingApptId) || null : null}
+        appointment={editingApptId ? effectiveAppointments.find(a => a.id === editingApptId) || null : null}
         patients={patients}
         doctors={doctors}
         services={services}
         categories={categories}
-        defaultDate={formData.date}
-        defaultTime={formData.time}
-        defaultDoctorId={formData.doctorId}
+        defaultDate={formDefaults.date}
+        defaultTime={formDefaults.time}
+        defaultDoctorId={formDefaults.doctorId}
         onAddPatientClick={() => setIsAddPatientModalOpen(true)}
         onCreate={onAddAppointment}
         onUpdate={onUpdateAppointment}
       />
 
-      {/* Appointment Details Modal */}
       {selectedAppointment && (
-        <Modal isOpen={!!selectedAppointment} onClose={() => setSelectedAppointment(null)} title={t('calendar.appointmentDetails')}>
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2
-                  className={`text-xl font-bold text-ink ${onPatientClick ? 'cursor-pointer hover:text-primary-600 transition-colors hover:underline title-transition' : ''}`}
-                  onClick={() => {
-                    if (onPatientClick) {
-                      onPatientClick(selectedAppointment.patientId);
-                      setSelectedAppointment(null);
-                    }
-                  }}
-                  title={onPatientClick ? t('calendar.bemor_profiliga_otish') : ""}
-                >
-                  {selectedAppointment.patientName}
-                </h2>
-                <p className="text-muted text-sm">{selectedAppointment.type}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => openEditModal(selectedAppointment)}
-                  className="p-1.5 text-muted hover:text-primary-600 hover:bg-primary-50 rounded-md transition-colors"
-                  title={t('calendar.qabulni_tahrirlash')}
-                >
-                  <Edit2 className="w-5 h-5" />
-                </button>
-                <Badge status={selectedAppointment.status} />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 text-muted">
-                <Clock className="w-5 h-5 text-faint" />
-                <span>{selectedAppointment.date}, {selectedAppointment.time} ({selectedAppointment.duration} {t('common.min')})</span>
-              </div>
-              <div className="flex items-center gap-3 text-muted">
-                <User className="w-5 h-5 text-faint" />
-                <span>{selectedAppointment.doctorName}</span>
-              </div>
-              {selectedAppointment.notes && (
-                <div className="flex items-start gap-3 text-muted">
-                  <FileText className="w-5 h-5 text-faint mt-0.5" />
-                  <p className="text-sm bg-elevated p-3 rounded-md border border-line-soft w-full">
-                    {selectedAppointment.notes}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-line pt-6">
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2 justify-end">
-                {/* Initial States: Pending, Confirmed or Checked-In (Legacy support) */}
-                {(selectedAppointment.status === 'Pending' || selectedAppointment.status === 'Confirmed' || selectedAppointment.status === 'Checked-In') && (
-                  <div className="flex flex-wrap gap-2 w-full">
-                    {/* Eslatma — server shabloni bilan, bir bosishda. */}
-                    <Button
-                      variant="secondary"
-                      className={`${selectedAppointment.reminderSent ? 'bg-green-100 text-green-700 border-green-200' : ''} flex-1`}
-                      disabled={reminding === selectedAppointment.id}
-                      onClick={() => handleRemind(selectedAppointment)}
-                    >
-                      {reminding === selectedAppointment.id
-                        ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        : <Bell className="w-4 h-4 mr-2" />}
-                      {selectedAppointment.reminderSent ? t('calendar.eslatma_yuborilgan') : t('calendar.reminder')}
-                    </Button>
-
-                    <Button
-                      variant="secondary"
-                      className="flex-1"
-                      onClick={() => openMessageModal(selectedAppointment)}
-                    >
-                      <Send className="w-4 h-4 mr-2" />
-                      {t('calendar.sendMessage')}
-                    </Button>
-
-                    <button
-                      onClick={() => handleStatusUpdate('No-Show')}
-                      className="inline-flex items-center justify-center px-4 py-2 border border-line shadow-sm text-sm font-medium rounded-md text-muted bg-surface hover:bg-elevated focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-line flex-1"
-                    >
-                      <XCircle className="w-4 h-4 mr-2 text-red-500" />
-                      {t('calendar.noShow')}
-                    </button>
-
-                    {/* BEKOR QILISH. Ilgari bunday tugma UMUMAN yo'q edi:
-                        bemor oldindan qo'ng'iroq qilib bekor qilsa,
-                        registratorda ikki yo'l bor edi — «Kelmadi» deb
-                        belgilash (bu yolg'on) yoki yozuvni butunlay
-                        o'chirish (bu tarixni yo'q qiladi).
-
-                        Endi holat `Cancelled` bo'lib qoladi: kim, qachon
-                        va nima bo'lgani ko'rinib turadi. */}
-                    <button
-                      onClick={async () => {
-                        if (await confirmAction({
-                          title: t('calendar.yozuv_bekor_qilinsinmi'),
-                          body: t('calendar.yozuv_tarixda_qoladi_ochirilmaydi'),
-                          confirmLabel: t('ui.bekor_qilish'),
-                        })) handleStatusUpdate('Cancelled');
-                      }}
-                      className="inline-flex items-center justify-center px-4 py-2 border border-line shadow-sm text-sm font-medium rounded-md text-muted bg-surface hover:bg-elevated focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-line flex-1"
-                    >
-                      <XCircle className="w-4 h-4 mr-2 text-faint" />
-                      {t('common.cancel')}
-                    </button>
-
-                    {/* «KELDI» — ilgari bu yerda «Yakunlash» turardi va u
-                        yozuv holatini o'zgartirib qo'yardi, LEKIN hech qanday
-                        qabul yaratmasdi: bemor «qabul qilingan» ko'rinardi,
-                        tizimda esa na tashxis, na xizmat, na pul qatori
-                        bo'lardi. Ko'prik faqat Registraturada bor edi. */}
-                    <button
-                      onClick={() => handleArrived(selectedAppointment)}
-                      disabled={arriving === selectedAppointment.id}
-                      className="inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 flex-1"
-                    >
-                      {arriving === selectedAppointment.id
-                        ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        : <CheckCircle className="w-4 h-4 mr-2" />}
-                      {t('calendar.arrived')}
-                    </button>
-                  </div>
-                )}
-
-                {/* Read Only States */}
-                {(selectedAppointment.status === 'Completed' || selectedAppointment.status === 'Cancelled' || selectedAppointment.status === 'No-Show') && (
-                  <div className="flex gap-2">
-                    <Button variant="secondary" onClick={() => setSelectedAppointment(null)}>{t('common.close')}</Button>
-                    {permsFor(userRole, currentClinic).can('calendar', 'appts', 'delete') && <Button
-                      variant="ghost"
-                      className="text-red-500 hover:text-red-700"
-                      onClick={async () => {
-                        if (await confirmAction({ title: t('calendar.haqiqatan_ham_bu_qabulni'), danger: true, confirmLabel: t('ui.ochirish_2') })) {
-                          try {
-                            await onDeleteAppointment(selectedAppointment.id);
-                            setSelectedAppointment(null);
-                          } catch {
-                            /* Xato xabarini `App.tsx` toast ko'rsatadi.
-                               Oyna ATAYLAB ochiq qoladi: o'chirish
-                               bajarilmagan bo'lsa, uni yopish
-                               «bajarildi» degan taassurot beradi. */
-                          }
-                        }
-                      }}
-                    >
-                      {t('common.delete')}
-                    </Button>}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </Modal>
+        <AppointmentDetailsModal
+          appt={selectedAppointment}
+          arriving={arriving === selectedAppointment.id}
+          reminding={reminding === selectedAppointment.id}
+          canDelete={permsFor(userRole, currentClinic).can('calendar', 'appts', 'delete')}
+          onClose={() => setSelectedAppointment(null)}
+          onOpenPatient={onPatientClick}
+          onEdit={openEditModal}
+          onArrived={handleArrived}
+          onRemind={handleRemind}
+          onMessage={a => { setMessageAppt(a); setIsMessageModalOpen(true); }}
+          onStatus={handleStatusUpdate}
+          onDelete={onDeleteAppointment}
+        />
       )}
-      {/* Message Modal */}
-      {/* Xabar — yagona oyna: shablonlar bazadan, qarz serverdan.
-          Yozuv sanasi va vaqti shablondagi {sana}/{vaqt} ga tushadi. */}
+
+      {/* Xabar — yagona oyna; yozuv sanasi/vaqti shablondagi {sana}/{vaqt} ga tushadi */}
       <SendMessageModal
         isOpen={isMessageModalOpen}
         onClose={() => { setIsMessageModalOpen(false); setMessageAppt(null); }}
@@ -1136,11 +684,7 @@ export const Calendar: React.FC<CalendarProps> = ({
           : null}
       />
 
-      {/* Add Patient Modal */}
-      {/* Yangi bemor — yagona forma. Yaratilgach yozuv formasida
-          O'ZI TANLANADI: ilgari foydalanuvchi ro'yxatdan qaytadan
-          qidirishi kerak edi (eski kodda buni tan olgan izoh ham bor
-          edi: «for now, the user can select from the dropdown»). */}
+      {/* Yangi bemor — yaratilgach yozuv formasida O'ZI tanlanadi */}
       <PatientFormModal
         isOpen={isAddPatientModalOpen}
         onClose={() => setIsAddPatientModalOpen(false)}
@@ -1149,13 +693,8 @@ export const Calendar: React.FC<CalendarProps> = ({
         userRole={userRole}
         doctorId={doctorId}
         compact
-        onSaved={(p) => {
-          setIsAddPatientModalOpen(false);
-          setFormData(prev => ({ ...prev, patientId: p.id }));
-        }}
+        onSaved={() => setIsAddPatientModalOpen(false)}
       />
-
-
     </div>
   );
 };

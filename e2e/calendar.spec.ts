@@ -44,16 +44,16 @@ test.describe('Kalendar', () => {
 
         await login(page);
         await go(page, '/calendar');
-        /* Yon panel 2026-11-20 da olib tashlandi: shifokor filtri — tepadagi
-           ro'yxat, istalgan kun — sana yozuvini bosib. */
-        const doctorSelect = page.getByRole('combobox', { name: 'Shifokorlar' });
-        await expect(doctorSelect).toBeVisible({ timeout: 30_000 });
+        /* Shifokor filtri — tepadagi chiplar qatori (2026-11-25 gacha
+           ochiladigan ro'yxat edi); istalgan kun — sana yozuvini bosib. */
+        const doctorChips = page.getByRole('group', { name: 'Shifokorlar' });
+        await expect(doctorChips).toBeVisible({ timeout: 30_000 });
 
         // ── Sarlavha interfeys tilida ───────────────────────────────────
         const header = page.locator('h1').locator('xpath=following-sibling::div[1]');
         await expect(header).not.toContainText(/Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec/);
 
-        // ── «Hozir» chizig'i: hafta ko'rinishida bitta, bugungi ustunda ──
+        // ── «Hozir» chizig'i: bitta (registratorda sukut — kun ko'rinishi) ──
         /* Chiziq faqat ISH SOATLARIDA chiziladi, ish soatlari esa klinika va
            shifokorlar jadvalidan olinadi. Ilgari bu yerda «8 dan 20 gacha»
            deb qotirilgan edi va sinov kechqurun (to'r 18:00 da tugaganda)
@@ -62,15 +62,17 @@ test.describe('Kalendar', () => {
         const hourRow = page.getByText(`${now.getHours()}:00`, { exact: true });
         await expect(page.locator('span.border-red-500.border-t-2')).toHaveCount((await hourRow.count()) > 0 ? 1 : 0);
 
-        // ── Shifokor filtri — tepadagi ro'yxat ───────────────────────────
-        await doctorSelect.selectOption(doc.id);
-        await expect(doctorSelect).toHaveValue(doc.id);
+        // ── Shifokor filtri — chip ───────────────────────────────────────
+        const docChip = doctorChips.getByRole('button', { name: new RegExp(`^Dr\\. ${doc.lastName}\\b`) }).first();
+        await docChip.click();
+        await expect(docChip).toHaveAttribute('aria-pressed', 'true');
         /* Blok ism bilan emas, `title` bilan qidiriladi: bir vaqtda uch va undan
            ko'p yozuv bo'lsa hafta ko'rinishida blok siqiladi va ism yozilmaydi. */
         const block = page.locator(`[title*="Oy${n} Sinov"]`);
         await expect(block.first()).toBeAttached();
-        await doctorSelect.selectOption('');
-        await expect(doctorSelect).toHaveValue('');
+        const allChip = doctorChips.getByRole('button', { name: 'Hammasi' });
+        await allChip.click();
+        await expect(allChip).toHaveAttribute('aria-pressed', 'true');
 
         // ── Oy: katakda son; kun bosilsa kunlik ko'rinish ───────────────
         await page.getByRole('button', { name: /^Oy$/ }).click();
@@ -95,6 +97,6 @@ test.describe('Kalendar', () => {
         await login(page, 'malika.yusupova');
         await go(page, '/calendar');
         await expect(page.getByRole('heading', { name: 'Kalendar' })).toBeVisible({ timeout: 30_000 });
-        await expect(page.getByRole('combobox', { name: 'Shifokorlar' })).toHaveCount(0);
+        await expect(page.getByRole('group', { name: 'Shifokorlar' })).toHaveCount(0);
     });
 });

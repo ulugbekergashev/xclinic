@@ -20,6 +20,7 @@ import { chargeBedDays } from './inpatient';
 import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
 import { logAccess } from './compliance';
+import { touchLastVisit, recomputeLastVisit } from './patientVisits';
 import path from 'path';
 import fs from 'fs';
 
@@ -412,6 +413,10 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             include: { patient: true, department: true, procedures: true },
         });
         emitEvent(clinicId, 'visit.created', { visitId: visit.id, departmentId: visit.departmentId });
+        /* «Oxirgi tashrif» — Xabarlar segmenti, «uzoq kelmaganlar»
+           avtomatikasi va Bemorlar hisoboti shunga tayanadi. Ilgari hech
+           qachon yangilanmasdi. Xato qabulni to'xtatmaydi. */
+        await touchLastVisit(prisma, patientId, visitDate).catch((e: any) => console.error('lastVisit:', e?.message));
         res.json(visit);
     });
 
@@ -801,6 +806,12 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 },
                 data: { status: status === 'Completed' ? 'Completed' : 'Pending' },
             });
+        }
+        /* Adashib ochilgan qabul bekor qilinsa «oxirgi tashrif» qolgan
+           qabullardan qayta hisoblanadi — aks holda bemor yarim yil
+           «yo'qolgan» ro'yxatiga tushmay qolardi. */
+        if (status === 'Cancelled') {
+            await recomputeLastVisit(prisma, visit.patientId).catch((e: any) => console.error('lastVisit:', e?.message));
         }
 
         emitEvent(clinicId, 'visit.status', { visitId: visit.id, status: visit.status });

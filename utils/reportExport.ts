@@ -52,6 +52,8 @@ export interface ReportExportInput {
     summary?: any;
     doctors?: any;
     departments?: any;
+    /** `/reports/services` — Xizmatlar varag'i */
+    services?: any;
     writeoffs?: any;
     compare?: any;
     labShift?: any;
@@ -158,10 +160,12 @@ export function exportReportToExcel(data: ReportExportInput): void {
     if (deptRows?.length) {
         const rows: Sheet = [
             ...head(tr('reportexport.bolimlar')),
-            [tr('ui.bolim_2'), tr('report.services'), tr('ui.tolangan_2'), tr('ui.xarajat'), tr('finance.report.profit'), tr('finance.report.bedDays')],
+            [tr('ui.bolim_2'), tr('finance.report.patient'), tr('report.services'), tr('finance.report.avgCheck'), tr('ui.tolangan_2'), tr('ui.xarajat'), tr('finance.report.profit'), tr('finance.report.bedDays')],
             ...deptRows.map((d: any) => [
                 d.name,
+                d.patients ?? '',
                 d.revenue ?? 0,
+                d.avgCheck ?? '',
                 d.paid ?? d.collected ?? 0,
                 d.expense ?? 0,
                 d.profit ?? (d.margin ?? 0),
@@ -170,10 +174,41 @@ export function exportReportToExcel(data: ReportExportInput): void {
         ];
         if (data.departments?.totals) {
             const t = data.departments.totals;
-            rows.push([], [tr('cashbook.jami'), t.revenue, t.paid, t.expense, t.profit, t.bedDays]);
+            rows.push([], [tr('cashbook.jami'), t.patients ?? '', t.revenue, '', t.paid, t.expense, t.profit, t.bedDays]);
             if (t.occupancy != null) rows.push([tr('finance.report.bedOccupancy'), `${t.occupancy}%`]);
         }
-        addSheet(wb, tr('settings.bolimlar'), rows, [1, 2, 3, 4], [26, 15, 15, 15, 15, 12]);
+        addSheet(wb, tr('settings.bolimlar'), rows, [2, 3, 4, 5, 6], [26, 10, 15, 15, 15, 15, 15, 12]);
+    }
+
+    /* ── 2a. Xizmatlar ── (ekrandagi ustunlar; bo'lim — alohida ustun,
+       Excelda filtr bilan tanlanadi). Material kiritilmagan — bo'sh katak. */
+    if (data.services?.services?.length) {
+        const deptName = new Map<string, string>((data.services.departments || []).map((d: any) => [d.id, d.name]));
+        const nameOf = (r: any) => (r.source === 'Medication' ? tr('report.svc.medication') : r.source === 'Bed' ? tr('report.svc.bed') : r.name);
+        const list: any[] = data.services.services;
+        const rows: Sheet = [
+            ...head(tr('report.tabServices')),
+            [tr('report.svc.service'), tr('ui.bolim_2'), tr('report.svc.count'), tr('report.svc.sum'), tr('report.svc.avgPrice'), tr('report.svc.listPriceCol'), tr('report.svc.discount'), tr('report.svc.material'), tr('report.svc.prevSum')],
+            ...list.map(r => [
+                nameOf(r),
+                r.departmentId ? deptName.get(r.departmentId) || '' : tr('visit.noDept'),
+                r.count,
+                r.revenue,
+                r.count > 0 ? Math.round(r.revenue / r.count) : 0,
+                r.listPrice ?? '',
+                r.discount,
+                r.materialCost ?? '',
+                r.prevRevenue,
+            ]),
+            [],
+            /* Soni jami — dori dozasi va koyka-kunsiz (ekrandagi kabi) */
+            [tr('cashbook.jami'), '', list.filter(r => r.source !== 'Medication' && r.source !== 'Bed').reduce((a, r) => a + r.count, 0), data.services.totals?.revenue ?? 0, '', '', data.services.totals?.discount ?? 0, '', data.services.totals?.prevRevenue ?? 0],
+        ];
+        if (data.services.unsold?.length) {
+            rows.push([], [fill(tr('report.svc.unsoldTitle'), data.services.unsold.length)]);
+            for (const u of data.services.unsold) rows.push([u.name, u.departmentId ? deptName.get(u.departmentId) || '' : '', '', '', '', u.listPrice]);
+        }
+        addSheet(wb, tr('report.tabServices'), rows, [3, 4, 5, 6, 7, 8], [34, 18, 8, 15, 14, 14, 13, 13, 15]);
     }
 
     /* ── 3. Shifokorlar ── */

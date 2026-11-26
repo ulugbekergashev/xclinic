@@ -17,6 +17,8 @@ import { IS_DEMO_BUILD } from './services/demoBuild';
        yuklash indikatori xunuk;
      • `NotFound` — kichkina, ajratishning foydasi yo'q. */
 
+/** Shu kenglikdan boshlab chapdagi menyu sukut bo'yicha KENG (index.html dagi oldindan chizish skripti bilan bir xil). */
+const RAIL_WIDE_QUERY = '(min-width: 1440px)';
 const Patients = lazyWithReload(() => import('./pages/Patients').then(m => ({ default: m.Patients })));
 const PatientDetails = lazyWithReload(() => import('./pages/PatientDetails').then(m => ({ default: m.PatientDetails })));
 const Calendar = lazyWithReload(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
@@ -37,7 +39,8 @@ import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'reac
 import {
   LayoutDashboard, Users, Calendar as CalendarIcon,
   DollarSign, Settings as SettingsIcon, Menu, X, Moon, Sun, LogOut,
-  Activity, RefreshCw, AlertTriangle, Loader2, Package, Search, UserCheck, Plus, Edit, Trash2, ListOrdered, FlaskConical, MessageSquare, Wallet, Scan, BedDouble, UserPlus, Stethoscope, Sparkles} from 'lucide-react';
+  Activity, RefreshCw, AlertTriangle, Loader2, Package, Search, UserCheck, Plus, Edit, Trash2, ListOrdered, FlaskConical, MessageSquare, Wallet, Scan, BedDouble, UserPlus, Stethoscope, Sparkles, PanelLeftClose, PanelLeftOpen} from 'lucide-react';
+import '@fontsource-variable/inter';
 import { SignIn } from './pages/SignIn';
 import { FirstRunSetup } from './pages/FirstRunSetup';
 import { QueueBoard } from './pages/QueueBoard';
@@ -134,6 +137,34 @@ const AppContent: React.FC = () => {
   const [receptionistId, setReceptionistId] = useState<string>('');
   const [technicianId, setTechnicianId] = useState<string>('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  /* Chapdagi menyu: keng (ikonka + to'liq so'z) yoki ixcham (ikonka ostida
+     kichik yozuv). Tanlov shu kompyuterda eslab qolinadi. Kenglik
+     `--spacing-rail` orqali boshqariladi — `html.rail-compact` (index.css). */
+  /* Sukut — ekranga qarab: 1440px dan keng ekranda keng menyu, torroqda
+     ixcham (1280px oynada keng menyu «Bugun» taxtasini siqib qo'yadi).
+     Xodim tugma bilan tanlasa — shu tanlov eslab qolinadi. */
+  const [railPref, setRailPref] = useState<'auto' | 'wide' | 'compact'>(() => {
+    try {
+      const v = localStorage.getItem('xclinic_rail');
+      return v === 'wide' || v === 'compact' ? v : 'auto';
+    } catch { return 'auto'; }
+  });
+  const [wideScreen, setWideScreen] = useState(() => window.matchMedia(RAIL_WIDE_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(RAIL_WIDE_QUERY);
+    const sync = () => setWideScreen(mq.matches);
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  const railCompact = railPref === 'auto' ? !wideScreen : railPref === 'compact';
+  useEffect(() => {
+    document.documentElement.classList.toggle('rail-compact', railCompact);
+  }, [railCompact]);
+  const setRailCompact = (compact: boolean) => {
+    const v = compact ? 'compact' : 'wide';
+    setRailPref(v);
+    try { localStorage.setItem('xclinic_rail', v); } catch { /* xotira yopiq — tanlov faqat shu seansda */ }
+  };
   /* Standart holat — QORONG'I. Ilgari tizim sozlamasidan olinardi, ya'ni
      ko'pchilik kompyuterda dastur yorug' temada ochilardi. Yangi palitra
      qorong'i uchun tuzilgan va dasturning asosiy ko'rinishi shu; yorug'
@@ -1598,36 +1629,35 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
         </div>
       </aside>
 
-      {/* ─── KOMPYUTER: chapdagi menyu ustuni ───────────────────────
-          Kengligi — `--spacing-rail` (index.css). `w-rail`, `left-rail` va
-          `pl-rail` bitta qiymatdan oziqlanadi, ya'ni ustun kengligini
-          o'zgartirish uchun bitta joyni tahrirlash yetarli. */}
+      {/* ─── KOMPYUTER: chapdagi menyu ───────────────────────────
+          Ikki holat: KENG (ikonka + to'liq so'z, sukut) va IXCHAM (ikonka
+          ostida kichik yozuv). Kengligi — `--spacing-rail` (index.css);
+          ixcham holatda `html.rail-compact` uni toraytiradi. Pastda — kim
+          kirgani va chiqish: bitta kompyuterda navbatma-navbat ishlashadi. */}
       <aside ref={railRef} className="hidden lg:flex fixed inset-y-0 left-0 z-40 w-rail flex-col bg-rail border-r border-line">
-        {/* Logotip — yuqori qator bilan bir xil balandlikda, shunda
-            ikkalasining ostki chizig'i bitta gorizontal chiziq bo'lib ketadi. */}
-        <div className="h-topbar flex items-center justify-center border-b border-line shrink-0">
-          <Logo className="w-11 h-11" />
+        <div className={`h-topbar flex items-center border-b border-line shrink-0 ${railCompact ? 'justify-center' : 'px-5'}`}>
+          {railCompact ? <Logo className="w-9 h-9" /> : <LogoWordmark size="sm" />}
         </div>
 
-        {/* ‘no-scrollbar’ ATAYLAB YO'Q. Kichik noutbukda (720px) o'nta
-            modul + chiqish zo'rg'a sig'adi; ruxsatlarga qarab yana punkt
-            qo'shilsa oxirgisi ko'rinmay qoladi. Yashirin scrollbar aynan
-            shu holatni — «davomi bor» degan yagona belgini — o'chiradi.
-            Bu eski gorizontal panelning xatosi edi, uni takrorlamaymiz. */}
-        <nav className="flex-1 w-full px-2 py-2 space-y-0.5 overflow-y-auto">
+        {/* ‘no-scrollbar’ ATAYLAB YO'Q: punkt sig'masa «davomi bor» belgisi
+            ko'rinib tursin (audit B-03). */}
+        <nav className={`flex-1 w-full py-2 space-y-0.5 overflow-y-auto ${railCompact ? 'px-2' : 'px-3'}`}>
           {visibleNavigation.map((item) => {
-            const to = item.path;
+            const label = t(navLabelKey(item, userRole));
             return (
               <NavLink
                 key={item.id}
-                to={to}
+                to={item.path}
                 end={item.id === 'dashboard'}
-                title={t(navLabelKey(item, userRole))}
+                title={label}
                 className={({ isActive }) => {
                   const active = isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'));
-                  return `group relative flex flex-col items-center justify-center gap-1 w-full py-2 rounded-2xl transition-colors ${active
-                    ? 'bg-primary-500/12 text-primary-700 dark:text-primary-300'
-                    : 'text-faint hover:text-ink hover:bg-elevated'
+                  const shape = railCompact
+                    ? 'flex-col justify-center gap-0.5 py-1'
+                    : 'gap-3 h-10 px-3';
+                  return `group relative flex items-center w-full rounded-xl transition-colors ${shape} ${active
+                    ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300'
+                    : 'text-muted hover:text-ink hover:bg-elevated'
                     }`;
                 }}
               >
@@ -1635,16 +1665,16 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                   const active = isActive || (item.id === 'patients' && location.pathname.startsWith('/patients'));
                   return (
                     <>
-                      {/* Chap qirradagi ingichka chiziq — faol modulni fon
-                          rangiga qaramay aniq ko'rsatadi. */}
                       {active && (
                         <span aria-hidden="true"
-                          className="absolute left-0 top-1/2 -translate-y-1/2 h-7 w-[3px] rounded-r-full bg-primary" />
+                          className={`absolute top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-primary ${railCompact ? 'left-0' : '-left-3'}`} />
                       )}
-                      <item.icon className="w-5 h-5" strokeWidth={active ? 2.3 : 1.8} />
-                      <span className="text-[10px] font-semibold leading-tight text-center px-0.5">
-                        {t(navLabelKey(item, userRole))}
-                      </span>
+                      <item.icon className={`${railCompact ? 'w-[18px] h-[18px]' : 'w-5 h-5'} shrink-0 ${active ? '' : 'text-faint group-hover:text-muted'}`} strokeWidth={active ? 2.2 : 1.8} />
+                      {railCompact ? (
+                        <span className="text-[10px] font-semibold leading-tight text-center px-0.5">{label}</span>
+                      ) : (
+                        <span className={`text-[14px] truncate ${active ? 'font-semibold' : 'font-medium'}`}>{label}</span>
+                      )}
                     </>
                   );
                 }}
@@ -1653,33 +1683,59 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
           })}
         </nav>
 
-        <div className="px-2 py-2 border-t border-line shrink-0">
-          <button
-            onClick={handleLogout}
-            title={t('common.logout')}
-            className="flex flex-col items-center justify-center gap-1 w-full py-2 rounded-2xl text-faint hover:text-danger hover:bg-danger-500/10 transition-colors"
-          >
-            <LogOut className="w-5 h-5" strokeWidth={1.8} />
-            <span className="text-[10px] font-semibold leading-none">{t('common.logout')}</span>
-          </button>
+        {/* Kim kirgan + chiqish */}
+        <div className={`border-t border-line shrink-0 ${railCompact ? 'px-2 py-2' : 'p-3'}`}>
+          {railCompact ? (
+            <button
+              onClick={handleLogout}
+              title={`${t('common.logout')} — ${userName} · ${roleLabel}`}
+              className="flex flex-col items-center justify-center gap-1 w-full py-2 rounded-xl text-faint hover:text-danger hover:bg-danger-500/10 transition-colors"
+            >
+              <LogOut className="w-5 h-5" strokeWidth={1.8} />
+              <span className="text-[10px] font-semibold leading-none">{t('common.logout')}</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-xs uppercase bg-primary-600">
+                {userName ? userName.slice(0, 2) : 'A'}
+              </div>
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="text-[13px] font-semibold text-ink truncate" title={userName}>{userName}</p>
+                <p className="text-[11px] text-faint truncate">{roleLabel}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                title={t('common.logout')}
+                aria-label={t('common.logout')}
+                className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg text-faint hover:text-danger hover:bg-danger-500/10 transition-colors"
+              >
+                <LogOut className="w-[18px] h-[18px]" strokeWidth={1.8} />
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
       {/* ─── KOMPYUTER: yuqori qator ───────────────────────────── */}
-      <header className="hidden lg:flex fixed top-0 right-0 left-rail z-30 h-topbar items-center gap-4 px-6 bg-canvas/85 backdrop-blur-xl border-b border-line">
+      <header className="hidden lg:flex fixed top-0 right-0 left-rail z-30 h-topbar items-center gap-4 px-6 bg-surface/90 backdrop-blur-xl border-b border-line">
         {/* Klinika nomi + turgan sahifa. Ilgari bu yerda yana bitta logotip
             turardi — chapdagi ustunda logotip bor ekan, uni takrorlash
             joyni bekorga egallaydi. Klinika nomi esa foydali: bitta
             kompyuterda ikkita nusxa ochilsa qaysi biri ekani ko'rinadi. */}
-        <div className="min-w-0 shrink-0 max-w-[200px]">
-          <p className="text-[15px] font-extrabold tracking-tight text-ink truncate uppercase">
-            {currentClinic?.name || 'XClinic'}
-          </p>
-          <p className="text-[11px] font-medium text-faint truncate">{pageLabel}</p>
-        </div>
+        <button
+          onClick={() => setRailCompact(!railCompact)}
+          title={t(railCompact ? 'app.menyuni_kengaytirish' : 'app.menyuni_toraytirish')}
+          aria-label={t(railCompact ? 'app.menyuni_kengaytirish' : 'app.menyuni_toraytirish')}
+          className="-ml-2 w-9 h-9 shrink-0 flex items-center justify-center rounded-lg text-faint hover:text-ink hover:bg-elevated transition-colors"
+        >
+          {railCompact ? <PanelLeftOpen className="w-[18px] h-[18px]" /> : <PanelLeftClose className="w-[18px] h-[18px]" />}
+        </button>
+        <p className="min-w-0 shrink-0 max-w-[240px] text-[15px] font-semibold tracking-tight text-ink truncate" title={currentClinic?.name || 'XClinic'}>
+          {currentClinic?.name || 'XClinic'}
+        </p>
 
         {clinicId === 'demo-clinic-1' && (
-          <span className="shrink-0 px-2.5 py-1 text-[10px] font-bold bg-primary-500/12 text-primary-700 dark:text-primary-300 rounded-full border border-primary-500/25">
+          <span className="shrink-0 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-faint rounded-md border border-line">
             DEMO
           </span>
         )}
@@ -1687,7 +1743,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
         {/* Sana — reference dagi filial tanlagichning o'rnida. XClinic bitta
             klinika uchun, filial tushunchasi yo'q; kunlik ishda esa eng ko'p
             keraklisi aynan bugungi sana. */}
-        <div className="hidden 2xl:flex shrink-0 items-center gap-2 h-10 px-4 rounded-full border border-line bg-surface text-sm font-semibold text-muted">
+        <div className="hidden 2xl:flex shrink-0 items-center gap-2 h-9 px-3 rounded-lg text-sm font-medium text-muted">
           <CalendarIcon className="w-4 h-4 text-faint" />
           {formatHeaderDate(new Date(), language)}
         </div>
@@ -1695,7 +1751,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
         {/* Qidiruv — markazda va keng. Dasturdagi eng ko'p ishlatiladigan
             maydon, shuning uchun eng ko'rinadigan joyda turadi. */}
         <div className="flex-1 flex justify-center min-w-0">
-          <div className="relative group w-full max-w-2xl">
+          <div className="relative group w-full max-w-xl">
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-faint group-focus-within:text-primary transition-colors" />
             <input
               type="text"
@@ -1703,9 +1759,9 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
               value={searchBarTerm}
               onChange={(e) => setSearchBarTerm(e.target.value)}
               onFocus={() => setIsSearchFocused(true)}
-              className="w-full h-11 pl-12 pr-4 bg-surface border border-line rounded-full text-sm text-ink
+              className="w-full h-10 pl-12 pr-4 bg-elevated/70 border border-transparent rounded-xl text-sm text-ink
                          placeholder:text-faint outline-none transition-colors
-                         focus:border-primary-500/50 focus:ring-4 focus:ring-primary-500/10"
+                         focus:bg-surface focus:border-primary-500/50 focus:ring-4 focus:ring-primary-500/10"
             />
 
             {/* Qidiruv natijalari */}
@@ -1798,25 +1854,24 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
           {userRole !== UserRole.NURSE && (
             <button
               onClick={() => setAiOpen(true)}
-              className="flex items-center gap-2 h-10 px-4 rounded-full text-sm font-bold shrink-0
-                         border border-primary-200 dark:border-primary-800 bg-surface
-                         text-primary-600 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30
+              className="flex items-center gap-2 h-10 px-3.5 rounded-xl text-sm font-semibold shrink-0
+                         bg-primary-500/10 text-primary-700 dark:text-primary-300 hover:bg-primary-500/15
                          transition-colors"
               title={t('ai.tab')}
             >
               <Sparkles className="w-4 h-4" />
-              <span className="hidden 2xl:inline">{t('ai.tab')}</span>
+              <span className="hidden xl:inline">{t('ai.tab')}</span>
             </button>
           )}
 
           {/* Til */}
-          <div className="flex items-center h-10 bg-surface rounded-full p-1 gap-0.5 border border-line">
+          <div className="flex items-center h-10 bg-elevated/70 rounded-xl p-1 gap-0.5">
             {(['uz', 'ru'] as const).map((lang) => (
               <button
                 key={lang}
                 onClick={() => setLanguage(lang)}
-                className={`flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-bold transition-colors ${language === lang
-                  ? 'bg-primary-500/15 text-primary'
+                className={`flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-semibold transition-colors ${language === lang
+                  ? 'bg-surface text-ink shadow-sm'
                   : 'text-faint hover:text-muted'
                   }`}
               >
@@ -1828,8 +1883,9 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
 
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
-            className="w-10 h-10 flex items-center justify-center rounded-full border border-line bg-surface text-muted hover:text-ink transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl text-muted hover:text-ink hover:bg-elevated transition-colors"
             title={isDarkMode ? "Yorug' tema" : "Qorong'i tema"}
+            aria-label={isDarkMode ? "Yorug' tema" : "Qorong'i tema"}
           >
             {isDarkMode ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
           </button>
@@ -1851,7 +1907,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                 } as any);
                 handleLogin(r, who.name, 'demo-clinic-1', who.doctorId);
               }}
-              className="h-10 px-3 text-xs font-bold rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300"
+              className="h-10 px-3 text-xs font-semibold rounded-xl border border-line bg-surface text-muted"
             >
               {Object.entries(DEMO_ROLE_PROFILES).map(([role, who]) => (
                 <option key={role} value={role}>{who.label}</option>
@@ -1859,18 +1915,6 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
             </select>
           )}
 
-          {/* Kim kirgan. Klinikada bitta kompyuterda navbatma-navbat
-              ishlashadi — ism ko'rinib turishi shart. Chiqish tugmasi bu
-              yerdan chapdagi ustun ostiga ko'chdi. */}
-          <div className="flex items-center gap-2.5 pl-2.5 ml-0.5 border-l border-line">
-            <div className="hidden xl:block text-right leading-tight">
-              <p className="text-sm font-bold text-ink max-w-[140px] truncate" title={userName}>{userName}</p>
-              <p className="text-[11px] text-faint">{roleLabel}</p>
-            </div>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm uppercase bg-primary-600">
-              {userName ? userName.slice(0, 2) : 'A'}
-            </div>
-          </div>
         </div>
       </header>
 

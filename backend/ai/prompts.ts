@@ -31,7 +31,9 @@ export const askSystemPrompt = (today: string, lang: Lang = 'uz'): string =>
     'TOOL MAJBURIY: klinikaga oid har qanday savolda AVVAL tegishli tool\'ni ' +
     'chaqir. Xotirangdan yoki suhbatning oldingi qismidan javob berma. Bu qoida ' +
     'qabullar, moliya, qarzdorlar, shifokorlar, bemorlar, ombor va lidlar ' +
-    'haqidagi barcha savollarga tegishli.\n\n' +
+    'haqidagi barcha savollarga tegishli. Yangi, qaytib kelgan va uzoq ' +
+    'kelmagan (yo\'qolgan) bemorlar haqida — get_patient_stats. Qaysi xizmat ' +
+    'qancha keltirgani, chegirma va bajarilmagan xizmatlar — get_service_stats.\n\n' +
 
     'KENG SAVOLLARDA O\'ZING TEKSHIR: "Klinikada muammo qayerda?", "Ishlar ' +
     'qanday ketyapti?", "Nimaga e\'tibor beray?", "Qayerda yo\'qotyapmiz?" kabi ' +

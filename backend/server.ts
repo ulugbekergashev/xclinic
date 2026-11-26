@@ -1388,7 +1388,11 @@ app.put('/api/automation-rules/:id', authenticateToken, async (req, res) => {
                 ...(name !== undefined && { name }),
                 ...(templateId !== undefined && { templateId }),
                 ...(trigger !== undefined && { trigger }),
-                ...(hoursBefore !== undefined && { hoursBefore: parseInt(hoursBefore) || null }),
+                /* `|| null` emas: «Darhol» (0) ham haqiqiy qiymat. Ilgari 0 null
+                   ga aylanardi va trigger o'z sukutini olardi (masalan 1 soat). */
+                ...(hoursBefore !== undefined && {
+                    hoursBefore: hoursBefore === null || isNaN(parseInt(hoursBefore)) ? null : parseInt(hoursBefore),
+                }),
                 ...(channel !== undefined && { channel }),
                 ...(doctorId !== undefined && { doctorId: doctorId || null }),
                 ...(active !== undefined && { active: !!active }),
@@ -7891,6 +7895,13 @@ applySqlitePragmas()
             );
             process.exit(1);
         }
+        /* «Oxirgi tashrif» ni qabullardan tiklash (2026-11-26). Maydon ilgari
+           hech qachon yangilanmasdi — «uzoq kelmaganlar» avtomatikasi va
+           segmenti hech kimni topmasdi. Takror ishlasa zararsiz. Fonda:
+           server ishga tushishini kutdirmaydi. */
+        require('./patientVisits').backfillLastVisits(prisma)
+            .then((n: number) => { if (n > 0) console.log(`✅ Oxirgi tashrif tiklandi: ${n} bemor`); })
+            .catch((e: any) => console.error('⚠️ Oxirgi tashrif tiklanmadi:', e?.message));
         // Botlar — migratsiyalardan KEYIN: ular klinika jadvalini o'qiydi
         botManager.init();
         /* Koyka haqi: dastur o'chirilgan kunlarni quvib yetadi. Offline

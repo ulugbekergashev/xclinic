@@ -115,6 +115,8 @@ const SOURCE_LABEL: Record<string, { uz: string; ru: string }> = {
   get_doctor_stats: { uz: tr('aiassistant.shifokorlar'), ru: 'врачи' },
   find_patient: { uz: tr('aiassistant.bemorlar'), ru: 'пациенты' },
   get_low_stock: { uz: tr('aiassistant.ombor'), ru: 'склад' },
+  get_patient_stats: { uz: tr('aiassistant.bemorlar'), ru: 'пациенты' },
+  get_service_stats: { uz: tr('report.tabServices'), ru: 'услуги' },
   get_leads: { uz: tr('aiassistant.lidlar'), ru: 'лиды' },
 };
 

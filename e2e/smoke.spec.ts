@@ -135,15 +135,15 @@ test.describe('XClinic — asosiy oqimlar', () => {
         await go(page, '/calendar');
 
         /* Kalendar lazy chunk — yuklanishini kutamiz. Shifokor filtri —
-           tepadagi bitta ro'yxat (2026-11-20 gacha yon panelda edi). */
-        const filter = page.getByRole('combobox', { name: 'Shifokorlar' });
+           tepadagi chiplar qatori: «Hammasi» + har shifokor. */
+        const filter = page.getByRole('group', { name: 'Shifokorlar' });
         await expect(filter).toBeVisible({ timeout: 20_000 });
-        const options = filter.locator('option');
-        expect(await options.count()).toBeGreaterThan(1);
+        const chips = filter.getByRole('button');
+        expect(await chips.count()).toBeGreaterThan(1);
 
-        const first = await options.nth(1).getAttribute('value');
-        await filter.selectOption(first!);
-        await expect(filter).toHaveValue(first!);
+        const first = chips.nth(1);
+        await first.click();
+        await expect(first).toHaveAttribute('aria-pressed', 'true');
     });
 
     test('7. Klaviatura fokusi KO\'RINADI (B-15)', async ({ page }) => {

@@ -147,6 +147,46 @@ export const TOOL_DEFS: ToolDef[] = [
         roles: ALL,
     },
     {
+        name: 'get_patient_stats',
+        description:
+            'Bemorlar statistikasi davr bo\'yicha: nechta bemor keldi, shundan ' +
+            'yangi va qaytib kelgan, o\'tgan shunday davrga nisbatan; yangi ' +
+            'bemorlar ikkinchi marta keldimi (shifokor bo\'yicha); 6 oydan beri ' +
+            'kelmagan (yo\'qolgan) bemorlar soni va ro\'yxati. "Shu oy nechta yangi ' +
+            'bemor?", "Kim qaytib kelmayapti?" kabi savollar uchun. Raqamlar ' +
+            'Hisobot → Bemorlar bilan bir xil.',
+        parameters: {
+            type: 'object',
+            properties: {
+                dateFrom: { type: 'string', description: 'Boshlanish sanasi, YYYY-MM-DD' },
+                dateTo: { type: 'string', description: 'Tugash sanasi, YYYY-MM-DD' },
+            },
+            required: ['dateFrom', 'dateTo'],
+        },
+        roles: FINANCE,
+    },
+    {
+        name: 'get_service_stats',
+        description:
+            "Xizmatlar bo'yicha davr hisoboti: har xizmat necha marta bajarildi, " +
+            "qancha summa keltirdi, o'tgan shunday davrga nisbatan, berilgan " +
+            "chegirma, material narxi (retsept kiritilgan bo'lsa) va narxnomada " +
+            'bor-u davrda bajarilmagan xizmatlar. Tahlil (laboratoriya) ham ' +
+            "tahlilma-tahlil. «Qaysi xizmat ko'p pul keltiryapti?», «Qayerda " +
+            "chegirma ko'p?», «Qaysi xizmatni hech kim olmayapti?» kabi savollar uchun. " +
+            'Raqamlar Hisobot → Xizmatlar bilan bir xil.',
+        parameters: {
+            type: 'object',
+            properties: {
+                dateFrom: { type: 'string', description: 'Boshlanish sanasi, YYYY-MM-DD' },
+                dateTo: { type: 'string', description: 'Tugash sanasi, YYYY-MM-DD' },
+                department: { type: 'string', description: "Ixtiyoriy: bo'lim nomi (masalan «Kardiologiya»)" },
+            },
+            required: ['dateFrom', 'dateTo'],
+        },
+        roles: FINANCE,
+    },
+    {
         name: 'get_low_stock',
         description:
             'Zaxirasi minimal darajadan tushgan materiallar ro\'yxati. ' +
@@ -372,6 +412,79 @@ const IMPL: Record<string, (args: any, ctx: ToolContext) => Promise<any>> = {
             izoh: rows.length === 0
                 ? 'Bemor topilmadi. Ism boshqacha yozilgan bo\'lishi mumkin.'
                 : 'Manfiy balans — qarz. Ismlar maxfiylik uchun qisqartirilgan.',
+        };
+    },
+
+    /* Hisobot → Bemorlar bilan BITTA hisob (`patientVisits.ts`) — AI boshqa
+       son aytib, ekran bilan to'qnashmasin. */
+    get_patient_stats: async (args, ctx) => {
+        const { patientReport } = require('../patientVisits');
+        const iso = /^\d{4}-\d{2}-\d{2}$/;
+        const from = iso.test(String(args.dateFrom || '')) ? String(args.dateFrom) : null;
+        const to = iso.test(String(args.dateTo || '')) ? String(args.dateTo) : null;
+        if (!from || !to) return { xato: 'dateFrom va dateTo YYYY-MM-DD ko\'rinishida kerak' };
+        const r = await patientReport(prisma, ctx.clinicId, from, to, { listLimit: 15 });
+        return {
+            davr: `${from} — ${to}`,
+            kelgan_bemorlar: r.current.visited,
+            yangi: r.current.new,
+            qaytib_kelgan: r.current.returning,
+            otgan_davr: { davr: `${r.previous.from} — ${r.previous.to}`, kelgan: r.prev.visited, yangi: r.prev.new, qaytib_kelgan: r.prev.returning },
+            yangi_bemorlar_qaytdimi: r.newByDoctor.map((d: any) => ({ shifokor: d.doctorName, yangi: d.newPatients, ikkinchi_marta_kelgan: d.cameBack })),
+            yoqolgan: {
+                ta: r.lost.total,
+                qoida: `faol bemor, oxirgi tashrifi ${r.lost.months} oydan oldin (bugungi holat)`,
+                eng_yaqinda_yoqolganlar: r.lost.patients.map((p: any) => ({
+                    bemor: maskName(p.patientName.split(' ')[0], p.patientName.split(' ').slice(1).join(' ')),
+                    telefon: maskPhone(p.phone),
+                    oxirgi_tashrif: p.lastVisit,
+                    shifokor: p.lastDoctor,
+                    oldinda_qabuli: p.nextAppointment,
+                })),
+            },
+            izoh: 'Yangi = kartasi ham, birinchi qabuli ham shu davrda. Qaytib kelgan = davrda kelgan, ilgari ham bo\'lgan.',
+        };
+    },
+
+    get_service_stats: async (args, ctx) => {
+        const { serviceReport } = require('../serviceReport');
+        const iso = /^\d{4}-\d{2}-\d{2}$/;
+        const from = iso.test(String(args.dateFrom || '')) ? String(args.dateFrom) : null;
+        const to = iso.test(String(args.dateTo || '')) ? String(args.dateTo) : null;
+        if (!from || !to) return { xato: "dateFrom va dateTo YYYY-MM-DD ko'rinishida kerak" };
+        if (isNaN(Date.parse(`${from}T00:00:00Z`)) || isNaN(Date.parse(`${to}T00:00:00Z`)) || from > to) {
+            return { xato: "Sana noto'g'ri: dateFrom dateTo dan oldin bo'lishi kerak" };
+        }
+        const r = await serviceReport(prisma, ctx.clinicId, from, to);
+        const deptName = new Map<string, string>(r.departments.map((d: any) => [d.id, d.name]));
+        const want = String(args.department || '').trim().toLowerCase();
+        const deptIds = want ? r.departments.filter((d: any) => d.name.toLowerCase().includes(want)).map((d: any) => d.id) : null;
+        if (want && deptIds && deptIds.length === 0) return { xato: `«${args.department}» bo'limi topilmadi`, bolimlar: r.departments.map((d: any) => d.name) };
+        const rows = r.services.filter((x: any) => !deptIds || deptIds.includes(x.departmentId));
+        const SRC: Record<string, string> = { Medication: 'Dorilar (statsionar)', Bed: 'Koyka-kun' };
+        const jami = rows.reduce((s: number, x: any) => s + x.revenue, 0);
+        return {
+            davr: `${from} — ${to}`,
+            otgan_davr: r.previous ? `${r.previous.from} — ${r.previous.to}` : null,
+            jami_summa: fmt(jami),
+            xizmatlar: rows.slice(0, 40).map((x: any) => ({
+                xizmat: SRC[x.source] || x.name,
+                turi: x.source,
+                bolim: x.departmentId ? deptName.get(x.departmentId) || null : null,
+                soni: x.count,
+                summa: fmt(x.revenue),
+                ulush_foiz: jami > 0 ? Math.round((x.revenue / jami) * 100) : 0,
+                otgan_davr_summa: fmt(x.prevRevenue),
+                chegirma: fmt(x.discount),
+                narxnoma_narxi: x.listPrice,
+                material: x.materialCost == null ? 'kiritilmagan' : fmt(x.materialCost),
+            })),
+            qolgan_xizmatlar_soni: Math.max(0, rows.length - 40),
+            bajarilmagan_xizmatlar: r.unsold
+                .filter((u: any) => !deptIds || deptIds.includes(u.departmentId))
+                .slice(0, 30).map((u: any) => u.name),
+            izoh: "Summa — yozilgan xizmatlar (to'langan-to'lanmaganidan qat'i nazar), Umumiydagi «Xizmatlar» bilan bir xil. " +
+                "Material — retsept bo'yicha ombor narxi; foyda emas: sof foyda = xizmatlar − xarajat.",
         };
     },
 

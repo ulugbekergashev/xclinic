@@ -12,16 +12,19 @@ import { useLanguage, tr } from '../context/LanguageContext';
  * Bemorlarni komponent hisoblamaydi — natijani doim server qaytaradi.
  */
 
-const inputCls = "px-3 py-2 bg-surface border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500/20";
+const inputCls = "h-9 px-2.5 bg-surface border border-line rounded-lg text-sm text-ink outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20";
 
 /** Tez boshlash uchun tayyor shartlar */
-const PRESETS: { label: string; conditions: SegmentCondition[] }[] = [
-    { label: '👩 Ayollar', conditions: [{ field: 'gender', op: 'eq', value: 'Female' }] },
-    { label: '👨 Erkaklar', conditions: [{ field: 'gender', op: 'eq', value: 'Male' }] },
+/* Tayyor filtrlar. Funksiya — til almashganda yorliqlar ham almashsin.
+   Emoji yo'q (2026-11-25): «👩 Ayollar», «🔄 6 oydan…» har kompyuterda har
+   xil chizilardi va chiplar qatorini rang-barang shovqinga aylantirardi. */
+const presets = (): { label: string; conditions: SegmentCondition[] }[] => [
+    { label: tr('segmentbuilder.women'), conditions: [{ field: 'gender', op: 'eq', value: 'Female' }] },
+    { label: tr('segmentbuilder.men'), conditions: [{ field: 'gender', op: 'eq', value: 'Male' }] },
     { label: tr('segmentbuilder.bolalar_18_gacha'), conditions: [{ field: 'age', op: 'lte', value: 18 }] },
     { label: tr('segmentbuilder.qarzi_bor'), conditions: [{ field: 'hasDebt', op: 'is_true' }] },
     { label: tr('segmentbuilder.shu_oy_tugilganlar'), conditions: [{ field: 'birthdayMonth', op: 'eq', value: 'current' }] },
-    { label: '🔄 6 oydan beri kelmagan', conditions: [{ field: 'lastVisit', op: 'before', value: 6 }] },
+    { label: tr('segmentbuilder.inactive6'), conditions: [{ field: 'lastVisit', op: 'before', value: 6 }] },
     { label: tr('segmentbuilder.botga_ulanmagan'), conditions: [{ field: 'hasTelegram', op: 'is_false' }] },
     { label: tr('segmentbuilder.yangi_30_kun'), conditions: [{ field: 'registered', op: 'within', value: 30 }] },
     { label: tr('segmentbuilder.vip_5_mln'), conditions: [{ field: 'totalSpent', op: 'gte', value: 5000000 }] },
@@ -55,15 +58,18 @@ const ConditionRow: React.FC<{
     const groups = fieldGroups(fields);
 
     return (
-        <>
+        /* Tor ustunda (Xabarlar → Qo'lda chap ustuni) maydonlar SIQILADI,
+           qatorga sinmaydi: ilgari «Faol» keyingi qatorga tushib qolardi. */
+        <div className="flex-1 min-w-0 flex flex-wrap sm:flex-nowrap items-center gap-2">
             <select
+                aria-label={t('segmentbuilder.field')}
                 value={cond.field || ''}
                 onChange={e => {
                     const nd = fields.find(f => f.id === e.target.value);
                     if (!nd) return;
                     onChange({ field: nd.id, op: nd.defaultOp, value: nd.defaultValue });
                 }}
-                className={inputCls}
+                className={`${inputCls} min-w-0 flex-[1.4_1_0%]`}
             >
                 {groups.map(([group, list]) => (
                     <optgroup key={group} label={group}>
@@ -86,7 +92,8 @@ const ConditionRow: React.FC<{
                                 : cond.value,
                         });
                     }}
-                    className={inputCls}
+                    aria-label={t('segmentbuilder.operator')}
+                    className={`${inputCls} min-w-0 flex-[0.8_1_0%]`}
                 >
                     {def.operators.map(o => (
                         <option key={o.id} value={o.id}>{o.label}</option>
@@ -119,9 +126,10 @@ const ConditionRow: React.FC<{
                     </span>
                 ) : def.options ? (
                     <select
+                        aria-label={t('segmentbuilder.value')}
                         value={String(cond.value ?? '')}
                         onChange={e => onChange({ value: e.target.value })}
-                        className={inputCls}
+                        className={`${inputCls} min-w-0 flex-1`}
                     >
                         <option value="">{t('segmentbuilder.tanlang')}</option>
                         {def.options.map(o => (
@@ -167,9 +175,9 @@ const ConditionRow: React.FC<{
             )}
 
             {count !== undefined && (
-                <span className="text-xs text-faint font-mono tabular-nums">{count} {t('ui.ta')}</span>
+                <span className="text-xs text-faint tabular-nums whitespace-nowrap shrink-0">{count} {t('ui.ta')}</span>
             )}
-        </>
+        </div>
     );
 };
 
@@ -209,22 +217,22 @@ const GroupEditor: React.FC<{
     return (
         <div className={depth > 0 ? 'pl-3 border-l-2 border-primary-200 dark:border-primary-800 space-y-2' : 'space-y-2'}>
             {conditions.map((cond, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2">
+                <div key={i} className="flex items-center gap-2">
                     {i > 0 ? (
                         <button aria-label={t('segmentbuilder.va_yoki_almashtirish')}
                             type="button"
                             onClick={toggleMatch}
                             title={t('segmentbuilder.va_yoki_almashtirish')}
-                            className="px-2 py-1 text-[10px] font-bold rounded-md bg-elevated text-muted hover:text-primary-600 uppercase tracking-wider min-w-[46px]"
+                            className="h-7 px-2 text-[10px] font-bold rounded-md bg-elevated text-muted hover:text-ink uppercase tracking-wider min-w-[46px] shrink-0"
                         >
                             {match === 'all' ? 'VA' : t('segmentbuilder.yoki')}
                         </button>
                     ) : (
-                        <span className="min-w-[46px]" />
+                        <span className="min-w-[46px] shrink-0" aria-hidden="true" />
                     )}
 
                     {isGroup(cond) ? (
-                        <div className="flex-1 min-w-[260px] rounded-lg bg-elevated p-2">
+                        <div className="flex-1 min-w-0 rounded-lg bg-elevated p-2">
                             <GroupEditor
                                 node={cond}
                                 fields={fields}
@@ -245,7 +253,8 @@ const GroupEditor: React.FC<{
                         type="button"
                         onClick={() => removeAt(i)}
                         title={isGroup(cond) ? t('segmentbuilder.guruhni_olib_tashlash') : t('segmentbuilder.shartni_olib_tashlash')}
-                        className="p-1.5 text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors ml-auto"
+                        aria-label={isGroup(cond) ? t('segmentbuilder.guruhni_olib_tashlash') : t('segmentbuilder.shartni_olib_tashlash')}
+                        className="w-8 h-8 inline-flex items-center justify-center text-faint hover:text-danger hover:bg-danger-500/10 rounded-lg transition-colors shrink-0"
                     >
                         <X className="w-4 h-4" />
                     </button>
@@ -256,7 +265,7 @@ const GroupEditor: React.FC<{
                 <button
                     type="button"
                     onClick={addCondition}
-                    className="flex items-center gap-1.5 text-sm font-bold text-primary-600 hover:text-primary-700"
+                    className="flex items-center gap-1.5 text-sm font-semibold text-primary-600 hover:text-primary-700"
                 >
                     <Plus className="w-4 h-4" /> {t('segmentbuilder.shart')}
                 </button>
@@ -303,13 +312,13 @@ export const SegmentBuilder: React.FC<Props> = ({ value, onChange, fields, condi
 
     return (
         <div className="space-y-3">
-            <div className="flex flex-wrap gap-1.5">
-                {PRESETS.map(p => (
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('segmentbuilder.quick')}>
+                {presets().map(p => (
                     <button
                         key={p.label}
                         type="button"
                         onClick={() => applyPreset(p.conditions)}
-                        className="px-2.5 py-1 text-xs font-medium border border-line rounded-lg text-muted hover:border-primary-400 hover:text-primary-600 transition-colors bg-surface"
+                        className="h-7 px-2.5 text-xs font-medium border border-line rounded-lg text-muted hover:text-ink hover:border-faint hover:bg-elevated/60 transition-colors"
                     >
                         {p.label}
                     </button>
@@ -329,7 +338,7 @@ export const SegmentBuilder: React.FC<Props> = ({ value, onChange, fields, condi
                     {match === 'all'
                         ? t('segmentbuilder.barcha_shartlar_bajarilishi_kerak')
                         : t('segmentbuilder.shartlardan_bittasi_bajarilsa_yetarli')}
-                    {' · '}"Qavs" tugmasi bilan ichma-ich mantiq tuziladi: ayol VA (VIP YOKI implant)
+                    {' · '}{t('segmentbuilder.groupHint')}
                 </p>
             )}
         </div>

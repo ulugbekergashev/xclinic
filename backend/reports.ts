@@ -18,6 +18,9 @@ import { som } from './money';
 import { tashkentDateStr, tashkentMonthStart, tashkentRangeBounds, TASHKENT_OFFSET_MS } from './tashkentTime';
 import { financialSnapshot } from './snapshot';
 import { pickRate } from './payroll';
+import { patientReport } from './patientVisits';
+import { previousPeriod } from './period';
+import { serviceReport, recipeCostByService, catalogMatcher, chargeDepartmentId, periodChargesWhere } from './serviceReport';
 
 /* ─── XARAJATNI QAYSI HISOB QABUL QILADI ───────────────────────────────────
    'Lab' — meros toifa. denta7 da laboratoriya tashqi pudratchi edi va unga
@@ -84,7 +87,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
         const to = String(req.query.to || today());
         const { start: rangeStart, end: rangeEnd } = tashkentRangeBounds(from, to);
 
-        const [charges, expenses, departments, services, recipes, doctors] = await Promise.all([
+        const [charges, expenses, departments, services, costByService, doctors] = await Promise.all([
             prisma.visitCharge.findMany({
                 where: {
                     clinicId,
@@ -105,27 +108,25 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                         { visitId: null, createdAt: { gte: rangeStart, lte: rangeEnd } },
                     ],
                 },
-                include: { visit: { select: { departmentId: true, doctorId: true, doctorName: true, date: true } } },
+                include: {
+                    visit: { select: { departmentId: true, doctorId: true, doctorName: true, date: true } },
+                    admission: { select: { departmentId: true } },
+                },
             }),
             prisma.expense.findMany({
                 where: { clinicId, date: { gte: from, lte: to } },
             }),
             prisma.department.findMany({ where: { clinicId } }),
             prisma.service.findMany({ where: { clinicId } }),
-            prisma.serviceRecipe.findMany({ where: { clinicId }, include: { item: true } }),
+            recipeCostByService(prisma, clinicId),
             prisma.doctor.findMany({ where: { clinicId } }),
         ]);
 
-        // Xizmat tannarxi retseptdan — material narxlari yig'indisi
-        const costByService = new Map<number, number>();
-        for (const r of recipes) {
-            const prev = costByService.get(r.serviceId) || 0;
-            costByService.set(r.serviceId, round(prev + (r.item?.price || 0) * r.quantity));
-        }
-
-        // Qator qaysi xizmatga tegishli — nomi bo'yicha topamiz (sourceId muolaja id si)
-        const serviceByName = new Map<string, any>();
-        for (const s of services) serviceByName.set(s.name, s);
+        /* Xizmat tannarxi retseptdan — Xizmatlar tabi bilan BITTA qoida
+           (2026-11-26): katalog id si bo'yicha (meros qatorda — nomi, faqat
+           «Service» manbasida), sarflanadigan material, × soni. Ilgari nomi
+           bo'yicha butun manbalarda qidirilardi va soni hisobga olinmasdi. */
+        const catalogOf = catalogMatcher(services);
 
         const deptName = new Map<string, string>();
         for (const d of departments) deptName.set(d.id, d.name);
@@ -146,11 +147,12 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             due += total - paid;
 
             // Tannarx — faqat retsepti bor xizmatlarda
-            const svc = serviceByName.get(c.name);
-            const cost = svc ? (costByService.get(svc.id) || 0) : 0;
+            const svc = c.source === 'Lab' ? undefined : catalogOf(c);
+            const cost = svc ? (costByService.get(svc.id) || 0) * (c.quantity || 1) : 0;
             materialCost += cost;
 
-            const dKey = c.visit?.departmentId || 'none';
+            /* Statsionar qatori yotish bo'limiga — Bo'limlar tabi bilan bitta qoida */
+            const dKey = chargeDepartmentId(c) || 'none';
             if (!byDept.has(dKey)) {
                 byDept.set(dKey, {
                     departmentId: dKey === 'none' ? null : dKey,
@@ -189,9 +191,12 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
 
         for (const e of expenses) {
             const amt = e.amount || 0;
-            if (e.category === 'DoctorShare') { doctorShare += amt; continue; }
             if (!isCountedExpense(e.category)) { legacyLabExpense += amt; continue; }
-            otherExpenses += amt;
+            if (e.category === 'DoctorShare') doctorShare += amt;
+            else otherExpenses += amt;
+            /* Shifokor ulushi ham ro'yxatda (2026-11-26). Ilgari u «Xarajat»
+               plitkasiga kirardi-yu, toifalar ro'yxatidan tushib qolardi:
+               ulush to'langan oyda ro'yxat yig'indisi plitkadan kam chiqardi. */
             expenseByCategory.set(e.category, round((expenseByCategory.get(e.category) || 0) + amt));
         }
 
@@ -532,6 +537,13 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
         });
     });
 
+    /** XIZMATLAR — har xizmat: soni, summa, chegirma, material (`serviceReport.ts`) */
+    route('get', '/api/reports/services', async (req, res, clinicId) => {
+        if (!ownerOnly(req, res)) return;
+        const { from, to } = period(req);
+        res.json(await serviceReport(prisma, clinicId, from, to));
+    });
+
     /**
      * BO'LIMLAR: daromad, xarajat, foyda, koyka bandligi.
      *
@@ -546,16 +558,9 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
 
         const [charges, expenses, departments, beds, admissions] = await Promise.all([
             prisma.visitCharge.findMany({
-                where: {
-                    clinicId,
-                    status: { not: 'Cancelled' },
-                    OR: [
-                        { visit: { date: { gte: from, lte: to } } },
-                        { visitId: null, createdAt: { gte: start, lte: end } },
-                    ],
-                },
+                where: periodChargesWhere(clinicId, from, to),
                 select: {
-                    total: true, paidAmount: true, source: true,
+                    total: true, paidAmount: true, source: true, patientId: true, visitId: true,
                     visit: { select: { departmentId: true } },
                     admission: { select: { departmentId: true } },
                 },
@@ -589,17 +594,25 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                     departmentId: id, name: d?.name || "Bo'limsiz",
                     type: d?.type || null, color: d?.color || null,
                     revenue: 0, paid: 0, expense: 0, profit: 0, bedDays: 0,
+                    patientSet: new Set<string>(), checkSet: new Set<string>(),
                 });
             }
             return rows.get(key);
         };
 
+        /* BEMORLAR va O'RTACHA CHEK (2026-11-26) — o'sha qatorlardan,
+           Shifokorlar tabidagi qoida bilan: bitta qabul — bitta chek,
+           qabulsiz qator (koyka-kun, dori) o'zi alohida chek. Bir bemor
+           uch bo'limga borsa — har bo'limda bittadan, klinika jamida esa
+           BITTA (bo'limlar yig'indisi emas). */
+        const allPatients = new Set<string>();
+        let line = 0;
         for (const c of charges) {
-            // Statsionar qatorlari yotish bo'limiga, qolganlari qabul bo'limiga
-            const dep = c.admission?.departmentId || c.visit?.departmentId || null;
-            const r = ensure(dep);
+            const r = ensure(chargeDepartmentId(c));
             r.revenue = round(r.revenue + c.total);
             r.paid = round(r.paid + (c.paidAmount || 0));
+            if (c.patientId) { r.patientSet.add(c.patientId); allPatients.add(c.patientId); }
+            r.checkSet.add(c.visitId || `line:${line++}`);
         }
         for (const e of expenses) {
             /* Umumiy hisobot bilan BITTA qoida. Ilgari bu yer hamma
@@ -619,7 +632,13 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
             ensure(a.departmentId || null).bedDays += days;
         }
 
-        for (const r of rows.values()) r.profit = round(r.revenue - r.expense);
+        for (const r of rows.values()) {
+            r.profit = round(r.revenue - r.expense);
+            r.patients = r.patientSet.size;
+            r.checks = r.checkSet.size;
+            r.avgCheck = r.checks > 0 ? round(r.revenue / r.checks) : 0;
+            delete r.patientSet; delete r.checkSet;
+        }
 
         // Davrdagi kunlar soni — bandlikni foizda ko'rsatish uchun
         const periodDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 864e5));
@@ -634,6 +653,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 profit: round(Array.from(rows.values()).reduce((s, r) => s + r.profit, 0)),
                 bedDays: totalBedDays,
                 bedCount: beds,
+                patients: allPatients.size,
                 /* Bandlik = yotilgan kunlar / (koyka soni × davr kunlari).
                    Koyka bo'lmasa foiz ham yo'q — nolga bo'lishdan himoya. */
                 occupancy: beds > 0 ? round((totalBedDays / (beds * periodDays)) * 100) : null,
@@ -661,31 +681,15 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
         if (!ownerOnly(req, res)) return;
         const { from, to } = period(req);
 
-        /* Davr uzunligi KUNLARDA, ikkala chegara ham kiradi */
-        const dayMs = 864e5;
-        const fromT = new Date(`${from}T00:00:00.000Z`).getTime();
-        const toT = new Date(`${to}T00:00:00.000Z`).getTime();
-        if (!isFinite(fromT) || !isFinite(toT) || toT < fromT) {
-            return res.status(400).json({ error: "Davr noto'g'ri" });
-        }
-        const days = Math.round((toT - fromT) / dayMs) + 1;
-        let prevTo = new Date(fromT - dayMs).toISOString().slice(0, 10);
-        let prevFrom = new Date(fromT - days * dayMs).toISOString().slice(0, 10);
         /* OYNING BOSHIDAN — O'TGAN OYNING O'SHA KUNLARI (2026-11-22, egasi
            nigohidagi maslahatchi). «1–22 noyabr» oldin «10–31 oktyabr» bilan
-           solishtirilardi — ega buni o'qiy olmaydi. Endi «1–22 oktyabr». */
-        const [fy, fm, fd] = from.split('-').map(Number);
-        const [ty, tm, td] = to.split('-').map(Number);
-        if (fd === 1 && fy === ty && fm === tm) {
-            const py = fm === 1 ? fy - 1 : fy;
-            const pm = fm === 1 ? 12 : fm - 1;
-            const lastPrev = new Date(Date.UTC(py, pm, 0)).getUTCDate();
-            const pad = (n: number) => String(n).padStart(2, '0');
-            prevFrom = `${py}-${pad(pm)}-01`;
-            /* To'liq oy tanlansa (1–30 noyabr) — o'tgan oy ham TO'LIQ (1–31 oktyabr) */
-            const lastCur = new Date(Date.UTC(ty, tm, 0)).getUTCDate();
-            prevTo = `${py}-${pad(pm)}-${pad(td >= lastCur ? lastPrev : Math.min(td, lastPrev))}`;
-        }
+           solishtirilardi — ega buni o'qiy olmaydi. Endi «1–22 oktyabr».
+           Qoida `period.ts` da — Bemorlar tabi ham shuni ishlatadi. */
+        const pp = previousPeriod(from, to);
+        if (!pp) return res.status(400).json({ error: "Davr noto'g'ri" });
+        const prevFrom = pp.from, prevTo = pp.to;
+        /* Davr uzunligi KUNLARDA, ikkala chegara ham kiradi */
+        const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 864e5) + 1;
 
         /** Bitta davrning asosiy raqamlari */
         const measure = async (a: string, b: string) => {
@@ -1051,6 +1055,15 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
         });
     });
 
+    /* BEMORLAR — kelgan / yangi / qaytgan, yangi bemorlar qaytdimi (shifokor
+       bo'yicha) va yo'qolganlar ro'yxati. Hisob `patientVisits.ts` da — AI
+       yordamchi ham o'shani o'qiydi, raqamlar ikki xil chiqmasin. */
+    route('get', '/api/reports/patients', async (req, res, clinicId) => {
+        if (!ownerOnly(req, res)) return;
+        const { from, to } = period(req);
+        res.json(await patientReport(prisma, clinicId, from, to));
+    });
+
     /* ─────────────────────────────────────────────────────────────────
        DAVOMAT VA KUNLAR HISOBOTI.
 
@@ -1087,8 +1100,10 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 where: { clinicId, date: { gte: from, lte: to } },
                 select: { date: true, time: true, status: true, doctorId: true, doctorName: true },
             }),
+            /* Faqat davr ichidagi qabullar qatori. Ilgari klinikaning BUTUN
+               tarixi o'qilib, keyin JS da kesilardi — baza o'sgan sari sekinlashardi. */
             prisma.visitCharge.findMany({
-                where: { clinicId, status: { not: 'Cancelled' } },
+                where: { clinicId, status: { not: 'Cancelled' }, visit: { is: { date: { gte: from, lte: to } } } },
                 select: { total: true, visit: { select: { date: true } } },
             }),
             prisma.visit.findMany({

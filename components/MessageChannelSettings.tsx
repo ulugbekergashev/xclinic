@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Input } from './Common';
+import { useNavigate } from 'react-router-dom';
+import { Button, Input } from './Common';
 import { api } from '../services/api';
 import { toast } from '../services/toast';
 import { Clinic } from '../types';
-import { MessageSquare, CheckCircle, Activity, DollarSign, Loader2 } from 'lucide-react';
+import { CheckCircle2, Send, Smartphone, Layers, Wallet, Loader2, ArrowRight, type LucideIcon } from 'lucide-react';
 
 import { useLanguage, tr } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -21,14 +22,19 @@ import { useLanguage, tr } from '../context/LanguageContext';
 
    ESKIZ MAYDONLARI HAR DOIM KO'RINADI. Ilgari ular faqat «SMS» yoki
    «Ikkalasi ham» tanlanganda chiqardi — ya'ni SMS ni oldindan ulash
-   mumkin emas edi: avval rejimni almashtirib saqlash, keyin qaytib kelib
-   login kiritish kerak bo'lardi. Foydalanuvchi esa oddiygina «kiritadigan
-   joy yo'q» deb o'ylaydi.
+   mumkin emas edi.
+
+   TELEGRAM BOT HOLATI HAM SHU YERDA (2026-11-25). Ilgari bu sahifada faqat
+   Eskiz holati bor edi; bot ulanganmi — bilish uchun boshqa bo'limga
+   borish kerak edi. Bot tokeni hamon Sozlamalar → Integratsiyalar da
+   (u yerda boshqa bot sozlamalari ham bor) — bu yerdan bir bosishda.
    ───────────────────────────────────────────────────────────────────────────── */
 
 interface Props {
     clinicId?: string;
     currentClinic?: Clinic | null;
+    /** Telegram bot tokeni kiritilganmi (ota sahifa biladi) */
+    telegramConnected?: boolean;
     /** Klinika yozuvi o'zgardi — ota-ekran uni qayta o'qiydi */
     onClinicUpdated?: () => void;
 }
@@ -37,22 +43,33 @@ type Mode = 'telegram_only' | 'sms_only' | 'both';
 
 /* Eskiz login va paroli uchun. «Login + parol» juftligini brauzer XClinic'ga
    kirish formasi deb o'ylab, saqlangan XClinic login va parolini shu yerga
-   o'zi yozib qo'yardi — «Saqlash» bosilsa ular Eskiz'ga yuborilib, klinika
-   sozlamasiga yozilib qolardi. `autocomplete="off"` ni Chrome login
-   maydonlarida e'tiborsiz qoldiradi; parol maydonidagi `new-password` esa
-   butun juftlikni to'ldirishni to'xtatadi. `data-1p-ignore` / `data-lpignore`
-   — 1Password va LastPass uchun. */
+   o'zi yozib qo'yardi. `new-password` butun juftlikni to'ldirishni to'xtatadi;
+   `data-1p-ignore` / `data-lpignore` — 1Password va LastPass uchun. */
 const NO_AUTOFILL = { autoComplete: 'off', 'data-1p-ignore': true, 'data-lpignore': 'true' } as const;
 const NO_AUTOFILL_PASSWORD = { ...NO_AUTOFILL, autoComplete: 'new-password' } as const;
 
-const MODES: { key: Mode; icon: string; title: string; hint: string }[] = [
-    { key: 'telegram_only', icon: '🤖', title: tr('messagechannelsettings.faqat_telegram_bot'), hint: tr('messagechannelsettings.xabarlar_mijozning_telegram_profiliga') },
-    { key: 'sms_only', icon: '📱', title: tr('messagechannelsettings.faqat_sms_eskiz'), hint: tr('messagechannelsettings.xabarlar_bevosita_telefon_raqamiga') },
-    { key: 'both', icon: '🤖📱', title: tr('messagechannelsettings.ikkalasi_ham'), hint: tr('messagechannelsettings.avval_telegram_song_qoshimcha') },
+// Funksiya — til almashganda yorliqlar ham almashsin
+const modes = (): { key: Mode; icon: LucideIcon; title: string; hint: string }[] => [
+    { key: 'telegram_only', icon: Send, title: tr('messagechannelsettings.faqat_telegram_bot'), hint: tr('messagechannelsettings.xabarlar_mijozning_telegram_profiliga') },
+    { key: 'sms_only', icon: Smartphone, title: tr('messagechannelsettings.faqat_sms_eskiz'), hint: tr('messagechannelsettings.xabarlar_bevosita_telefon_raqamiga') },
+    { key: 'both', icon: Layers, title: tr('messagechannelsettings.ikkalasi_ham'), hint: tr('messagechannelsettings.avval_telegram_song_qoshimcha') },
 ];
 
-export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClinic, onClinicUpdated }) => {
+const StatusPill: React.FC<{ on: boolean }> = ({ on }) => {
     const { t } = useLanguage();
+    return (
+        <span className={`inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-xs font-semibold ${on
+            ? 'bg-success-500/12 text-success'
+            : 'bg-elevated text-muted'}`}>
+            <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${on ? 'bg-success-500' : 'bg-faint'}`} />
+            {on ? t('messagechannelsettings.ulangan') : t('messagechannelsettings.ulanmagan')}
+        </span>
+    );
+};
+
+export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClinic, telegramConnected, onClinicUpdated }) => {
+    const { t } = useLanguage();
+    const navigate = useNavigate();
     const [mode, setMode] = useState<Mode>('telegram_only');
     const [eskizEmail, setEskizEmail] = useState('');
     const [eskizPassword, setEskizPassword] = useState('');
@@ -65,6 +82,8 @@ export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClini
     const [prepayCard, setPrepayCard] = useState('');
     const [prepayAmount, setPrepayAmount] = useState(0);
     const [savingPrepay, setSavingPrepay] = useState(false);
+
+    const botOn = telegramConnected ?? !!currentClinic?.botToken;
 
     const load = useCallback(async () => {
         if (!clinicId) return;
@@ -128,136 +147,136 @@ export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClini
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {/* ── Kanal ─────────────────────────────────────────────── */}
-            <Card className="p-6">
-                <div className="flex items-start gap-4 mb-6">
-                    <div className="p-3 rounded-2xl bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-300 shrink-0">
-                        <MessageSquare className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-bold text-ink">{t('messagechannelsettings.xabar_yuborish_kanali')}</h2>
-                        <p className="text-sm text-muted">
-                            {t('messagechannelsettings.avtomatik_xabarlar_qaysi_yol')}
-                        </p>
-                    </div>
+            <section className="card p-5" aria-labelledby="mcs-channel">
+                <div className="mb-4">
+                    <h2 id="mcs-channel" className="text-base font-semibold text-ink">{t('messagechannelsettings.xabar_yuborish_kanali')}</h2>
+                    <p className="text-sm text-muted mt-0.5">{t('messagechannelsettings.avtomatik_xabarlar_qaysi_yol')}</p>
                 </div>
 
-                <form onSubmit={saveSms} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {MODES.map(m => (
-                            <label key={m.key}
-                                className={`relative flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-colors ${mode === m.key
-                                    ? 'border-primary-500 bg-primary-50/60 dark:bg-primary-900/20'
-                                    : 'border-line hover:border-primary-300'}`}>
-                                <input type="radio" className="sr-only" checked={mode === m.key}
-                                    onChange={() => setMode(m.key)} />
-                                <span className="text-lg leading-none">{m.icon}</span>
-                                <span className="min-w-0 flex-1">
-                                    <span className="block text-sm font-semibold text-ink">{m.title}</span>
-                                    <span className="block text-xs text-muted mt-1">{m.hint}</span>
-                                </span>
-                                {mode === m.key && <CheckCircle className="w-5 h-5 text-primary-600 shrink-0" />}
-                            </label>
-                        ))}
+                <form onSubmit={saveSms} className="space-y-5">
+                    <div role="radiogroup" aria-labelledby="mcs-channel" className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {modes().map(m => {
+                            const on = mode === m.key;
+                            return (
+                                <label key={m.key}
+                                    className={`relative flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500/40 ${on
+                                        ? 'border-primary-500 bg-primary-500/[0.06]'
+                                        : 'border-line hover:border-faint'}`}>
+                                    <input type="radio" name="mcs-mode" className="sr-only" checked={on} onChange={() => setMode(m.key)} />
+                                    <span aria-hidden="true" className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${on
+                                        ? 'bg-primary-500/12 text-primary-600 dark:text-primary-300'
+                                        : 'bg-elevated text-faint'}`}>
+                                        <m.icon className="w-[18px] h-[18px]" />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block text-sm font-semibold text-ink">{m.title}</span>
+                                        <span className="block text-xs text-muted mt-0.5">{m.hint}</span>
+                                    </span>
+                                    {on && <CheckCircle2 className="w-5 h-5 text-primary-600 shrink-0" aria-hidden="true" />}
+                                </label>
+                            );
+                        })}
                     </div>
 
-                    {/* ── Eskiz — HAR DOIM ko'rinadi ─────────────────── */}
-                    <div className="rounded-2xl border border-line p-5 space-y-4">
-                        <div className="flex items-center justify-between gap-3">
-                            <h3 className="text-base font-semibold text-ink">{t('messagechannelsettings.eskiz_uz_sms_operatori')}</h3>
-                            <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ${connected
-                                ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300'
-                                : 'text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300'}`}>
-                                {connected ? <CheckCircle className="w-4 h-4" /> : <Activity className="w-4 h-4" />}
-                                {connected ? t('messagechannelsettings.ulangan') : t('messagechannelsettings.ulanmagan')}
-                            </span>
+                    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-3 items-start">
+                        {/* ── Telegram bot ── */}
+                        <div className="rounded-xl border border-line p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+                                    <Send className="w-4 h-4 text-faint" aria-hidden="true" /> Telegram bot
+                                </h3>
+                                <StatusPill on={botOn} />
+                            </div>
+                            <p className="text-xs text-muted">{botOn ? t('msg.settings.botOn') : t('msg.settings.botOff')}</p>
+                            <Button type="button" size="sm" variant="secondary" onClick={() => navigate('/settings?tab=integrations')}>
+                                {t('msg.settings.openIntegrations')} <ArrowRight className="w-3.5 h-3.5" />
+                            </Button>
                         </div>
 
-                        {mode === 'telegram_only' && (
-                            <p className="text-xs text-muted">
-                                {t('messagechannelsettings.hozir_sms_ochiq_xabarlar')}
-                            </p>
-                        )}
+                        {/* ── Eskiz — HAR DOIM ko'rinadi ─────────────────── */}
+                        <div className="rounded-xl border border-line p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+                                    <Smartphone className="w-4 h-4 text-faint" aria-hidden="true" /> {t('messagechannelsettings.eskiz_uz_sms_operatori')}
+                                </h3>
+                                <StatusPill on={connected} />
+                            </div>
 
-                        <Input label="Kabinet email" placeholder="kabinet@eskiz.uz"
-                            value={eskizEmail} onChange={e => setEskizEmail(e.target.value)} {...NO_AUTOFILL} />
-                        <div className="space-y-1">
-                            <label className="block text-sm font-medium text-muted">Kabinet paroli</label>
-                            <input type="password"
-                                {...NO_AUTOFILL_PASSWORD}
-                                className="w-full px-3 py-2 border border-line rounded-lg bg-surface text-ink text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                                placeholder={hasPassword ? t('messagechannelsettings.parol_kiritilgan_ozgartirish_uchun') : t('messagechannelsettings.parolni_kiriting')}
-                                value={eskizPassword} onChange={e => setEskizPassword(e.target.value)} />
+                            {mode === 'telegram_only' && (
+                                <p className="text-xs text-muted">{t('messagechannelsettings.hozir_sms_ochiq_xabarlar')}</p>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <Input label="Kabinet email" placeholder="kabinet@eskiz.uz"
+                                    value={eskizEmail} onChange={e => setEskizEmail(e.target.value)} {...NO_AUTOFILL} />
+                                <Input label="Kabinet paroli" type="password" {...NO_AUTOFILL_PASSWORD}
+                                    placeholder={hasPassword ? t('messagechannelsettings.parol_kiritilgan_ozgartirish_uchun') : t('messagechannelsettings.parolni_kiriting')}
+                                    value={eskizPassword} onChange={e => setEskizPassword(e.target.value)} />
+                            </div>
+                            <Input label={t('messagechannelsettings.yuboruvchi_nomi_nickname')} placeholder={t('messagechannelsettings.4546_yoki_xclinic')}
+                                value={eskizNick} onChange={e => setEskizNick(e.target.value)}
+                                helperText={t('messagechannelsettings.eskizda_tasdiqlangan_nomingiz_bolsa')} />
                         </div>
-                        <Input label={t('messagechannelsettings.yuboruvchi_nomi_nickname')} placeholder={t('messagechannelsettings.4546_yoki_xclinic')}
-                            value={eskizNick} onChange={e => setEskizNick(e.target.value)}
-                            helperText={t('messagechannelsettings.eskizda_tasdiqlangan_nomingiz_bolsa')} />
                     </div>
 
-                    <Button type="submit" disabled={savingSms}>
-                        {savingSms && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        {t('messagechannelsettings.saqlash_va_ulanishni_tekshirish')}
-                    </Button>
+                    <div className="flex justify-end">
+                        <Button type="submit" disabled={savingSms}>
+                            {savingSms && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {t('messagechannelsettings.saqlash_va_ulanishni_tekshirish')}
+                        </Button>
+                    </div>
                 </form>
-            </Card>
+            </section>
 
             {/* ── Bron uchun oldindan to'lov ─────────────────────────── */}
-            <Card className="p-6">
-                <div className="flex items-start gap-4 mb-6">
-                    <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300 shrink-0">
-                        <DollarSign className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-bold text-ink">{t('messagechannelsettings.bron_uchun_oldindan_tolov')}</h2>
-                        <p className="text-sm text-muted">
-                            {t('messagechannelsettings.bemor_bot_orqali_qabulga')}
-                        </p>
-                        {/* Ilgari tasdiq faqat qabul holatini o'zgartirardi va pul hech
-                            qayerda qolmasdi. Endi u bemor hisobiga AVANS bo'lib tushadi —
-                            buni aytib qo'yamiz, aks holda kassir ikkinchi marta undirardi. */}
-                        <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
-                            {t('messagechannelsettings.chek_tasdiqlanganda_summa_bemor')}
-                        </p>
-                    </div>
-                </div>
-
-                <form onSubmit={savePrepay} className="space-y-5">
-                    <label className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-line cursor-pointer">
-                        <span>
-                            <span className="block text-sm font-semibold text-ink">{t('messagechannelsettings.oldindan_tolovni_yoqish')}</span>
-                            <span className="block text-xs text-muted mt-0.5">
-                                {t('messagechannelsettings.yoqilmasa_bot_bemordan_chek')}
-                            </span>
+            <section className="card p-5" aria-labelledby="mcs-prepay">
+                <form onSubmit={savePrepay} className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <span aria-hidden="true" className="w-9 h-9 rounded-lg bg-success-500/12 text-success flex items-center justify-center shrink-0">
+                            <Wallet className="w-[18px] h-[18px]" />
                         </span>
-                        <span className="relative w-12 h-6 shrink-0">
-                            <input type="checkbox" className="sr-only" checked={prepayEnabled}
+                        <div className="min-w-0 flex-1">
+                            <h2 id="mcs-prepay" className="text-base font-semibold text-ink">{t('messagechannelsettings.bron_uchun_oldindan_tolov')}</h2>
+                            <p className="text-sm text-muted mt-0.5">{t('messagechannelsettings.bemor_bot_orqali_qabulga')}</p>
+                            {/* Tasdiqlangan chek bemor hisobiga AVANS bo'lib tushadi —
+                                aytib qo'yamiz, aks holda kassir ikkinchi marta undirardi. */}
+                            <p className="text-xs text-success mt-1">{t('messagechannelsettings.chek_tasdiqlanganda_summa_bemor')}</p>
+                        </div>
+                        <label className="relative shrink-0 cursor-pointer mt-1">
+                            <input type="checkbox" className="sr-only peer" checked={prepayEnabled}
+                                aria-label={t('messagechannelsettings.oldindan_tolovni_yoqish')}
                                 onChange={e => setPrepayEnabled(e.target.checked)} />
-                            <span className={`block w-12 h-6 rounded-full transition-colors ${prepayEnabled ? 'bg-emerald-500' : 'bg-elevated'}`}>
-                                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-surface rounded-full shadow transition-transform ${prepayEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                            <span className={`block w-10 h-6 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500/40 ${prepayEnabled ? 'bg-success-500' : 'bg-line'}`}>
+                                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${prepayEnabled ? 'translate-x-4' : ''}`} />
                             </span>
-                        </span>
-                    </label>
+                        </label>
+                    </div>
+
+                    {!prepayEnabled && (
+                        <p className="text-xs text-muted pl-12">{t('messagechannelsettings.yoqilmasa_bot_bemordan_chek')}</p>
+                    )}
 
                     {prepayEnabled && (
-                        <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-12">
                             <Input label={t('ui.karta_raqami')} placeholder="8600 1234 5678 9012"
                                 value={prepayCard} onChange={e => setPrepayCard(e.target.value)} />
                             <Input label={t('messagechannelsettings.bron_summasi_som')} type="number" placeholder="50000"
                                 value={prepayAmount === 0 ? '' : String(prepayAmount)}
                                 onChange={e => setPrepayAmount(Number(e.target.value))} />
-                            <p className="text-xs text-muted">
-                                {t('messagechannelsettings.bemor_chekni_bot_orqali')}
-                            </p>
+                            <p className="sm:col-span-2 text-xs text-muted">{t('messagechannelsettings.bemor_chekni_bot_orqali')}</p>
                         </div>
                     )}
 
-                    <Button type="submit" disabled={savingPrepay}>
-                        {savingPrepay && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        {t('ui.saqlash')}
-                    </Button>
+                    <div className="flex justify-end">
+                        <Button type="submit" variant="secondary" disabled={savingPrepay}>
+                            {savingPrepay && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {t('ui.saqlash')}
+                        </Button>
+                    </div>
                 </form>
-            </Card>
+            </section>
         </div>
     );
 };

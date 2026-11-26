@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatMoney, formatFullName } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { toast } from '../services/toast';
@@ -83,7 +83,15 @@ export const Settings: React.FC<SettingsProps> = ({
    /* Kompyuterdagi bulut papkalari — «Xizmat ko'rsatish» bo'limi ochilganda
       bir marta so'raladi. Topilmasa oddiy papka tanlash qoladi. */
    const [cloudFolders, setCloudFolders] = useState<{ path: string; label: string }[]>([]);
-   const [activeTab, setActiveTab] = useState<'general' | 'services' | 'integrations' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'templates'>('services');
+   /* `?tab=integrations` — boshqa sahifadan aynan kerakli bo'limga olib kelish
+      uchun (Xabarlar → «Telegram bot ulanmagan» → bot tokeni shu yerda). */
+   type SettingsTab = 'general' | 'services' | 'integrations' | 'maintenance' | 'network' | 'labCatalog' | 'departments' | 'templates';
+   const [searchParams] = useSearchParams();
+   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+      const fromUrl = searchParams.get('tab') as SettingsTab | null;
+      const known: SettingsTab[] = ['general', 'services', 'integrations', 'maintenance', 'network', 'labCatalog', 'departments', 'templates'];
+      return fromUrl && known.includes(fromUrl) ? fromUrl : 'services';
+   });
 
    /* Kassa smenalari — «Ruxsatlar» bo'limining oxirida turadi, lekin
       ruxsat EMAS: bu kassaning kunlik tartibi. Shuning uchun u

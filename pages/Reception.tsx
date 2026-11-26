@@ -1027,12 +1027,12 @@ ${routeHtml}
                 Nom hamma rol uchun bitta — menyudagi bilan bir xil
                 (`utils/navigation.ts`). Pul sarlavhaning yonida, sokin
                 qatorda: plitka emas, chunki bu raqamning ishi Kassada. */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <h1 className="text-xl font-bold text-ink">{t('nav.today')}</h1>
+            <div className="flex flex-wrap xl:flex-nowrap items-center gap-x-3 gap-y-2">
+                <h1 className="text-xl font-bold text-ink shrink-0">{t('nav.today')}</h1>
                 {/* Sana loyihaning O'Z formatlagichidan. `toLocaleDateString('uz-UZ')`
                     Chrome da «M09 6, Sun» beradi — `uz` lokali to'liq emas. Xuddi
                     shu sabab bilan raqamlar ham `formatNumber` orqali chiqadi. */}
-                <span className="text-sm text-muted">
+                <span className="text-sm text-muted shrink-0">
                     {formatDateLong(new Date(), language === 'ru' ? 'ru' : 'uz')}
                 </span>
                 {/* KUNNING PULI — bitta qator. Egaga bugun kassaga tushgani,
@@ -1041,9 +1041,9 @@ ${routeHtml}
                     «To'lov kutmoqda» guruhida turadi. */}
                 {canRegister && (ownerCash != null || dueTotal.people > 0) && (
                     <button type="button" onClick={() => navigate('/finance')}
-                        className="inline-flex items-center gap-2 text-sm text-muted hover:text-ink transition-colors">
+                        className="min-w-0 inline-flex items-center gap-2 text-sm text-muted hover:text-ink transition-colors">
                         <Wallet className="w-4 h-4 text-faint shrink-0" />
-                        <span>
+                        <span className="truncate">
                             {ownerCash != null && (
                                 <>{t('ownerhome.bugun_kassaga')} <b className="font-bold text-ink tabular-nums">{formatNumber(ownerCash)}</b> {t('ui.som')}</>
                             )}
@@ -1056,7 +1056,7 @@ ${routeHtml}
                         </span>
                     </button>
                 )}
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto shrink-0 flex items-center gap-2">
                     {canRegister && (
                         <button onClick={() => navigate('/board')}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-line text-muted hover:border-primary-400">

@@ -13,16 +13,15 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Shrift — Fira Sans: shifoxona yozuvlaridagi gumanist shriftlar oilasidan.
-     Fayllari bundle ichida (`@fontsource/fira-sans`, `index.tsx` da ulanadi) —
-     dastur internetsiz mashinada ham o'z shrifti bilan ochiladi. Lotin va
-     kirill to'plamlari, to'rt vazn: 400, 500, 600, 700. */
-  --font-sans: "Fira Sans", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+  /* Shrift — Inter (o'zgaruvchan vaznli). Sotuv sahifasi ham shu shriftda,
+     ya'ni dastur o'z reklamasi bilan bir xil ko'rinadi. Fayllari bundle
+     ichida (`@fontsource-variable/inter`, `App.tsx` da ulanadi) — dastur
+     internetsiz mashinada ham o'z shrifti bilan ochiladi. Lotin va kirill. */
+  --font-sans: "Inter Variable", "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
     "Helvetica Neue", Arial, sans-serif;
   /* ENG YO'G'ON VAZN — 700. Kodda `font-extrabold` va `font-black` yuzlab
-     joyda turibdi (Inter davridan); Fira Sans da 800–900 qo'pol ko'rinadi va
-     tibbiy hujjat emas, afisha bo'lib qoladi. Ikkalasi 700 ga tushiriladi —
-     bitta joydan, komponentlarga tegmasdan. */
+     joyda turibdi; 800–900 qo'pol ko'rinadi va tibbiy dastur emas, afisha
+     bo'lib qoladi. Ikkalasi 700 ga tushiriladi — bitta joydan. */
   --font-weight-extrabold: 700;
   --font-weight-black: 700;
   /* Raqamlar uchun — jadvalda ustunlar tekis turishi uchun tabular */
@@ -332,8 +331,8 @@
   /* Chapdagi menyu ustuni kengligi — qobiqning barcha qismlari shunga
      tayanadi (`pl-rail`, `left-rail`), ya'ni o'lchamni bitta joydan
      o'zgartirsa bo'ladi. */
-  --spacing-rail: 5.75rem;  /* 92px */
-  --spacing-topbar: 4.75rem;/* 76px */
+  --spacing-rail: 14.5rem;  /* 232px — keng menyu: ikonka + to'liq so'z */
+  --spacing-topbar: 4rem;   /* 64px */
 
   --animate-fade-in: fadeIn 0.3s ease-in-out;
   --animate-in: fadeIn 0.2s ease-out;
@@ -418,6 +417,11 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Ixcham menyu (foydalanuvchi o'zi toraytirsa) — ikonka ostida kichik yozuv */
+html.rail-compact {
+  --spacing-rail: 5.75rem;  /* 92px */
 }
 
 html {

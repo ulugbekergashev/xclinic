@@ -45,6 +45,11 @@
       if (localStorage.getItem('xclinic_theme2') === 'dark') {
         document.documentElement.classList.add('dark');
       }
+      /* Menyu kengligi birinchi kadrdanoq to'g'ri bo'lsin (App.tsx: RAIL_WIDE_QUERY) */
+      var rail = localStorage.getItem('xclinic_rail');
+      if (rail === 'compact' || (rail !== 'wide' && !matchMedia('(min-width: 1440px)').matches)) {
+        document.documentElement.classList.add('rail-compact');
+      }
     } catch (e) {}
   </script>
   <div id="root"></div>

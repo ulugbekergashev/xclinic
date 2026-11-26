@@ -31,15 +31,15 @@ interface Props {
 export const Dashboard: React.FC<Props> = ({ departments }) => {
     const { t } = useLanguage();
     const [searchParams] = useSearchParams();
-    const initial = searchParams.get('tab') === 'davomat' ? 'attendance' : 'summary';
+    const tab = searchParams.get('tab');
+    const initial = tab === 'davomat' ? 'attendance' : tab === 'bemorlar' ? 'patients' : tab === 'xizmatlar' ? 'services' : 'summary';
 
     return (
-        <div className="space-y-5 animate-fade-in">
-            <div>
-                <h1 className="text-2xl font-bold text-ink">{t('nav.reports')}</h1>
-                <p className="text-sm text-muted">{t('moliya.reportHint')}</p>
-            </div>
-            <FinanceReport embedded departments={departments} initialView={initial} />
+        <div className="animate-fade-in">
+            {/* Ko'rinadigan sarlavha — davrning katta sanasi (`PeriodBar`);
+                «Hisobot» so'zi menyuda bor, bu yerda faqat ekran o'quvchi uchun. */}
+            <h1 className="sr-only">{t('nav.reports')}</h1>
+            <FinanceReport departments={departments} initialView={initial} />
         </div>
     );
 };

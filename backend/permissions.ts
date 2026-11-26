@@ -521,7 +521,7 @@ export const PERM_ROUTES: PermRoute[] = [
     r('DELETE', '/api/expenses/:id', 'xarajatni o\'chirish', p => p.can('finance', 'expenses', 'delete')),
 
     /* Hisobot — faqat ko'rish (ega uchun yozilgan hisobot marshrutlari) */
-    ...['writeoffs', 'doctors', 'departments', 'compare', 'months', 'lab-shift', 'attention', 'summary']
+    ...['writeoffs', 'doctors', 'departments', 'compare', 'months', 'lab-shift', 'attention', 'summary', 'patients', 'services']
         .map(name => r('GET', `/api/reports/${name}`, 'hisobot', p => p.menu('dashboard'))),
     r('GET', '/api/hr/shares', 'hisobot', p => p.menu('dashboard')),
 

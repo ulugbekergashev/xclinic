@@ -57,8 +57,8 @@ export const CalendarMonth: React.FC<Props> = ({ month, appointments, capacityMi
     }, [month]);
 
     return (
-        <div className="flex-1 min-h-0 bg-surface rounded-xl border border-line overflow-hidden flex flex-col">
-            <div className="grid grid-cols-7 border-b border-line bg-canvas">
+        <div className="flex-1 min-h-0 bg-surface rounded-2xl border border-line overflow-hidden flex flex-col">
+            <div className="grid grid-cols-7 border-b border-line bg-surface">
                 {weekdays.map(w => (
                     <div key={w} className="px-2 py-2.5 text-center text-xs font-bold text-muted">{w}</div>
                 ))}
@@ -75,7 +75,7 @@ export const CalendarMonth: React.FC<Props> = ({ month, appointments, capacityMi
                         const label = d ? fill(t('cal.month.dayTitle'), day.getDate(), d.total, Math.round(load * 100)) : fill(t('cal.month.dayEmpty'), day.getDate());
                         return (
                             <button key={key} type="button" onClick={() => onOpenDay(day)} aria-label={label} title={label}
-                                className={`min-h-[92px] p-2 flex flex-col gap-1 text-left border-b border-r border-line-soft transition-colors hover:bg-primary-50/60 dark:hover:bg-primary-900/15 ${inMonth ? '' : 'bg-canvas/60'}`}>
+                                className={`min-h-[72px] p-2 flex flex-col gap-1 text-left border-b border-r border-line-soft transition-colors hover:bg-primary-50/60 dark:hover:bg-primary-900/15 ${inMonth ? '' : 'bg-canvas/60'}`}>
                                 <span className={`self-start min-w-6 h-6 px-1.5 rounded-full inline-flex items-center justify-center text-xs font-bold tabular-nums ${isToday
                                     ? 'bg-primary-600 text-white'
                                     : inMonth ? 'text-ink' : 'text-faint'}`}>

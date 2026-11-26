@@ -37,7 +37,7 @@ const STORAGE_KEY = 'xclinic_demo_data';
 
    ⚠️ Demo to'plamiga yozuv qo'shsangiz yoki o'zgartirsangiz — SHU RAQAMNI
    OSHIRING, aks holda o'zgarish avval demoni ochgan odamga yetib bormaydi. */
-const DEMO_DATA_VERSION = 10;
+const DEMO_DATA_VERSION = 14;
 const VERSION_KEY = 'xclinic_demo_version';
 
 export const loadDemoData = () => {
@@ -107,7 +107,10 @@ export let DEMO_CLINIC: Clinic = savedData?.clinic || {
     expiryDate: new Date('2030-12-31').toISOString(),
     monthlyRevenue: 0,
     subscriptionType: 'Paid',
-    botToken: '',
+    /* Demoda bot ULANGAN ko'rinadi (haqiqiy token yo'q — rollarga boradigan
+       niqob bilan bir xil). Ilgari bo'sh edi: Xabarlarda «Telegram ⚠» chiqib
+       turgan holda yonida «14 ta — bepul (Telegram)» yozilardi. */
+    botToken: '********',
     startHour: 8,
     endHour: 20
 };
@@ -854,9 +857,77 @@ if (!savedData?.patients) {
                kalendarda esa har birida aniq shifokor ko'rinardi
                (audit XC-26). To'rt shifokor bo'yicha aylantiriladi. */
             doctorId: `demo-doctor-${(i % 4) + 1}`,
+            // Har uchinchisi botga ulanmagan — Xabarlarda «Telegram bepul / SMS pullik» farqi ko'rinsin
+            telegramChatId: i % 3 === 2 ? undefined : String(5550000 + n),
         } as Patient);
     });
 }
+
+/* BEMORLAR HISOBOTI UCHUN (2026-11-26). Ilgari hamma bemor oxirgi ikki
+   haftada kelgan, `createdAt` yo'q edi: Hisobot → Bemorlar da «yo'qolgan» 0,
+   «yangi» ham deyarli 0 bo'lardi. Endi:
+     • 6 ta YANGI — shu oy ro'yxatdan o'tgan, yarmi ikkinchi marta kelgan;
+     • 10 ta YO'QOLGAN — 7–14 oydan beri kelmagan (Xabarlardagi
+       «6 oydan beri kelmagan» segmenti ham aynan ularni topadi);
+     • 2 ta QAYTGAN — uzoq tanaffusdan keyin shu oy kelgan.
+   To'lov qatorlari pastda (`DEMO_ARCHIVE_VISITS`). */
+const NEW_NAMES: [string, string, 'Male' | 'Female'][] = [
+    ['Ozoda', 'Mirzayeva', 'Female'], ['Sherzod', 'Toshmatov', 'Male'], ['Madina', 'Ergasheva', 'Female'],
+    ['Akmal', 'Yo\'ldoshev', 'Male'], ['Zarina', 'Karimova', 'Female'], ['Bobur', 'Hasanov', 'Male'],
+];
+const LOST_NAMES: [string, string, 'Male' | 'Female'][] = [
+    ['Feruza', 'Nazarova', 'Female'], ['Ulug\'bek', 'Sobirov', 'Male'], ['Gavhar', 'Islomova', 'Female'],
+    ['Jahongir', 'Rahimov', 'Male'], ['Dilfuza', 'Azimova', 'Female'], ['Sardor', 'Qosimov', 'Male'],
+    ['Nargiza', 'Valiyeva', 'Female'], ['Otabek', 'Jo\'rayev', 'Male'], ['Lola', 'Umarova', 'Female'],
+    ['Rustam', 'Murodov', 'Male'],
+];
+const BACK_NAMES: [string, string, 'Male' | 'Female'][] = [
+    ['Shahlo', 'Abdurahmonova', 'Female'], ['Anvar', 'Saidov', 'Male'],
+];
+/** [bemor id, kun oldin] — har biri bitta to'lov qatori («qabul») bo'ladi */
+const DEMO_ARCHIVE_VISITS: [string, number][] = [];
+
+if (!savedData?.patients) {
+    const mk = (n: number, [first, last, gender]: [string, string, 'Male' | 'Female'], createdAgo: number, lastAgo: number, i: number) => {
+        DEMO_PATIENTS.push({
+            id: `demo-patient-${n}`,
+            firstName: first, lastName: last, gender,
+            phone: `+998 9${(n % 5) + 1} ${400 + n} ${30 + (n % 60)} ${40 + (n % 50)}`,
+            dob: `19${65 + ((n * 7) % 35)}-0${(n % 9) + 1}-2${n % 9}`,
+            address: ['Yunusobod', 'Chilonzor', 'Mirobod', 'Yakkasaroy', 'Sergeli'][n % 5] + ' tumani',
+            medicalHistory: '',
+            clinicId: 'demo-clinic-1',
+            lastVisit: dayISO(-lastAgo),
+            status: 'Active',
+            doctorId: `demo-doctor-${(i % 4) + 1}`,
+            telegramChatId: n % 3 === 0 ? undefined : String(5560000 + n),
+            createdAt: dayFull(-createdAgo),
+        } as Patient);
+    };
+    NEW_NAMES.forEach((nm, k) => {
+        const n = 15 + k, first = 2 + k * 3;            // 2 … 17 kun oldin
+        const second = k % 2 === 0 ? Math.max(0, first - 6) : null;
+        mk(n, nm, first, second ?? first, k);
+        DEMO_ARCHIVE_VISITS.push([`demo-patient-${n}`, first]);
+        if (second !== null) DEMO_ARCHIVE_VISITS.push([`demo-patient-${n}`, second]);
+    });
+    LOST_NAMES.forEach((nm, k) => {
+        const n = 21 + k, last = 200 + k * 23;          // 200 … 407 kun oldin
+        mk(n, nm, last + 180 + k * 15, last, k);
+        DEMO_ARCHIVE_VISITS.push([`demo-patient-${n}`, last + 60], [`demo-patient-${n}`, last]);
+    });
+    BACK_NAMES.forEach((nm, k) => {
+        const n = 31 + k;
+        mk(n, nm, 420 + k * 30, 5 + k * 4, k + 1);
+        DEMO_ARCHIVE_VISITS.push([`demo-patient-${n}`, 260 + k * 20], [`demo-patient-${n}`, 5 + k * 4]);
+    });
+}
+
+/* Ro'yxatdan o'tgan sana — eski bemorlarda (1–14) yo'q edi. Ularning
+   to'lovlari 57 kungacha orqaga ketadi, shuning uchun karta undan eski. */
+DEMO_PATIENTS.forEach((p, i) => {
+    if (!(p as any).createdAt) (p as any).createdAt = dayFull(-(90 + i * 41));
+});
 
 /* Qo'lda yozilgan birinchi besh bemorda ham shifokor bo'lsin — ular
    yuqorida alohida e'lon qilingan va generatorga tushmaydi. */
@@ -939,7 +1010,10 @@ if (!savedData?.transactions) {
     /* Xizmat bemorning O'Z bo'limidan: kardiologiya bemoriga «Tish
        plombalash» yozilib qolmasin. Mutaxassis bemori — o'z shifokori,
        qolganlar — stomatologlar (1, 2, 4). */
-    const DENTAL_DOCTORS = ['demo-doctor-1', 'demo-doctor-2', 'demo-doctor-4'];
+    /* Faqat stomatologlar: Sardor Mahmudov (4) — statsionar shifokori, unga
+       «Tish plombalash» yozilsa Hisobot → Xizmatlar da «plomba — Statsionar»
+       chiqardi (2026-11-26) */
+    const DENTAL_DOCTORS = ['demo-doctor-1', 'demo-doctor-2'];
     for (let i = 0; i < 12; i++) {
         const patientId = `demo-patient-${(i % 9) + 6}`;
         const doctorId = SPECIALIST[patientId] || DENTAL_DOCTORS[i % DENTAL_DOCTORS.length];
@@ -951,20 +1025,23 @@ if (!savedData?.transactions) {
         const svc = pool.length
             ? { name: pool[i % pool.length].name, price: pool[i % pool.length].price }
             : { name: SERVICE_NAMES[svcIdx], price: SERVICE_PRICES[svcIdx] };
+        /* Har to'rtinchisiga 10% chegirma — Hisobot → Xizmatlar dagi
+           «Chegirma» ustuni demoda bo'sh turmasin (2026-11-26) */
+        const disc = i % 4 === 1 ? Math.round(svc.price * 0.1) : 0;
         DEMO_TRANSACTIONS.push({
             id: `demo-tx-g${i + 1}`,
             patientId,
             patientName: pName(patientId),
             date: dayFull(-(i * 2)),
-            amount: svc.price,
+            amount: svc.price - disc,
             type: (['Cash', 'Card', 'Click'] as const)[i % 3],
             service: svc.name,
             status: i % 3 === 2 ? 'Pending' : 'Paid',
             clinicId: 'demo-clinic-1',
             doctorId,
             doctorName: dName(doctorId),
-            discountPercent: 0,
-            discountAmount: 0,
+            discountPercent: disc ? 10 : 0,
+            discountAmount: disc,
             /* PUL QABUL QILINGAN ANIQ VAQT. Busiz kassa jadvalidagi VAQT
                ustunida `—` turardi: kun yopilganda tafovut chiqsa, uni
                kimga va qachonga bog'lash imkoni yo'q edi — kassa
@@ -973,6 +1050,78 @@ if (!savedData?.transactions) {
             receivedByName: 'Registratura',
         } as Transaction);
     }
+}
+
+if (!savedData?.transactions) {
+    /* ARXIV: toq kunlar va O'TGAN OY (2026-11-26, Hisobot dizayni).
+       Ilgari hamma pul oxirgi 25 kunda edi: Hisobotda har raqam yonida
+       «+6 450 000 (yangi)» turardi (solishtiradigan oy bo'sh), qarzdorlar
+       hammasi «Bugun», kunma-kun grafik esa har ikki kunda bitta nuqta.
+       Eski qarzlar (har beshinchisi) — qarz yoshi chizig'i ham jonli. */
+    const DENTAL = ['demo-doctor-1', 'demo-doctor-2'];
+    const offsets = [
+        ...Array.from({ length: 12 }, (_, k) => 2 * k + 1),   // 1, 3 … 23 — joriy oy zichligi
+        ...Array.from({ length: 16 }, (_, k) => 27 + 2 * k),  // 27 … 57 — o'tgan oy
+    ];
+    offsets.forEach((off, k) => {
+        const patientId = `demo-patient-${((k + 4) % 9) + 6}`;
+        const doctorId = SPECIALIST[patientId] || DENTAL[k % DENTAL.length];
+        const dept = DEMO_DOCTORS.find(d => d.id === doctorId)?.departmentId;
+        const pool = SPECIALIST[patientId] ? DEMO_SERVICES.filter(s => s.departmentId === dept) : [];
+        const idx = (k * 5 + 1) % SERVICE_NAMES.length;
+        const svc = pool.length
+            ? { name: pool[k % pool.length].name, price: pool[k % pool.length].price }
+            : { name: SERVICE_NAMES[idx], price: SERVICE_PRICES[idx] };
+        DEMO_TRANSACTIONS.push({
+            id: `demo-tx-a${k + 1}`,
+            patientId,
+            patientName: pName(patientId),
+            date: dayFull(-off),
+            amount: svc.price,
+            type: (['Cash', 'Card', 'Click'] as const)[k % 3],
+            service: svc.name,
+            status: off > 30 && k % 5 === 3 ? 'Pending' : 'Paid',
+            clinicId: 'demo-clinic-1',
+            doctorId,
+            doctorName: dName(doctorId),
+            discountPercent: 0,
+            discountAmount: 0,
+            createdAt: dayFull(-off),
+            receivedByName: 'Registratura',
+        } as Transaction);
+    });
+
+    /* Yangi, yo'qolgan va qaytgan bemorlarning qabullari (yuqoridagi
+       `DEMO_ARCHIVE_VISITS`) — hammasi to'langan */
+    DEMO_ARCHIVE_VISITS.forEach(([patientId, ago], k) => {
+        const own = DEMO_PATIENTS.find(p => p.id === patientId)?.doctorId || 'demo-doctor-1';
+        const idx = (k * 3 + 2) % SERVICE_NAMES.length;
+        /* Mutaxassis bemoriga — o'z bo'limining xizmati (kardiologga plomba
+           emas). Katalogda xizmati yo'q bo'lim (statsionar) shifokorining
+           bemori — stomatologga: «plomba — Statsionar» chiqmasin. */
+        const ownDept = DEMO_DOCTORS.find(d => d.id === own)?.departmentId;
+        const ownPool = ownDept && ownDept !== 'demo-ter' ? DEMO_SERVICES.filter(s => s.departmentId === ownDept) : [];
+        const doctorId = ownDept === 'demo-ter' || ownPool.length ? own : 'demo-doctor-1';
+        const pool = doctorId === own ? ownPool : [];
+        const svc = pool.length ? pool[k % pool.length] : { name: SERVICE_NAMES[idx], price: SERVICE_PRICES[idx] };
+        DEMO_TRANSACTIONS.push({
+            id: `demo-tx-v${k + 1}`,
+            patientId,
+            patientName: pName(patientId),
+            date: dayFull(-ago),
+            amount: svc.price,
+            type: (['Cash', 'Card', 'Click'] as const)[k % 3],
+            service: svc.name,
+            status: 'Paid',
+            clinicId: 'demo-clinic-1',
+            doctorId,
+            doctorName: dName(doctorId),
+            discountPercent: 0,
+            discountAmount: 0,
+            createdAt: dayFull(-ago),
+            receivedByName: 'Registratura',
+        } as Transaction);
+    });
 }
 
 if (!savedData?.leads) {
@@ -1004,23 +1153,29 @@ if (!savedData?.expenses) {
        6 mln va oylik 3,5 mln ham turardi: oy xarajati 13,5 mln, tushum 5,2 mln —
        hisobot «sof foyda −8 mln» deb ko'rsatib, demo zarar ko'rgan klinikadek
        ko'rinardi. Ijara allaqachon yuqorida (`demo-exp-1`). */
-    const EXP: [string, string, number][] = [
-        ['Utilities', 'Elektr va suv', 300000],
-        ['Inventory', 'Anesteziya sotib olindi', 400000],
-        ['Inventory', 'Laboratoriya reagentlari', 300000],
-        ['Other', 'Reklama (Instagram)', 250000],
+    /* To'rtinchi ustun — necha kun oldin. Oxirgi to'rttasi O'TGAN OY
+       (2026-11-26): busiz Hisobotda xarajat o'zgarishi «yangi» edi. */
+    const EXP: [string, string, number, number][] = [
+        ['Utilities', 'Elektr va suv', 300000, 1],
+        ['Inventory', 'Anesteziya sotib olindi', 400000, 4],
+        ['Inventory', 'Laboratoriya reagentlari', 300000, 7],
+        ['Other', 'Reklama (Instagram)', 250000, 10],
+        ['Rent', 'Ijara (o\'tgan oy)', 2000000, 53],
+        ['Utilities', 'Kommunal (o\'tgan oy)', 600000, 46],
+        ['Inventory', 'Sarf materiallari', 550000, 38],
+        ['Other', 'Reklama (o\'tgan oy)', 200000, 33],
     ];
-    EXP.forEach(([category, title, amount], i) => {
+    EXP.forEach(([category, title, amount, ago], i) => {
         DEMO_EXPENSES.push({
             id: `demo-exp-g${i + 1}`,
-            date: dayISO(-(i * 3 + 1)),
+            date: dayISO(-ago),
             amount, category: category as any, title,
             /* Katta xarajat (ijara, oylik) — bank o'tkazmasi bilan. Hammasi naqd
                bo'lsa demo kassada «Kassada qoldi» millionlab minusga tushardi. */
             method: (amount >= 1000000 ? 'Transfer' : 'Cash') as any,
             note: null,
             clinicId: 'demo-clinic-1',
-            createdAt: dayFull(-(i * 3 + 1)),
+            createdAt: dayFull(-ago),
         } as Expense);
     });
 }
@@ -1064,18 +1219,33 @@ if (!savedData?.logs) {
 }
 
 if (!savedData?.messageLogs) {
+    /* Bemor, manba va matn bilan — haqiqiy server ham `patient` ni qo'shib
+       beradi. Ilgari bular yo'q edi va Tarixda ism o'rnida «-», kanal
+       yonida «SMS ()» chiqardi. */
+    const KINDS: [string, string, (name: string) => string][] = [
+        ['Reminder', 'before_appointment', n => `Hurmatli ${n}, ertaga soat 10:00 da qabulingiz bor. Demo Klinika`],
+        ['Birthday', 'birthday', n => `Hurmatli ${n}, tug'ilgan kuningiz bilan tabriklaymiz! Demo Klinika`],
+        ['DebtReminder', 'debt_reminder', n => `Hurmatli ${n}, klinikamizdagi qarzingiz: 350 000 so'm. Demo Klinika`],
+        ['Followup', 'after_appointment', n => `${n}, qabuldan keyin o'zingizni qanday his qilyapsiz? Demo Klinika`],
+    ];
     for (let i = 0; i < 8; i++) {
         const patientId = `demo-patient-${(i % 9) + 6}`;
+        const p = DEMO_PATIENTS.find(x => x.id === patientId);
+        const [type, source, text] = KINDS[i % 4];
+        const channel = (i % 2 ? 'telegram' : 'sms') as MessageLog['channel'];
         DEMO_MESSAGE_LOGS.push({
             id: `demo-msg-g${i + 1}`,
             clinicId: 'demo-clinic-1',
             patientId,
-            type: ['Reminder', 'Birthday', 'DebtReminder', 'Followup'][i % 4],
+            type,
+            source,
             status: (i % 5 === 4 ? 'Failed' : 'Sent') as MessageLog['status'],
-            message: 'Hurmatli bemor, ertangi qabulingizni eslatamiz.',
+            message: text(p?.firstName || 'bemor'),
             error: i % 5 === 4 ? 'Telefon raqami mavjud emas' : null,
             sentAt: dayFull(-(i / 2)),
-            channel: (i % 2 ? 'telegram' : 'sms') as MessageLog['channel'],
+            channel,
+            recipient: p?.phone || '',
+            patient: p ? { id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone } : undefined,
         } as MessageLog);
     }
 }
