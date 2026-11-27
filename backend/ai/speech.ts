@@ -51,7 +51,7 @@ async function viaGemini(key: string, audio: Buffer, mime: string, lang: 'uz' | 
 async function viaGroq(key: string, audio: Buffer, mime: string, lang: 'uz' | 'ru'): Promise<string> {
     const form = new FormData();
     const ext = /ogg/.test(mime) ? 'ogg' : /mp4|m4a/.test(mime) ? 'm4a' : /wav/.test(mime) ? 'wav' : /mpeg/.test(mime) ? 'mp3' : 'webm';
-    form.append('file', new Blob([audio], { type: mime.split(';')[0] }), `savol.${ext}`);
+    form.append('file', new Blob([new Uint8Array(audio)], { type: mime.split(';')[0] }), `savol.${ext}`);
     form.append('model', process.env.GROQ_STT_MODEL || 'whisper-large-v3-turbo');
     form.append('language', lang);
     form.append('response_format', 'json');
