@@ -6,6 +6,8 @@ import {
   CalendarCheck, TrendingUp, Wallet, Users, Package, Sparkles, RotateCcw,
 } from 'lucide-react';
 import { UserRole } from '../types';
+import { AiActionCards, AiAction } from '../components/ai/AiActionCards';
+import { VoiceButton } from '../components/ai/VoiceButton';
 import { useLanguage, tr, fill } from '../context/LanguageContext';
 
 // ─── AI yordamchi ─────────────────────────────────────────────────────────────────
@@ -58,6 +60,8 @@ interface Turn {
   q: string;
   a: string;
   sources: string[];
+  /** AI tayyorlagan amallar — foydalanuvchi tasdiqlaydi (2026-11-27) */
+  actions?: AiAction[];
 }
 
 // ─── API ─────────────────────────────────────────────────────────────────────
@@ -275,17 +279,37 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
         { role: 'user', content: t.q },
         { role: 'assistant', content: t.a },
       ]));
-      const d = await api<{ reply: string; sources?: string[] }>('/ai/ask', {
+      const d = await api<{ reply: string; sources?: string[]; actions?: { token: string; summary: string; kind: string }[] }>('/ai/ask', {
         messages: [...history, { role: 'user', content: q }],
         lang: language,
       });
-      setThread(prev => [...prev, { q, a: d.reply, sources: d.sources || [] }]);
+      setThread(prev => [...prev, {
+        q, a: d.reply, sources: d.sources || [],
+        actions: (d.actions || []).map(a => ({ ...a, state: 'pending' as const })),
+      }]);
     } catch (e: any) {
       setResult({ kind: 'error', message: e.message });
     } finally {
       setBusy(false);
     }
   }, [query, busy, language, t, thread]);
+
+  /* Amal holatini yangilash (turn, amal) */
+  const setAction = (ti: number, ai: number, patch: Partial<AiAction>) =>
+    setThread(prev => prev.map((tn, i) => i !== ti ? tn : {
+      ...tn, actions: (tn.actions || []).map((a, j) => j === ai ? { ...a, ...patch } : a),
+    }));
+  const confirmAction = async (ti: number, ai: number) => {
+    const a = thread[ti]?.actions?.[ai];
+    if (!a || a.state !== 'pending') return;
+    setAction(ti, ai, { state: 'busy' });
+    try {
+      await api('/ai/actions/confirm', { token: a.token });
+      setAction(ti, ai, { state: 'done' });
+    } catch (e: any) {
+      setAction(ti, ai, { state: 'error', message: e.message });
+    }
+  };
 
   const reset = () => {
     setResult(null);
@@ -333,7 +357,7 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
             }}
             rows={1}
             placeholder={t('ai.placeholder')}
-            className="w-full rounded-2xl pl-14 pr-14 py-[18px] text-[15.5px] resize-none outline-none
+            className="w-full rounded-2xl pl-14 pr-24 py-[18px] text-[15.5px] resize-none outline-none
                        bg-surface/60
                        ring-1 ring-line dark:ring-white/[0.08]
                        focus:ring-2 focus:ring-violet-500/60
@@ -341,6 +365,12 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
                        placeholder:text-faint
                        text-ink transition-shadow shadow-sm"
           />
+          {/* Ovoz bilan savol — matn maydonga tushadi, foydalanuvchi o'zi yuboradi */}
+          <span className="absolute right-14 top-1/2 -translate-y-1/2">
+            <VoiceButton disabled={busy}
+              onText={txt => { setQuery(prev => (prev ? prev + ' ' : '') + txt); inputRef.current?.focus(); }}
+              onError={msg => setResult({ kind: 'error', message: msg })} />
+          </span>
           <button
             onClick={ask}
             disabled={!query.trim() || busy}
@@ -472,6 +502,9 @@ export const AiAssistant: React.FC<Props> = ({ onExit }) => {
                 {turn.a}
               </p>
               <div className="pl-4">
+                <AiActionCards actions={turn.actions || []}
+                  onConfirm={ai => confirmAction(i, ai)}
+                  onCancel={ai => setAction(i, ai, { state: 'cancelled' })} />
                 <SourcePills sources={turn.sources} label={t('ai.source')} lang={language} />
               </div>
             </motion.div>

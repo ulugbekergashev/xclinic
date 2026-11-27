@@ -27,9 +27,12 @@ export interface ToolContext {
 // uchun to'liq shaxsiy ma'lumot yuborilmaydi. Foydalanuvchi kimligini tanishi
 // uchun familiya + ism bosh harfi yetarli. PINFL va manzil umuman yuborilmaydi.
 
+/* Ism maydoni ochiq manbadan ham keladi (saytdan yozilish) — modelga faqat
+   harflar, 24 belgigacha: ism orqali «buyruq» yozib bo'lmasin */
+const nameOnly = (v?: string | null) => String(v || '').replace(/[^\p{L}\p{M}'’\- ]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 24);
 const maskName = (first?: string | null, last?: string | null): string => {
-    const f = (first || '').trim();
-    const l = (last || '').trim();
+    const f = nameOnly(first);
+    const l = nameOnly(last);
     if (!f && !l) return 'Noma\'lum';
     return l ? `${l} ${f.charAt(0).toUpperCase()}.`.trim() : f;
 };
@@ -131,6 +134,12 @@ export const TOOL_DEFS: ToolDef[] = [
             required: ['dateFrom', 'dateTo'],
         },
         roles: FINANCE,
+    },
+    {
+        name: 'get_doctors',
+        description: "Faol shifokorlar ro'yxati: id, ism, mutaxassislik, ish vaqti. Qabulga yozishdan oldin shifokor id sini olish uchun.",
+        parameters: { type: 'object', properties: {} },
+        roles: ALL,
     },
     {
         name: 'find_patient',
@@ -248,7 +257,7 @@ const IMPL: Record<string, (args: any, ctx: ToolContext) => Promise<any>> = {
             where,
             orderBy: [{ date: 'asc' }, { time: 'asc' }],
             take: 100,
-            select: { date: true, time: true, doctorName: true, type: true, status: true, patientName: true },
+            select: { id: true, date: true, time: true, doctorName: true, type: true, status: true, patientName: true },
         });
 
         const byStatus: Record<string, number> = {};
@@ -258,6 +267,8 @@ const IMPL: Record<string, (args: any, ctx: ToolContext) => Promise<any>> = {
             jami: rows.length,
             status_kesimida: byStatus,
             qabullar: rows.slice(0, 40).map((r: any) => ({
+                /* Ichki kalit (ism emas) — amallar uchun (bekor qilish, eslatma) */
+                id: r.id,
                 sana: r.date,
                 vaqt: r.time,
                 shifokor: r.doctorName,
@@ -394,7 +405,7 @@ const IMPL: Record<string, (args: any, ctx: ToolContext) => Promise<any>> = {
             where,
             take: 10,
             select: {
-                firstName: true, lastName: true, phone: true, balance: true,
+                id: true, firstName: true, lastName: true, phone: true, balance: true,
                 lastVisit: true, doctorName: true, status: true,
             },
         });
@@ -402,6 +413,8 @@ const IMPL: Record<string, (args: any, ctx: ToolContext) => Promise<any>> = {
         return {
             topildi: rows.length,
             bemorlar: rows.map((r: any) => ({
+                /* Ichki kalit (ism emas) — amallar uchun (qabulga yozish, to'lov) */
+                id: r.id,
                 bemor: maskName(r.firstName, r.lastName),
                 telefon: maskPhone(r.phone),
                 balans: fmt(r.balance || 0),
@@ -485,6 +498,22 @@ const IMPL: Record<string, (args: any, ctx: ToolContext) => Promise<any>> = {
                 .slice(0, 30).map((u: any) => u.name),
             izoh: "Summa — yozilgan xizmatlar (to'langan-to'lanmaganidan qat'i nazar), Umumiydagi «Xizmatlar» bilan bir xil. " +
                 "Material — retsept bo'yicha ombor narxi; foyda emas: sof foyda = xizmatlar − xarajat.",
+        };
+    },
+
+    get_doctors: async (_args, ctx) => {
+        const rows = await prisma.doctor.findMany({
+            where: { clinicId: ctx.clinicId, status: 'Active' },
+            select: { id: true, firstName: true, lastName: true, specialty: true, startHour: true, endHour: true },
+            orderBy: { lastName: 'asc' },
+        });
+        return {
+            shifokorlar: rows.map((d: any) => ({
+                id: d.id,
+                ism: `Dr. ${d.firstName} ${d.lastName}`.trim(),
+                mutaxassislik: d.specialty || '-',
+                ish_vaqti: d.startHour != null && d.endHour != null ? `${d.startHour}:00–${d.endHour}:00` : '-',
+            })),
         };
     },
 

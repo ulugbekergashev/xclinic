@@ -818,11 +818,39 @@ const DEMO_STUDIES: DiagnosticStudy[] = STUDY_NAMES.map((name, i) => {
         status: st,
         orderedByName: 'Dr. Kamola Ahmedova',
         performedByName: st === 'Ordered' ? null : 'Laborant Zuhra',
-        orderedAt: dayShift(-(i + 1)),
+        /* Bugungi qabulga bog'langani — bugun yozilgan (navbatda ko'rinadi) */
+        orderedAt: awaiting ? new Date(Date.now() - 40 * 60_000).toISOString() : dayShift(-(i + 1)),
         performedAt: st === 'Ordered' ? null : dayShift(-i),
         price: [180000, 60000, 350000, 80000, 250000, 150000][i % 6],
     } as DiagnosticStudy;
-});
+}).concat(
+    /* NAVBAT (2026-11-27): bugun UZI/EKG ga yuborilgan, hali kutayotganlar —
+       Diagnostika sahifasidagi «Navbat» namoyishda bo'sh turmasin */
+    ([
+        { pid: 1, name: 'Exokardiografiya (yurak UZI)', modality: 'UZI', mins: 26 },
+        { pid: 9, name: 'Elektrokardiogramma (EKG)', modality: 'EKG', mins: 14 },
+    ] as { pid: number; name: string; modality: Modality; mins: number }[]).map((q, i) => {
+        const patientId = `demo-patient-${q.pid}`;
+        const p = DEMO_PATIENTS.find(x => x.id === patientId);
+        const visit = DEMO_VISITS.find(v => v.patientId === patientId);
+        return {
+            id: `demo-study-q${i + 1}`,
+            ...(visit ? { visitId: visit.id } : {}),
+            clinicId: 'demo-clinic-1',
+            patientId,
+            patientName: p ? `${p.firstName} ${p.lastName}` : 'Bemor',
+            departmentId: 'demo-diag',
+            modality: q.modality,
+            name: q.name,
+            status: 'Ordered',
+            orderedByName: 'Dr. Nilufar Tosheva',
+            performedByName: null,
+            orderedAt: new Date(Date.now() - q.mins * 60_000).toISOString(),
+            performedAt: null,
+            price: q.modality === 'UZI' ? 150000 : 80000,
+        } as DiagnosticStudy;
+    }),
+);
 
 const DEMO_PRESCRIPTIONS: Prescription[] = [0, 1, 2, 3, 4].map(i => {
     const patientId = `demo-patient-${i + 6}`;
@@ -2044,7 +2072,52 @@ const saveDemoState = () => {
 
    Shakli `backend/multiprofile.ts` dagi `queue-board` javobi bilan bir xil:
    talon = bo'lim kodi + ikki xonali navbat raqami. */
-export const demoQueueBoard = () => DEMO_VISITS
+export type TelegramBotInfo = {
+    botConnected: boolean;
+    botUsername: string | null;
+    owner: { linked: boolean; phone: string | null };
+    doctors: { id: string; name: string; hasPhone: boolean; linked: boolean }[];
+    receptionists?: { id: string; name: string; hasPhone: boolean; linked: boolean }[];
+    ownerReportEnabled: boolean;
+    ownerReportTime: string;
+    doctorNotify: boolean;
+    anomalyAlert?: boolean;
+};
+
+/** Demo talon — serverdagi `ticketOf` bilan bir qoida (roomQueue.ts) */
+const demoTicketOf = (visitId?: string | null, patientId?: string | null): string | null => {
+    const v = (visitId ? DEMO_VISITS.find(x => x.id === visitId) : undefined)
+        || (patientId ? DEMO_VISITS.find(x => x.patientId === patientId && x.status !== 'Completed') : undefined);
+    if (!v || v.queueNumber == null) return null;
+    const dep = DEMO_DEPARTMENTS.find(d => d.id === v.departmentId);
+    return dep?.code ? `${dep.code}-${String(v.queueNumber).padStart(2, '0')}` : String(v.queueNumber);
+};
+const DEMO_MODALITY_ROOM: Record<string, string> = { UZI: 'UZI', EKG: 'EKG', RENTGEN: 'Rentgen', ENDOSKOPIYA: 'Endoskopiya', MRT: 'MRT', KT: 'KT' };
+const isTodayIso = (iso?: string | null) => !!iso && new Date(iso).toDateString() === new Date().toDateString();
+
+/** Bugun xonaga chaqirilganlar (UZI, laboratoriya) — server `roomBoardRows` */
+const demoRoomBoard = () => [
+    ...DEMO_STUDIES
+        .filter(s => isTodayIso(s.calledAt) && (s.status === 'Ordered' || s.status === 'InProgress'))
+        .map(s => ({ ticket: demoTicketOf(s.visitId, s.patientId), room: DEMO_MODALITY_ROOM[s.modality] || s.modality, inProgress: s.status === 'InProgress', calledAt: s.calledAt!, visitId: s.visitId, patientId: s.patientId })),
+    ...DEMO_LAB_ORDERS
+        .filter(o => isTodayIso(o.calledAt) && !o.sampleCollectedAt && o.status !== 'Completed' && o.status !== 'Cancelled')
+        .map(o => ({ ticket: demoTicketOf(o.visitId, o.patientId), room: 'Laboratoriya', inProgress: false, calledAt: o.calledAt!, visitId: o.visitId, patientId: o.patientId })),
+].filter(r => r.ticket).map(r => {
+    const v = DEMO_VISITS.find(x => x.id === r.visitId) || DEMO_VISITS.find(x => x.patientId === r.patientId && x.status !== 'Completed');
+    const dep = DEMO_DEPARTMENTS.find(d => d.id === v?.departmentId);
+    return {
+        queueNumber: v?.queueNumber ?? null,
+        ticket: r.ticket,
+        status: (r.inProgress ? 'In Progress' : 'Called') as 'Called' | 'In Progress',
+        calledAt: r.calledAt,
+        department: r.room,
+        room: r.room,
+        color: dep?.color ?? null,
+    };
+});
+
+export const demoQueueBoard = () => [...DEMO_VISITS
     .filter(v => ['Waiting', 'Called', 'In Progress'].includes(v.status))
     .sort((a, b) => (a.status.localeCompare(b.status)) || ((a.queueNumber ?? 0) - (b.queueNumber ?? 0)))
     .map(v => {
@@ -2058,8 +2131,9 @@ export const demoQueueBoard = () => DEMO_VISITS
             calledAt: v.calledAt ?? null,
             department: dep?.name ?? null,
             color: dep?.color ?? null,
+            room: null as string | null,
         };
-    });
+    }), ...demoRoomBoard()];
 
 /** Demo YOZUVINING yakuni: holatni saqlaydi va natijani qaytaradi.
  *  Har bir o'zgartiruvchi amal shu orqali tugaydi — saqlashni bitta joyda
@@ -4657,6 +4731,39 @@ export const api = {
     },
 
     /** Saytdan yozilish sozlamasi (ega) */
+    /** Telegram bot kartasi (Sozlamalar → Integratsiyalar, 0050) */
+    telegramBot: {
+        get: (clinicId: string) => {
+            if (isDemoMode()) {
+                const c: any = DEMO_CLINIC;
+                return demoRead<TelegramBotInfo>({
+                    botConnected: true, botUsername: 'demo_klinika_bot',
+                    owner: { linked: true, phone: c.ownerPhone || '+998 90 000 00 00' },
+                    doctors: DEMO_DOCTORS.map((d, i) => ({ id: d.id, name: `${d.firstName} ${d.lastName}`, hasPhone: !!d.phone, linked: i < 2 })),
+                    receptionists: [{ id: 'demo-rec-1', name: 'Dilnoza Karimova', hasPhone: true, linked: true }],
+                    ownerReportEnabled: c.ownerReportEnabled !== false,
+                    ownerReportTime: c.ownerReportTime || '22:00',
+                    doctorNotify: c.doctorNotify !== false,
+                    anomalyAlert: c.anomalyAlert !== false,
+                });
+            }
+            return fetchJson<TelegramBotInfo>(`/clinics/${clinicId}/telegram-bot`);
+        },
+        /** Botga ketadigan hisobot namunasi (HTML) */
+        preview: (clinicId: string, p = 'd', s = 'sum') => {
+            if (isDemoMode()) return demoRead({ html: "📊 <b>Hisobot</b> · Demo Klinika\n🗓 Bugun\n\n👥 Qabullar: <b>9</b> ta · yangi bemor: 2\n🧾 Xizmatlar: <b>2 050 000</b> so'm\n💰 Kassaga tushdi: <b>1 250 000</b> so'm\n💸 Xarajat: <b>30 000</b> so'm\n📈 Sof foyda: <b>2 020 000</b> so'm\n\n<i>Namoyishda — namuna matn. Klinikada raqamlar «Hisobot» bilan bir xil.</i>" });
+            return fetchJson<{ html: string }>(`/clinics/${clinicId}/telegram-bot/preview?p=${p}&s=${s}`);
+        },
+        save: (clinicId: string, data: { ownerReportEnabled?: boolean; ownerReportTime?: string; doctorNotify?: boolean; anomalyAlert?: boolean }) => {
+            if (isDemoMode()) {
+                Object.assign(DEMO_CLINIC as any, data);
+                saveDemoData();
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/clinics/${clinicId}/telegram-bot`, { method: 'PUT', body: JSON.stringify(data) });
+        },
+    },
+
     onlineBooking: {
         getSettings: () => {
             if (isDemoMode()) {
@@ -5492,9 +5599,11 @@ export const api = {
                            holda namoyishda «To'langan» yorlig'i umuman
                            ko'rinmasdi. */
                         const rows = dueOf(s.id);
-                        if (rows.length === 0) return { ...s, paid: null, due: null };
+                        const ticket = demoTicketOf(s.visitId, s.patientId);
+                        if (rows.length === 0) return { ...s, ticket, paid: null, due: null };
                         return {
                             ...s,
+                            ticket,
                             paid: rows.every(c => c.status === 'Paid'),
                             due: rows.reduce((acc, c) => acc + Math.max(0, (c.total || 0) - (c.paidAmount || 0)), 0),
                         };
@@ -5505,6 +5614,26 @@ export const api = {
             if (params?.status) q.set('status', params.status);
             const qs = q.toString();
             return fetchJson<DiagnosticStudy[]>(`/studies${qs ? `?${qs}` : ''}`);
+        },
+        /** Xonaga chaqirish (ixtiyoriy) — tablo «T-05, UZI xonasiga» deydi */
+        call: (id: string) => {
+            if (isDemoMode()) {
+                const st = DEMO_STUDIES.find(x => x.id === id);
+                if (!st || (st.status !== 'Ordered' && st.status !== 'InProgress')) return Promise.reject(new Error('Tekshiruv navbatda emas'));
+                st.calledAt = new Date().toISOString();
+                return demoDone({ id, calledAt: st.calledAt as string });
+            }
+            return fetchJson<{ id: string; calledAt: string }>(`/studies/${id}/call`, { method: 'POST' });
+        },
+        /** Tekshiruvni boshlash — «Bajarilmoqda» (ixtiyoriy) */
+        start: (id: string) => {
+            if (isDemoMode()) {
+                const st = DEMO_STUDIES.find(x => x.id === id);
+                if (!st || st.status !== 'Ordered') return Promise.reject(new Error('Tekshiruv allaqachon boshlangan yoki yopilgan'));
+                st.status = 'InProgress';
+                return demoDone({ id, status: 'InProgress' });
+            }
+            return fetchJson<{ id: string; status: string }>(`/studies/${id}/start`, { method: 'POST' });
         },
         create: (data: Partial<DiagnosticStudy>) => {
             if (isDemoMode()) {
@@ -6769,8 +6898,21 @@ export const api = {
         /** Javobda `paid` va `due` ham keladi: laborant to'lovsiz natija
          *  bermaydi, shuning uchun holatni ro'yxatda ko'rishi kerak. */
         getAll: (clinicId: string) => {
-            if (isDemoMode()) return Promise.resolve([...DEMO_LAB_ORDERS]);
+            if (isDemoMode()) return Promise.resolve(DEMO_LAB_ORDERS.map(o => ({ ...o, ticket: demoTicketOf(o.visitId, o.patientId) })));
             return fetchJson<any[]>(`/lab-orders?clinicId=${clinicId}`);
+        },
+        /** Qon olishga chaqirish (ixtiyoriy) — tablo «T-05, Laboratoriya xonasiga» */
+        call: (id: string) => {
+            if (isDemoMode()) {
+                const o = DEMO_LAB_ORDERS.find(x => x.id === id);
+                if (!o || o.sampleCollectedAt || o.status === 'Completed' || o.status === 'Cancelled') {
+                    return Promise.reject(new Error("Bu bemordan proba allaqachon olingan"));
+                }
+                o.calledAt = new Date().toISOString();
+                saveDemoData();
+                return demoDone({ id, calledAt: o.calledAt as string });
+            }
+            return fetchJson<{ id: string; calledAt: string }>(`/lab-orders/${id}/call`, { method: 'POST' });
         },
         /** Proba olindi. To'lov yo'q bo'lsa ham bajariladi, lekin ogohlantiradi:
          *  qon olingan bo'lsa — olingan, faktni yozmaslik yomonroq. */

@@ -11,6 +11,7 @@ import { useResourceSync } from '../hooks/useDataSync';
 import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { EmptyState } from '../components/Common';
 import { printStudyConclusion } from '../utils/printForms';
+import { DiagQueue } from '../components/diagnostics/DiagQueue';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Diagnostika — UZI, EKG, rentgen va boshqalar.
@@ -63,6 +64,8 @@ export const Diagnostics: React.FC<Props> = ({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [uploading, setUploading] = useState(false);
+    /** Navbatdagi amal: `call:<id>` yoki `start:<id>` (0049) */
+    const [queueBusy, setQueueBusy] = useState('');
 
     const [form, setForm] = useState({
         patientId: '', patientName: '', modality: 'UZI' as Modality,
@@ -202,6 +205,17 @@ export const Diagnostics: React.FC<Props> = ({
         finally { setUploading(false); }
     };
 
+    /* Navbat (0049): chaqirish va boshlash — ikkalasi ixtiyoriy */
+    const queueAction = async (kind: 'call' | 'start', st: DiagnosticStudy) => {
+        setQueueBusy(`${kind}:${st.id}`); setError('');
+        try {
+            if (kind === 'call') await api.studies.call(st.id);
+            else await api.studies.start(st.id);
+            await reload();
+        } catch (e: any) { setError(e?.data?.error || e.message || t('ui.xatolik_yuz_berdi')); }
+        finally { setQueueBusy(''); }
+    };
+
     const remove = async (id: string) => {
         if (!await confirmAction({ title: t('diagnostics.tekshiruv_ochiriladi_davom_etasizmi'), danger: true, confirmLabel: t('ui.ochirish_2') })) return;
         try { await api.studies.delete(id); await reload(); }
@@ -231,6 +245,15 @@ export const Diagnostics: React.FC<Props> = ({
                     <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
                 </div>
             )}
+
+            {/* Navbat — bugungi yo'llanmalar, kelish tartibida (0049) */}
+            <DiagQueue
+                studies={studies}
+                busyId={queueBusy}
+                onCall={st => queueAction('call', st)}
+                onStart={st => queueAction('start', st)}
+                onOpen={openStudy}
+            />
 
             <div className="flex flex-wrap gap-3">
                 <div className="relative flex-1 min-w-[220px]">

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Printer, Barcode } from 'lucide-react';
+import { Check, Printer, Barcode, Volume2 } from 'lucide-react';
 import { Card } from './Common';
 import { LabOrder, LabTest } from '../types';
 import { useLanguage, fill } from '../context/LanguageContext';
@@ -41,6 +41,8 @@ interface Props {
     verifyRequired?: boolean;
     /** Natijalar oynasi — kiritish ham, ko'rish va chop etish ham shu */
     onOpen: (order: LabOrder) => void;
+    /** Qon olishga chaqirish (0049, ixtiyoriy) — tablo talon bilan e'lon qiladi */
+    onCall?: (order: LabOrder) => void;
 }
 
 type Paid = { paid?: boolean | null; due?: number | null };
@@ -59,7 +61,7 @@ const capOf = (sample: string) => CAP[sample] || 'bg-gray-400';
 
 const dayKey = (iso?: string | null) => (iso ? new Date(iso).toDateString() : '');
 
-export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpen, onLabel, verifyRequired }) => {
+export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpen, onLabel, onCall, verifyRequired }) => {
     const { t } = useLanguage();
 
     // «12 daq», «40 daq qoldi» — daqiqada bir yangilanadi
@@ -86,8 +88,10 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
        ketardi. Ular yo'qolmaydi (soni ko'rinadi, bosilsa ochiladi), lekin
        bugungi ishni to'smaydi. Chegara «Bugun» dagi zona bilan bir xil. */
     const DAY = 24 * 3_600_000;
+    /* NAVBAT (2026-11-27): shoshilinch oldinda, qolgani kelish tartibida */
     const notTaken = live.filter(o => !o.sampleCollectedAt)
-        .sort((a, b) => +new Date(a.orderedAt) - +new Date(b.orderedAt));
+        .sort((a, b) => Number(b.priority === 'Urgent') - Number(a.priority === 'Urgent')
+            || +new Date(a.orderedAt) - +new Date(b.orderedAt));
     const waiting = notTaken.filter(o => now - +new Date(o.orderedAt) <= DAY);
     const stale = notTaken.filter(o => now - +new Date(o.orderedAt) > DAY);
     const [showStale, setShowStale] = useState(false);
@@ -128,7 +132,7 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
                     shtativning o'zida qizil bilan. */}
                 <h2 id="lab-line-title" className="text-lg font-black text-ink">{t('labline.title')}</h2>
 
-                <div className="mt-7 grid grid-cols-1 gap-y-7 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] xl:gap-x-5">
+                <div className="mt-7 grid grid-cols-1 gap-y-7 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)] xl:gap-x-5">
                     {/* ── 1. Proba olish ── */}
                     <div className="relative min-w-0 rounded-[22px] border-[1.5px] border-amber-200/80 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 px-3 pt-[18px] pb-3">
                         <span className={`${TAB} text-amber-700 dark:text-amber-300`}>{fill(t('labline.sample'), waiting.length)}</span>
@@ -137,17 +141,29 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
                         )}
                         {(waiting.length > 0 || (showStale && stale.length > 0)) && (
                             <ul className="flex flex-col gap-2">
-                                {[...waiting, ...(showStale ? stale : [])].map(o => {
+                                {[...waiting, ...(showStale ? stale : [])].map((o, index) => {
                                     const pay = o as LabOrder & Paid;
                                     const waited = (now - +new Date(o.orderedAt)) / 60_000;
                                     const stale = waited > 60 * 24;
+                                    const calledText = o.calledAt
+                                        ? fill(t('roomq.called'), new Date(o.calledAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', hour12: false }))
+                                        : '';
                                     return (
                                         <li key={o.id} className="flex items-center gap-3 pl-2.5 pr-2.5 py-2.5 rounded-2xl border-[1.5px] border-line bg-surface">
-                                            <span className={`shrink-0 w-10 h-10 rounded-full border-[2.5px] ${o.priority === 'Urgent' ? 'border-red-400' : 'border-amber-400'} bg-surface text-ink text-xs font-extrabold inline-flex items-center justify-center`}>
+                                            {/* Navbatdagi o'rni — avatar burchagida (birinchisi ko'k) */}
+                                            <span className={`relative shrink-0 w-10 h-10 rounded-full border-[2.5px] ${o.priority === 'Urgent' ? 'border-red-400' : 'border-amber-400'} bg-surface text-ink text-xs font-extrabold inline-flex items-center justify-center`}>
                                                 {initialsOf(o.patientName)}
+                                                {!stale && (
+                                                    <span aria-label={fill(t('roomq.position'), index + 1)} className={`absolute -top-1.5 -right-2 min-w-[20px] h-5 px-1 rounded-full border-2 border-surface text-[10.5px] font-black leading-4 text-center text-white ${index === 0 ? 'bg-primary-600' : 'bg-slate-400 dark:bg-slate-600'}`}>
+                                                        {index + 1}
+                                                    </span>
+                                                )}
                                             </span>
                                             <span className="min-w-0 flex-1 flex flex-col leading-snug">
-                                                <span className="text-sm font-extrabold text-ink truncate">{o.patientName}</span>
+                                                <span className="flex items-center gap-1.5 min-w-0">
+                                                    {o.ticket && <span className="shrink-0 h-5 px-1.5 rounded bg-ink text-surface text-[11px] font-black tabular-nums leading-5">{o.ticket}</span>}
+                                                    <span className="text-sm font-extrabold text-ink truncate">{o.patientName}</span>
+                                                </span>
                                                 <span className="flex items-center gap-1.5 min-w-0">
                                                     <span aria-hidden="true" className="shrink-0 flex gap-0.5">
                                                         {[...new Set((o.items || []).map(i => testById.get(i.testId)?.sampleType || ''))].map(s => (
@@ -159,11 +175,20 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
                                                 <span className="text-[11px] font-extrabold truncate">
                                                     <span className={stale ? 'text-amber-700 dark:text-amber-400' : 'text-muted'}>{fill(t('labline.waited'), span(waited))}</span>
                                                     {o.priority === 'Urgent' && <span className="text-red-600 dark:text-red-400"> · {t('lab.urgent')}</span>}
+                                                    {calledText && <span className="text-primary-700 dark:text-primary-300"> · {calledText}</span>}
                                                     {pay.paid === false && (
                                                         <span className="text-amber-700 dark:text-amber-400"> · {t('ui.tolanmagan')}{pay.due ? ` ${formatNumber(pay.due)}` : ''}</span>
                                                     )}
                                                 </span>
                                             </span>
+                                            {onCall && (
+                                                <button type="button" onClick={() => onCall(o)} disabled={busy}
+                                                    title={o.ticket ? (o.calledAt ? t('flow.recall') : t('flow.call')) : `${t('flow.call')} — ${t('roomq.noTicket')}`}
+                                                    aria-label={`${o.patientName}: ${o.calledAt ? t('flow.recall') : t('flow.call')}`}
+                                                    className="shrink-0 h-9 w-9 rounded-xl border border-line bg-surface text-muted hover:text-primary-600 hover:border-primary-400 inline-flex items-center justify-center disabled:opacity-50">
+                                                    <Volume2 className="w-4 h-4" />
+                                                </button>
+                                            )}
                                             {onLabel && (
                                                 <button type="button" onClick={() => onLabel(o)} disabled={busy}
                                                     title={t('lab.label.print')} aria-label={`${o.patientName}: ${t('lab.label.print')}`}

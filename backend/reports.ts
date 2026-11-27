@@ -107,196 +107,13 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
     route('get', '/api/reports/summary', async (req, res, clinicId) => {
         const from = String(req.query.from || monthStart());
         const to = String(req.query.to || today());
-        const { start: rangeStart, end: rangeEnd } = tashkentRangeBounds(from, to);
-
-        const [charges, expenses, departments, services, costByService, doctors] = await Promise.all([
-            prisma.visitCharge.findMany({
-                where: {
-                    clinicId,
-                    status: { not: 'Cancelled' },
-                    /* Ilgari shu yerda `new Date(from)` va `new Date(to + 'T23:59:59')`
-                       edi. ECMAScript qoidasi bo'yicha birinchisi UTC, ikkinchisi
-                       LOKAL vaqt deb o'qiladi — ya'ni bir filtrning ikki chegarasi
-                       turli zonalarda o'lchanardi va davr boshidagi 5 soat
-                       hisobotga tushmasdi. Endi ikkalasi ham Toshkent kuni. */
-                    /* QAYSI KUNGA TUSHADI (2026-11-23, Moliya rejasi 4-vazifa):
-                       qabul sanasi bo'yicha, qabulsiz qator — yozilgan Toshkent
-                       kuni bo'yicha. `/compare`, `/doctors`, `/departments` ham
-                       aynan shunday. Ilgari bu yer faqat `createdAt` ni olardi:
-                       kechagi qabulga bugun qo'shilgan xizmat Umumiy da bugunga,
-                       Shifokorlar da kechaga tushardi — raqamlar mos kelmasdi. */
-                    OR: [
-                        { visit: { date: { gte: from, lte: to } } },
-                        { visitId: null, createdAt: { gte: rangeStart, lte: rangeEnd } },
-                    ],
-                },
-                include: {
-                    visit: { select: { departmentId: true, doctorId: true, doctorName: true, date: true } },
-                    admission: { select: { departmentId: true } },
-                },
-            }),
-            prisma.expense.findMany({
-                where: { clinicId, date: { gte: from, lte: to }, ...BOOKED_EXPENSE },
-            }),
-            prisma.department.findMany({ where: { clinicId } }),
-            prisma.service.findMany({ where: { clinicId } }),
-            recipeCostByService(prisma, clinicId),
-            prisma.doctor.findMany({ where: { clinicId } }),
-        ]);
-
-        /* Xizmat tannarxi retseptdan — Xizmatlar tabi bilan BITTA qoida
-           (2026-11-26): katalog id si bo'yicha (meros qatorda — nomi, faqat
-           «Service» manbasida), sarflanadigan material, × soni. Ilgari nomi
-           bo'yicha butun manbalarda qidirilardi va soni hisobga olinmasdi. */
-        const catalogOf = catalogMatcher(services);
-
-        const deptName = new Map<string, string>();
-        for (const d of departments) deptName.set(d.id, d.name);
-
-        // ─── Yig'indilar ────────────────────────────────────────────────────
-        let revenue = 0, collected = 0, due = 0, materialCost = 0;
-
-        const byDept = new Map<string, any>();
-        const bySource = new Map<string, any>();
-        const byDoctor = new Map<string, any>();
-        const daily = new Map<string, { date: string; revenue: number; collected: number }>();
-
-        for (const c of charges) {
-            const total = c.total || 0;
-            const paid = c.paidAmount || 0;
-            revenue += total;
-            collected += paid;
-            due += total - paid;
-
-            // Tannarx — faqat retsepti bor xizmatlarda
-            const svc = c.source === 'Lab' ? undefined : catalogOf(c);
-            const cost = svc ? (costByService.get(svc.id) || 0) * (c.quantity || 1) : 0;
-            materialCost += cost;
-
-            /* Statsionar qatori yotish bo'limiga — Bo'limlar tabi bilan bitta qoida */
-            const dKey = chargeDepartmentId(c) || 'none';
-            if (!byDept.has(dKey)) {
-                byDept.set(dKey, {
-                    departmentId: dKey === 'none' ? null : dKey,
-                    name: dKey === 'none' ? "Bo'limsiz" : (deptName.get(dKey) || "Noma'lum"),
-                    revenue: 0, collected: 0, due: 0, cost: 0, count: 0,
-                });
-            }
-            const d = byDept.get(dKey);
-            d.revenue += total; d.collected += paid; d.due += total - paid; d.cost += cost; d.count++;
-
-            const sKey = c.source || 'Other';
-            if (!bySource.has(sKey)) {
-                bySource.set(sKey, { source: sKey, label: SOURCE_LABELS[sKey] || sKey, revenue: 0, count: 0 });
-            }
-            const s = bySource.get(sKey);
-            s.revenue += total; s.count++;
-
-            const docName = c.visit?.doctorName || null;
-            if (docName) {
-                if (!byDoctor.has(docName)) byDoctor.set(docName, { doctorName: docName, revenue: 0, count: 0 });
-                const dr = byDoctor.get(docName);
-                dr.revenue += total; dr.count++;
-            }
-
-            // Qabul sanasi bo'lmasa — yozuv vaqtini TOSHKENT kuniga o'giramiz,
-            // aks holda tunda kiritilgan qator kechagi kunga tushardi
-            const day = (c.visit?.date) || toTashkentDay(c.createdAt);
-            if (!daily.has(day)) daily.set(day, { date: day, revenue: 0, collected: 0 });
-            const dd = daily.get(day)!;
-            dd.revenue += total; dd.collected += paid;
-        }
-
-        // ─── Xarajatlar ─────────────────────────────────────────────────────
-        let doctorShare = 0, otherExpenses = 0, legacyLabExpense = 0;
-        const expenseByCategory = new Map<string, number>();
-
-        for (const e of expenses) {
-            const amt = e.amount || 0;
-            if (!isCountedExpense(e.category)) { legacyLabExpense += amt; continue; }
-            if (e.category === 'DoctorShare') doctorShare += amt;
-            else otherExpenses += amt;
-            /* Shifokor ulushi ham ro'yxatda (2026-11-26). Ilgari u «Xarajat»
-               plitkasiga kirardi-yu, toifalar ro'yxatidan tushib qolardi:
-               ulush to'langan oyda ro'yxat yig'indisi plitkadan kam chiqardi. */
-            expenseByCategory.set(e.category, round((expenseByCategory.get(e.category) || 0) + amt));
-        }
-
-        const grossProfit = round(revenue - materialCost);
-        /* SOF FOYDA = TUSHUM − XARAJAT (egasining qoidasi, 2026-11-14).
-           Material tannarxi bu yerda AYIRILMAYDI: ombor xaridi baribir
-           `Inventory` xarajati bo'lib yoziladi va ikki marta ayirilardi.
-           `/reports/compare` dagi «Foyda» ham aynan shu formula bilan. */
-        const netProfit = round(revenue - doctorShare - otherExpenses);
-
-        const deptList = Array.from(byDept.values()).map(d => ({
-            ...d,
-            revenue: round(d.revenue), collected: round(d.collected),
-            due: round(d.due), cost: round(d.cost),
-            margin: round(d.revenue - d.cost),
-            marginPercent: d.revenue > 0 ? Math.round(((d.revenue - d.cost) / d.revenue) * 100) : 0,
-        })).sort((a, b) => b.revenue - a.revenue);
-
-        /* `due` — DAVR ichida qolgan qarz, `openDebt` — ayni damdagi umumiy
-           qarz. Audit ikkalasini bitta «QARZ» yorlig'i ostida ko'rib,
-           «raqamlar mos kelmaydi» degan edi. Ular haqiqatan turli narsa;
-           endi ikkalasi ham qaytadi va interfeys ularni ajratib yozadi.
-           `openDebt` bosh sahifadagi raqam bilan AYNAN bir xil bo'ladi —
-           ikkalasi ham `snapshot.ts` dan. */
-        const snap = await financialSnapshot(prisma, clinicId, from, to);
-
-        res.json({
-            period: { from, to },
-            openDebt: snap.debt,
-            totals: {
-                revenue: round(revenue),
-                collected: round(collected),
-                due: round(due),
-                materialCost: round(materialCost),
-                grossProfit,
-                doctorShare: round(doctorShare),
-                otherExpenses: round(otherExpenses),
-                netProfit,
-                legacyLabExpense: round(legacyLabExpense),
-            },
-            byDepartment: deptList,
-            bySource: Array.from(bySource.values())
-                .map(s => ({ ...s, revenue: round(s.revenue) }))
-                .sort((a, b) => b.revenue - a.revenue),
-            byDoctor: Array.from(byDoctor.values())
-                .map(d => ({ ...d, revenue: round(d.revenue) }))
-                .sort((a, b) => b.revenue - a.revenue),
-            expenseByCategory: Array.from(expenseByCategory.entries())
-                .map(([category, amount]) => ({ category, amount }))
-                .sort((a, b) => b.amount - a.amount),
-            daily: Array.from(daily.values())
-                .map(d => ({ ...d, revenue: round(d.revenue), collected: round(d.collected) }))
-                .sort((a, b) => a.date.localeCompare(b.date)),
-            doctorCount: doctors.length,
-        });
+        res.json(await summaryReport(prisma, clinicId, from, to));
     });
 
     /** Qarzdorlar — bemor bo'yicha, davrga bog'liq emas */
     route('get', '/api/reports/debtors', async (req, res, clinicId) => {
-        const charges = await prisma.visitCharge.findMany({
-            where: { clinicId, status: 'Unpaid' },
-            include: { visit: { select: { date: true, departmentId: true } } },
-            orderBy: { createdAt: 'asc' },
-        });
-
-        const byPatient = new Map<string, any>();
-        for (const c of charges) {
-            const key = c.patientId || `noname:${c.patientName}`;
-            if (!byPatient.has(key)) {
-                byPatient.set(key, {
-                    patientId: c.patientId, patientName: c.patientName,
-                    due: 0, count: 0, oldestDate: c.visit?.date || toTashkentDay(c.createdAt),
-                });
-            }
-            const g = byPatient.get(key);
-            g.due = round(g.due + (c.total - (c.paidAmount || 0)));
-            g.count++;
-        }
+        const groups = await debtorGroups(prisma, clinicId);
+        const byPatient = new Map<string, any>(groups.map((g: any) => [g.patientId || `noname:${g.patientName}`, g]));
 
         /* Telefon — egasi qarzdorga shu yerdan qo'ng'iroq qiladi (Moliya
            rejasi 7). Bitta so'rov, bemor sonicha emas. */
@@ -1283,4 +1100,204 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
     });
 
     console.log('✅ Hisobot endpointlari ulandi');
+}
+
+/**
+ * Asosiy moliyaviy hisobot — `/api/reports/summary` va rahbar Telegram boti
+ * (ownerBot.ts) BITTA funksiyadan: botdagi raqam ilovadagi bilan aynan bir xil.
+ * Har bir hisob qatori qaysi bo'limga tegishli ekanini qabul orqali topamiz;
+ * qabulsiz qatorlar (to'g'ridan-to'g'ri kelgan bemor) "Bo'limsiz" ga tushadi.
+ */
+export async function summaryReport(prisma: any, clinicId: string, from: string, to: string) {
+    const { start: rangeStart, end: rangeEnd } = tashkentRangeBounds(from, to);
+
+    const [charges, expenses, departments, services, costByService, doctors] = await Promise.all([
+        prisma.visitCharge.findMany({
+            where: {
+                clinicId,
+                status: { not: 'Cancelled' },
+                /* Ilgari shu yerda `new Date(from)` va `new Date(to + 'T23:59:59')`
+                   edi. ECMAScript qoidasi bo'yicha birinchisi UTC, ikkinchisi
+                   LOKAL vaqt deb o'qiladi — ya'ni bir filtrning ikki chegarasi
+                   turli zonalarda o'lchanardi va davr boshidagi 5 soat
+                   hisobotga tushmasdi. Endi ikkalasi ham Toshkent kuni. */
+                /* QAYSI KUNGA TUSHADI (2026-11-23, Moliya rejasi 4-vazifa):
+                   qabul sanasi bo'yicha, qabulsiz qator — yozilgan Toshkent
+                   kuni bo'yicha. `/compare`, `/doctors`, `/departments` ham
+                   aynan shunday. Ilgari bu yer faqat `createdAt` ni olardi:
+                   kechagi qabulga bugun qo'shilgan xizmat Umumiy da bugunga,
+                   Shifokorlar da kechaga tushardi — raqamlar mos kelmasdi. */
+                OR: [
+                    { visit: { date: { gte: from, lte: to } } },
+                    { visitId: null, createdAt: { gte: rangeStart, lte: rangeEnd } },
+                ],
+            },
+            include: {
+                visit: { select: { departmentId: true, doctorId: true, doctorName: true, date: true } },
+                admission: { select: { departmentId: true } },
+            },
+        }),
+        prisma.expense.findMany({
+            where: { clinicId, date: { gte: from, lte: to }, ...BOOKED_EXPENSE },
+        }),
+        prisma.department.findMany({ where: { clinicId } }),
+        prisma.service.findMany({ where: { clinicId } }),
+        recipeCostByService(prisma, clinicId),
+        prisma.doctor.findMany({ where: { clinicId } }),
+    ]);
+
+    /* Xizmat tannarxi retseptdan — Xizmatlar tabi bilan BITTA qoida
+       (2026-11-26): katalog id si bo'yicha (meros qatorda — nomi, faqat
+       «Service» manbasida), sarflanadigan material, × soni. Ilgari nomi
+       bo'yicha butun manbalarda qidirilardi va soni hisobga olinmasdi. */
+    const catalogOf = catalogMatcher(services);
+
+    const deptName = new Map<string, string>();
+    for (const d of departments) deptName.set(d.id, d.name);
+
+    // ─── Yig'indilar ────────────────────────────────────────────────────
+    let revenue = 0, collected = 0, due = 0, materialCost = 0;
+
+    const byDept = new Map<string, any>();
+    const bySource = new Map<string, any>();
+    const byDoctor = new Map<string, any>();
+    const daily = new Map<string, { date: string; revenue: number; collected: number }>();
+
+    for (const c of charges) {
+        const total = c.total || 0;
+        const paid = c.paidAmount || 0;
+        revenue += total;
+        collected += paid;
+        due += total - paid;
+
+        // Tannarx — faqat retsepti bor xizmatlarda
+        const svc = c.source === 'Lab' ? undefined : catalogOf(c);
+        const cost = svc ? (costByService.get(svc.id) || 0) * (c.quantity || 1) : 0;
+        materialCost += cost;
+
+        /* Statsionar qatori yotish bo'limiga — Bo'limlar tabi bilan bitta qoida */
+        const dKey = chargeDepartmentId(c) || 'none';
+        if (!byDept.has(dKey)) {
+            byDept.set(dKey, {
+                departmentId: dKey === 'none' ? null : dKey,
+                name: dKey === 'none' ? "Bo'limsiz" : (deptName.get(dKey) || "Noma'lum"),
+                revenue: 0, collected: 0, due: 0, cost: 0, count: 0,
+            });
+        }
+        const d = byDept.get(dKey);
+        d.revenue += total; d.collected += paid; d.due += total - paid; d.cost += cost; d.count++;
+
+        const sKey = c.source || 'Other';
+        if (!bySource.has(sKey)) {
+            bySource.set(sKey, { source: sKey, label: SOURCE_LABELS[sKey] || sKey, revenue: 0, count: 0 });
+        }
+        const s = bySource.get(sKey);
+        s.revenue += total; s.count++;
+
+        const docName = c.visit?.doctorName || null;
+        if (docName) {
+            if (!byDoctor.has(docName)) byDoctor.set(docName, { doctorName: docName, revenue: 0, count: 0 });
+            const dr = byDoctor.get(docName);
+            dr.revenue += total; dr.count++;
+        }
+
+        // Qabul sanasi bo'lmasa — yozuv vaqtini TOSHKENT kuniga o'giramiz,
+        // aks holda tunda kiritilgan qator kechagi kunga tushardi
+        const day = (c.visit?.date) || toTashkentDay(c.createdAt);
+        if (!daily.has(day)) daily.set(day, { date: day, revenue: 0, collected: 0 });
+        const dd = daily.get(day)!;
+        dd.revenue += total; dd.collected += paid;
+    }
+
+    // ─── Xarajatlar ─────────────────────────────────────────────────────
+    let doctorShare = 0, otherExpenses = 0, legacyLabExpense = 0;
+    const expenseByCategory = new Map<string, number>();
+
+    for (const e of expenses) {
+        const amt = e.amount || 0;
+        if (!isCountedExpense(e.category)) { legacyLabExpense += amt; continue; }
+        if (e.category === 'DoctorShare') doctorShare += amt;
+        else otherExpenses += amt;
+        /* Shifokor ulushi ham ro'yxatda (2026-11-26). Ilgari u «Xarajat»
+           plitkasiga kirardi-yu, toifalar ro'yxatidan tushib qolardi:
+           ulush to'langan oyda ro'yxat yig'indisi plitkadan kam chiqardi. */
+        expenseByCategory.set(e.category, round((expenseByCategory.get(e.category) || 0) + amt));
+    }
+
+    const grossProfit = round(revenue - materialCost);
+    /* SOF FOYDA = TUSHUM − XARAJAT (egasining qoidasi, 2026-11-14).
+       Material tannarxi bu yerda AYIRILMAYDI: ombor xaridi baribir
+       `Inventory` xarajati bo'lib yoziladi va ikki marta ayirilardi.
+       `/reports/compare` dagi «Foyda» ham aynan shu formula bilan. */
+    const netProfit = round(revenue - doctorShare - otherExpenses);
+
+    const deptList = Array.from(byDept.values()).map(d => ({
+        ...d,
+        revenue: round(d.revenue), collected: round(d.collected),
+        due: round(d.due), cost: round(d.cost),
+        margin: round(d.revenue - d.cost),
+        marginPercent: d.revenue > 0 ? Math.round(((d.revenue - d.cost) / d.revenue) * 100) : 0,
+    })).sort((a, b) => b.revenue - a.revenue);
+
+    /* `due` — DAVR ichida qolgan qarz, `openDebt` — ayni damdagi umumiy
+       qarz. Audit ikkalasini bitta «QARZ» yorlig'i ostida ko'rib,
+       «raqamlar mos kelmaydi» degan edi. Ular haqiqatan turli narsa;
+       endi ikkalasi ham qaytadi va interfeys ularni ajratib yozadi.
+       `openDebt` bosh sahifadagi raqam bilan AYNAN bir xil bo'ladi —
+       ikkalasi ham `snapshot.ts` dan. */
+    const snap = await financialSnapshot(prisma, clinicId, from, to);
+
+    return {
+        period: { from, to },
+        openDebt: snap.debt,
+        totals: {
+            revenue: round(revenue),
+            collected: round(collected),
+            due: round(due),
+            materialCost: round(materialCost),
+            grossProfit,
+            doctorShare: round(doctorShare),
+            otherExpenses: round(otherExpenses),
+            netProfit,
+            legacyLabExpense: round(legacyLabExpense),
+        },
+        byDepartment: deptList,
+        bySource: Array.from(bySource.values())
+            .map(s => ({ ...s, revenue: round(s.revenue) }))
+            .sort((a, b) => b.revenue - a.revenue),
+        byDoctor: Array.from(byDoctor.values())
+            .map(d => ({ ...d, revenue: round(d.revenue) }))
+            .sort((a, b) => b.revenue - a.revenue),
+        expenseByCategory: Array.from(expenseByCategory.entries())
+            .map(([category, amount]) => ({ category, amount }))
+            .sort((a, b) => b.amount - a.amount),
+        daily: Array.from(daily.values())
+            .map(d => ({ ...d, revenue: round(d.revenue), collected: round(d.collected) }))
+            .sort((a, b) => a.date.localeCompare(b.date)),
+        doctorCount: doctors.length,
+    };
+}
+
+/** Qarzdorlar — bemor bo'yicha, davrga bog'liq emas (ilova va rahbar boti) */
+export async function debtorGroups(prisma: any, clinicId: string) {
+    const charges = await prisma.visitCharge.findMany({
+        where: { clinicId, status: 'Unpaid' },
+        include: { visit: { select: { date: true, departmentId: true } } },
+        orderBy: { createdAt: 'asc' },
+    });
+
+    const byPatient = new Map<string, any>();
+    for (const c of charges) {
+        const key = c.patientId || `noname:${c.patientName}`;
+        if (!byPatient.has(key)) {
+            byPatient.set(key, {
+                patientId: c.patientId, patientName: c.patientName,
+                due: 0, count: 0, oldestDate: c.visit?.date || toTashkentDay(c.createdAt),
+            });
+        }
+        const g = byPatient.get(key);
+        g.due = round(g.due + (c.total - (c.paidAmount || 0)));
+        g.count++;
+    }
+    return Array.from(byPatient.values()).sort((a: any, b: any) => b.due - a.due);
 }

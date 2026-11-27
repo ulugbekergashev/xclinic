@@ -113,6 +113,9 @@ export interface Appointment {
   status: 'Confirmed' | 'Pending' | 'Completed' | 'Cancelled' | 'No-Show' | 'Checked-In' | 'Requested';
   /** Qayerdan yozilgan: 'site' | 'bot' | null (xodim). Migratsiya 0046 */
   source?: string | null;
+  /** Bemorning eslatmaga javobi (Telegram tugmasi, 0051) */
+  patientReply?: 'coming' | 'cant' | null;
+  patientReplyAt?: string | null;
   reminderSent?: boolean;
   notes?: string;
   clinicId: string;
@@ -898,6 +901,10 @@ export interface LabOrder {
   seenByDoctorAt?: string | null;
   /** Probirka kodi — faqat raqam, YYMMDD + kunlik tartib. Migratsiya 0045. */
   sampleCode?: string | null;
+  /** Qon olishga chaqirilgan payt (navbat). Migratsiya 0049. */
+  calledAt?: string | null;
+  /** Bemorning bugungi talon raqami («T-05») — serverdan, qabuldan */
+  ticket?: string | null;
   /** Natijani tasdiqlagan (klinika yoqqan bo'lsa). Migratsiya 0045. */
   verifiedAt?: string | null;
   verifiedByName?: string | null;
@@ -1058,6 +1065,10 @@ export interface DiagnosticStudy {
   files?: DiagnosticFile[];
   /** Shifokor natijani ochib ko'rgan payt. Migratsiya 0009. */
   seenByDoctorAt?: string | null;
+  /** Xonaga chaqirilgan payt (navbat). Migratsiya 0049. */
+  calledAt?: string | null;
+  /** Bemorning bugungi talon raqami («T-05») — serverdan, qabuldan */
+  ticket?: string | null;
   /* TO'LOV HOLATI — serverdan, hisob qatoridan hisoblanadi
      (`billing.ts`, `payStateBySource`). Bazada bunday maydon YO'Q va
      bo'lmasligi ham kerak: pul holati bitta joyda — qatorda.

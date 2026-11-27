@@ -37,7 +37,7 @@ const STORAGE_KEY = 'xclinic_demo_data';
 
    ⚠️ Demo to'plamiga yozuv qo'shsangiz yoki o'zgartirsangiz — SHU RAQAMNI
    OSHIRING, aks holda o'zgarish avval demoni ochgan odamga yetib bormaydi. */
-const DEMO_DATA_VERSION = 14;
+const DEMO_DATA_VERSION = 15;
 const VERSION_KEY = 'xclinic_demo_version';
 
 export const loadDemoData = () => {

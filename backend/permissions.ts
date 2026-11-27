@@ -148,6 +148,10 @@ export const RULES: Rule[] = [
     { method: 'POST', path: '/api/complaints/:id/resolve', roles: owner(R, D, N, L) },
     { method: 'POST', path: '/api/complaints/:id/reopen', roles: owner() },
     { method: 'PUT', path: '/api/clinics/:id/complaint-alert', roles: owner() },
+    /* Telegram bot kartasi — rahbar hisoboti va shifokorga xabar (0050) */
+    { method: 'GET', path: '/api/clinics/:id/telegram-bot', roles: owner() },
+    { method: 'GET', path: '/api/clinics/:id/telegram-bot/preview', roles: owner() },
+    { method: 'PUT', path: '/api/clinics/:id/telegram-bot', roles: owner() },
     /* Saytdan kelgan so'rov (2026-11-26, onlineBooking.ts): kim kalendar yozsa — o'sha */
     { method: 'POST', path: '/api/appointments/:id/confirm', roles: owner(R, D) },
     { method: 'POST', path: '/api/appointments/:id/reject', roles: owner(R, D) },
@@ -225,6 +229,7 @@ export const RULES: Rule[] = [
        shifokorga 403 qaytarardi. To'langanini server baribir rad etadi (LAB_PAID). */
     { method: 'DELETE', path: '/api/lab-orders/:id', roles: owner(R, D) },
     { method: 'POST', path: '/api/lab-orders/:id/collect', roles: owner(L, R, N) },
+    { method: 'POST', path: '/api/lab-orders/:id/call', roles: owner(L, R, N) },
     { method: 'POST', path: '/api/lab-orders/:id/results', roles: owner(L) },
     // Tahlil turlari spravochnigi — sozlama, egada.
     { method: 'POST', path: '/api/lab-tests', roles: owner() },
@@ -234,6 +239,10 @@ export const RULES: Rule[] = [
     /* ─── Diagnostika (UZI, rentgen, EKG) ──────────────────────────────────── */
     { method: 'POST', path: '/api/studies', roles: owner(R, D) },
     { method: 'PUT', path: '/api/studies/:id', roles: owner(D) },
+    /* Navbat (0049): chaqirish — UZI shifokori ham, registrator ham;
+       boshlash — tekshiruvni bajaradigan shifokor */
+    { method: 'POST', path: '/api/studies/:id/call', roles: owner(D, R) },
+    { method: 'POST', path: '/api/studies/:id/start', roles: owner(D) },
     { method: 'DELETE', path: '/api/studies/:id', roles: owner(D) },
     { method: 'POST', path: '/api/studies/:id/files', roles: owner(D, R) },
     { method: 'DELETE', path: '/api/study-files/:id', roles: owner(D) },
@@ -367,6 +376,9 @@ export const RULES: Rule[] = [
        Savol berish hammaga; hisobot va tahlil moliyaviy raqamlarni
        ko'rsatadi, shuning uchun egada. */
     { method: 'POST', path: '/api/ai/ask', roles: [A, D, R, L, N] },
+    /* AI amali — bajarish o'sha manzilning O'Z ruxsati bilan tekshiriladi */
+    { method: 'POST', path: '/api/ai/actions/confirm', roles: [A, R] },
+    { method: 'POST', path: '/api/ai/transcribe', roles: [A, D, R, L, N] },
     { method: 'POST', path: '/api/ai/chat', roles: [A, D, R, L, N] },
     { method: 'POST', path: '/api/ai/report', roles: owner() },
     { method: 'POST', path: '/api/ai/insights', roles: owner() },
@@ -565,6 +577,7 @@ export const PERM_ROUTES: PermRoute[] = [
     r('PUT', '/api/lab-orders/:id', 'buyurtmani o\'zgartirish', p => p.can('lab', 'orders', 'edit') || p.flag('lab', 'results') || p.can('patients', 'card', 'edit')),
     r('DELETE', '/api/lab-orders/:id', 'buyurtmani o\'chirish', p => p.can('lab', 'orders', 'delete') || p.can('patients', 'card', 'edit')),
     r('POST', '/api/lab-orders/:id/collect', 'qon olinganini belgilash', p => p.can('lab', 'orders', 'edit')),
+    r('POST', '/api/lab-orders/:id/call', 'qon olishga chaqirish', p => p.can('lab', 'orders', 'edit')),
     r('POST', '/api/lab-orders/:id/results', 'natija kiritish', p => p.flag('lab', 'results')),
     r('POST', '/api/lab-orders/:id/label', "probirka yorlig'i", p => p.can('lab', 'orders', 'edit')),
     r('POST', '/api/lab-orders/:id/verify', 'natijani tasdiqlash', p => p.flag('lab', 'verify')),
@@ -577,6 +590,8 @@ export const PERM_ROUTES: PermRoute[] = [
     /* Diagnostika — yozish. Xulosa (PUT) shifokorniki va RULES da qoladi */
     r('POST', '/api/studies', 'tekshiruvga yozish', p => p.can('diagnostics', 'studies', 'create') || p.can('patients', 'card', 'edit')),
     r('POST', '/api/studies/:id/files', 'fayl qo\'shish', p => p.can('diagnostics', 'studies', 'create') || p.can('patients', 'card', 'edit')),
+    r('POST', '/api/studies/:id/call', 'xonaga chaqirish', p => p.can('diagnostics', 'studies', 'edit') || p.can('reception', 'queue', 'edit')),
+    r('POST', '/api/studies/:id/start', 'tekshiruvni boshlash', p => p.can('diagnostics', 'studies', 'edit')),
 
     /* Statsionar */
     r('POST', '/api/admissions', 'yotqizish', p => p.can('inpatient', 'admissions', 'create')),

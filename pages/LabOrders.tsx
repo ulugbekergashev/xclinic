@@ -206,6 +206,14 @@ export const LabOrders: React.FC<Props> = ({
         } finally { setSaving(false); }
     };
 
+    /** Qon olishga chaqirish (0049, ixtiyoriy) — tablo talon bilan e'lon qiladi */
+    const callSample = async (order: LabOrder) => {
+        setSaving(true); setError('');
+        try { await api.labOrders.call(order.id); await reload(); }
+        catch (e: any) { setError(e?.data?.error || e?.message || t('ui.xatolik_yuz_berdi')); }
+        finally { setSaving(false); }
+    };
+
     /** Probirka yorlig'i: kod serverda beriladi (bor bo'lsa — o'sha), har
      *  namuna turiga bittadan. Hech narsani to'smaydi. */
     const printLabel = async (order: LabOrder) => {
@@ -313,7 +321,7 @@ export const LabOrders: React.FC<Props> = ({
             )}
 
             <LabLine orders={labOrders} tests={tests} busy={saving} onCollect={collectSample} onOpen={openResults}
-                onLabel={printLabel} verifyRequired={!!currentClinic?.labVerifyRequired} />
+                onLabel={printLabel} onCall={callSample} verifyRequired={!!currentClinic?.labVerifyRequired} />
 
             {/* Jurnal: barcha yo'llanmalar */}
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-2">

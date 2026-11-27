@@ -56,6 +56,8 @@ model Receptionist {
   password     String
   status       String
   clinicId     String
+  /// Telegram bot (bugungi qabullar, kassa, ogohlantirishlar). Migratsiya 0051.
+  telegramChatId String?
   /// Umumiy xodim maydonlari (migratsiya 0035): to'rt rolda ham bir xil
   departmentId String?
   room         String?
@@ -172,6 +174,9 @@ model Appointment {
   /// yozilganlar (bot chatda o'zi tasdiqlaydi). Shuning uchun @default yo'q —
   /// qiymatni `POST /api/appointments` o'zi qo'yadi. Migratsiya 0038.
   bookedAt     DateTime?
+  /// Bemorning eslatmaga javobi: "coming" | "cant" (Telegram tugmasi). 0051.
+  patientReply   String?
+  patientReplyAt DateTime?
   /// Qayerdan: "site" | "bot" | NULL (xodim). Migratsiya 0046.
   source       String?
   service      Service?    @relation(fields: [serviceId], references: [id])
@@ -532,6 +537,16 @@ model Clinic {
   expenseApprovalThreshold Float?
   /// Past baho (shikoyat) kelganda egaga Telegram xabar. Dastlab o'chiq. 0047.
   complaintAlert          Boolean                    @default(false)
+  /// Rahbarning kunlik Telegram hisoboti (yoqiq/vaqt/oxirgi yuborilgan kun). 0050.
+  ownerReportEnabled      Boolean                    @default(true)
+  ownerReportTime         String                     @default("22:00")
+  ownerReportSentFor      String?
+  /// Shifokorlarga ertalabki jadval yuborilgan kun. 0050.
+  doctorMorningSentOn     String?
+  /// Shifokorga qabul xabari (yangi/ko'chirildi/bekor). 0050.
+  doctorNotify            Boolean                    @default(true)
+  /// Kunlik hisobotda «⚠️ Diqqat» (g'ayrioddiy kun) bo'limi. 0052.
+  anomalyAlert            Boolean                    @default(true)
   /// Saytdan yozilish (havola + /book) va avtomatik tasdiqlash. Dastlab o'chiq. 0046.
   onlineBookingEnabled    Boolean                    @default(false)
   bookingAutoConfirm      Boolean                    @default(false)
@@ -969,6 +984,8 @@ model LabOrder {
   seenByDoctorAt    DateTime?
   /// Probirka kodi: faqat raqam, YYMMDD + kunlik tartib. Migratsiya 0045.
   sampleCode        String?
+  /// Qon olishga chaqirilgan payt (navbat, tablo). Migratsiya 0049.
+  calledAt          DateTime?
   /// Natijani tasdiqlagan (klinika `labVerifyRequired` yoqqan bo'lsa). 0045.
   verifiedAt        DateTime?
   verifiedByName    String?
@@ -1170,6 +1187,8 @@ model DiagnosticStudy {
   price           Float     @default(0)
   /// Shifokor natijani ko'rdimi. Migratsiya 0009.
   seenByDoctorAt  DateTime?
+  /// Xonaga chaqirilgan payt (navbat, tablo). Migratsiya 0049.
+  calledAt        DateTime?
 
   clinic     Clinic           @relation(fields: [clinicId], references: [id])
   patient    Patient          @relation(fields: [patientId], references: [id])

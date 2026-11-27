@@ -24,6 +24,7 @@ import { logAccess } from './compliance';
 import { touchLastVisit, recomputeLastVisit } from './patientVisits';
 import { ageFromDob, pickReference, flagFor, loadLabResultView, staffKey } from './labResultView';
 import { autoSendLabResult } from './patientDocSend';
+import { ticketOf, withTickets, roomBoardRows } from './roomQueue';
 import path from 'path';
 import fs from 'fs';
 
@@ -817,7 +818,10 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 include: { department: { select: { name: true, color: true, code: true } } },
                 orderBy: [{ status: 'asc' }, { queueNumber: 'asc' }],
             });
-            res.json(visits.map((v: any) => ({
+            /* UZI, laboratoriya kabi xonalarga chaqirilganlar ham (0049) —
+               o'sha talon bilan, xona nomi bilan */
+            const rooms = await roomBoardRows(prisma, req.params.clinicId);
+            res.json([...visits.map((v: any) => ({
                 queueNumber: v.queueNumber,
                 /* TALON YORLIG'I (S5.6, audit B-1 tablo).
 
@@ -828,9 +832,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
 
                    Yorliq bo'lim kodi bilan: K-02, P-02. Kod yo'q bo'lsa
                    raqamning o'zi qoladi — bo'lim majburiy emas. */
-                ticket: v.department?.code
-                    ? `${v.department.code}-${String(v.queueNumber ?? 0).padStart(2, '0')}`
-                    : (v.queueNumber != null ? String(v.queueNumber) : null),
+                ticket: ticketOf(v),
                 status: v.status,
                 calledAt: v.calledAt,
                 department: v.department?.name || null,
@@ -840,7 +842,7 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 // bo'lardi. Yuqoridagi izoh shaxsiy ma'lumot chiqmasligini
                 // aytadi, lekin kod uni yuborib turgan edi — izoh bilan kod
                 // mos kelmayotgan holat tuzatildi.
-            })));
+            })), ...rooms]);
         } catch (e: any) {
             res.status(500).json({ error: e.message });
         }
@@ -1120,11 +1122,12 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
         const pay = await payStateBySource(
             prisma, clinicId, 'Study', items.map((s: any) => s.id));
 
-        res.json(items.map((s: any) => {
+        // Talon raqami (T-05) — Diagnostika navbatida va tabloda (0049)
+        res.json(await withTickets(prisma, items.map((s: any) => {
             const p = pay.get(s.id);
             // Qator umuman yo'q bo'lsa (eski yozuv) — holat noma'lum
             return { ...s, paid: p ? p.paid : null, due: p ? p.due : null };
-        }));
+        })));
     });
 
     route('post', '/api/studies', async (req, res, clinicId) => {

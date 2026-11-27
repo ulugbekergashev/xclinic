@@ -85,7 +85,7 @@ export function freeSlots(input: {
 /** So'rov o'zi yaratgan karta belgisi — rad etilsa faqat shunday karta o'chadi */
 const NEW_CARD_TAG = '[yangi karta]';
 
-const cleanName = (v: unknown) => String(v ?? '').replace(/[\u0000-\u001F\u007F<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+const cleanName = (v: unknown) => String(v ?? '').replace(/[\u0000-\u001F\u007F<>\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
 
 type Deps = {
     prisma: any;
@@ -96,6 +96,10 @@ type Deps = {
     kickTrigger: (id: string) => void;
     emitEvent: (clinicId: string, type: any, payload?: any) => void;
     tunnelUrl: () => string | null;
+    /** Tasdiqlangan yozuv — shifokorga Telegram xabari (ownerBot.ts, 0050) */
+    onConfirmed?: (appt: any) => void;
+    /** Saytdan yangi so'rov (tasdiq kutadi) — registratorga Telegram (0051) */
+    onRequested?: (appt: any) => void;
 };
 
 /* Oddiy xotira chegarasi: kalit → [vaqtlar]. Har 10 daqiqada eskisi
@@ -281,9 +285,11 @@ export function registerOnlineBookingRoutes(app: any, deps: Deps) {
             emitEvent(clinic.id, 'data.changed', { resource: 'appointments' });
 
             let confirmed = false;
+            if (!clinic.bookingAutoConfirm) deps.onRequested?.(result.appt);
             if (clinic.bookingAutoConfirm) {
                 await prisma.appointment.update({ where: { id: result.appt.id }, data: { status: 'Confirmed' } });
                 await notifyConfirmed(deps, result.appt).catch(() => null);
+                deps.onConfirmed?.({ ...result.appt, status: 'Confirmed' });
                 confirmed = true;
             }
             res.json({ ok: true, confirmed });
@@ -316,6 +322,7 @@ export function registerOnlineBookingRoutes(app: any, deps: Deps) {
             const r = await prisma.appointment.updateMany({ where: { id: appt.id, status: 'Requested' }, data: { status: 'Confirmed', date, time } });
             if (!r.count) return res.status(409).json({ error: "Bu yozuv tasdiq kutmayapti", code: 'NOT_REQUESTED' });
             const notified = await notifyConfirmed(deps, { ...appt, date, time }).catch(() => null);
+            deps.onConfirmed?.({ ...appt, date, time, status: 'Confirmed' });
             emitEvent(appt.clinicId, 'data.changed', { resource: 'appointments' });
             res.json({ success: true, notified });
         } catch (e: any) {

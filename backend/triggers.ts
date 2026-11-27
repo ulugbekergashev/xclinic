@@ -156,6 +156,12 @@ export const TRIGGERS: TriggerDef[] = [
                     patient: appt.patient,
                     refId: appt.id,
                     type: 'AutoReminder',
+                    /* «✅ Kelaman / ❌ Kela olmayman» (0051) — faqat Telegramda,
+                       SMS da tugma bo'lmaydi. Javob qabulga yoziladi. */
+                    replyMarkup: { inline_keyboard: [[
+                        { text: '✅ Kelaman', callback_data: `cf:y:${appt.id}` },
+                        { text: '❌ Kela olmayman', callback_data: `cf:n:${appt.id}` },
+                    ]] },
                     vars: {
                         ...patientName(appt.patient),
                         date: appt.date,

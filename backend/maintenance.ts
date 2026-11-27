@@ -247,6 +247,9 @@ const RESTORE_MARKER = 'restore-pending.json';
 
 /** Bir vaqtda faqat bitta nusxa. Ikkita `VACUUM INTO` bir-birini urib ketadi. */
 let backupInProgress = false;
+/** Telegram «💾 Zaxira nusxa» tugmasi uchun: band bo'lsa false (rejali yoki qo'lda olinayotgan) */
+export function tryLockBackup(): boolean { if (backupInProgress) return false; backupInProgress = true; return true; }
+export function unlockBackup(): void { backupInProgress = false; }
 
 /** Fayl nomidan papkadan chiqib ketish urinishini kesadi. */
 function safeBackupName(name: any): string | null {

@@ -11,7 +11,7 @@
    «bekor» qizil edi va qizil rangli shifokorning oddiy qabuli bilan
    adashtirilardi. */
 import React from 'react';
-import { Bell, CheckCircle2, UserCheck } from 'lucide-react';
+import { Bell, ThumbsUp, CheckCircle2, UserCheck } from 'lucide-react';
 import type { Appointment } from '../../types';
 import { isClosedAppt } from '../../utils/calendarLayout';
 import { useLanguage } from '../../context/LanguageContext';
@@ -37,7 +37,9 @@ export function AppointmentBlock({ appt, color, top, height, left, width, onOpen
     const arrived = appt.status === 'Checked-In';
     const twoLines = height >= TWO_LINE_MIN_PX;
 
-    const tip = `${appt.time} · ${appt.patientName} · ${appt.type}${appt.doctorName ? ' · Dr. ' + appt.doctorName : ''}`;
+    /* Bemor eslatmadagi tugmani bosgan bo'lsa (0051) — belgisi va izohda */
+    const reply = appt.patientReply === 'coming' ? t('cal.reply.coming') : appt.patientReply === 'cant' ? t('cal.reply.cant') : '';
+    const tip = `${appt.time} · ${appt.patientName} · ${appt.type}${appt.doctorName ? ' · Dr. ' + appt.doctorName : ''}${reply ? ' · ' + reply : ''}`;
     /* `color-mix` — shifokor rangi qanday yozilgan bo'lmasin (hex, rgb,
        nom) ishlaydi va qorong'i temada ham sirt rangiga aralashadi.
        Ilgari hex'ga `20` qo'shilardi: boshqa ko'rinishdagi rang bilan
@@ -66,6 +68,8 @@ export function AppointmentBlock({ appt, color, top, height, left, width, onOpen
                     {arrived && <UserCheck className="w-3.5 h-3.5 text-primary" aria-label={t('calendar.arrived')} />}
                     {done && <CheckCircle2 className="w-3.5 h-3.5 text-success" aria-label={t('cal.status.done')} />}
                     {appt.reminderSent && !closed && <Bell className="w-3 h-3 text-faint" aria-label={t('calendar.eslatma_yuborilgan')} />}
+                    {!closed && appt.patientReply === 'coming' && <ThumbsUp className="w-3.5 h-3.5 text-success" aria-label={reply} />}
+                    {!closed && appt.patientReply === 'cant' && <span className="px-1 rounded bg-danger-50 dark:bg-danger-500/15 text-[10px] font-bold text-danger-700 dark:text-danger-300" title={reply}>{t('cal.reply.cantShort')}</span>}
                 </span>
             </div>
             {twoLines && (

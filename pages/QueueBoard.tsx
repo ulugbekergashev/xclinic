@@ -29,6 +29,8 @@ interface BoardEntry {
     calledAt: string | null;
     department: string | null;
     color: string | null;
+    /** Xona chaqiruvi (0049): «UZI», «Laboratoriya». Bo'lsa — e'lon «… xonasiga» */
+    room?: string | null;
     // doctorName ataylab yo'q: tablo login talab qilmaydi, shuning uchun
     // server shifokor ismini yubormaydi (multiprofile.ts, queue-board)
 }
@@ -61,9 +63,12 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
     const announce = useCallback((e: BoardEntry) => {
         if (!voiceOn || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
-        const dept = e.department ? `, ${e.department} bo'limiga` : '';
+        /* Xona chaqiruvi (UZI, laboratoriya) — o'sha talon, boshqa joy */
+        const dept = e.room ? `, ${e.room} xonasiga` : e.department ? `, ${e.department} bo'limiga` : '';
         const textUz = fill(t('queueboard.navbat_raqam_xx_marhamat'), e.ticket ?? e.queueNumber, dept);
-        const textRu = `Номер очереди ${e.ticket ?? e.queueNumber}${e.department ? `, в отделение ${e.department}` : ''}, пожалуйста.`;
+        const textRu = e.room
+            ? `Номер очереди ${e.ticket ?? e.queueNumber}, пройдите в кабинет ${e.room}.`
+            : `Номер очереди ${e.ticket ?? e.queueNumber}${e.department ? `, в отделение ${e.department}` : ''}, пожалуйста.`;
 
         const voices = window.speechSynthesis.getVoices();
         const uz = voices.find(v => v.lang.toLowerCase().includes('uz'));
@@ -97,7 +102,8 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
             // butun navbatni ketma-ket o'qib chiqadi.
             for (const e of data) {
                 if (e.status !== 'Called' || !e.calledAt) continue;
-                const key = `${e.queueNumber}:${e.calledAt}`;
+                /* Talon + xona: bitta bemor UZI ga ham, laboratoriyaga ham chaqirilishi mumkin */
+                const key = `${e.ticket ?? e.queueNumber}:${e.room || ''}:${e.calledAt}`;
                 if (announced.current.has(key)) continue;
                 announced.current.add(key);
                 if (!firstLoad.current) announce(e);
@@ -206,7 +212,7 @@ export const QueueBoard: React.FC<{ clinicId?: string }> = ({ clinicId: propClin
                                 : ticket.length <= 5 ? 'text-6xl lg:text-7xl'
                                 : 'text-4xl lg:text-6xl';
                             return (
-                            <div key={`${e.queueNumber}-${e.calledAt}-${i}`}
+                            <div key={`${e.ticket ?? e.queueNumber}-${e.room || ''}-${e.calledAt}-${i}`}
                                 className="rounded-2xl p-6 border-2 animate-in overflow-hidden"
                                 style={{
                                     borderColor: e.color || '#005EB8',

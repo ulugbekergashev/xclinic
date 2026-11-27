@@ -78,7 +78,7 @@ import { registerLicenseRoutes } from './license';
 import { createLicenseMiddleware } from './licenseMiddleware';
 import { registerFileRoutes } from './files';
 import {
-    runMigrations, registerMaintenanceRoutes, startBackupScheduler,
+    runMigrations, registerMaintenanceRoutes, startBackupScheduler, tryLockBackup, unlockBackup,
     performBackup, readBackupConfig,
 } from './maintenance';
 import type { MigrationResult } from './maintenance';
@@ -97,6 +97,9 @@ import { registerFollowUpRoutes } from './followUps';
 import { registerPatientDocSendRoutes, autoSendLabResult } from './patientDocSend';
 import { registerLabSampleRoutes, ensureSampleCode } from './labSamples';
 import { registerExpenseApprovalRoutes, needsApproval } from './expenseApproval';
+import { registerRoomQueueRoutes, withTickets } from './roomQueue';
+import { runOwnerDailyReports, runDoctorMorning, notifyDoctorAppointment, registerOwnerBotRoutes, notifyReception, bookingRequestText } from './ownerBot';
+import { sendBackupToOwner } from './backupTelegram';
 import { registerComplaintRoutes } from './complaints';
 import { registerOnlineBookingRoutes } from './onlineBooking';
 import { check as checkPermission, isFinanceRead, isMoneyStrippedRead, canReadFinance, sanitizeAccessControl, checkStaffPerm, actsAs, discountWithinLimit, discountDenied } from './permissions';
@@ -3011,6 +3014,7 @@ app.post('/api/appointments', authenticateToken, async (req, res) => {
         });
         // Tasdiq xabari 10 daqiqalik aylanishni kutmasin
         kickTrigger('appointment_booked');
+        void notifyDoctorAppointment(prisma, sendStaffHtml, appointment as any, null);
         res.json(appointment);
     } catch (error) {
         console.error('Failed to create appointment:', error);
@@ -3021,6 +3025,8 @@ app.post('/api/appointments', authenticateToken, async (req, res) => {
 app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
     try {
         if (!(await assertOwnership(req, res, 'appointment', req.params.id))) return;
+        /* Shifokorga xabar uchun — o'zgarishdan oldingi holat (0050) */
+        const beforeAppt = await prisma.appointment.findUnique({ where: { id: req.params.id } });
         // Sanitize body to only include valid Appointment fields.
         // `clinicId` ATAYLAB ro'yxatda yo'q: ilgari uni o'zgartirish mumkin edi
         // va mavjud yozuvni BOSHQA klinikaga ko'chirib yuborish mumkin bo'lardi.
@@ -3069,6 +3075,12 @@ app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
         if (type !== undefined) updateData.type = type;
         if (date !== undefined) updateData.date = date;
         if (time !== undefined) updateData.time = time;
+        /* Ko'chirildi — bemorning eski «kelaman / kela olmayman» javobi
+           yangi vaqtga tegishli emas (0051) */
+        if (beforeAppt && ((date !== undefined && date !== beforeAppt.date) || (time !== undefined && time !== beforeAppt.time))) {
+            updateData.patientReply = null;
+            updateData.patientReplyAt = null;
+        }
         if (duration !== undefined) updateData.duration = duration;
         if (status !== undefined) updateData.status = status;
         if (reminderSent !== undefined) updateData.reminderSent = reminderSent;
@@ -3099,6 +3111,7 @@ app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
                 }
             }
         });
+        void notifyDoctorAppointment(prisma, sendStaffHtml, appointment as any, beforeAppt as any);
 
         // Kelmagan bemorga xabar.
         // MUHIM: klinikada faol 'no_show' qoidasi bo'lsa, bu yerdan YUBORMAYMIZ —
@@ -3167,9 +3180,10 @@ app.delete('/api/appointments/:id', authenticateToken, async (req, res) => {
                 code: 'APPOINTMENT_HAS_VISIT',
             });
         }
-        await prisma.appointment.delete({
+        const deleted = await prisma.appointment.delete({
             where: { id: req.params.id }
         });
+        void notifyDoctorAppointment(prisma, sendStaffHtml, null, deleted as any);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete appointment' });
@@ -5223,7 +5237,9 @@ app.get('/api/lab-orders', authenticateToken, async (req: any, res: any) => {
         const payByOrder = await payStateBySource(
             prisma, clinicId as string, 'Lab', orders.map((o: any) => o.id));
 
-        res.json(orders.map((o: any) => {
+        /* Bemorning bugungi talon raqami (T-05) — qon olish navbatida
+           ko'rinadi va tabloga chiqadi (migratsiya 0049) */
+        res.json(await withTickets(prisma, orders.map((o: any) => {
             const pay = payByOrder.get(o.id);
             return {
                 ...o,
@@ -5231,7 +5247,7 @@ app.get('/api/lab-orders', authenticateToken, async (req: any, res: any) => {
                 paid: pay ? pay.paid : null,
                 due: pay ? pay.due : null,
             };
-        }));
+        })));
     } catch (error: any) {
         console.error('Lab orders fetch error:', error?.message || error);
         res.status(500).json({ error: 'Failed to fetch lab orders' });
@@ -6655,10 +6671,14 @@ registerFollowUpRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerPatientDocSendRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerLabSampleRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerExpenseApprovalRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerRoomQueueRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerOwnerBotRoutes(app, { prisma, authenticateToken, getScopedClinicId, botUsername: (id: string) => botManager.getBotUsername(id) });
 registerComplaintRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 /* Saytdan yozilish (0046). Ochiq marshrutlar sozlama yoqilgandagina javob beradi */
 registerOnlineBookingRoutes(app, {
     prisma, authenticateToken, getScopedClinicId, socketIp, sendUnified, kickTrigger, emitEvent,
+    onConfirmed: (appt: any) => { void notifyDoctorAppointment(prisma, sendStaffHtml, appt, null); },
+    onRequested: (appt: any) => { void notifyReception(prisma, sendStaffHtml, appt.clinicId, showPhone => bookingRequestText(appt, showPhone)); },
     tunnelUrl: () => {
         const { stableUrl, quickUrl } = readTunnelAddresses(USER_DATA_PATH, { remoteEnabled: readRemoteAccess(), envUrl: process.env.CLOUDFLARE_TUNNEL_URL });
         return stableUrl || quickUrl || null;
@@ -7371,64 +7391,37 @@ cron.schedule('*/10 * * * *', () => {
     timezone: "Asia/Tashkent"
 });
 
-// Daily Clinic Reports - Every day at 10:00 PM (22:00)
-cron.schedule('0 22 * * *', () => {
-    console.log('⏰ Cron: Daily clinic report job triggered');
-    sendDailyClinicReports();
-}, {
-    timezone: "Asia/Tashkent"
-});
+/* RAHBAR HISOBOTI VA SHIFOKOR JADVALI (2026-11-27, 0050).
+   Ilgari: 22:00 va 08:00 da QATTIQ cron — kompyuter o'sha daqiqada o'chiq
+   bo'lsa xabar umuman kelmasdi. Endi daqiqada tekshiriladi, kun belgisi
+   bilan bir marta; hisobot vaqti va yoqilishi Sozlamalardan. */
+const sendStaffHtml = (clinicId: string, chatId: string, html: string, replyMarkup?: any) =>
+    botManager.sendHtml(clinicId, chatId, html, replyMarkup);
+cron.schedule('* * * * *', () => {
+    runOwnerDailyReports(prisma, sendStaffHtml).catch((e: any) => console.error('Kunlik hisobot:', e?.message || e));
+}, { timezone: "Asia/Tashkent" });
+cron.schedule('*/5 * * * *', () => {
+    runDoctorMorning(prisma, sendStaffHtml).catch((e: any) => console.error('Ertalabki jadval:', e?.message || e));
+}, { timezone: "Asia/Tashkent" });
 
-// Doctor Morning Schedules - Every day at 8:00 AM
-cron.schedule('0 8 * * *', () => {
-    console.log('⏰ Cron: Doctor morning schedule job triggered');
-    botManager.sendDoctorMorningSchedules();
-}, {
-    timezone: "Asia/Tashkent"
-});
-
-
-/**
- * Helper function: Send daily summary reports to clinic owners
- */
-async function sendDailyClinicReports() {
-    try {
-        console.log('📊 Running daily clinic report job...');
-
-        const today = new Date();
-        const todayDateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-        // Start of today for patient creation check
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-
-        // Get all clinics with Telegram connected
-        const clinics = await prisma.clinic.findMany({
-            where: {
-                telegramChatId: { not: null },
-                status: 'Active'
-            }
-        });
-
-        console.log(`Processing reports for ${clinics.length} clinics...`);
-
-        for (const clinic of clinics) {
-            const message = await botManager.generateDailyReport(clinic.id);
-
-            try {
-                // Use botManager to notify clinical user (owner)
-                await botManager.notifyClinicUser(clinic.id, clinic.telegramChatId!, message);
-                console.log(`✅ Daily report sent to ${clinic.name} (${clinic.adminName})`);
-            } catch (err) {
-                console.error(`Failed to send daily report to clinic ${clinic.id}:`, err);
-            }
-        }
-
-        console.log('📊 Daily clinic report job completed.');
-    } catch (error) {
-        console.error('❌ Daily clinic report job error:', error);
+/* «💾 Zaxira nusxa» tugmasi: yangi nusxa olinadi va egaga yuboriladi */
+let lastTelegramBackupMs = 0;
+const TELEGRAM_BACKUP_GAP_MS = 5 * 60_000;
+botManager.setBackupHandler(async () => {
+    /* Ketma-ket bosish va rejali nusxa bilan ustma-ust tushmasin */
+    if (Date.now() - lastTelegramBackupMs < TELEGRAM_BACKUP_GAP_MS) {
+        return { sent: false, reason: "nusxa yaqinda yuborilgan — 5 daqiqadan keyin qayta bosing" };
     }
-}
+    if (!tryLockBackup()) return { sent: false, reason: 'hozir boshqa nusxa olinmoqda — birozdan keyin bosing' };
+    try {
+        const backupDir = path.join(USER_DATA_PATH, 'backups');
+        const r = await performBackup({ prisma, backupDir, uploadsDir, note: 'telegram' });
+        lastTelegramBackupMs = Date.now();
+        return await sendBackupToOwner({ prisma, userDataPath: USER_DATA_PATH, dbFile: path.join(backupDir, r.file), force: true });
+    } finally {
+        unlockBackup();
+    }
+});
 
 // ============================================
 // BATCH NOTIFICATION ENDPOINTS
@@ -7606,6 +7599,8 @@ app.post('/api/batch/remind-debts', authenticateToken, requireRole('CLINIC_ADMIN
 
 const { chat: aiChat, chatWithTools, isAiConfigured } = require('./aiService');
 const { toolsForRole, runTool } = require('./ai/tools');
+const { actionToolsForRole, isActionTool, prepareAction, signAction, consumeAction, actionOwner, callerKey } = require('./ai/actions');
+const { transcribe, speechConfigured, audioMimeOk, MAX_AUDIO_BYTES } = require('./ai/speech');
 const { askSystemPrompt, chatSystemPrompt } = require('./ai/prompts');
 
 // Klinikalar O'zbekistonda — sana UTC+5 bo'yicha hisoblanadi. Server UTC'da
@@ -7703,21 +7698,121 @@ app.post('/api/ai/ask', authenticateToken, async (req: any, res: any) => {
         }
 
         const ctx = { clinicId: clinicId || '', role: user?.role || 'CLINIC_ADMIN', doctorId: user?.doctorId };
-        const tools = toolsForRole(user?.role || 'CLINIC_ADMIN');
+        const tools = [...toolsForRole(user?.role || 'CLINIC_ADMIN'), ...actionToolsForRole(user?.role || 'CLINIC_ADMIN')];
 
+        /* AI AMALLARI (2026-11-27): amal tool'i faqat TAYYORLAYDI — imzolangan
+           token ilovaga ketadi, foydalanuvchi tasdiqlaydi (ai/actions.ts) */
+        const pending: { token: string; summary: string; kind: string }[] = [];
+        const owner = actionOwner(user);
         const { reply, toolCalls } = await chatWithTools(
             [{ role: 'system', content: askSystemPrompt(clinicToday(), reqLang(req)) }, ...history],
             tools,
-            (name: string, args: any) => runTool(name, args, ctx),
+            async (name: string, args: any) => {
+                if (!isActionTool(name)) return runTool(name, args, ctx);
+                if (pending.length >= 3) return { xato: "Bir javobda ko'pi bilan 3 ta amal" };
+                const prep = await prepareAction(prisma, name, args, { clinicId: ctx.clinicId, role: ctx.role, userName: user?.name });
+                if (!prep.ok) return { xato: prep.error };
+                pending.push({ token: signAction(prep.action, owner, ctx.clinicId, JWT_SECRET), summary: prep.action.summary, kind: prep.action.kind });
+                return { tayyorlandi: true, xulosa: prep.forModel, izoh: "Foydalanuvchi ekranda tasdiqlashi kerak. «Bajarildi» dema." };
+            },
             { label: `ask:${user?.role}`, maxRounds: 5, maxTokens: 1200 }
         );
 
         // sources — shaffoflik uchun: javob qaysi ma'lumotga tayanganini
         // foydalanuvchi ko'rsin.
-        res.json({ success: true, reply, sources: toolCalls.map((t: any) => t.name) });
+        res.json({ success: true, reply, sources: toolCalls.map((t: any) => t.name), actions: pending });
     } catch (e: any) {
         console.error('[AI/ask]', e.message);
         res.status(500).json({ success: false, message: e.message || 'AI so\'rovida xatolik.' });
+    }
+});
+
+/**
+ * POST /api/ai/transcribe — savolni ovoz bilan (ai/speech.ts).
+ * Tana — xom audio (application/octet-stream), JSON emas: umumiy
+ * express.json() chegarasi 100 KB, ovoz esa undan katta.
+ */
+let sttInFlight = 0;
+const STT_MAX_PARALLEL = 2;
+app.post('/api/ai/transcribe', authenticateToken,
+    (req: any, res: any, next: any) => {
+        /* Tana (audio) o'qilishidan OLDIN — rad etiladigan so'rov xotira egallamasin */
+        if (!speechConfigured()) {
+            return res.status(503).json({ success: false, message: "Ovoz uchun Sozlamalar → «AI yordamchi» da Gemini yoki Groq kaliti kerak." });
+        }
+        if (!aiRateLimit(`stt:${callerKey(req.user)}`, 60, 60 * 60 * 1000)) {
+            return res.status(429).json({ success: false, message: "Soatlik chegara — biroz kutib turing." });
+        }
+        if (sttInFlight >= STT_MAX_PARALLEL) {
+            return res.status(429).json({ success: false, message: "Ovoz hozir band — bir necha soniyadan keyin qayta urining." });
+        }
+        sttInFlight++;
+        let released = false;
+        const release = () => { if (!released) { released = true; sttInFlight--; } };
+        res.on('finish', release);
+        res.on('close', release);
+        next();
+    },
+    express.raw({ type: 'application/octet-stream', limit: MAX_AUDIO_BYTES }),
+    async (req: any, res: any) => {
+        try {
+            const mime = String(req.query.mime || '');
+            const buf: Buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+            if (!audioMimeOk(mime) || buf.length < 1000) return res.status(400).json({ success: false, message: "Ovoz yozilmadi — qayta urinib ko'ring." });
+            const lang = req.query.lang === 'ru' ? 'ru' : 'uz';
+            const text = await transcribe(buf, mime, lang);
+            if (!text) return res.status(502).json({ success: false, message: "Ovozni tushunib bo'lmadi — aniqroq gapirib ko'ring." });
+            res.json({ success: true, text: text.slice(0, 2000) });
+        } catch (e: any) {
+            console.error('[AI/ovoz]', e?.message || e);
+            res.status(500).json({ success: false, message: 'Ovozni matnga aylantirishda xatolik.' });
+        }
+    });
+
+/**
+ * POST /api/ai/actions/confirm — AI tayyorlagan amalni BAJARISH.
+ * So'rov serverning O'ZIGA, foydalanuvchining tokeni bilan yuboriladi: ilovadagi
+ * tugma bilan aynan bir yo'l (ruxsat, tekshiruv, tarix, xabarlar).
+ */
+app.post('/api/ai/actions/confirm', authenticateToken, async (req: any, res: any) => {
+    try {
+        const user = req.user;
+        const clinicId = getScopedClinicId(req);
+        if (!clinicId) return res.status(400).json({ success: false, message: 'clinicId aniqlanmadi.' });
+        const action = consumeAction(String(req.body?.token || ''), actionOwner(user), clinicId, JWT_SECRET);
+        if (typeof action === 'string') return res.status(409).json({ success: false, message: action });
+        let body = action.request.body;
+        if (action.kind === 'record_payment') {
+            /* Tayyorlangandan beri qarz o'zgarganmi (kassada to'langan bo'lishi mumkin) */
+            const g = action.guard;
+            const rows = g ? await prisma.visitCharge.findMany({
+                where: { clinicId, patientId: g.patientId, status: 'Unpaid' }, select: { total: true, paidAmount: true },
+            }) : [];
+            const dueNow = Math.round(rows.reduce((sum: number, c: any) => sum + Math.max(0, (c.total || 0) - (c.paidAmount || 0)), 0));
+            if (!g || dueNow !== Math.round(g.due)) {
+                return res.status(409).json({ success: false, message: "Bemorning qarzi o'zgardi — AI dan qayta so'rang." });
+            }
+            /* Kassa jurnalida — tasdiqlagan xodim */
+            body = { ...body, receivedByName: `${user?.name || 'Xodim'} (AI)` };
+        }
+        const r = await fetch(`http://127.0.0.1:${PORT}${action.request.path}`, {
+            method: action.request.method,
+            headers: { 'Content-Type': 'application/json', Authorization: String(req.headers['authorization'] || '') },
+            body: body === undefined ? undefined : JSON.stringify(body),
+            signal: AbortSignal.timeout(20_000),
+        });
+        const text = await r.text();
+        let data: any = null;
+        try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+        console.log(`[AI:amal] ${action.kind} · ${user?.role} · ${r.status}`);
+        /* Ichki 401/403 ni o'zgartiramiz — ilova «sessiya tugadi» deb chiqarib yubormasin */
+        if (!r.ok) return res.status(r.status === 401 || r.status === 403 ? 409 : r.status).json({
+            success: false, message: r.status === 403 ? (data?.error || "Bu amalga ruxsatingiz yo'q") : (data?.error || data?.message || 'Amal bajarilmadi'),
+        });
+        res.json({ success: true, kind: action.kind, summary: action.summary, result: data });
+    } catch (e: any) {
+        console.error('[AI/amal]', e.message);
+        res.status(500).json({ success: false, message: 'Amalni bajarishda xatolik.' });
     }
 });
 

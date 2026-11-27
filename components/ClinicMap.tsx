@@ -325,7 +325,8 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
     /** Kabinet: kim qabulda, qancha vaqtdan beri, reja bo'yicha qancha qoldi */
     const cabinetBody = (lane: FlowLane, compact: boolean) => {
         const { chair, chairSince } = lane;
-        const ring = compact ? 60 : 68;
+        /* 2026-11-27: ega «katta emasmi?» dedi — doira 68 → 56 */
+        const ring = 56;
         if (chair && chairSince) {
             const name = visitName(chair);
             const planMin = flow.plan[chair.id];
@@ -442,7 +443,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
             : '';
         const seatEl = (
             <span className="shrink-0 rounded-full border-2 border-dashed border-primary-200 dark:border-primary-800 bg-surface/70 flex items-center justify-center text-primary-300 dark:text-primary-700" style={{ width: ring, height: ring }}>
-                <Armchair className="w-7 h-7" strokeWidth={1.8} />
+                <Armchair className="w-6 h-6" strokeWidth={1.8} />
             </span>
         );
         const freeInfo = (
@@ -500,7 +501,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                 : 'border-primary-200 dark:border-primary-800/60 bg-primary-50/60 dark:bg-primary-900/15'
             : 'border-line bg-elevated/40';
         return (
-            <div className={`relative h-full flex items-center gap-4 ${compact ? 'p-3' : 'pl-5 pr-4 py-3'} rounded-[22px] border-[1.5px] transition-colors ${tone}`} style={FLOOR_COOL}>
+            <div className={`relative h-full flex items-center gap-4 ${compact ? 'p-3' : 'pl-5 pr-4 py-2'} rounded-[22px] border-[1.5px] transition-colors ${tone}`} style={FLOOR_COOL}>
                 {!compact && <span aria-hidden="true" className="absolute -left-[2px] top-1/2 -translate-y-1/2 w-1 h-9 bg-surface" />}
                 {!compact && (
                     <span className="absolute -top-2.5 left-5 max-w-[calc(100%-2.5rem)] inline-flex items-center gap-1.5 h-[18px] px-2 rounded-md bg-surface text-[10.5px] font-extrabold uppercase tracking-wider text-muted">
@@ -527,31 +528,32 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                     size={size}
                     color={lane.color}
                     title={[name, visitLabel(v, flow.booked[v.id])].filter(Boolean).join(' — ')}
-                    className={`mt-1.5 ${waited >= 30 ? 'ring-4 ring-red-500/15' : ''}`}
+                    className={`mt-1 ${waited >= 30 ? 'ring-4 ring-red-500/15' : ''}`}
                 >
                     {(nextUp || called) && <span aria-hidden="true" className="absolute -inset-1.5 rounded-full border-2 border-primary-400 animate-pulse" />}
+                    {/* 2026-11-27: «Chaqirish» alohida qator edi va har ustunni
+                        20px ga cho'zardi — endi avatar burchagidagi karnay */}
+                    {onCall && (
+                        <button
+                            type="button"
+                            onClick={() => run(`call:${v.id}`, () => onCall(v))}
+                            disabled={!!pending}
+                            title={called ? t('flow.recall') : t('flow.call')}
+                            aria-label={`${name}: ${called ? t('flow.recall') : t('flow.call')}`}
+                            className="absolute -bottom-1.5 -left-4 w-[22px] h-[22px] rounded-full border border-line bg-surface shadow-sm grid place-items-center text-muted hover:text-primary-600 hover:border-primary-300 dark:hover:text-primary-300 disabled:opacity-50 transition-colors"
+                        >
+                            {pending === `call:${v.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Volume2 className="w-3 h-3" />}
+                        </button>
+                    )}
                     <span aria-hidden="true" className={`absolute -top-1.5 -right-2 min-w-[20px] h-5 px-1 rounded-full border-2 border-amber-50 dark:border-surface text-[10.5px] font-black leading-4 text-center text-white ${index === 0 ? 'bg-primary-600' : 'bg-slate-400 dark:bg-slate-600'}`}>
                         {v.queueNumber ?? index + 1}
                     </span>
                 </Token>
-                <Name name={name} onOpen={openVisit(v)} short className="mt-1.5 text-[11.5px] font-bold text-ink" />
+                <Name name={name} onOpen={openVisit(v)} short className="mt-1 text-[11.5px] font-bold text-ink" />
                 <span className={`text-[11px] font-bold whitespace-nowrap ${called ? 'text-primary-600 dark:text-primary-400' : waitTone(waited)}`}>
                     {called ? t('flow.called') : waitText(v)}
                 </span>
                 {dueBadge(v.patientId)}
-                {onCall && (
-                    <button
-                        type="button"
-                        onClick={() => run(`call:${v.id}`, () => onCall(v))}
-                        disabled={!!pending}
-                        title={called ? t('flow.recall') : t('flow.call')}
-                        aria-label={`${name}: ${called ? t('flow.recall') : t('flow.call')}`}
-                        className="mt-0.5 inline-flex items-center gap-0.5 h-5 px-1.5 rounded-md text-[10.5px] font-bold text-faint hover:text-primary-600 hover:bg-primary-50 dark:hover:text-primary-300 dark:hover:bg-primary-900/30 disabled:opacity-50 transition-colors"
-                    >
-                        {pending === `call:${v.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Volume2 className="w-3 h-3" />}
-                        {called ? t('flow.recallShort') : t('flow.call')}
-                    </button>
-                )}
             </div>
         );
     };
@@ -573,7 +575,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                     <button type="button" onClick={() => setOpenLane(lane.key)} aria-expanded={false}
                         aria-label={`${laneLabel(lane)}: ${fill(t('flow.showAllWaiting'), hidden)}`}
                         className="shrink-0 w-20 flex flex-col items-center group">
-                        <span className="mt-1.5 inline-flex items-center justify-center rounded-full border-2 border-dashed border-amber-300 dark:border-amber-700 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-sm font-black group-hover:border-amber-500 transition-colors" style={{ width: size, height: size }}>+{hidden}</span>
+                        <span className="mt-1 inline-flex items-center justify-center rounded-full border-2 border-dashed border-amber-300 dark:border-amber-700 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-sm font-black group-hover:border-amber-500 transition-colors" style={{ width: size, height: size }}>+{hidden}</span>
                         <span className="mt-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-400">{t('flow.moreWaiting')}</span>
                     </button>
                 )}
@@ -587,7 +589,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                 )}
                 {Array.from({ length: empty }, (_, i) => (
                     <div key={`empty-${i}`} aria-hidden="true" className="shrink-0 w-20 flex justify-center">
-                        <Armchair className="mt-4 w-8 h-8 text-amber-200/90 dark:text-amber-900/60" strokeWidth={1.6} />
+                        <Armchair className="w-6 h-6 text-amber-200/90 dark:text-amber-900/60" strokeWidth={1.6} />
                     </div>
                 ))}
             </>
@@ -802,7 +804,7 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                     <React.Fragment key={lane.key}>
                         <div
                             {...hoverProps}
-                            className={`relative px-4 border-x-[1.5px] border-amber-200/80 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 ${first ? 'pt-4 rounded-t-3xl border-t-[1.5px]' : 'pt-3'} ${last ? 'pb-4 rounded-b-3xl border-b-[1.5px]' : 'pb-3'}`}
+                            className={`relative px-4 border-x-[1.5px] border-amber-200/80 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 ${first ? 'pt-3.5 rounded-t-3xl border-t-[1.5px]' : 'pt-2'} ${last ? 'pb-3 rounded-b-3xl border-b-[1.5px]' : 'pb-2'}`}
                             style={FLOOR_WARM}
                         >
                             {!first && <span aria-hidden="true" className="absolute left-3 right-3 top-0 border-t-[1.5px] border-dashed border-amber-200/90 dark:border-amber-900/40" />}
@@ -816,14 +818,14 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                                 </>
                             )}
                             <span aria-hidden="true" className="absolute -right-[2px] top-1/2 -translate-y-1/2 w-1 h-9 bg-surface" />
-                            <div className="flex items-center gap-3 min-h-[96px]">
+                            <div className="flex items-center gap-3 min-h-[80px]">
                                 <div className="w-28 shrink-0 min-w-0 flex flex-col gap-0.5">
                                     {benchLabel(lane)}
                                     <span className="mt-1">{etaChip(lane)}</span>
                                 </div>
                                 {/* Navbatdagi birinchi eshikka (kabinetga) eng yaqin o'tiradi */}
                                 <div className={`flex-1 min-w-0 flex flex-row-reverse items-center justify-start gap-1 ${openLane === lane.key ? 'flex-wrap gap-y-3 py-1' : ''}`}>
-                                    {benchSeats(lane, seatsPerBench, 44)}
+                                    {benchSeats(lane, seatsPerBench, 38)}
                                 </div>
                             </div>
                         </div>

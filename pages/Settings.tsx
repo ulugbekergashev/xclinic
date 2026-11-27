@@ -33,6 +33,7 @@ import { PrintLayoutFields, mmField } from '../components/settings/PrintLayoutFi
 import { LabSettingsCard } from '../components/lab/LabSettingsCard';
 import { ExpenseControlCard } from '../components/settings/ExpenseControlCard';
 import { OnlineBookingCard } from '../components/settings/OnlineBookingCard';
+import { TelegramBotCard } from '../components/settings/TelegramBotCard';
 import { permsFor } from '../utils/accessControl';
 
 const DOCTOR_COLORS = [
@@ -2170,22 +2171,9 @@ export const Settings: React.FC<SettingsProps> = ({
                            </form>
                         </div>
 
-                        {currentClinic?.telegramChatId ? (
-                           <div className="flex items-center justify-between p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40 rounded-xl">
-                              <div className="flex items-center gap-3">
-                                 <CheckCircle className="w-5 h-5 text-emerald-500" />
-                                 <div>
-                                    <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">{t('settings.bot.active')}</p>
-                                    <p className="text-xs text-emerald-700 dark:text-emerald-400">{t('settings.siz_har_kuni_soat')}</p>
-                                 </div>
-                              </div>
-                           </div>
-                        ) : (
-                           <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 rounded-xl">
-                              <Activity className="w-5 h-5 text-amber-500" />
-                              <p className="text-sm text-amber-900 dark:text-amber-200">{t('settings.bot.notConnected')}</p>
-                           </div>
-                        )}
+                        {/* Kim ulangan (rahbar, shifokorlar), kunlik hisobot va
+                            shifokorga xabar — bitta kartada (2026-11-27, 0050) */}
+                        {currentClinic?.id && <TelegramBotCard clinicId={currentClinic.id} />}
                      </div>
                   </Card>
 
