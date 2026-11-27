@@ -33,6 +33,8 @@ test('Demo 8: bemor saytdan yoziladi, registrator Kalendarda tasdiqlaydi', async
     await expect(page.getByRole('heading', { name: "So'rovingiz qabul qilindi" })).toBeVisible({ timeout: 10_000 });
 
     await go(page, '/calendar');
+    /* So'rovlar endi asboblar qatoridagi kichik tugma ortida */
+    await page.getByRole('button', { name: /^So'rovlar/ }).click();
     const block = page.locator('section[aria-labelledby="booking-req-title"]');
     await expect(block).toBeVisible({ timeout: 15_000 });
     const title = block.getByRole('heading');

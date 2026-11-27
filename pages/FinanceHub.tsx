@@ -84,12 +84,9 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
 
     return (
         <div className="space-y-5 animate-fade-in">
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-ink">{t('finance.hub.title')}</h1>
-                    <p className="text-sm text-muted">{t('finance.hub.kassaHint')}</p>
-                </div>
-            </div>
+            {/* Sahifa nomi chap menyuda belgilangan — katta sarlavha va izoh
+                faqat joy olardi (Kalendar va Hisobotdagidek, 2026-11-27) */}
+            <h1 className="sr-only">{t('finance.hub.title')}</h1>
 
             {/* Tasdiq kutayotgan xarajatlar va bo'lim byudjeti — ko'rinmaydi,
                 agar ikkalasi ham bo'sh bo'lsa (migratsiya 0048) */}

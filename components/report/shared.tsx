@@ -128,14 +128,15 @@ export interface KpiItem {
 
 export const KpiStrip: React.FC<{ items: KpiItem[]; footer?: React.ReactNode }> = ({ items, footer }) => (
     <div className="card overflow-hidden">
-        <div className={`grid grid-cols-2 ${items.length >= 4 ? 'xl:grid-cols-4' : 'lg:grid-cols-3'} gap-px bg-line-soft`}>
+        {/* 3 katak: telefonda bittadan (2 ustunda bo'sh kulrang katak qolardi) */}
+        <div className={`grid ${items.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : `grid-cols-2 ${items.length >= 4 ? 'xl:grid-cols-4' : 'lg:grid-cols-3'}`} gap-px bg-line-soft`}>
             {items.map(it => (
-                <div key={it.key} data-kpi={it.key} className="bg-surface px-5 py-4 min-w-0">
+                <div key={it.key} data-kpi={it.key} className="bg-surface px-4 py-3 sm:px-5 sm:py-4 min-w-0">
                     <div className="flex items-center gap-2 min-h-[20px]">
                         <p className="text-[13px] font-medium text-muted truncate">{it.label}</p>
                     </div>
                     <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
-                        <p data-kpi-value className={`text-[26px] leading-8 font-semibold tracking-tight tabular-nums ${it.tone === 'ok'
+                        <p data-kpi-value className={`text-[22px] leading-7 sm:text-[26px] sm:leading-8 font-semibold tracking-tight tabular-nums whitespace-nowrap ${it.tone === 'ok'
                             ? 'text-success-700 dark:text-success-300'
                             : it.tone === 'bad' ? 'text-danger-600 dark:text-danger-300'
                                 : it.tone === 'warn' ? 'text-warning-700 dark:text-warning-300'

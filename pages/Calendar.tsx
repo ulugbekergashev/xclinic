@@ -520,6 +520,9 @@ export const Calendar: React.FC<CalendarProps> = ({
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Saytdan/botdan kelgan so'rovlar — kichik tugma, bosilsa ro'yxat
+              ochiladi; so'rov bo'lmasa tugma ham chiqmaydi (0046) */}
+          {!isDoctor && <BookingRequests appointments={effectiveAppointments} />}
           <div className="hidden md:flex items-center bg-elevated/70 rounded-xl p-1">
             {([['day', t('calendar.day')], ['week', t('calendar.week')], ['month', t('cal.month.tab')]] as const).map(([v, label]) => (
               <button key={v} type="button" onClick={() => chooseView(v)} aria-pressed={view === v}
@@ -536,9 +539,6 @@ export const Calendar: React.FC<CalendarProps> = ({
 
       {/* Shifokor filtri — chiplar; shifokorga kerak emas (u faqat
           o'zinikini ko'radi). */}
-      {/* Saytdan/botdan kelgan so'rovlar — bo'lmasa blok chiqmaydi (0046) */}
-      {!isDoctor && <BookingRequests appointments={effectiveAppointments} />}
-
       {!isDoctor && allActive.length > 0 && (
         <DoctorChips
           doctors={allActive}

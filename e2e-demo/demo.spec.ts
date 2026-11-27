@@ -329,7 +329,7 @@ test.describe('Demo: o\'zgarish sahifa yangilangandan keyin ham turadi', () => {
             (await page.locator('main').innerText()).replace(/\s+/g, ' ');
 
         const inTill = (text: string) =>
-            Number((text.match(/kassaga tushdi ([\d ]+?) naqd/i)?.[1] || '').replace(/\s/g, ''));
+            Number((text.match(/kassaga tushdi ([\d ]*\d)\s*(?:so'm)?\s*naqd/i)?.[1] || '').replace(/\s/g, ''));
 
         const before = await read();
         await page.locator('section[aria-labelledby="pay-queue-title"]')

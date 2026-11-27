@@ -1,5 +1,10 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   SAYTDAN KELGAN SO'ROVLAR — Kalendar tepasida (2026-11-26, migratsiya 0046).
+   SAYTDAN KELGAN SO'ROVLAR — Kalendar asboblar qatorida (2026-11-26, 0046).
+
+   2026-11-27: ilgari kalendar tepasida katta blok edi va jadvalni pastga
+   surib, ekranning yarmini egallardi. Endi asboblar qatorida bitta kichik
+   «So'rovlar N» tugmasi; bosilganda ro'yxat ochiladi. So'rovlar jadvalning
+   o'zida ham o'z vaqtida (punktir blok) ko'rinadi.
 
    Saytdan va (sozlama yoqilgan bo'lsa) Telegram botdan yozilganlar shu yerda.
    Har qatorda: ism, telefon, shifokor, kun va vaqt, manba; «Tasdiqlash»,
@@ -7,8 +12,8 @@
    So'rov bo'lmasa — blok umuman chiqmaydi.
    ───────────────────────────────────────────────────────────────────────────── */
 
-import React, { useMemo, useState } from 'react';
-import { Globe, Send, Check, X, Clock } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Globe, Send, Check, X, Clock, ChevronDown } from 'lucide-react';
 import { Appointment } from '../../types';
 import { api } from '../../services/api';
 import { useLanguage, fill } from '../../context/LanguageContext';
@@ -29,6 +34,23 @@ export function BookingRequests({ appointments }: Props) {
     const [newDate, setNewDate] = useState('');
     const [newTime, setNewTime] = useState('');
     const [handled, setHandled] = useState<ReadonlySet<string>>(new Set());
+    const [open, setOpen] = useState(false);
+    const boxRef = useRef<HTMLDivElement>(null);
+
+    /* Tashqariga bosilsa yoki Esc — yopiladi */
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e: MouseEvent) => {
+            if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
 
     const rows = useMemo(() => appointments
         .filter(a => a.status === 'Requested' && !handled.has(a.id))
@@ -58,7 +80,19 @@ export function BookingRequests({ appointments }: Props) {
     };
 
     return (
-        <section className="card p-4" aria-labelledby="booking-req-title">
+        <div ref={boxRef} className="relative">
+            <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-haspopup="dialog"
+                className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-[13px] font-semibold text-amber-800 dark:text-amber-300 transition-colors ${open
+                    ? 'border-amber-500/60 bg-amber-500/20'
+                    : 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/15'}`}>
+                <Clock className="w-4 h-4" />
+                {t('booking.button')}
+                <span className="min-w-[20px] h-5 px-1.5 grid place-items-center rounded-full bg-amber-500 text-white text-[11px] font-bold tabular-nums">{rows.length}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+            {open && (
+        <section role="dialog" aria-labelledby="booking-req-title"
+            className="absolute right-0 top-full mt-2 z-40 w-[460px] max-w-[calc(100vw-2rem)] max-h-[min(70vh,560px)] overflow-y-auto rounded-2xl border border-line bg-surface shadow-xl p-4">
             <h2 id="booking-req-title" className="flex items-center gap-2 text-sm font-bold text-ink">
                 <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" /> {fill(t('booking.title'), rows.length)}
             </h2>
@@ -119,5 +153,7 @@ export function BookingRequests({ appointments }: Props) {
                 })}
             </ul>
         </section>
+            )}
+        </div>
     );
 }

@@ -11,6 +11,7 @@ import { ServicePaymentModal } from '../components/ServicePaymentModal';
 import { ChargePaymentModal } from '../components/ChargePaymentModal';
 import { PayQueue, PayGroup } from '../components/PayQueue';
 import { KassaToolbar } from '../components/cashbook/KassaToolbar';
+import { KpiStrip } from '../components/report/shared';
 import {
     Transaction, Expense, ExpenseCategory, Doctor, Clinic, Patient, Appointment,
     CashRegisterDay, CashMovement, CashMovementType, CashAuditLog, PaymentMethod,
@@ -1346,27 +1347,31 @@ export const CashBook: React.FC<CashBookProps> = ({
                 ko'rsatardi, «Kassada qoldi» pastdagi yashik hisobi bilan bir xil edi,
                 «To'lov kutmoqda» esa tab nomida turadi. Qolgani — kassirning savoli:
                 qancha tushdi (naqd va naqdsiz ostida), qancha chiqdi, yashikda qancha. */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Tile label={t('cashbook.inTill')} value={totals.gross} icon={Coins} tone="cash"
-                    hint={fill(t('cashbook.inTillHint'), num(totals.cashIn), num(totals.nonCashIn))} />
-                <Tile label={t('finance.cash.expense')} value={totals.expenseTotal} icon={TrendingDown} tone="expense"
-                    hint={fill(t('cashbook.naqd_x'), num(totals.cashExpense))} />
-                <Tile label={t('cashbook.drawerTile')} value={drawerNow} icon={Wallet} tone="drawer" hint={t('cashbook.naqd_yashik')} />
-            </div>
+            {/* 2026-11-27 (ko'rinish): uchta baland kartochka bo'sh joy ko'p
+                olardi — endi Hisobotdagi bitta KPI qatori, bir xil uslub. */}
+            <KpiStrip items={[
+                { key: 'in', label: t('cashbook.inTill'), value: totals.gross, unit: "so'm", tone: 'ok',
+                  hint: fill(t('cashbook.inTillHint'), num(totals.cashIn), num(totals.nonCashIn)) },
+                { key: 'out', label: t('finance.cash.expense'), value: totals.expenseTotal, unit: "so'm",
+                  tone: totals.expenseTotal > 0 ? 'bad' : undefined,
+                  hint: fill(t('cashbook.naqd_x'), num(totals.cashExpense)) },
+                { key: 'drawer', label: t('cashbook.drawerTile'), value: drawerNow, unit: "so'm",
+                  tone: drawerNow < 0 ? 'bad' : undefined, hint: t('cashbook.naqd_yashik') },
+            ]} />
 
             {/* Yopilmagan kunlar — kassir unutib qo'ymasin. Bosilsa o'sha kun ochiladi.
                 Oylik daftar o'rnida: kassirga oydan faqat shu savol kerak edi. */}
             {unclosedDays.length > 0 && (
-                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-amber-800 dark:text-amber-300">
-                    <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    <span className="font-semibold">{t('cashbook.unclosedDays')}</span>
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-900/15 text-sm text-amber-900 dark:text-amber-200">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                    <span className="font-semibold mr-1">{t('cashbook.unclosedDays')}</span>
                     {unclosedDays.map(d => (
                         <button key={d} type="button" onClick={() => openDay(d)}
-                            className="font-bold tabular-nums underline underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100">
+                            className="h-7 px-2.5 rounded-lg border border-amber-200 dark:border-amber-800 bg-surface text-xs font-semibold tabular-nums text-amber-900 dark:text-amber-200 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors">
                             {formatDateLabel(d)}
                         </button>
                     ))}
-                </p>
+                </div>
             )}
 
 
@@ -1397,7 +1402,7 @@ export const CashBook: React.FC<CashBookProps> = ({
                     {kassaTab === 'waiting' && payGroups && (<>
                         {/* Qidiruv — ism bilan, eski qarzlar ham (Moliya rejasi 1-vazifa) */}
                         <div className="px-5 pt-4">
-                            <div className="relative max-w-sm">
+                            <div className="relative max-w-md">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-faint" aria-hidden="true" />
                                 <input type="search" value={queueQuery} onChange={e => setQueueQuery(e.target.value)}
                                     aria-label={t('cashbook.searchPatient')} placeholder={t('cashbook.searchPatient')}
