@@ -278,7 +278,7 @@ const IMPL: Record<string, (args: any, ctx: ToolContext) => Promise<any>> = {
                 select: { amount: true, type: true, service: true },
             }),
             prisma.expense.findMany({
-                where: { clinicId: ctx.clinicId, date: range },
+                where: { clinicId: ctx.clinicId, date: range, status: 'Approved' },   // faqat tasdiqlangan (0048)
                 select: { amount: true, category: true },
             }),
         ]);

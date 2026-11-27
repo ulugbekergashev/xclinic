@@ -38,8 +38,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({ userRole, isSidebarOpen, s
         return location.pathname === item.path;
     };
 
+    /* z-40: oynalar (z-50) pastki menyu USTIDA turishi kerak — telefonda
+       retsept va to'plam oynasining pastki tugmalari menyu ostida qolardi */
     return (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-line z-50 px-2 pb-safe-area-inset-bottom">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-line z-40 px-2 pb-safe-area-inset-bottom">
             <div className="flex justify-around items-center h-16">
                 {visibleItems.map((item) => {
                     const Icon = item.icon;

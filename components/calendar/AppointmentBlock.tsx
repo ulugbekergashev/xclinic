@@ -32,7 +32,7 @@ const TWO_LINE_MIN_PX = 38;
 export function AppointmentBlock({ appt, color, top, height, left, width, onOpen }: AppointmentBlockProps) {
     const { t } = useLanguage();
     const closed = isClosedAppt(appt);
-    const pending = appt.status === 'Pending';
+    const pending = appt.status === 'Pending' || appt.status === 'Requested';
     const done = appt.status === 'Completed';
     const arrived = appt.status === 'Checked-In';
     const twoLines = height >= TWO_LINE_MIN_PX;

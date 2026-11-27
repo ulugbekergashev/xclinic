@@ -76,6 +76,9 @@ interface ClinicMapProps {
     /** Qatorlardan keyin, o'sha panel ichida chiziladigan qism — laboratoriya va
      *  statsionar zonalari (`TodayZones`). Bugun qabul bo'lmasa ham ko'rinadi */
     footer?: React.ReactNode;
+    /** Telefondagi shifokor ro'yxati uchun qisqa izohlar: allergiya, natija
+     *  tayyor, yangi bemor (2026-11-26). Faqat shifokor ekrani beradi. */
+    hintsOf?: (v: Visit) => { allergy?: string; resultReady?: boolean; isNew?: boolean };
 }
 
 /** Yo'l chizig'ida ko'rinadigan oyna — keyingi 3 soat */
@@ -170,7 +173,7 @@ const Name: React.FC<{ name: string; onOpen?: () => void; className?: string; sh
 
 export const ClinicMap: React.FC<ClinicMapProps> = ({
     title, pinDoctorId, visits, appointments, doctors, departments, services,
-    onPatientClick, onOpenVisit, onArrived, onNoShow, onCall, onEnter, enterLabel, onUndoEnter, onSeeAll, collapsible, dueOf, footer,
+    onPatientClick, onOpenVisit, onArrived, onNoShow, onCall, onEnter, enterLabel, onUndoEnter, onSeeAll, collapsible, dueOf, footer, hintsOf,
 }) => {
     const { t } = useLanguage();
     const now = useNow(30000);
@@ -865,6 +868,94 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
         </div>
     );
 
+    /* ═══ SHIFOKOR TELEFONDA (2026-11-26) ═══════════════════════════════
+       Kichik ekranda xarita o'rniga — bugungi bemorlar ro'yxati tartib
+       bilan: kabinetda, navbatda, tekshiruvda, keladiganlar. Har qatorda
+       holat va bitta izoh satri (sabab, allergiya, natija tayyor, yangi
+       bemor). Pastda katta «Keyingisini chaqirish» — barmoq yetadigan joyda.
+       Yangi sahifa emas: shu xaritaning telefon ko'rinishi. */
+    const phoneMode = !!pinDoctorId && !wide;
+    const myLane = phoneMode ? (flow.lanes.find(l => l.key === pinDoctorId) || flow.lanes[0]) : undefined;
+    const chip = (text: string, cls: string) => (
+        <span className={`shrink-0 inline-flex items-center h-6 px-2 rounded-full text-[11px] font-extrabold whitespace-nowrap ${cls}`}>{text}</span>
+    );
+    const hintLine = (v: Visit) => {
+        const h = hintsOf?.(v) || {};
+        const parts: React.ReactNode[] = [];
+        if (v.complaints) parts.push(<span key="c">{v.complaints}</span>);
+        if (h.allergy) parts.push(<span key="a" className="text-red-700 dark:text-red-400 font-semibold">{fill(t('flow.allergyNote'), h.allergy)}</span>);
+        if (h.resultReady) parts.push(<span key="r" className="text-purple-700 dark:text-purple-300 font-semibold">{t('flow.resultReadyNote')}</span>);
+        if (h.isNew) parts.push(<span key="n" className="text-emerald-700 dark:text-emerald-400 font-semibold">{t('flow.newPatientNote')}</span>);
+        if (!parts.length) return null;
+        return <span className="block text-[13px] text-muted truncate">{parts.reduce<React.ReactNode[]>((acc, x, i) => (i ? [...acc, ' · ', x] : [x]), [])}</span>;
+    };
+    const phoneRow = (key: string, no: number, name: string, status: React.ReactNode, onClick?: () => void, sub?: React.ReactNode, extra?: React.ReactNode) => (
+        <li key={key} className="border-t border-line first:border-t-0">
+            <div className="flex items-start gap-3 py-3">
+                <span className="w-6 pt-0.5 text-sm font-bold tabular-nums text-faint">{no}</span>
+                <button type="button" onClick={onClick} disabled={!onClick}
+                    className="min-w-0 flex-1 text-left disabled:cursor-default">
+                    <span className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 text-[15px] font-bold text-ink truncate">{name}</span>
+                        {status}
+                    </span>
+                    {sub}
+                </button>
+                {extra}
+            </div>
+        </li>
+    );
+    const phoneList = myLane && (() => {
+        let n = 0;
+        const rows: React.ReactNode[] = [];
+        for (const v of [myLane.chair, ...myLane.chairOthers].filter(Boolean) as Visit[]) {
+            rows.push(phoneRow(v.id, ++n, visitName(v), chip(t('flow.inChairChip'), 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200'),
+                openVisit(v), hintLine(v)));
+        }
+        for (const v of myLane.queue) {
+            const called = v.status === 'Called';
+            const m = waitedMinutes(v, nowMs);
+            rows.push(phoneRow(v.id, ++n, visitName(v),
+                called ? chip(t('flow.called'), 'bg-primary-600 text-white')
+                    : chip(fill(t('flow.waitingChip'), waitText(v)), `bg-amber-50 dark:bg-amber-900/30 ${waitTone(m)}`),
+                openVisit(v), hintLine(v)));
+        }
+        for (const v of myLane.away) {
+            rows.push(phoneRow(v.id, ++n, visitName(v), chip(t('flow.legend.awaiting'), 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200'),
+                openVisit(v), hintLine(v)));
+        }
+        for (const a of myLane.coming) {
+            rows.push(phoneRow(a.id, ++n, a.patientName, chip(a.time, 'bg-elevated text-muted'), openPatient(a), undefined, arriveButton(a, 'md')));
+        }
+        return (
+            <div className="mt-3">
+                <p className="text-sm font-semibold text-muted">{fill(t('flow.patientsToday'), n)}</p>
+                {rows.length > 0
+                    ? <ol aria-label={t('flow.todayList')} className="mt-1">{rows}</ol>
+                    : <p className="mt-3 text-sm text-muted">{t('flow.empty')}</p>}
+            </div>
+        );
+    })();
+    /* Pastdagi katta tugma: navbatdagi birinchi — kutayotgan bo'lsa «Chaqirish»,
+       chaqirilgan bo'lsa «Qabulni boshlash». Navbat bo'sh — tugma yo'q. */
+    const nextUp = myLane?.queue[0];
+    const nextBar = phoneMode && nextUp && (onCall || onEnter) && (() => {
+        const called = nextUp.status === 'Called';
+        const act = called ? onEnter : onCall;
+        if (!act) return null;
+        return (
+            <div className="lg:hidden fixed inset-x-0 z-40 px-4 pt-2 pb-2 bg-gradient-to-t from-canvas via-canvas/95 to-transparent"
+                style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom))' }}>
+                <button type="button" disabled={!!pending}
+                    onClick={() => run(`next:${nextUp.id}`, () => act(nextUp))}
+                    className="w-full h-14 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white shadow-lg active:scale-[0.98] transition-transform disabled:opacity-60 flex flex-col items-center justify-center leading-tight">
+                    <span className="text-base font-extrabold">{called ? (enterLabel || t('flow.startVisit')) : t('flow.callNext')}</span>
+                    <span className="text-[11px] font-semibold opacity-90">{shortName(visitName(nextUp))}</span>
+                </button>
+            </div>
+        );
+    })();
+
     const legendItem = (dot: React.ReactNode, n: number, label: string) => (
         <span className="inline-flex items-center gap-1.5">{dot}<b className="font-extrabold text-ink tabular-nums">{n}</b> {label}</span>
     );
@@ -898,7 +989,8 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                                 </span>
                             </div>
                             <div className="flex items-center gap-3">
-                                {legend}
+                                {/* Telefonda belgi izohlari joy oladi — ro'yxatning o'zi aytadi */}
+                                {!phoneMode && legend}
                                 {collapsible && (
                                     <button
                                         type="button"
@@ -924,8 +1016,14 @@ export const ClinicMap: React.FC<ClinicMapProps> = ({
                                     </div>
                                 ) : (
                                     <>
-                                        {wide ? roadDesktop : roadMobile}
-                                        {flow.lanes.length > 0 && (wide ? mapDesktop : mapMobile)}
+                                        {phoneMode ? phoneList : (
+                                            <>
+                                                {wide ? roadDesktop : roadMobile}
+                                                {flow.lanes.length > 0 && (wide ? mapDesktop : mapMobile)}
+                                            </>
+                                        )}
+                                        {nextBar}
+                                        {nextBar && <div aria-hidden="true" className="h-16 lg:hidden" />}
                                     </>
                                 )}
 

@@ -14,6 +14,7 @@ import type express from 'express';
 import { resolveReferral, REFERRAL_VISIT_SELECT } from './referral';
 import { emitEvent } from './events';
 import { validateEncounterField } from '../shared/validation';
+import { checkDrugAllergy, ALLERGY_OVERRIDE_PREFIX } from '../shared/allergyMatch';
 import { createCharge, cancelChargesBySource, payStateBySource, unpaidGate, paidChargeWhere, HttpError } from './billing';
 import { applyServiceRecipe, procedureTag, reverseMovementTx, withRetry } from './inventory';
 import { chargeBedDays } from './inpatient';
@@ -21,6 +22,8 @@ import { som } from './money';
 import { tashkentDateStr } from './tashkentTime';
 import { logAccess } from './compliance';
 import { touchLastVisit, recomputeLastVisit } from './patientVisits';
+import { ageFromDob, pickReference, flagFor, loadLabResultView, staffKey } from './labResultView';
+import { autoSendLabResult } from './patientDocSend';
 import path from 'path';
 import fs from 'fs';
 
@@ -45,48 +48,7 @@ function removeUploadedFile(url: string | null | undefined, uploadsDir: string) 
 // Sana Toshkent bo'yicha — navbat raqami va koyka haqi shu sanaga bog'lanadi
 const nowDate = () => tashkentDateStr();
 
-/** Yosh (to'liq yil) — tahlil normasini tanlashda kerak */
-function ageFromDob(dob?: string | null): number | null {
-    if (!dob) return null;
-    const d = new Date(dob);
-    if (isNaN(d.getTime())) return null;
-    const diff = Date.now() - d.getTime();
-    return Math.floor(diff / (365.25 * 864e5));
-}
-
-/**
- * Ko'rsatkich uchun bemorga mos normani tanlaydi.
- * Bir ko'rsatkichda jins/yosh bo'yicha bir necha qator bo'lishi mumkin —
- * eng aniq mos keladiganini olamiz.
- */
-function pickReference(params: any[], sex: string | null, age: number | null) {
-    const scored = params.map((p) => {
-        let score = 0;
-        if (p.sex) {
-            if (!sex || p.sex !== sex) return null;   // mos kelmadi
-            score += 2;
-        }
-        if (p.ageMin != null || p.ageMax != null) {
-            if (age == null) return null;
-            if (p.ageMin != null && age < p.ageMin) return null;
-            if (p.ageMax != null && age > p.ageMax) return null;
-            score += 1;
-        }
-        return { p, score };
-    }).filter(Boolean) as { p: any; score: number }[];
-
-    if (!scored.length) return null;
-    scored.sort((a, b) => b.score - a.score);
-    return scored[0].p;
-}
-
-/** Qiymatni normaga solishtirib bayroq qo'yadi */
-function flagFor(valueNum: number | null, ref: { refLow: number | null; refHigh: number | null } | null): string {
-    if (valueNum == null || !ref) return 'Normal';
-    if (ref.refLow != null && valueNum < ref.refLow) return 'Low';
-    if (ref.refHigh != null && valueNum > ref.refHigh) return 'High';
-    return 'Normal';
-}
+/* ageFromDob, pickReference, flagFor — ./labResultView da (PDF ham o'qiydi) */
 
 export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     const { prisma, authenticateToken: auth, getScopedClinicId, upload, uploadsDir } = deps;
@@ -299,7 +261,14 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 ...statusFilter,
             },
             include: {
-                patient: true, department: true, procedures: true, diagnoses: { include: { icd10: true } },
+                /* Telefondagi shifokor ro'yxati (2026-11-26): faol allergiyalar va
+                   «yangi bemor» uchun qabullar soni. Allergiyani bu rollar
+                   kartada baribir ko'radi — yangi ma'lumot ochilmaydi. */
+                patient: { include: {
+                    allergies: { where: { isActive: true }, select: { substance: true, severity: true } },
+                    _count: { select: { visits: { where: { status: { not: 'Cancelled' } } } } },
+                } },
+                department: true, procedures: true, diagnoses: { include: { icd10: true } },
                 labOrders: { include: { items: true } },
                 studies: true,
                 prescriptions: { include: { items: true } },
@@ -1011,46 +980,9 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
 
     /** Yo'llanma + bemorga moslangan normalar bilan to'liq natija */
     route('get', '/api/lab-orders/:id/results', async (req, res, clinicId) => {
-        const order = await prisma.labOrder.findUnique({
-            where: { id: req.params.id },
-            include: {
-                patient: true,
-                items: {
-                    include: {
-                        test: { include: { parameters: { orderBy: { sortOrder: 'asc' } } } },
-                        results: true,
-                    },
-                },
-            },
-        });
-        if (!order || order.clinicId !== clinicId) return res.status(404).json({ error: 'Topilmadi' });
-
-        const sex = order.patient?.gender || null;
-        const age = ageFromDob(order.patient?.dob);
-
-        // Bir xil nomli ko'rsatkichlardan bemorga mos keladiganini tanlaymiz,
-        // shunda blankada har ko'rsatkich bir marta, to'g'ri norma bilan chiqadi.
-        const items = order.items.map((item: any) => {
-            const byName = new Map<string, any[]>();
-            for (const p of item.test.parameters) {
-                if (!byName.has(p.name)) byName.set(p.name, []);
-                byName.get(p.name)!.push(p);
-            }
-            const parameters = Array.from(byName.entries()).map(([name, variants]) => {
-                const ref = pickReference(variants, sex, age) || variants[0];
-                const result = item.results.find((r: any) => r.parameterId === ref.id)
-                    || item.results.find((r: any) => variants.some((v: any) => v.id === r.parameterId));
-                return {
-                    parameterId: ref.id, name, unit: ref.unit,
-                    refLow: ref.refLow, refHigh: ref.refHigh, refText: ref.refText,
-                    value: result?.value ?? '', valueNum: result?.valueNum ?? null,
-                    flag: result?.flag ?? null, note: result?.note ?? null,
-                };
-            });
-            return { id: item.id, testId: item.testId, testName: item.testName, status: item.status, price: item.price, parameters };
-        });
-
-        res.json({ ...order, items, patientAge: age, patientSex: sex });
+        const view = await loadLabResultView(prisma, req.params.id, clinicId);
+        if (!view) return res.status(404).json({ error: 'Topilmadi' });
+        res.json(view);
     });
 
     /** Natijalarni saqlash — bayroq shu yerda hisoblanadi va saqlanadi */
@@ -1083,7 +1015,16 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
             }
         }
 
+        /* KIM KIRITDI — xodimda serverdagi ismi (mijoz yuborgan nom emas):
+           «o'z natijasini tasdiqlay olmaydi» qoidasi aynan shu nomga tayanadi.
+           Ega boshqa xodim nomidan kiritishi mumkin (namoyish ma'lumoti). */
+        const me = (req as any).user;
+        const enteredByName = me?.role && me.role !== 'CLINIC_ADMIN' && me?.name ? String(me.name) : (enteredBy || me?.name || null);
+        const enteredById = staffKey(me);
         const ownItems = new Set(order.items.map((i: any) => i.id));
+        /* Biror qiymat haqiqatan o'zgardimi — tasdiqlangan natija tuzatilsa,
+           tasdiq bekor bo'ladi (pastda) */
+        let changed = false;
         const sex = order.patient?.gender || null;
         const age = ageFromDob(order.patient?.dob);
 
@@ -1107,14 +1048,33 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 value: raw, valueNum,
                 flag: flagFor(valueNum, ref),
                 note: r.note || null,
-                enteredBy: enteredBy || null,
+                enteredBy: enteredByName,
+                enteredById,
                 enteredAt: new Date(),
             };
             if (existing) {
+                /* O'zgarmagan qiymat qayta yozilmaydi: `enteredAt` yangilansa,
+                   bemorga ketgan varaq «tuzatildi» deb qayta yuborilardi */
+                if (existing.value === raw && (existing.note || null) === data.note) continue;
                 await prisma.labResult.update({ where: { id: existing.id }, data });
             } else {
                 await prisma.labResult.create({ data: { ...data, orderItemId: r.orderItemId, parameterId: r.parameterId } });
             }
+            changed = true;
+        }
+
+        /* TASDIQLANGAN NATIJA TUZATILDI — tasdiq bekor (migratsiya 0045).
+           Ikkinchi xodim tasdiqlagan raqam endi boshqa: yangisini ham kimdir
+           ko'rib chiqishi kerak. Bemorga ketgan bo'lsa, qayta yuborishda
+           «TUZATILDI» belgisi avvalgidek qo'yiladi. */
+        if (changed) {
+            /* Shartsiz: so'rov boshida o'qilgan `order.verifiedAt` eskirgan
+               bo'lishi mumkin — saqlash davomida kimdir tasdiqlagan bo'lsa ham
+               yangi raqam tasdiqsiz qoladi */
+            await prisma.labOrder.updateMany({
+                where: { id: order.id, verifiedAt: { not: null } },
+                data: { verifiedAt: null, verifiedByName: null, verifiedById: null },
+            });
         }
 
         // Har bir qatorda kamida bitta natija bo'lsa — bajarilgan deb belgilaymiz
@@ -1130,6 +1090,10 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
                 where: { id: order.id },
                 data: { status: 'Completed', completedAt: new Date() },
             });
+            /* Klinika yoqgan bo'lsa natija bemorga o'zi ketadi — faqat HAMMA
+               ko'rsatkich kiritilganda va bir buyurtma bir marta
+               (autoSendLabResult o'zi tekshiradi). Tuzatish qayta yubormaydi. */
+            void autoSendLabResult(prisma, clinicId, order.id);
         }
 
         emitEvent(clinicId, 'lab.result', { orderId: order.id, patientId: order.patientId || null });
@@ -1682,22 +1646,56 @@ export function registerMultiprofileRoutes(app: express.Express, deps: Deps) {
     route('post', '/api/prescriptions', async (req, res, clinicId) => {
         const { patientId, patientName, visitId, doctorId, doctorName, date, notes, items } = req.body;
         if (!patientId) return res.status(400).json({ error: 'Bemor majburiy' });
+        const list: any[] = Array.isArray(items) ? items : [];
+
+        /* ALLERGIYA (2026-11-26). Ekran ogohlantiradi; server ham tekshiradi —
+           eski ekran, to'plam yoki boshqa yo'l tekshiruvni chetlab o'tmasin.
+           To'xtatmaydi: shifokor «Baribir yozish» desa (`allergyAck`) yoziladi,
+           kim qachon o'tkazgani jurnalga va retsept izohiga tushadi. */
+        const allergies = await prisma.patientAllergy.findMany({
+            where: { patientId: String(patientId), clinicId, isActive: true },
+            select: { substance: true, severity: true, isActive: true },
+        });
+        /* Ombordagi dori bo'lsa — uning ta'sir etuvchi moddasi ham (ekran ham
+           shunday solishtiradi; savdo nomi allergiyani ko'rsatmasligi mumkin) */
+        const medIds = list.map((i: any) => i?.medicationId).filter(Boolean).map(String);
+        const meds = medIds.length
+            ? await prisma.inventoryItem.findMany({ where: { id: { in: medIds }, clinicId }, select: { id: true, activeIngredient: true } })
+            : [];
+        const ingredientOf = (id: any) => meds.find((m: any) => m.id === id)?.activeIngredient || null;
+        const hits = list.flatMap((i: any) => checkDrugAllergy(String(i?.name || ''), allergies, ingredientOf(i?.medicationId))
+            .map(h => ({ drug: String(i.name), ack: !!i.allergyAck, reason: i.allergyReason ? String(i.allergyReason).replace(/\s+/g, ' ').trim().slice(0, 120) : null, ...h })));
+        const unacked = hits.filter(h => !h.ack);
+        if (unacked.length) {
+            return res.status(409).json({
+                error: `Bemorda allergiya bor: ${unacked.map(h => `${h.drug} ↔ ${h.allergy}`).join('; ')}`,
+                code: 'ALLERGY', hits: unacked,
+            });
+        }
+        const overrideNote = hits.length
+            ? `${ALLERGY_OVERRIDE_PREFIX} ${hits.map(h => `${h.drug} ↔ ${h.allergy}${h.reason ? ` (${h.reason})` : ''}`).join('; ')}`
+            : null;
+
         const rx = await prisma.prescription.create({
             data: {
                 clinicId, patientId, patientName: patientName || '',
                 visitId: visitId || null, doctorId: doctorId || null, doctorName: doctorName || null,
-                date: date || nowDate(), notes: notes || null,
+                date: date || nowDate(), notes: [notes, overrideNote].filter(Boolean).join('\n') || null,
                 items: {
-                    create: (items || []).map((i: any) => ({
+                    create: list.map((i: any) => ({
                         medicationId: i.medicationId || null, name: i.name,
                         dosage: i.dosage || null, frequency: i.frequency || null,
                         durationDays: i.durationDays ? Number(i.durationDays) : null,
                         instructions: i.instructions || null,
+                        mealTiming: ['before', 'with', 'after'].includes(i.mealTiming) ? i.mealTiming : null,
                     })),
                 },
             },
             include: { items: true },
         });
+        if (hits.length) {
+            logAccess(prisma, req, { action: 'Create', entityType: 'AllergyOverride', entityId: rx.id, patientId: String(patientId), clinicId });
+        }
         res.json(rx);
     });
 

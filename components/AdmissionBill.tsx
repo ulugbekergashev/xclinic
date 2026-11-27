@@ -1,11 +1,11 @@
 import React, { useRef, useState } from 'react';
-import { Wallet, Plus, Printer, X, Loader2 } from 'lucide-react';
+import { Wallet, Plus, Printer, X, Loader2, FileText } from 'lucide-react';
 import { Admission } from '../types';
 import { api } from '../services/api';
 import { useLanguage, fill, tr, TranslationKey } from '../context/LanguageContext';
 import { formatDate, formatMoney, formatNumber } from '../utils/format';
 import { fmtDateTime, PrintClinic } from '../utils/printDocument';
-import { printReceipt, mergeReceiptLines, ReceiptLine } from '../utils/printReceipt';
+import { printReceipt, printReceiptA4, receiptA4Labels, mergeReceiptLines, ReceiptLine } from '../utils/printReceipt';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    YOTISH HISOBI — yozilgan, to'langan, qarz; qo'lda qator; hisob cheki.
@@ -82,12 +82,14 @@ export function receiptLines(charges: any[], bedLabel: string): ReceiptLine[] {
 
 /** «Hisob cheki» — yotish hisobining hamma qatori, jami, to'langani va qolgani.
  *  Ikki joydan bosiladi: yotish kartasidan va chiqarish oynasidan
- *  (`DischargeBill`). `false` — brauzer bosma oynani ochmadi. */
+ *  (`DischargeBill`). `false` — brauzer bosma oynani ochmadi.
+ *  `a4` — o'sha hisob A4 varaqda: sug'urta va ishxona shuni so'raydi. */
 export function printAdmissionBill(
     admission: Admission, billing: AdmissionBilling,
     clinic: PrintClinic | null | undefined, t: (key: TranslationKey) => string,
+    a4 = false,
 ): boolean {
-    return printReceipt({
+    const data = {
         title: t('inp.bill.title'),
         clinic,
         meta: [
@@ -104,7 +106,8 @@ export function printAdmissionBill(
             { label: t('ui.tolangan'), value: `${formatMoney(billing.paid)} ${t('ui.som')}` },
             { label: t('inp.bill.due'), value: `${formatMoney(billing.due)} ${t('ui.som')}`, strong: true },
         ],
-    });
+    };
+    return a4 ? printReceiptA4(data, receiptA4Labels(t)) : printReceipt(data);
 }
 
 export function AdmissionBill({ admission, billing, bedDays, clinic, canAdd, canRemove, onChanged }: Props) {
@@ -165,8 +168,8 @@ export function AdmissionBill({ admission, billing, bedDays, clinic, canAdd, can
         } finally { busyRef.current = false; setBusy(''); }
     };
 
-    const printBill = () => {
-        if (!printAdmissionBill(admission, billing, clinic, t)) setError(t('print.popupBlocked'));
+    const printBill = (a4 = false) => {
+        if (!printAdmissionBill(admission, billing, clinic, t, a4)) setError(t('print.popupBlocked'));
     };
 
     const charges = billing.charges || [];
@@ -225,10 +228,16 @@ export function AdmissionBill({ admission, billing, bedDays, clinic, canAdd, can
                     </button>
                 )}
                 {charges.length > 0 && (
-                    <button type="button" onClick={printBill}
-                        className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-lg border border-line bg-surface text-sm font-semibold text-ink hover:border-primary-400">
-                        <Printer className="w-4 h-4" /> {t('inp.bill.print')}
-                    </button>
+                    <>
+                        <button type="button" onClick={() => printBill()}
+                            className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-lg border border-line bg-surface text-sm font-semibold text-ink hover:border-primary-400">
+                            <Printer className="w-4 h-4" /> {t('inp.bill.print')}
+                        </button>
+                        <button type="button" onClick={() => printBill(true)} title={t('print.a4Title')}
+                            className="inline-flex items-center gap-1.5 h-10 px-3 rounded-lg border border-line bg-surface text-sm font-semibold text-ink hover:border-primary-400">
+                            <FileText className="w-4 h-4" /> {t('print.a4')}
+                        </button>
+                    </>
                 )}
             </div>
 

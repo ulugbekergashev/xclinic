@@ -14,8 +14,9 @@ import {
 } from '../components/StaffForm';
 import {
     ArrowLeft, Phone, Mail, Edit, Trash2, Layers, Wallet, CalendarDays,
-    Percent, ChevronLeft, ChevronRight, Plus, X, Loader2, Check, AlertCircle,
+    Percent, ChevronLeft, ChevronRight, Plus, X, Loader2, Check, AlertCircle, Printer,
 } from 'lucide-react';
+import { printSalarySlip } from '../utils/printForms';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    XODIM KARTASI — BITTA ISH JOYI.
@@ -240,6 +241,18 @@ export const StaffCard: React.FC<Props> = ({
         } finally {
             setBusy(false);
         }
+    };
+
+    const printSlip = () => {
+        if (!month) return;
+        const ok = printSalarySlip({
+            periodLabel: periodLabel(period),
+            staffName: month.staff?.name || (row ? formatFullName(row) : ''),
+            roleLabel: roleMeta(staffRole).label,
+            isDoctor: staffRole === 'DOCTOR',
+            month,
+        });
+        if (!ok) toast.error(t('print.popupBlocked'));
     };
 
     const archive = async () => {
@@ -472,6 +485,15 @@ export const StaffCard: React.FC<Props> = ({
                                     <div className="flex items-center justify-between gap-3">
                                         <p className="text-sm font-bold text-ink">{t('staffcard.maosh_hisobi')}</p>
                                         <div className="flex items-center gap-1">
+                                            {/* Oylik varaqasi — xodim «nega shuncha» deb so'raganda
+                                                javob qog'ozda: asosiy, bonus, jarima, imzo. */}
+                                            {month && !monthLoading && (
+                                                <button type="button" onClick={printSlip}
+                                                    title={t('staffcard.printSlip')}
+                                                    className="mr-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-line text-xs font-semibold text-muted hover:text-primary-600 hover:border-primary-400">
+                                                    <Printer className="w-4 h-4" /> {t('staffcard.printSlip')}
+                                                </button>
+                                            )}
                                             <button onClick={() => setPeriod(p => shiftPeriod(p, -1))}
                                                 className="p-2 rounded-lg border border-line text-muted hover:text-primary-600">
                                                 <ChevronLeft className="w-4 h-4" />

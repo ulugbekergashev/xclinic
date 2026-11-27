@@ -1,9 +1,10 @@
-import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, DiagnosisKind, ReferralVisit, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, TodayZones, Prescription, PrescriptionItem, InventoryBatch, BackupConfig } from '../types';
+import { Modality, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, SubscriptionPlan, Service, ServiceCategory, ICD10Code, PatientDiagnosis, DiagnosisKind, ReferralVisit, InventoryItem, InventoryLog, Lead, LeadApiKeyInfo, InstallmentPlan, MessageTemplate, AutomationRule, MessageLog, MessageChannel, BulkSendStatus, TriggerDescriptor, AudienceSegment, AudiencePreview, SegmentFieldDescriptor, SavedSegment, CashRegisterDay, CashMovement, CashAuditLog , Visit, VisitCharge, StockMovement, ServiceRecipeLine, ServiceCost, InventoryAlerts, ChargeSummary, PendingPatient, Department, EncounterTemplate, EncounterField, LabTest, LabTestParameter, LabOrder, LabOrderItem, DiagnosticStudy, Ward, Bed, Admission, InpatientRound, MedicationOrder, TodayZones, Prescription, PrescriptionItem, InventoryBatch, BackupConfig, TreatmentTemplate } from '../types';
 import { medDue } from '../shared/medSchedule';
 import { todayISO, dayKey } from '../utils/dateUtils';
 import * as auth from './authStore';
 import { tr } from '../context/LanguageContext';
 import { emitDataChanged, resourceOf } from './dataBus';
+import { IS_DEMO_BUILD } from './demoBuild';
 
 /** Yagona hisoblash qatlamining javobi — `backend/snapshot.ts` bilan
  *  bir xil shakl. Bu tur o'zgarsa, ikkala tomon ham o'zgarishi shart. */
@@ -41,6 +42,7 @@ export interface CashCloseInput {
 }
 import { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_DOCTORS, DEMO_SERVICES, DEMO_CLINIC, DEMO_CLINICS, DEMO_PLAN, DEMO_INVENTORY, DEMO_INVENTORY_LOGS, DEMO_RECEPTIONISTS, DEMO_DIAGNOSES, DEMO_ICD10, DEMO_CATEGORIES, DEMO_LEADS, DEMO_INSTALLMENTS, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_MESSAGE_TEMPLATES, DEMO_AUTOMATION_RULES, DEMO_MESSAGE_LOGS, DEMO_TRIGGERS, DEMO_SEGMENT_FIELDS, saveDemoData } from './demoData';
 import { demoAudience } from './demoAudience';
+import { checkDrugAllergy } from '../shared/allergyMatch';
 
 // XClinic offline rejimda ishlaydi — hech qanday bulut manzili yo'q.
 // Backend shu kompyuterda turadi; uch xil kirish usuli qo'llab-quvvatlanadi.
@@ -363,6 +365,146 @@ const demoMissing = <T,>(what: string): Promise<T> =>
     Promise.reject(new Error(`Demo rejimda ${what} mavjud emas.`));
 
 /** Demo rejimda ko'rsatiladigan bo'limlar — faqat menyu tirik ko'rinishi uchun */
+/* ─── Xarajat tasdig'i (demo, migratsiya 0048) ───────────────────────────────
+   Kutayotgan/rad etilgan xarajat DEMO_EXPENSES ga TUSHMAYDI: demo hisobotlari
+   va kassa uni o'qiydi, server esa ularni sanamaydi. Sahifa yangilansa ham
+   qolsin deb — localStorage (bo'lmasa xotira). */
+let demoActingRole = 'CLINIC_ADMIN';
+/** Demoda kim ishlayapti (rol almashtirgich) — server `req.user.role` o'rniga */
+export const setDemoActingRole = (role: string) => { demoActingRole = role || 'CLINIC_ADMIN'; };
+const HELD_KEY = 'xclinic_demo_held_expenses';
+const BUDGET_KEY = 'xclinic_demo_dept_budgets';
+let demoHeldMem: Expense[] = [];
+const demoHeld = (): Expense[] => {
+    try { const raw = localStorage.getItem(HELD_KEY); if (raw) return JSON.parse(raw); } catch { /* xotira */ }
+    return demoHeldMem;
+};
+const demoSaveHeld = (rows: Expense[]) => {
+    demoHeldMem = rows;
+    try { localStorage.setItem(HELD_KEY, JSON.stringify(rows)); } catch { /* xotira */ }
+};
+const demoToday = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);
+const demoSaveBudgets = () => {
+    try {
+        localStorage.setItem(BUDGET_KEY, JSON.stringify(DEMO_DEPARTMENTS.map((d: any) => [d.id, d.monthlyBudget ?? null])));
+    } catch { /* xotira */ }
+};
+const demoLoadBudgets = () => {
+    try {
+        const raw = localStorage.getItem(BUDGET_KEY);
+        if (!raw) return;
+        for (const [id, b] of JSON.parse(raw) as [string, number | null][]) {
+            const d: any = DEMO_DEPARTMENTS.find(x => x.id === id);
+            if (d) d.monthlyBudget = b;
+        }
+    } catch { /* yo'q */ }
+};
+/** Byudjet: «sarflandi» — demo Bo'limlar hisobotidagi xarajat bilan bitta qoida */
+const demoDepartmentBudget = (month?: string) => {
+    demoLoadBudgets();
+    const m = /^\d{4}-\d{2}$/.test(month || '') ? month! : demoToday().slice(0, 7);
+    const [y, mm] = m.split('-').map(Number);
+    const last = new Date(Date.UTC(y, mm, 0)).getUTCDate();
+    const from = `${m}-01`, to = `${m}-${String(last).padStart(2, '0')}`;
+    const spent = new Map<string, number>();
+    for (const e of DEMO_EXPENSES.filter(x => inRange(x.date as any, from, to) && x.category !== 'Lab')) {
+        const k = (e as any).departmentId || '';
+        spent.set(k, (spent.get(k) || 0) + (e.amount || 0));
+    }
+    return {
+        month: m,
+        rows: DEMO_DEPARTMENTS.filter((d: any) => d.monthlyBudget > 0).map((d: any) => ({
+            departmentId: d.id, name: d.name, color: d.color || null, budget: d.monthlyBudget, spent: Math.round(spent.get(d.id) || 0),
+        })),
+    };
+};
+
+/* ─── Saytdan yozilish (demo, migratsiya 0046) ───────────────────────────────
+   Namoyishda 3 ta so'rov: ikkitasi saytdan, bittasi botdan — ertangi kunga. */
+const demoBookDay = (offset: number) => new Date(Date.now() + 5 * 3600e3 + offset * 864e5).toISOString().slice(0, 10);
+let demoRequestsSeeded = false;
+const demoSeedRequests = () => {
+    if (demoRequestsSeeded) return;
+    demoRequestsSeeded = true;
+    if (DEMO_APPOINTMENTS.some((a: any) => String(a.id).startsWith('demo-req-seed'))) return;
+    const docs = DEMO_DOCTORS.slice(0, 2);
+    if (!docs.length) return;
+    const tomorrow = demoBookDay(1);
+    const rows: [string, string, string, number][] = [
+        ['Aziz', '+998 90 555 12 34', 'site', 0], ['Saidova Nodira', '+998 93 111 22 33', 'bot', 1], ['Karimova Lola', '+998 97 777 88 99', 'site', 0],
+    ];
+    rows.forEach(([name, phone, source, di], i) => {
+        const d: any = docs[di % docs.length];
+        DEMO_APPOINTMENTS.push({
+            id: `demo-req-seed-${i + 1}`, patientId: DEMO_PATIENTS[i]?.id || 'demo-patient-1', patientName: name,
+            doctorId: d.id, doctorName: `Dr. ${d.firstName} ${d.lastName}`, type: 'Konsultatsiya',
+            date: tomorrow, time: ['10:30', '09:00', '15:30'][i], duration: 30, status: 'Requested', source,
+            notes: `${source === 'site' ? 'Saytdan' : 'Telegram bot orqali'} yozildi · ${phone}`, clinicId: 'demo-clinic-1',
+        } as any);
+    });
+};
+const demoBookingInfo = (): PublicBookingInfo => ({
+    clinic: { name: (DEMO_CLINIC as any).name || 'Demo Klinika', phone: (DEMO_CLINIC as any).phone || null, address: (DEMO_CLINIC as any).address || null },
+    doctors: DEMO_DOCTORS.filter((d: any) => d.status !== 'Inactive').map((d: any) => ({
+        id: d.id, name: `${d.lastName || ''} ${d.firstName || ''}`.trim(), specialty: d.specialty || '',
+        days: Array.from({ length: 14 }, (_, i) => demoBookDay(i)),
+    })),
+});
+const demoFreeTimes = (doctorId: string, date: string): string[] => {
+    const taken = DEMO_APPOINTMENTS.filter((a: any) => a.doctorId === doctorId && a.date === date && a.status !== 'Cancelled').map((a: any) => a.time);
+    const now = new Date(Date.now() + 5 * 3600e3);
+    const isToday = date === now.toISOString().slice(0, 10);
+    const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const out: string[] = [];
+    for (let m = 9 * 60; m < 18 * 60; m += 30) {
+        const t = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+        if (isToday && m <= nowMin) continue;
+        if (!taken.includes(t)) out.push(t);
+    }
+    return out;
+};
+
+/* ─── Shikoyatlar (demo, migratsiya 0047) ─────────────────────────────────── */
+let demoComplaintRows: ComplaintRow[] | null = null;
+const demoAssignees = () => [
+    { key: 'CLINIC_ADMIN:demo-clinic-1', name: 'Demo Admin (ega)' },
+    ...DEMO_RECEPTIONISTS.map((r: any) => ({ key: `RECEPTIONIST:${r.id}`, name: `${r.lastName || ''} ${r.firstName || ''} (registrator)`.trim() })),
+    ...DEMO_DOCTORS.map((d: any) => ({ key: `DOCTOR:${d.id}`, name: `${d.lastName || ''} ${d.firstName || ''} (shifokor)`.trim() })),
+];
+const demoComplaints = (): ComplaintRow[] => {
+    if (demoComplaintRows) return demoComplaintRows;
+    const pick = (i: number): any => DEMO_PATIENTS[i % Math.max(1, DEMO_PATIENTS.length)] || {};
+    const nm = (p: any) => `${p.lastName || ''} ${p.firstName || ''}`.trim();
+    const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
+    const doc: any = DEMO_DOCTORS[0] || {};
+    demoComplaintRows = [
+        { id: 'demo-cmp-1', source: 'bot', text: 'Uzoq kutdim, qabul 40 daqiqa kechikdi', status: 'open', createdAt: ago(2),
+          assigneeKey: 'CLINIC_ADMIN:demo-clinic-1', assigneeName: 'Demo Admin (ega)', doctorName: doc.lastName ? `${doc.lastName} ${doc.firstName}` : null,
+          visitDate: ago(2).slice(0, 10), rating: 2, patientId: pick(0).id, patientName: nm(pick(0)), phone: pick(0).phone || null },
+        { id: 'demo-cmp-2', source: 'reception', text: 'Chekda xizmat ikki marta yozilgan', status: 'open', createdAt: ago(0),
+          assigneeKey: null, assigneeName: null, createdByName: 'Registrator', doctorName: null,
+          visitDate: null, rating: null, patientId: pick(1).id, patientName: nm(pick(1)), phone: pick(1).phone || null },
+        { id: 'demo-cmp-3', source: 'bot', text: 'Natija kech keldi', status: 'resolved', createdAt: ago(5),
+          resolvedAt: ago(4), resolvedByName: 'Demo Admin', resolution: 'Laborant bilan gaplashildi, endi natija Telegramga o\'zi ketadi',
+          assigneeKey: null, assigneeName: null, doctorName: null, visitDate: null, rating: 3,
+          patientId: pick(2).id, patientName: nm(pick(2)), phone: pick(2).phone || null },
+    ];
+    return demoComplaintRows;
+};
+const demoComplaintsPayload = (): ComplaintsPayload => {
+    const rows = demoComplaints();
+    const month = new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 7);
+    return {
+        stats: {
+            avgRating: 4.6, ratingCount: 38,
+            open: rows.filter(r => r.status === 'open').length,
+            resolvedMonth: rows.filter(r => r.status === 'resolved' && String(r.resolvedAt || '').slice(0, 7) === month).length,
+        },
+        rows: [...rows].sort((a, b) => (a.status === b.status ? b.createdAt.localeCompare(a.createdAt) : a.status === 'open' ? -1 : 1)),
+        assignees: demoAssignees(),
+    };
+};
+
 const DEMO_DEPARTMENTS: Department[] = [
     /* Ko'p profilli klinika: stomatologiya, kardiologiya, endokrinologiya.
        `demo-ter` id si eski — unga ko'p joy bog'langan, nomi o'zgardi xolos. */
@@ -836,7 +978,7 @@ const demoRecipeLine = (serviceId: number, l: { itemId: string; quantity: number
    ro'yxat ko'rsatib, kiritilgan natija yo'qolardi. */
 const DEMO_ORDER_ITEMS: Record<string, { id: string; testId: string }[]> = {};
 /** `"<orderItemId>:<parameterId>"` → kiritilgan qiymat. */
-const DEMO_RESULT_VALUES: Record<string, { value: string; note?: string }> = {};
+const DEMO_RESULT_VALUES: Record<string, { value: string; note?: string; enteredBy?: string }> = {};
 
 /** Norma chegarasiga qarab bayroq — server `flag` maydonini shunday to'ldiradi. */
 const demoFlag = (value: string, refLow?: number, refHigh?: number): 'Low' | 'High' | 'Normal' | null => {
@@ -895,7 +1037,26 @@ const demoLabResults = (orderId: string) => {
            kartasidan olinadi, topilmasa null — ekran shunga tayyor. */
         patientAge: null as number | null,
         patientSex: null as string | null,
+        /* Server `loadLabResultView` kabi: klinika tasdiqlashni yoqqanmi */
+        verifyRequired: !!(DEMO_CLINIC as any).labVerifyRequired,
     };
+};
+
+/* ─── Probirka kodi (demo) — server `labSamples.ts` bilan bir xil shakl:
+       YYMMDD + kunlik 4 xonali tartib, faqat raqam. */
+const demoSampleCode = (order: any): string => {
+    if (order.sampleCode) return order.sampleCode;
+    const d = new Date(Date.now() + 5 * 3600e3);
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    const prefix = `${p2(d.getUTCFullYear() % 100)}${p2(d.getUTCMonth() + 1)}${p2(d.getUTCDate())}`;
+    const last = DEMO_LAB_ORDERS
+        .map((o: any) => String(o.sampleCode || ''))
+        .filter(c => c.startsWith(prefix))
+        .sort()
+        .pop();
+    const seq = (last ? Number(last.slice(prefix.length)) : 0) + 1;
+    order.sampleCode = `${prefix}${String(seq).padStart(4, '0')}`;
+    return order.sampleCode;
 };
 
 /** Hisob qatorlarining yig'indisi — server `ChargeSummary` bilan bir xil. */
@@ -991,6 +1152,86 @@ export interface ServiceReport {
     departments: { id: string; name: string; color: string | null }[];
     services: ServiceReportRow[];
     unsold: { serviceId: number; name: string; departmentId: string | null; listPrice: number }[];
+}
+
+/** `/api/follow-ups` qatori (`backend/followUps.ts`) */
+export interface FollowUpRow {
+    visitId: string;
+    patientId: string;
+    patientName: string;
+    phone: string | null;
+    hasTelegram: boolean;
+    followUpDate: string;
+    visitDate: string;
+    doctorName: string | null;
+    diagnosis: string | null;
+    booked: { date: string; time: string } | null;
+}
+
+/** `/api/patients/:id/sent-docs` (`backend/patientDocSend.ts`) */
+/** Bemor sahifasi (`GET /public/booking`) — faqat ochiq ma'lumot */
+export interface PublicBookingInfo {
+    clinic: { name: string; phone: string | null; address: string | null };
+    doctors: { id: string; name: string; specialty: string; days: string[] }[];
+}
+
+/** Shikoyat (`GET /complaints`) */
+export interface ComplaintRow {
+    id: string;
+    source: 'bot' | 'reception';
+    text: string | null;
+    status: 'open' | 'resolved';
+    createdAt: string;
+    resolvedAt?: string | null;
+    resolvedByName?: string | null;
+    resolution?: string | null;
+    assigneeKey?: string | null;
+    assigneeName?: string | null;
+    createdByName?: string | null;
+    doctorName?: string | null;
+    visitDate?: string | null;
+    rating: number | null;
+    patientId: string;
+    patientName: string;
+    phone: string | null;
+}
+export interface ComplaintsPayload {
+    stats: { avgRating: number | null; ratingCount: number; open: number; resolvedMonth: number };
+    rows: ComplaintRow[];
+    assignees: { key: string; name: string }[];
+}
+
+/** Bo'lim byudjeti (`GET /reports/department-budget`) */
+export interface DepartmentBudget {
+    month: string;
+    rows: { departmentId: string; name: string; color: string | null; budget: number; spent: number }[];
+}
+
+/** Probirka yorlig'i ma'lumoti (`POST /lab-orders/:id/label`) */
+export interface LabLabelData {
+    code: string;
+    patientName?: string | null;
+    dob?: string | null;
+    gender?: string | null;
+    at?: string | null;
+    groups: { sample: string; tests: string[] }[];
+    size: string;
+}
+
+/** Laboratoriya sozlamalari (migratsiya 0045) */
+export interface LabSettings {
+    labVerifyRequired?: boolean;
+    labLabelAuto?: boolean;
+    labLabelSize?: string;
+}
+
+export interface SentDocsStatus {
+    /** Klinikada Telegram bot ulanganmi */
+    bot: boolean;
+    /** Bemor botga ulanganmi (chat id o'zi qaytmaydi) */
+    linked: boolean;
+    /** { "rx:<id>": iso, "lab:<id>": iso } — oxirgi muvaffaqiyatli yuborish */
+    sent: Record<string, string>;
 }
 
 /** `/api/reports/patients` javobi (`backend/patientVisits.ts`) */
@@ -1430,6 +1671,13 @@ const demoVisitCharges = (visitId: string) => {
    qaytadi, ya'ni ekran o'zgarishni ko'radi. */
 const demoVisitFull = (v: Visit): Visit => ({
     ...v,
+    /* Server `GET /visits` shakli (2026-11-26): faol allergiyalar va qabullar soni —
+       telefondagi shifokor ro'yxati «allergiya», «yangi bemor» izohlari uchun */
+    patient: v.patient ? {
+        ...v.patient,
+        allergies: DEMO_ALLERGIES.filter(a => a.patientId === v.patientId).map(a => ({ substance: a.substance, severity: a.severity })),
+        _count: { visits: DEMO_VISITS.filter(x => x.patientId === v.patientId && x.status !== 'Cancelled').length },
+    } as any : v.patient,
     department: DEMO_DEPARTMENTS.find(d => d.id === v.departmentId),
     diagnoses: DEMO_DIAGNOSES.filter(d => d.visitId === v.id),
     procedures: DEMO_CHARGES
@@ -1504,6 +1752,98 @@ const demoDataVersion = () => {
     try { return localStorage.getItem('xclinic_demo_version') || ''; } catch { return ''; }
 };
 
+/* DAVOLASH TO'PLAMLARI (demo) — ikkita klinikaniki tayyor turadi, shifokor
+   o'zinikini qabul ichidan qo'shadi. Server qoidasi bilan: ko'p ishlatilgani birinchi. */
+const DEMO_TREATMENT_TEMPLATES: TreatmentTemplate[] = [
+    {
+        id: 'demo-tt-1', name: "O'RVI (kattalar)", doctorId: null, shared: true, icdCodes: ['J06'], useCount: 5,
+        createdByName: 'Demo Admin',
+        items: [
+            { kind: 'drug', name: 'Paratsetamol 500 mg', dosage: '1 tabletka', frequency: 'Kuniga 3 mahal', durationDays: 5, mealTiming: 'after' },
+            { kind: 'drug', name: 'Loratadin 10 mg', dosage: '1 tabletka', frequency: 'Kuniga 1 mahal', durationDays: 5, mealTiming: null },
+            { kind: 'service', serviceId: 1 },
+            { kind: 'lab', labTestId: 'demo-lt-1' },
+        ],
+    },
+    {
+        id: 'demo-tt-2', name: 'Gipertoniya — nazorat', doctorId: null, shared: true, icdCodes: ['I10'], useCount: 3,
+        createdByName: 'Demo Admin',
+        items: [
+            { kind: 'drug', name: 'Lizinopril 10 mg', dosage: '1 tabletka', frequency: 'Kuniga 1 mahal', durationDays: 30, mealTiming: null },
+            { kind: 'drug', name: 'Amlodipin 5 mg', dosage: '1 tabletka', frequency: 'Kuniga 1 mahal', durationDays: 30, mealTiming: null },
+            { kind: 'service', serviceId: 11 },
+            { kind: 'lab', labTestId: 'demo-lt-4' },
+        ],
+    },
+];
+
+/* QAYTA KO'RIK (demo) — registratura ro'yxati bo'sh turmasin: to'rtta tayyor
+   qator (bugun, kechikkan, ertaga, yozilgan). Varaqda belgilangani
+   `DEMO_VISITS` dagi `followUpDate` dan qo'shiladi. */
+const demoShiftDay = (days: number) => {
+    const [y, m, d] = todayISO().split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+};
+const demoFollowUps = (): FollowUpRow[] => {
+    const row = (patientId: string, follow: number, visitAgo: number, dx: string, doctor: string, booked?: string): FollowUpRow | null => {
+        const p = DEMO_PATIENTS.find(x => x.id === patientId);
+        if (!p) return null;
+        return {
+            visitId: `demo-fu-${patientId}`, patientId, patientName: `${p.lastName} ${p.firstName}`.trim(),
+            phone: p.phone || null, hasTelegram: !!p.telegramChatId,
+            followUpDate: demoShiftDay(follow), visitDate: demoShiftDay(-visitAgo), doctorName: doctor, diagnosis: dx,
+            booked: booked ? { date: demoShiftDay(follow), time: booked } : null,
+        };
+    };
+    const seeded = [
+        row('demo-patient-1', 0, 21, 'Essensial (birlamchi) gipertenziya', 'Dr. Nilufar Tosheva'),
+        row('demo-patient-3', -3, 30, 'Qandli diabet, 2-tur', 'Dr. Shahnoza Rahmonova'),
+        row('demo-patient-7', 1, 14, 'Dentin kariyesi', 'Dr. Kamola Ahmedova', '14:30'),
+        row('demo-patient-9', 0, 7, "Yuqori nafas yo'llarining o'tkir infeksiyasi", 'Dr. Nilufar Tosheva'),
+    ].filter((x): x is FollowUpRow => !!x);
+    const fromSheet = DEMO_VISITS.filter(v => v.followUpDate && v.status !== 'Cancelled').map(v => {
+        const p = DEMO_PATIENTS.find(x => x.id === v.patientId);
+        return {
+            visitId: v.id, patientId: v.patientId, patientName: p ? `${p.lastName} ${p.firstName}`.trim() : '',
+            phone: p?.phone || null, hasTelegram: !!p?.telegramChatId, followUpDate: v.followUpDate!, visitDate: v.date,
+            doctorName: v.doctorName || null, diagnosis: null, booked: null,
+        } as FollowUpRow;
+    });
+    const from = demoShiftDay(-30), to = demoShiftDay(3);
+    return [...seeded.filter(r => !fromSheet.some(x => x.patientId === r.patientId)), ...fromSheet]
+        .filter(r => r.followUpDate >= from && r.followUpDate <= to)
+        .sort((a, b) => a.followUpDate.localeCompare(b.followUpDate));
+};
+
+/* Namoyishda Telegramga PDF: haqiqiy yuborish yo'q, holat xotirada.
+   Botga ulanmagan namoyish bemori serverdagidek 409 NO_TELEGRAM oladi. */
+const demoSentDocs = new Map<string, string>();
+const demoSentStatus = (patientId: string): SentDocsStatus => {
+    const p = DEMO_PATIENTS.find(x => x.id === patientId);
+    const sent: Record<string, string> = {};
+    for (const [k, v] of demoSentDocs) if (k.startsWith(`${patientId}|`)) sent[k.slice(patientId.length + 1)] = v;
+    return { bot: !!DEMO_CLINIC.botToken, linked: !!p?.telegramChatId, sent };
+};
+const demoSendDoc = async (kind: 'rx' | 'lab', id: string, patientId?: string | null) => {
+    await new Promise(r => setTimeout(r, 500));
+    const p = DEMO_PATIENTS.find(x => x.id === patientId);
+    if (!p?.telegramChatId) {
+        const err: any = new Error('Bemor botga ulanmagan');
+        err.status = 409; err.data = { code: 'NO_TELEGRAM' };
+        throw err;
+    }
+    /* Klinika tasdiqlashni yoqqan — tasdiqlanmagan natija ketmaydi (server qoidasi) */
+    const labOrder: any = kind === 'lab' ? DEMO_LAB_ORDERS.find(o => o.id === id) : null;
+    if (labOrder && (DEMO_CLINIC as any).labVerifyRequired && !labOrder.verifiedAt) {
+        const err: any = new Error('Natija hali tasdiqlanmagan');
+        err.status = 409; err.data = { code: 'NOT_VERIFIED' };
+        throw err;
+    }
+    const sentAt = new Date().toISOString();
+    demoSentDocs.set(`${p.id}|${kind}:${id}`, sentAt);
+    return { success: true as const, sentAt };
+};
+
 const saveDemoState = () => {
     if (!isDemoMode()) return;
     try {
@@ -1516,6 +1856,7 @@ const saveDemoState = () => {
             labTests: DEMO_LAB_TESTS, templates: DEMO_ENCOUNTER_TEMPLATES,
             recipes: DEMO_RECIPES, orderItems: DEMO_ORDER_ITEMS,
             resultValues: DEMO_RESULT_VALUES,
+            treatmentTemplates: DEMO_TREATMENT_TEMPLATES,
         }));
     } catch { /* saqlanmasa ham sessiya davomida ishlayveradi */ }
 };
@@ -1547,6 +1888,7 @@ const saveDemoState = () => {
             if (tpl.id === 'demo-tpl-1') tpl.fields = (tpl.fields || []).filter(f => f.key !== 'complaints');
         });
         replaceAll(DEMO_RECIPES, s.recipes);
+        if (Array.isArray(s.treatmentTemplates)) replaceAll(DEMO_TREATMENT_TEMPLATES, s.treatmentTemplates);
         if (s.orderItems) Object.assign(DEMO_ORDER_ITEMS, s.orderItems);
         if (s.resultValues) Object.assign(DEMO_RESULT_VALUES, s.resultValues);
     } catch { try { localStorage.removeItem(DEMO_STATE_KEY); } catch { /* ignore */ } }
@@ -2479,7 +2821,7 @@ export const api = {
            SANA CHEGARASISIZ keladi, ya'ni karta 45 kunlik oynaga bog'liq
            emas. Parametrsiz chaqiruv ilgarigidek ishlaydi. */
         getAll: (clinicId: string, range?: { from?: string; to?: string; limit?: number; patientId?: string; doctorId?: string }) => {
-            if (isDemoMode()) return Promise.resolve(DEMO_APPOINTMENTS);
+            if (isDemoMode()) { demoSeedRequests(); return Promise.resolve(DEMO_APPOINTMENTS); }
             const q = new URLSearchParams({ clinicId });
             if (range?.from) q.set('from', range.from);
             if (range?.to) q.set('to', range.to);
@@ -2487,6 +2829,28 @@ export const api = {
             if (range?.patientId) q.set('patientId', range.patientId);
             if (range?.doctorId) q.set('doctorId', range.doctorId);
             return fetchJson<Appointment[]>(`/appointments?${q}`);
+        },
+        /** Saytdan/botdan kelgan so'rovni tasdiqlash; `date/time` — «Boshqa vaqt» */
+        confirmRequest: (id: string, change?: { date: string; time: string }) => {
+            if (isDemoMode()) {
+                const a: any = DEMO_APPOINTMENTS.find(x => x.id === id);
+                if (!a || a.status !== 'Requested') return Promise.reject(Object.assign(new Error("Bu yozuv tasdiq kutmayapti"), { status: 409 }));
+                Object.assign(a, { status: 'Confirmed', ...(change || {}) });
+                saveDemoData();
+                return demoDone({ success: true as const, notified: 'sent' as const });
+            }
+            return fetchJson<{ success: true; notified: 'rule' | 'sent' | null }>(`/appointments/${id}/confirm`, {
+                method: 'POST', body: JSON.stringify(change || {}),
+            });
+        },
+        rejectRequest: (id: string) => {
+            if (isDemoMode()) {
+                const a: any = DEMO_APPOINTMENTS.find(x => x.id === id);
+                if (a) a.status = 'Cancelled';
+                saveDemoData();
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/appointments/${id}/reject`, { method: 'POST' });
         },
         create: (data: Omit<Appointment, 'id'>) => {
             if (isDemoMode()) {
@@ -2735,13 +3099,22 @@ export const api = {
     },
     expenses: {
         getAll: (clinicId: string) => {
-            if (isDemoMode()) return Promise.resolve(DEMO_EXPENSES);
+            /* Tasdiq kutayotgan / rad etilgan xarajatlar alohida ro'yxatda —
+               demo hisobotlari va kassa ularni hech qachon sanamasin */
+            if (isDemoMode()) return Promise.resolve([...DEMO_EXPENSES, ...demoHeld()]);
             return fetchJson<Expense[]>(`/expenses?clinicId=${clinicId}`);
         },
         create: (data: Omit<Expense, 'id'>) => {
             if (isDemoMode()) {
                 const newExpense = { ...data, id: `demo-exp-${Date.now()}-${Math.floor(Math.random() * 1000)}` } as Expense;
-                DEMO_EXPENSES.push(newExpense);
+                /* Server qoidasi: ega emas va summa chegaradan katta — egaga */
+                const limit = Number((DEMO_CLINIC as any).expenseApprovalThreshold || 0);
+                if (demoActingRole !== 'CLINIC_ADMIN' && limit > 0 && (newExpense.amount || 0) > limit) {
+                    const held = { ...newExpense, status: 'Pending' as const, requestedByName: 'Demo xodim' };
+                    demoSaveHeld([...demoHeld(), held]);
+                    return Promise.resolve(held);
+                }
+                DEMO_EXPENSES.push({ ...newExpense, status: 'Approved' });
                 saveDemoData();
                 return Promise.resolve(newExpense);
             }
@@ -2749,6 +3122,47 @@ export const api = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data),
+            });
+        },
+        /** Ega: tasdiqlash — xarajat BUGUNGI kunga yoziladi */
+        approve: (id: string) => {
+            if (isDemoMode()) {
+                const row = demoHeld().find(e => e.id === id && e.status === 'Pending');
+                if (!row) return Promise.reject(Object.assign(new Error('Bu xarajat tasdiq kutmayapti'), { status: 409 }));
+                const approved = { ...row, status: 'Approved' as const, date: demoToday(), decidedByName: 'Demo Admin', decidedAt: demoNow() };
+                demoSaveHeld(demoHeld().filter(e => e.id !== id));
+                DEMO_EXPENSES.push(approved);
+                saveDemoData();
+                return demoDone(approved);
+            }
+            return fetchJson<Expense>(`/expenses/${id}/approve`, { method: 'POST' });
+        },
+        /** Ega: rad etish — yozuv qoladi, hech qayerda sanalmaydi */
+        reject: (id: string) => {
+            if (isDemoMode()) {
+                const list = demoHeld();
+                const row = list.find(e => e.id === id && e.status === 'Pending');
+                if (!row) return Promise.reject(Object.assign(new Error('Bu xarajat tasdiq kutmayapti'), { status: 409 }));
+                const rejected = { ...row, status: 'Rejected' as const, decidedByName: 'Demo Admin', decidedAt: demoNow() };
+                demoSaveHeld(list.map(e => e.id === id ? rejected : e));
+                return demoDone(rejected);
+            }
+            return fetchJson<Expense>(`/expenses/${id}/reject`, { method: 'POST' });
+        },
+        /** Ega: tasdiq chegarasi va bo'lim byudjetlari */
+        saveSettings: (clinicId: string, data: { expenseApprovalThreshold?: number | null; budgets?: { departmentId: string; monthlyBudget: number | null }[] }) => {
+            if (isDemoMode()) {
+                if (data.expenseApprovalThreshold !== undefined) (DEMO_CLINIC as any).expenseApprovalThreshold = data.expenseApprovalThreshold;
+                for (const b of data.budgets || []) {
+                    const d: any = DEMO_DEPARTMENTS.find(x => x.id === b.departmentId);
+                    if (d) d.monthlyBudget = b.monthlyBudget && b.monthlyBudget > 0 ? b.monthlyBudget : null;
+                }
+                demoSaveBudgets();
+                saveDemoData();
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/clinics/${clinicId}/expense-settings`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
             });
         },
         update: (id: string, data: Partial<Expense>) => {
@@ -3382,6 +3796,17 @@ export const api = {
     },
     // ─── Qabul (Visit) — barcha modullar shunga bog'lanadi ──────────────────
     visits: {
+        /** Qayta ko'rik sanasi; `null` — olib tashlash (`backend/followUps.ts`) */
+        setFollowUp: (visitId: string, date: string | null) => {
+            if (isDemoMode()) {
+                const v = DEMO_VISITS.find(x => x.id === visitId);
+                if (!v) return demoMissing<{ id: string; followUpDate: string | null }>('bu qabul');
+                if (date && date <= v.date) return Promise.reject(new Error("Qayta ko'rik qabuldan keyingi kunga bo'lishi kerak"));
+                v.followUpDate = date;
+                return demoDone({ id: v.id, followUpDate: date });
+            }
+            return fetchJson<{ id: string; followUpDate: string | null }>(`/visits/${visitId}/follow-up`, { method: 'POST', body: JSON.stringify({ date }) });
+        },
         getAll: (params?: { patientId?: string; date?: string; departmentId?: string; status?: string }) => {
             if (isDemoMode()) return demoRead<Visit[]>(DEMO_VISITS.filter(v =>
                 (!params?.patientId || v.patientId === params.patientId)
@@ -4193,7 +4618,124 @@ export const api = {
         },
     },
 
+    /** Saytdan yozilish — bemor sahifasi (`/book`, kirishsiz) */
+    publicBooking: {
+        info: (clinicId?: string) => {
+            /* Bemor sahifasida sessiya yo'q — namoyish build'ini o'zi taniydi */
+            if (isDemoMode() || IS_DEMO_BUILD) return demoRead<PublicBookingInfo>(demoBookingInfo());
+            return fetchJson<PublicBookingInfo>(`/public/booking${clinicId ? `?c=${encodeURIComponent(clinicId)}` : ''}`);
+        },
+        slots: (doctorId: string, date: string, clinicId?: string) => {
+            if (isDemoMode() || IS_DEMO_BUILD) return demoRead<{ times: string[] }>({ times: demoFreeTimes(doctorId, date) });
+            const q = new URLSearchParams({ doctorId, date, ...(clinicId ? { c: clinicId } : {}) });
+            return fetchJson<{ times: string[] }>(`/public/booking/slots?${q}`);
+        },
+        create: (data: { doctorId: string; date: string; time: string; name: string; phone: string; website?: string; c?: string }) => {
+            if (isDemoMode() || IS_DEMO_BUILD) {
+                const d: any = DEMO_DOCTORS.find(x => x.id === data.doctorId);
+                const digits = String(data.phone || '').replace(/\D/g, '');
+                if (!d) return Promise.reject(Object.assign(new Error('Shifokor topilmadi'), { status: 404 }));
+                if (String(data.name || '').trim().length < 2) return Promise.reject(Object.assign(new Error('Ismingizni yozing'), { status: 400 }));
+                if (!(digits.length === 9 || (digits.length === 12 && digits.startsWith('998')))) {
+                    return Promise.reject(Object.assign(new Error("Telefon raqami noto'g'ri (+998 XX XXX XX XX)"), { status: 400 }));
+                }
+                if (!demoFreeTimes(data.doctorId, data.date).includes(data.time)) {
+                    return Promise.reject(Object.assign(new Error("Bu vaqt band bo'lib qoldi. Boshqa vaqt tanlang."), { status: 409 }));
+                }
+                const auto = !!(DEMO_CLINIC as any).bookingAutoConfirm;
+                DEMO_APPOINTMENTS.push({
+                    id: demoId('demo-req'), patientId: DEMO_PATIENTS[0]?.id || 'demo-patient-1', patientName: String(data.name).trim(),
+                    doctorId: d.id, doctorName: `Dr. ${d.firstName} ${d.lastName}`, type: 'Konsultatsiya',
+                    date: data.date, time: data.time, duration: 30, status: auto ? 'Confirmed' : 'Requested', source: 'site',
+                    notes: `Saytdan yozildi · ${data.phone}`, clinicId: 'demo-clinic-1',
+                } as any);
+                saveDemoData();
+                return demoDone({ ok: true as const, confirmed: auto });
+            }
+            return fetchJson<{ ok: true; confirmed: boolean }>('/public/booking', { method: 'POST', body: JSON.stringify(data) });
+        },
+    },
+
+    /** Saytdan yozilish sozlamasi (ega) */
+    onlineBooking: {
+        getSettings: () => {
+            if (isDemoMode()) {
+                const c: any = DEMO_CLINIC;
+                return demoRead({ enabled: !!c.onlineBookingEnabled, autoConfirm: !!c.bookingAutoConfirm, url: `${window.location.origin}/#/book` });
+            }
+            return fetchJson<{ enabled: boolean; autoConfirm: boolean; url: string | null }>('/online-booking/settings');
+        },
+        saveSettings: (data: { enabled?: boolean; autoConfirm?: boolean }) => {
+            if (isDemoMode()) {
+                if (data.enabled !== undefined) (DEMO_CLINIC as any).onlineBookingEnabled = data.enabled;
+                if (data.autoConfirm !== undefined) (DEMO_CLINIC as any).bookingAutoConfirm = data.autoConfirm;
+                saveDemoData();
+                return demoDone({ success: true as const, enabled: !!(DEMO_CLINIC as any).onlineBookingEnabled, autoConfirm: !!(DEMO_CLINIC as any).bookingAutoConfirm });
+            }
+            return fetchJson<{ success: true; enabled: boolean; autoConfirm: boolean }>('/online-booking/settings', {
+                method: 'PUT', body: JSON.stringify(data),
+            });
+        },
+    },
+
+    /** Shikoyat va fikrlar (Bugun ekrani, migratsiya 0047) */
+    complaints: {
+        list: () => {
+            if (isDemoMode()) return demoRead<ComplaintsPayload>(demoComplaintsPayload());
+            return fetchJson<ComplaintsPayload>('/complaints');
+        },
+        create: (data: { patientId: string; text: string; assigneeKey?: string | null }) => {
+            if (isDemoMode()) {
+                const p: any = DEMO_PATIENTS.find(x => x.id === data.patientId);
+                if (!p) return Promise.reject(new Error('Bemor topilmadi'));
+                const who = demoAssignees().find(a => a.key === data.assigneeKey);
+                demoComplaints().unshift({
+                    id: demoId('demo-cmp'), source: 'reception', text: data.text, status: 'open', createdAt: demoNow(),
+                    assigneeKey: who?.key || null, assigneeName: who?.name || null, createdByName: 'Demo Admin',
+                    doctorName: null, visitDate: null, rating: null, patientId: p.id,
+                    patientName: `${p.lastName || ''} ${p.firstName || ''}`.trim(), phone: p.phone || null,
+                });
+                return demoDone({ id: demoComplaints()[0].id });
+            }
+            return fetchJson<{ id: string }>('/complaints', { method: 'POST', body: JSON.stringify(data) });
+        },
+        assign: (id: string, assigneeKey: string | null) => {
+            if (isDemoMode()) {
+                const c = demoComplaints().find(x => x.id === id);
+                const who = demoAssignees().find(a => a.key === assigneeKey);
+                if (c) { c.assigneeKey = who?.key || null; c.assigneeName = who?.name || null; }
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/complaints/${id}`, { method: 'PUT', body: JSON.stringify({ assigneeKey }) });
+        },
+        resolve: (id: string, resolution: string) => {
+            if (isDemoMode()) {
+                const c = demoComplaints().find(x => x.id === id);
+                if (!c || c.status !== 'open') return Promise.reject(Object.assign(new Error('Shikoyat allaqachon yopilgan'), { status: 409 }));
+                if (resolution.trim().length < 3) return Promise.reject(Object.assign(new Error('Nima qilinganini yozing'), { status: 400 }));
+                Object.assign(c, { status: 'resolved', resolution: resolution.trim(), resolvedAt: demoNow(), resolvedByName: 'Demo Admin' });
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/complaints/${id}/resolve`, { method: 'POST', body: JSON.stringify({ resolution }) });
+        },
+        setAlert: (clinicId: string, enabled: boolean) => {
+            if (isDemoMode()) {
+                (DEMO_CLINIC as any).complaintAlert = enabled;
+                saveDemoData();
+                return demoDone({ success: true as const, complaintAlert: enabled });
+            }
+            return fetchJson<{ success: true; complaintAlert: boolean }>(`/clinics/${clinicId}/complaint-alert`, {
+                method: 'PUT', body: JSON.stringify({ enabled }),
+            });
+        },
+    },
+
     reports: {
+        /** Bo'lim byudjeti — faqat byudjeti belgilangan bo'limlar (ega) */
+        departmentBudget: (month?: string) => {
+            if (isDemoMode()) return demoRead<DepartmentBudget>(demoDepartmentBudget(month));
+            return fetchJson<DepartmentBudget>(`/reports/department-budget${month ? `?month=${month}` : ''}`);
+        },
         // Bo'lim, manba va tannarx kesimida — server tomonda hisoblanadi
         summary: (from?: string, to?: string) => {
             /* Demo: «Oldingi davrga nisbatan» kartasi (`compare`) bilan BIR XIL
@@ -4906,9 +5448,15 @@ export const api = {
                     `/lab-orders/${orderId}/results`),
         save: (orderId: string, results: { orderItemId: string; parameterId: string; value: string; note?: string }[], enteredBy?: string) => {
             if (isDemoMode()) {
+                let changed = false;
                 for (const r of results) {
-                    DEMO_RESULT_VALUES[`${r.orderItemId}:${r.parameterId}`] = { value: r.value, note: r.note };
+                    const key = `${r.orderItemId}:${r.parameterId}`;
+                    const prev = DEMO_RESULT_VALUES[key];
+                    if (!prev || prev.value !== r.value || (prev.note || null) !== (r.note || null)) changed = true;
+                    DEMO_RESULT_VALUES[key] = { value: r.value, note: r.note, enteredBy };
                 }
+                const touched: any = DEMO_LAB_ORDERS.find(o => o.id === orderId);
+                if (changed && touched?.verifiedAt) { touched.verifiedAt = null; touched.verifiedByName = null; }
                 /* Hamma parametr to'lgan bo'lsa yo'llanma yopiladi — LabOrders
                    ro'yxatidagi holat ham shu bilan o'zgaradi. */
                 const full = demoLabResults(orderId);
@@ -5530,8 +6078,20 @@ export const api = {
             isDemoMode()
                 ? demoRead<Prescription[]>(patientId ? DEMO_PRESCRIPTIONS.filter(p => p.patientId === patientId) : [...DEMO_PRESCRIPTIONS])
                 : fetchJson<Prescription[]>(`/prescriptions${patientId ? `?patientId=${patientId}` : ''}`),
-        create: (data: Partial<Prescription> & { items: Partial<PrescriptionItem>[] }) => {
+        create: (data: Omit<Partial<Prescription>, 'items'> & { items: (Partial<PrescriptionItem> & { allergyAck?: boolean; allergyReason?: string | null })[] }) => {
             if (isDemoMode()) {
+                /* Server qoidasi (backend/multiprofile.ts): tasdiqlanmagan
+                   allergiya mosligi — yozilmaydi; tasdiqlangani izohga tushadi. */
+                const allergies = DEMO_ALLERGIES.filter(a => a.patientId === data.patientId);
+                const hits = (data.items || []).flatMap(it => checkDrugAllergy(String(it.name || ''), allergies)
+                    .map(h => ({ ...h, drug: String(it.name), ack: !!it.allergyAck, reason: it.allergyReason || null })));
+                const unacked = hits.filter(h => !h.ack);
+                if (unacked.length) {
+                    return Promise.reject(new Error(`Bemorda allergiya bor: ${unacked.map(h => `${h.drug} ↔ ${h.allergy}`).join('; ')}`));
+                }
+                const overrideNote = hits.length
+                    ? `Allergiya ogohlantirishi o'tkazildi: ${hits.map(h => `${h.drug} ↔ ${h.allergy}${h.reason ? ` (${h.reason})` : ''}`).join('; ')}`
+                    : null;
                 const rx = {
                     id: demoId('demo-rx'), clinicId: 'demo-clinic-1',
                     patientName: data.patientName || demoName(data.patientId || ''),
@@ -5539,7 +6099,8 @@ export const api = {
                     date: data.date || todayISO(),
                     status: data.status || 'Issued',
                     ...data,
-                    items: (data.items || []).map((it, i) => ({ id: demoId(`demo-rxi-${i}`), ...it })),
+                    notes: [data.notes, overrideNote].filter(Boolean).join(String.fromCharCode(10)) || null,
+                    items: (data.items || []).map(({ allergyAck: _a, allergyReason: _r, ...it }, i) => ({ id: demoId(`demo-rxi-${i}`), ...it })),
                 } as Prescription;
                 DEMO_PRESCRIPTIONS.unshift(rx);
                 return demoDone(rx);
@@ -5553,6 +6114,86 @@ export const api = {
                 return demoDone({ success: true as const });
             }
             return fetchJson<{ success: true }>(`/prescriptions/${id}`, { method: 'DELETE' });
+        },
+    },
+
+    // ─── Qayta ko'rik ro'yxati (registratura) ───────────────────────────────
+    followUps: {
+        list: () => isDemoMode()
+            ? demoRead<{ today: string; rows: FollowUpRow[] }>({ today: todayISO(), rows: demoFollowUps() })
+            : fetchJson<{ today: string; rows: FollowUpRow[] }>('/follow-ups'),
+    },
+
+    // ─── Bemorga Telegramda PDF (retsept, tahlil natijasi) ─────────────────
+    patientDocs: {
+        status: (patientId: string) => isDemoMode()
+            ? demoRead<SentDocsStatus>(demoSentStatus(patientId))
+            : fetchJson<SentDocsStatus>(`/patients/${patientId}/sent-docs`),
+        send: (kind: 'rx' | 'lab', id: string, patientId?: string | null) => {
+            if (isDemoMode()) return demoSendDoc(kind, id, patientId);
+            return fetchJson<{ success: true; sentAt: string }>(
+                kind === 'rx' ? `/prescriptions/${id}/send-telegram` : `/lab-orders/${id}/send-telegram`,
+                { method: 'POST' },
+            );
+        },
+        setLabAutoSend: (clinicId: string, enabled: boolean) => {
+            if (isDemoMode()) {
+                (DEMO_CLINIC as any).labResultAutoSend = enabled;
+                return demoDone({ success: true as const, labResultAutoSend: enabled });
+            }
+            return fetchJson<{ success: true; labResultAutoSend: boolean }>(`/clinics/${clinicId}/lab-auto-send`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled }),
+            });
+        },
+        /** Laboratoriya: natijani tasdiqlash, yorliq o'lchami, «Olindi» da yorliq */
+        setLabSettings: (clinicId: string, data: LabSettings) => {
+            if (isDemoMode()) {
+                Object.assign(DEMO_CLINIC as any, data);
+                saveDemoData();
+                const c: any = DEMO_CLINIC;
+                return demoDone({ success: true as const, labVerifyRequired: !!c.labVerifyRequired, labLabelAuto: !!c.labLabelAuto, labLabelSize: c.labLabelSize || null });
+            }
+            return fetchJson<{ success: true } & LabSettings>(`/clinics/${clinicId}/lab-settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+        },
+    },
+
+    // ─── Davolash to'plami ──────────────────────────────────────────────────
+    treatmentTemplates: {
+        getAll: () => isDemoMode()
+            ? demoRead<TreatmentTemplate[]>([...DEMO_TREATMENT_TEMPLATES].sort((a, b) => b.useCount - a.useCount))
+            : fetchJson<TreatmentTemplate[]>('/treatment-templates'),
+        create: (data: { name: string; icdCodes: string[]; items: TreatmentTemplate['items'] }) => {
+            if (isDemoMode()) {
+                const row: TreatmentTemplate = {
+                    id: demoId('demo-tt'), name: data.name, doctorId: 'demo-doctor-3', shared: false,
+                    icdCodes: data.icdCodes, items: data.items, useCount: 0, createdByName: 'Demo',
+                };
+                DEMO_TREATMENT_TEMPLATES.unshift(row);
+                return demoDone(row);
+            }
+            return fetchJson<TreatmentTemplate>('/treatment-templates', { method: 'POST', body: JSON.stringify(data) });
+        },
+        use: (id: string) => {
+            if (isDemoMode()) {
+                const tpl = DEMO_TREATMENT_TEMPLATES.find(x => x.id === id);
+                if (tpl) { tpl.useCount += 1; tpl.lastUsedAt = new Date().toISOString(); }
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/treatment-templates/${id}/use`, { method: 'POST' });
+        },
+        delete: (id: string) => {
+            if (isDemoMode()) {
+                const i = DEMO_TREATMENT_TEMPLATES.findIndex(x => x.id === id);
+                if (i !== -1) DEMO_TREATMENT_TEMPLATES.splice(i, 1);
+                return demoDone({ success: true as const });
+            }
+            return fetchJson<{ success: true }>(`/treatment-templates/${id}`, { method: 'DELETE' });
         },
     },
 
@@ -6139,6 +6780,7 @@ export const api = {
                 if (!order) return Promise.reject(new Error("Yo'llanma topilmadi."));
                 order.status = 'In-Progress' as LabOrder['status'];
                 order.sampleCollectedAt = demoNow();
+                demoSampleCode(order);
                 saveDemoData();
                 /* To'lanmagan bo'lsa — OGOHLANTIRISH, to'siq emas: qon
                    olingan bo'lsa fakt yozilishi kerak (serverdagi qoida). */
@@ -6152,6 +6794,50 @@ export const api = {
             }
             return fetchJson<{ order: any; unpaidWarning: string | null }>(
                 `/lab-orders/${id}/collect`, { method: 'POST' });
+        },
+        /** Probirka yorlig'i: kod (yo'q bo'lsa beriladi), bemor, namuna turlari */
+        label: (id: string) => {
+            if (isDemoMode()) {
+                const order: any = DEMO_LAB_ORDERS.find(o => o.id === id);
+                if (!order) return Promise.reject(new Error("Yo'llanma topilmadi."));
+                const code = demoSampleCode(order);
+                saveDemoData();
+                const patient: any = DEMO_PATIENTS.find(x => x.id === order.patientId);
+                const groups = new Map<string, string[]>();
+                for (const it of order.items || []) {
+                    const test: any = DEMO_LAB_TESTS.find(x => x.id === it.testId);
+                    const sample = test?.sampleType || 'Namuna';
+                    if (!groups.has(sample)) groups.set(sample, []);
+                    groups.get(sample)!.push(test?.code || it.testName || '');
+                }
+                return demoDone<LabLabelData>({
+                    code,
+                    patientName: patient ? `${patient.lastName || ''} ${patient.firstName || ''}`.trim() : order.patientName,
+                    dob: patient?.dob || null, gender: patient?.gender || null,
+                    at: order.sampleCollectedAt || order.orderedAt,
+                    groups: Array.from(groups.entries()).map(([sample, tests]) => ({ sample, tests })),
+                    size: (DEMO_CLINIC as any).labLabelSize || '40x30',
+                });
+            }
+            return fetchJson<LabLabelData>(`/lab-orders/${id}/label`, { method: 'POST' });
+        },
+        /** Natijani tasdiqlash (klinika «tasdiqlash» ni yoqqan bo'lsa) */
+        verify: (id: string, myName?: string) => {
+            if (isDemoMode()) {
+                const order: any = DEMO_LAB_ORDERS.find(o => o.id === id);
+                if (!order) return Promise.reject(new Error("Yo'llanma topilmadi."));
+                const fail = (msg: string, code: string) => {
+                    const err: any = new Error(msg); err.status = 409; err.data = { error: msg, code }; return Promise.reject(err);
+                };
+                if (!(DEMO_CLINIC as any).labVerifyRequired) return fail("Tasdiqlash sozlamasi o'chiq", 'VERIFY_OFF');
+                if (order.status !== 'Completed') return fail('Hamma natija kiritilmagan', 'NOT_COMPLETE');
+                order.verifiedAt = demoNow();
+                order.verifiedByName = myName || 'Demo Admin';
+                saveDemoData();
+                return demoDone({ success: true as const, verifiedAt: order.verifiedAt, verifiedByName: order.verifiedByName });
+            }
+            return fetchJson<{ success: true; verifiedAt: string; verifiedByName: string | null }>(
+                `/lab-orders/${id}/verify`, { method: 'POST' });
         },
         create: (data: any) => {
             if (isDemoMode()) {

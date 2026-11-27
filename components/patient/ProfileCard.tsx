@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { AlertTriangle, BedDouble, Calendar, CalendarClock, Camera, Edit, HeartPulse, History, Plus, Printer, Send, UserPlus, Wallet } from 'lucide-react';
+import { AlertTriangle, BedDouble, Calendar, CalendarClock, Camera, Edit, HeartPulse, History, Plus, Printer, Send, UserPlus, Wallet, MessageSquareWarning } from 'lucide-react';
 import { Patient } from '../../types';
 import { getFileUrl } from '../../services/api';
 import { useLanguage, fill } from '../../context/LanguageContext';
@@ -60,6 +60,8 @@ interface Props {
     onAssignDoctor: () => void;
     onPrintCard: () => void;
     onUploadPhoto: (file: File) => void;
+    /** «Shikoyat yozish» — faqat ruxsati borga beriladi (2026-11-26) */
+    onComplaint?: () => void;
 }
 
 const iconBtn = 'w-11 h-11 grid place-items-center text-muted hover:text-primary-700 dark:hover:text-primary-300 hover:bg-elevated transition-colors';
@@ -67,7 +69,7 @@ const chip = 'inline-flex items-center gap-1.5 min-h-7 px-2.5 rounded-lg text-[1
 
 export const ProfileCard: React.FC<Props> = ({
     patient, showPhone, showMoney, due, lastVisit, allergiesUnknown = false, allergies = [], chronic = [], admitted = false,
-    nextAppointment, onOpenPayments, onTakePayment, onAddPayment, onSchedule, onEdit, onMessage, onAssignDoctor, onPrintCard, onUploadPhoto,
+    nextAppointment, onOpenPayments, onTakePayment, onAddPayment, onSchedule, onEdit, onMessage, onAssignDoctor, onPrintCard, onUploadPhoto, onComplaint,
 }) => {
     const { t } = useLanguage();
     const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -196,6 +198,12 @@ export const ProfileCard: React.FC<Props> = ({
                             aria-label={t('patientdetails.karta_vipiska')} title={t('patientdetails.karta_vipiska')}>
                             <Printer className="w-4 h-4" />
                         </button>
+                        {onComplaint && (
+                            <button type="button" onClick={onComplaint} className={iconBtn}
+                                aria-label={t('cmp.write')} title={t('cmp.write')}>
+                                <MessageSquareWarning className="w-4 h-4" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

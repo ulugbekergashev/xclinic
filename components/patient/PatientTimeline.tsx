@@ -8,6 +8,7 @@ import type { TranslationKey } from '../../i18n/translations';
 import { formatDate, formatDateMedium, formatTime } from '../../utils/format';
 import { todayISO } from '../../utils/dateUtils';
 import { printPrescription } from '../../utils/printForms';
+import { SendDocButton } from '../SendDocButton';
 import {
     buildTimeline, dayOf, filterTimeline, TimelineEntry, TimelineFilter, TimelineStay,
 } from '../../utils/patientTimeline';
@@ -145,6 +146,7 @@ export const PatientTimeline: React.FC<Props> = ({
                                     className="shrink-0 w-6 h-6 grid place-items-center rounded-md text-faint hover:text-primary-600 hover:bg-surface">
                                     <Printer className="w-3.5 h-3.5" />
                                 </button>
+                                <SendDocButton kind="rx" id={rx.id} patientId={patient.id} />
                             </p>
                         ))}
                         {(v.procedures || []).length > 0 && (

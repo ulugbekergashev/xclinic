@@ -11,7 +11,7 @@
 import React from 'react';
 import {
     AlarmClock, CalendarPlus, Cake, UserX, MessageCircle, UserPlus, Wallet,
-    RotateCcw, Receipt, Zap, Send, Smartphone, type LucideIcon,
+    RotateCcw, Receipt, Zap, Send, Smartphone, CalendarClock, type LucideIcon,
 } from 'lucide-react';
 import type { AudienceSegment, MessageChannel } from '../../types';
 import { tr, fill } from '../../context/LanguageContext';
@@ -104,6 +104,7 @@ const TRIGGER_ICONS: Record<string, LucideIcon> = {
     payment_received: Wallet,
     recall: RotateCcw,
     debt_reminder: Receipt,
+    follow_up: CalendarClock,
 };
 export const triggerIcon = (id: string): LucideIcon => TRIGGER_ICONS[id] || Zap;
 
@@ -153,6 +154,10 @@ const sourceLabels = (): Record<string, string> => ({
     new_patient: tr('reception.newPatient'),
     payment_received: tr('msg.source.payment'),
     recall: tr('msg.source.recall'),
+    follow_up: tr('msg.source.followUp'),
+    FollowUp: tr('msg.source.followUp'),
+    lab_auto: tr('msg.source.labAuto'),
+    Document: tr('msg.source.document'),
     debt_reminder: tr('messagesmanagement.qarz_eslatma'),
     debt: tr('messagesmanagement.qarz_eslatma'),
     birthday: tr('messagesmanagement.tugilgan_kun'),

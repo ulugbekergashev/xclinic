@@ -27,7 +27,7 @@ const BASE = `http://localhost:${PORT}`;
 
 /* Tartib qat'iy: integrity oxirida (yuqoridagi sababga ko'ra),
    auth va restore esa alohida shart talab qiladi — pastda. */
-const SUITES = ['permissions', 'consistency', 'icd10', 'attendance', 'patientstats', 'servicestats', 'license', 'templates', 'scheduling', 'staff', 'hr', 'expiry', 'validation', 'visitclose', 'inpatient', 'todayzones', 'payments', 'moneybugs', 'stock', 'patients', 'anamnesis', 'vrach', 'events', 'money', 'security', 'integrity', 'network'];
+const SUITES = ['permissions', 'consistency', 'icd10', 'attendance', 'patientstats', 'servicestats', 'treatment', 'followup', 'docsend', 'printlayout', 'labverify', 'expenseapproval', 'complaints', 'booking', 'license', 'templates', 'scheduling', 'staff', 'hr', 'expiry', 'validation', 'visitclose', 'inpatient', 'todayzones', 'payments', 'moneybugs', 'stock', 'patients', 'anamnesis', 'vrach', 'events', 'money', 'security', 'integrity', 'network'];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -153,6 +153,11 @@ async function main() {
                    qilingach bu dev kompyuterning manzilini sinov bazasidagi
                    kalitga bog'lab qo'yardi. Yopiq port — so'rov darhol yiqiladi. */
                 XCLINIC_TUNNEL_REGISTRAR: 'http://127.0.0.1:9/disabled',
+                /* Telegram ham CHAQIRILMAYDI: `docsend` to'plami shu portda soxta
+                   Telegram ochadi. Boshqa to'plamlarda port yopiq — so'rov darhol yiqiladi. */
+                TELEGRAM_API_BASE: 'http://127.0.0.1:3089',
+                /* Saytdan yozilish: localhost'dan ko'p so'rov — chegara sinovni to'smasin */
+                BOOKING_POSTS_PER_HOUR: '200',
             },
             stdio: 'ignore',
         });

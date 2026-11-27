@@ -8,6 +8,7 @@ import { Button, Badge, Modal } from '../components/Common';
 import { EncounterSummary } from '../components/EncounterForm';
 import { PatientPhotos } from '../components/PatientPhotos';
 import { ProfileCard } from '../components/patient/ProfileCard';
+import { ComplaintModal } from '../components/patient/ComplaintModal';
 import { PatientTimeline } from '../components/patient/PatientTimeline';
 import { Anamnesis, ClinicalSummary } from '../components/patient/Anamnesis';
 import type { AnamnesisData } from '../components/patient/anamnesisData';
@@ -143,7 +144,7 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
    const patientId = patientIdProp || patientIdParam || null;
    /* `?visit=` — «Mening navbatim» dan yoki eski `/visit/:id` havolasidan
       kelgan aniq qabul. Bo'lmasa bugungi ochiq qabul o'zi tanlanadi. */
-   const [searchParams] = useSearchParams();
+   const [searchParams, setSearchParams] = useSearchParams();
    const requestedVisitId = searchParams.get('visit');
    const { t, language } = useLanguage();
 
@@ -328,6 +329,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
 
    // Message Modal State
    const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+   /* Shikoyat yozish (2026-11-26) */
+   const [complaintOpen, setComplaintOpen] = useState(false);
    /* Xabar oynasi — YAGONA komponent (`SendMessageModal`). Bu yerda o'z
       nusxasi va KODGA YOZILGAN matnlari bor edi. Ular orasida «qarz
       eslatmasi» ham bor edi va u qarzni `Transaction.status === 'Pending'`
@@ -342,6 +345,16 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
       AYNAN solishtirardi, ya'ni 08:30 dagi bir soatlik qabul ustiga
       09:00 ni yozib bo'laverardi. Tekshiruv endi faqat serverda. */
    const [isApptModalOpen, setIsApptModalOpen] = useState(false);
+   /* `?book=1` — «Bugun» dagi qayta ko'rik ro'yxatidan «Vaqtga yozish»:
+      karta yozish oynasi ochiq holda ochiladi (2026-11-26). */
+   const wantBook = searchParams.get('book') === '1';
+   useEffect(() => {
+      if (!wantBook) return;
+      setIsApptModalOpen(true);
+      /* Belgi URL dan olinadi: F5 yoki «Orqaga» oynani qayta ochmasin */
+      setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('book'); return next; }, { replace: true });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [wantBook]);
 
 
    // Diagnosis State
@@ -790,6 +803,8 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                onSchedule={openApptModal}
                onEdit={() => setIsEditModalOpen(true)}
                onMessage={() => setIsMessageModalOpen(true)}
+               onComplaint={userRole === UserRole.CLINIC_ADMIN || perms.flag('patients', 'complaints')
+                  ? () => setComplaintOpen(true) : undefined}
                onAssignDoctor={() => setIsAssignDoctorModalOpen(true)}
                onPrintCard={() => printPatientCard({
                   patient,
@@ -1164,6 +1179,9 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
                 Endi xizmat uchun to'lov faqat `ChargePaymentModal` orqali
                 (yuqoridagi «To'lov qabul qilish»), avans esa
                 `AdvanceModal` orqali ketadi. */}
+
+            <ComplaintModal isOpen={complaintOpen} onClose={() => setComplaintOpen(false)}
+               patientId={patient.id} patientName={`${patient.lastName || ''} ${patient.firstName || ''}`.trim()} />
 
             {/* Xabar — yagona oyna: shablonlar bazadan, qarz serverdan. */}
             <SendMessageModal

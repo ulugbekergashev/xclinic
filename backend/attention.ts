@@ -206,6 +206,23 @@ export function registerAttentionRoutes(app: express.Express, deps: Deps) {
                 });
             }
 
+            /* ── 1c. TASDIQ KUTAYOTGAN XARAJAT (migratsiya 0048) ─────────
+               Faqat ega chegara qo'ygan bo'lsa paydo bo'ladi. */
+            const pendingExpenses = await prisma.expense.findMany({
+                where: { clinicId, status: 'Pending' }, select: { amount: true },
+            });
+            if (pendingExpenses.length) {
+                const sum = som(pendingExpenses.reduce((s: number, e: any) => s + (e.amount || 0), 0));
+                items.push({
+                    key: 'expense_pending',
+                    level: 'medium',
+                    title: `${pendingExpenses.length} ta xarajat tasdiq kutmoqda`,
+                    hint: `Jami ${sum.toLocaleString('ru-RU').replace(/,/g, ' ')} so'm`,
+                    count: pendingExpenses.length,
+                    link: '/finance',
+                });
+            }
+
             /* ── 2. Yopilmagan smena ────────────────────────────────────
                Kassa harakati BO'LGAN, lekin yopilish yozuvi YO'Q kun. */
             const closed = new Set(closedDays.map((d: any) => d.date));

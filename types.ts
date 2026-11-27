@@ -109,7 +109,10 @@ export interface Appointment {
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   duration: number; // minutes
-  status: 'Confirmed' | 'Pending' | 'Completed' | 'Cancelled' | 'No-Show' | 'Checked-In';
+  /** 'Requested' — saytdan/botdan kelgan, registrator hali tasdiqlamagan (0046) */
+  status: 'Confirmed' | 'Pending' | 'Completed' | 'Cancelled' | 'No-Show' | 'Checked-In' | 'Requested';
+  /** Qayerdan yozilgan: 'site' | 'bot' | null (xodim). Migratsiya 0046 */
+  source?: string | null;
   reminderSent?: boolean;
   notes?: string;
   clinicId: string;
@@ -162,6 +165,11 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 };
 
 export interface Expense {
+  /** Approved | Pending | Rejected (migratsiya 0048). Yo'q — Approved. */
+  status?: 'Approved' | 'Pending' | 'Rejected';
+  requestedByName?: string | null;
+  decidedByName?: string | null;
+  decidedAt?: string | null;
   id: string;
   date: string;
   amount: number;
@@ -563,6 +571,25 @@ export interface Clinic {
   /* Bazada bor (`model Clinic`, `telegramChatId`) va Sozlamalarda
      ishlatiladi, lekin e'lon qilinmagan edi. */
   telegramChatId?: string | null;
+  /** Tahlil natijasi tayyor bo'lganda bemorga PDF o'zi ketadi. Migratsiya 0043. */
+  labResultAutoSend?: boolean;
+  /** Oldindan bosilgan blanka: chekkalar (mm) va shapkasiz chop etish. Migratsiya 0044. */
+  printTopMm?: number | null;
+  printBottomMm?: number | null;
+  printSideMm?: number | null;
+  printHideHeader?: boolean;
+  /** Laboratoriya (migratsiya 0045): natijani tasdiqlash, yorliq o'lchami va
+   *  «Olindi» bosilganda yorliq o'zi chiqishi. Hammasi dastlab o'chiq. */
+  labVerifyRequired?: boolean;
+  labLabelSize?: string | null;
+  labLabelAuto?: boolean;
+  /** Shu summadan katta xarajat egaga tasdiqqa boradi. null — o'chiq. Migratsiya 0048. */
+  expenseApprovalThreshold?: number | null;
+  /** Past baho kelganda egaga Telegram xabar. Migratsiya 0047. */
+  complaintAlert?: boolean;
+  /** Saytdan yozilish va avtomatik tasdiq. Migratsiya 0046 */
+  onlineBookingEnabled?: boolean;
+  bookingAutoConfirm?: boolean;
   eskizEmail?: string;
   hasPassword?: boolean;
   isConnected?: boolean;
@@ -745,6 +772,8 @@ export interface Visit {
   objectiveText?: string | null;
   diagnosis?: string;
   treatmentPlan?: string;
+  /** Qayta ko'rik sanasi YYYY-MM-DD (migratsiya 0042) */
+  followUpDate?: string | null;
   /** Yo'naltirish (migratsiya 0040): NULL — o'zi keldi */
   referralSource?: 'Internal' | 'External' | null;
   referredFromVisitId?: string | null;
@@ -867,6 +896,13 @@ export interface LabOrder {
   /** Shifokor natijani ochib ko'rgan payt. null — hali ko'rilmagan
    *  (navbatdagi "Natija tayyor" belgisi shunga qaraydi). Migratsiya 0009. */
   seenByDoctorAt?: string | null;
+  /** Probirka kodi — faqat raqam, YYMMDD + kunlik tartib. Migratsiya 0045. */
+  sampleCode?: string | null;
+  /** Natijani tasdiqlagan (klinika yoqqan bo'lsa). Migratsiya 0045. */
+  verifiedAt?: string | null;
+  verifiedByName?: string | null;
+  /** Natija ko'rinishida: klinika tasdiqlashni yoqqanmi */
+  verifyRequired?: boolean;
 }
 
 export interface LabOrderItem {
@@ -946,6 +982,8 @@ export const DEPARTMENT_TYPE_LABELS: Record<DepartmentType, string> = {
 
 /** Bo'lim — ko'p profilli klinikaning asosiy o'lchovi */
 export interface Department {
+  /** Oylik xarajat byudjeti. null — yo'q. Migratsiya 0048. */
+  monthlyBudget?: number | null;
   id: string;
   clinicId: string;
   name: string;
@@ -1167,6 +1205,29 @@ export interface PrescriptionItem {
   frequency?: string | null;
   durationDays?: number | null;
   instructions?: string | null;
+  /** Ovqatga nisbatan: 'before' | 'with' | 'after' (migratsiya 0041) */
+  mealTiming?: MealTiming | null;
+}
+
+export type MealTiming = 'before' | 'with' | 'after';
+
+/** Davolash to'plami — tashxisga odatdagi dori, xizmat, tahlil (`backend/treatmentTemplates.ts`) */
+export type TreatmentTemplateItem =
+  | { kind: 'drug'; name: string; medicationId?: string | null; dosage?: string | null; frequency?: string | null; durationDays?: number | null; mealTiming?: MealTiming | null; instructions?: string | null }
+  | { kind: 'service'; serviceId: number }
+  | { kind: 'lab'; labTestId: string };
+
+export interface TreatmentTemplate {
+  id: string;
+  name: string;
+  doctorId: string | null;
+  /** Klinikaniki (ega yaratgan) — hamma shifokorga ko'rinadi */
+  shared: boolean;
+  icdCodes: string[];
+  items: TreatmentTemplateItem[];
+  useCount: number;
+  lastUsedAt?: string | null;
+  createdByName?: string | null;
 }
 
 export interface InventoryBatch {

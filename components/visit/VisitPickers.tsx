@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, AlertTriangle } from 'lucide-react';
 import {
-    Department, Doctor, InventoryItem, LabTest, Modality, MODALITY_LABELS, Service,
+    Department, Doctor, InventoryItem, LabTest, MealTiming, Modality, MODALITY_LABELS, Service,
 } from '../../types';
+import { checkDrugAllergy, AllergyLike, AllergyHit } from '../../shared/allergyMatch';
 import { useLanguage, fill } from '../../context/LanguageContext';
 import { formatNumber } from '../../utils/format';
 import { pickableDoctors } from '../DoctorPicker';
@@ -17,9 +18,21 @@ const sendCls = 'px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bol
 
 export interface StudyDraft { modality: Modality; name: string; price: string; serviceId: string }
 export interface ConsultDraft { departmentId: string; doctorId: string; reason: string }
-export interface RxDraft { name: string; dosage: string; frequency: string; durationDays: string }
+export interface RxDraft {
+    name: string; dosage: string; frequency: string; durationDays: string;
+    /** Ovqatga nisbatan (2026-11-26) */
+    mealTiming?: MealTiming | null;
+    /** Allergiya ogohlantirishini shifokor ko'rdi va baribir yozdi */
+    allergyAck?: boolean;
+    allergyReason?: string | null;
+}
 
-const EMPTY_RX: RxDraft = { name: '', dosage: '', frequency: '', durationDays: '' };
+const EMPTY_RX: RxDraft = { name: '', dosage: '', frequency: '', durationDays: '', mealTiming: null };
+
+/** Ovqat vaqti tugmalari va matni — varaq, ro'yxat va chop etish bitta kalitdan */
+export const MEAL_KEYS: Record<MealTiming, string> = {
+    before: 'visit.meal.before', with: 'visit.meal.with', after: 'visit.meal.after',
+};
 
 export const LabPicker: React.FC<{
     tests: LabTest[]; busy: boolean; onSend: (testIds: string[]) => void;
@@ -172,18 +185,82 @@ const FREQUENCIES = [
     { label: '1×', key: 'visit.freq1' },
     { label: '2×', key: 'visit.freq2' },
     { label: '3×', key: 'visit.freq3' },
+    { label: '4×', key: 'visit.freq4' },
 ] as const;
+const MEALS: MealTiming[] = ['before', 'with', 'after'];
+/** «Baribir yozish» dan keyin bir bosishda sabab (ixtiyoriy) */
+const ACK_REASONS = ['visit.allergy.reasonTolerated', 'visit.allergy.reasonUnconfirmed'] as const;
+
+/** Allergiya ogohlantirishi — dori qatorining ostida. To'xtatmaydi:
+    «Boshqa dori» nomni tozalaydi, «Baribir yozish» belgilaydi (jurnalga
+    yoziladi). Jiddiy (Severe) yoki o'sha moddaning o'zi — qizil. */
+const AllergyWarning: React.FC<{
+    hits: AllergyHit[]; drug: string; acked: boolean; reason?: string | null;
+    onOther: () => void; onAck: () => void; onReason: (r: string | null) => void;
+}> = ({ hits, drug, acked, reason, onOther, onAck, onReason }) => {
+    const { t } = useLanguage();
+    const h = hits[0];
+    const severe = h.severity === 'Severe' || h.level === 'direct';
+    if (acked) {
+        return (
+            <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" aria-hidden="true" />
+                <span>{fill(t('visit.allergy.acked'), h.allergy)}</span>
+                {ACK_REASONS.map(k => (
+                    <ChipButton key={k} on={reason === t(k)} onClick={() => onReason(reason === t(k) ? null : t(k))}>
+                        {t(k)}
+                    </ChipButton>
+                ))}
+            </div>
+        );
+    }
+    const why = h.level === 'direct' ? t('visit.allergy.same')
+        : h.level === 'class' ? fill(t('visit.allergy.classOf'), h.group || '')
+            : fill(t('visit.allergy.related'), h.group || '');
+    const tone = severe
+        ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+        : 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-200';
+    return (
+        <div role="alert" className={'flex flex-wrap items-center gap-x-3 gap-y-2 p-2.5 rounded-lg border ' + tone}>
+            <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <div className="flex-1 min-w-[200px] text-[13px] leading-snug">
+                <b className="font-semibold">{fill(t('visit.allergy.title'), h.allergy)}</b>
+                <span className="block">{drug} — {why}{h.severity === 'Severe' ? ' · ' + t('visit.allergy.severe') : ''}</span>
+            </div>
+            <button type="button" onClick={onOther}
+                className={'h-8 px-3 rounded-lg text-[12.5px] font-semibold text-white ' + (severe ? 'bg-red-700 hover:bg-red-800' : 'bg-amber-700 hover:bg-amber-800')}>
+                {t('visit.allergy.other')}
+            </button>
+            <button type="button" onClick={onAck}
+                className="h-8 px-3 rounded-lg border border-current bg-surface text-[12.5px] font-semibold">
+                {t('visit.allergy.anyway')}
+            </button>
+        </div>
+    );
+};
 const DAY_CHOICES = ['3', '5', '7', '10', '14'];
 
 /** Dorilar ombordan taklif qilinadi; erkin matn ham qoladi — omborda yo'q dorini yozish mumkin.
     `recent` — shifokorning oxirgi yozgan dorilari: bitta bosishda butun qator to'ladi. */
 export const RxForm: React.FC<{
     meds: InventoryItem[]; recent?: RxDraft[]; busy: boolean; onSave: (items: RxDraft[]) => void;
-}> = ({ meds, recent = [], busy, onSave }) => {
+    /** Bemorning faol allergiyalari — dori yozilganda solishtiriladi */
+    allergies?: AllergyLike[];
+    /** Oldindan to'ldirilgan qatorlar («O'tgan safar» — allergiyaga mos dori bilan) */
+    initial?: RxDraft[];
+}> = ({ meds, recent = [], busy, onSave, allergies = [], initial }) => {
     const { t } = useLanguage();
-    const [items, setItems] = useState<RxDraft[]>([EMPTY_RX]);
+    const [items, setItems] = useState<RxDraft[]>(() => (initial && initial.length ? initial : [EMPTY_RX]));
+    /* Nom o'zgarsa — oldingi «baribir yozish» boshqa dori uchun edi, bekor */
     const setField = (index: number, patch: Partial<RxDraft>) =>
-        setItems(list => list.map((x, j) => j === index ? { ...x, ...patch } : x));
+        setItems(list => list.map((x, j) => j === index
+            ? { ...x, ...patch, ...('name' in patch && patch.name !== x.name ? { allergyAck: false, allergyReason: null } : {}) }
+            : x));
+    const activeIngredient = (name: string) =>
+        meds.find(m => m.name.trim().toLowerCase() === name.trim().toLowerCase())?.activeIngredient || null;
+    const hitsOf = (it: RxDraft) => (it.name.trim() ? checkDrugAllergy(it.name, allergies, activeIngredient(it.name)) : []);
+    /* Ko'rilmagan ogohlantirish bor ekan — saqlanmaydi (server ham rad etadi) */
+    const blocked = items.some(it => !it.allergyAck && hitsOf(it).length > 0);
     const removeRow = (index: number) =>
         setItems(list => list.length > 1 ? list.filter((_, j) => j !== index) : [EMPTY_RX]);
 
@@ -249,6 +326,13 @@ export const RxForm: React.FC<{
                                     {d} {t('visit.days')}
                                 </ChipButton>
                             ))}
+                            <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
+                            {MEALS.map(m => (
+                                <ChipButton key={m} on={it.mealTiming === m}
+                                    onClick={() => setField(i, { mealTiming: it.mealTiming === m ? null : m })}>
+                                    {t(MEAL_KEYS[m] as any)}
+                                </ChipButton>
+                            ))}
                             {(items.length > 1 || it.name.trim()) && (
                                 <button type="button" onClick={() => removeRow(i)}
                                     aria-label={t('visit.removeMed')} title={t('visit.removeMed')}
@@ -257,13 +341,23 @@ export const RxForm: React.FC<{
                                 </button>
                             )}
                         </div>
+                        {(() => {
+                            const hits = hitsOf(it);
+                            return hits.length > 0 && (
+                                <AllergyWarning hits={hits} drug={it.name.trim()} acked={!!it.allergyAck} reason={it.allergyReason}
+                                    onOther={() => setField(i, { name: '' })}
+                                    onAck={() => setField(i, { allergyAck: true })}
+                                    onReason={r => setField(i, { allergyReason: r })} />
+                            );
+                        })()}
                     </div>
                 ))}
             </div>
             <div className="flex items-center gap-3 mt-3">
                 <button type="button" onClick={() => setItems(list => [...list, EMPTY_RX])}
                     className="text-sm font-semibold text-primary-700 dark:text-primary-300 hover:underline">{t('visit.oneMoreMed')}</button>
-                <button type="button" onClick={() => onSave(items)} disabled={busy || !items.some(i => i.name.trim())} className={`ml-auto ${sendCls}`}>
+                {blocked && <span className="text-[12.5px] text-red-700 dark:text-red-300">{t('visit.allergy.decideFirst')}</span>}
+                <button type="button" onClick={() => onSave(items)} disabled={busy || blocked || !items.some(i => i.name.trim())} className={`ml-auto ${sendCls}`}>
                     {t('visit.saveRx')}
                 </button>
             </div>

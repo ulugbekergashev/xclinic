@@ -18,6 +18,7 @@
 import { prisma } from './db';
 import { resolveSegment } from './segments';
 import { schedulePeriodKey } from './ruleExtras';
+import { followUpRows } from './followUps';
 
 /* Vaqt zonasi yordamchilari ./tashkentTime da — bitta joyda saqlanadi.
    Import — shu fayl ichida ishlatish uchun, export — tashqi import'lar
@@ -478,6 +479,38 @@ export const TRIGGERS: TriggerDef[] = [
                 type: 'DebtReminder',
                 vars: { ...patientName(patient), date: tashkentDateStr(0), clinicName: clinic.name, amount },
             }));
+        },
+    },
+
+    // ── 9. Qayta ko'rik (2026-11-26) ────────────────────────────────────────
+    // Shifokor «3 haftadan keyin keling» deb belgilagan kundan N kun oldin.
+    // Qaytib kelgan yoki allaqachon yozilgan bemorga ketmaydi — ro'yxat va
+    // eslatma bitta qoida bilan (`followUps.ts`).
+    {
+        id: 'follow_up',
+        label: "Qayta ko'rik",
+        sendWindow: { fromHour: 10, toHour: 19 },
+        offset: { label: 'Necha kun oldin', unit: 'day', options: [0, 1, 2, 3], default: 1 },
+        supportsDoctorFilter: true,
+        async findDue(rule, clinic) {
+            const days = rule.hoursBefore ?? 1;
+            const day = tashkentDateStr(days);
+            const rows = await followUpRows(prisma, rule.clinicId, day, day, { doctorId: rule.doctorId || null });
+            const due = rows.filter(r => !r.booked);
+            if (!due.length) return [];
+            const patients = await prisma.patient.findMany({ where: { id: { in: due.map(r => r.patientId) } } });
+            return due.flatMap(r => {
+                const p = patients.find((x: any) => x.id === r.patientId);
+                return p ? [{
+                    patient: p,
+                    /* Sana bilan: shifokor muddatni ko'chirsa, yangi sanaga
+                       ham eslatma ketadi; bitta sanaga — bitta */
+                    refId: `${r.visitId}:${r.followUpDate}`,
+                    type: 'FollowUp',
+                    replyMarkup: { inline_keyboard: [[{ text: '📅 Qabulga yozilish', callback_data: 'start_booking' }]] },
+                    vars: { ...patientName(p), date: r.followUpDate, clinicName: clinic.name, doctorName: r.doctorName || '' },
+                }] : [];
+            });
         },
     },
 ];

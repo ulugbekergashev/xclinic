@@ -69,6 +69,8 @@ export const PUBLIC_PATHS: { method: string; path: string }[] = [
     { method: 'POST', path: '/api/auth/refresh' },
     { method: 'POST', path: '/api/auth/logout' },
     { method: 'POST', path: '/api/public/leads' },
+    /* Saytdan yozilish (0046): sozlama o'chiq bo'lsa 404, IP bo'yicha chegara */
+    { method: 'POST', path: '/api/public/booking' },
 ];
 
 export const RULES: Rule[] = [
@@ -109,6 +111,8 @@ export const RULES: Rule[] = [
     { method: 'PUT', path: '/api/visits/:id', roles: owner(D, R) },
     { method: 'DELETE', path: '/api/visits/:id', roles: owner(R) },
     { method: 'POST', path: '/api/visits/:id/lock', roles: owner(D) },
+    /* Qayta ko'rik sanasi — shifokorning qarori (2026-11-26) */
+    { method: 'POST', path: '/api/visits/:id/follow-up', roles: owner(D) },
     { method: 'POST', path: '/api/visits/:id/procedures', roles: owner(D, R) },
     { method: 'DELETE', path: '/api/visit-procedures/:id', roles: owner(D, R) },
     { method: 'POST', path: '/api/visits/:id/dmed-sync', roles: owner(D, R) },
@@ -124,6 +128,34 @@ export const RULES: Rule[] = [
     { method: 'DELETE', path: '/api/patients/:id/allergies/:allergyId', roles: owner(D, R) },
     { method: 'POST', path: '/api/prescriptions', roles: owner(D) },
     { method: 'DELETE', path: '/api/prescriptions/:id', roles: owner(D) },
+    /* Bemorning Telegramiga PDF (2026-11-26): kim chop eta olsa, o'sha yuboradi */
+    { method: 'POST', path: '/api/prescriptions/:id/send-telegram', roles: owner(D, R) },
+    { method: 'POST', path: '/api/lab-orders/:id/send-telegram', roles: owner(D, L, R) },
+    { method: 'PUT', path: '/api/clinics/:id/lab-auto-send', roles: owner() },
+    /* Probirka yorlig'i va natijani tasdiqlash (2026-11-26, labSamples.ts).
+       Yorliq — proba oladigan kim bo'lsa; tasdiq — ega ochib bergan xodim. */
+    { method: 'POST', path: '/api/lab-orders/:id/label', roles: owner(L, R, N) },
+    { method: 'POST', path: '/api/lab-orders/:id/verify', roles: owner(L, D) },
+    { method: 'PUT', path: '/api/clinics/:id/lab-settings', roles: owner() },
+    /* Xarajatni tasdiqlash va bo'lim byudjeti (2026-11-26, expenseApproval.ts) — faqat ega */
+    { method: 'POST', path: '/api/expenses/:id/approve', roles: owner() },
+    { method: 'POST', path: '/api/expenses/:id/reject', roles: owner() },
+    { method: 'PUT', path: '/api/clinics/:id/expense-settings', roles: owner() },
+    /* Shikoyatlar (2026-11-26, complaints.ts): ishlash — ruxsat berilgan xodim
+       (registratorda standart yoqiq); qayta ochish va xabar sozlamasi — ega */
+    { method: 'POST', path: '/api/complaints', roles: owner(R, D, N, L) },
+    { method: 'PUT', path: '/api/complaints/:id', roles: owner(R, D, N, L) },
+    { method: 'POST', path: '/api/complaints/:id/resolve', roles: owner(R, D, N, L) },
+    { method: 'POST', path: '/api/complaints/:id/reopen', roles: owner() },
+    { method: 'PUT', path: '/api/clinics/:id/complaint-alert', roles: owner() },
+    /* Saytdan kelgan so'rov (2026-11-26, onlineBooking.ts): kim kalendar yozsa — o'sha */
+    { method: 'POST', path: '/api/appointments/:id/confirm', roles: owner(R, D) },
+    { method: 'POST', path: '/api/appointments/:id/reject', roles: owner(R, D) },
+    { method: 'PUT', path: '/api/online-booking/settings', roles: owner() },
+    /* Davolash to'plami (2026-11-26): shifokor o'zinikini, ega klinikanikini */
+    { method: 'POST', path: '/api/treatment-templates', roles: owner(D) },
+    { method: 'POST', path: '/api/treatment-templates/:id/use', roles: owner(D) },
+    { method: 'DELETE', path: '/api/treatment-templates/:id', roles: owner(D) },
     { method: 'POST', path: '/api/referrals', roles: owner(D) },
     { method: 'POST', path: '/api/referrals/:id/use', roles: owner(D, R) },
     { method: 'POST', path: '/api/referrals/:id/cancel', roles: owner(D, R) },
@@ -188,7 +220,10 @@ export const RULES: Rule[] = [
        kiritish — laborantniki. */
     { method: 'POST', path: '/api/lab-orders', roles: owner(R, D) },
     { method: 'PUT', path: '/api/lab-orders/:id', roles: owner(R, D, L) },
-    { method: 'DELETE', path: '/api/lab-orders/:id', roles: owner(R) },
+    /* Yuborgan shifokor to'lanmagan yo'llanmani bekor qila oladi (2026-11-26):
+       ilgari yuborish mumkin edi-yu, varaqdagi «×» va to'plamni «Bekor qilish»
+       shifokorga 403 qaytarardi. To'langanini server baribir rad etadi (LAB_PAID). */
+    { method: 'DELETE', path: '/api/lab-orders/:id', roles: owner(R, D) },
     { method: 'POST', path: '/api/lab-orders/:id/collect', roles: owner(L, R, N) },
     { method: 'POST', path: '/api/lab-orders/:id/results', roles: owner(L) },
     // Tahlil turlari spravochnigi — sozlama, egada.
@@ -528,9 +563,16 @@ export const PERM_ROUTES: PermRoute[] = [
     /* Laboratoriya */
     r('POST', '/api/lab-orders', 'tahlilga yozish', p => p.can('lab', 'orders', 'create') || p.can('patients', 'card', 'edit')),
     r('PUT', '/api/lab-orders/:id', 'buyurtmani o\'zgartirish', p => p.can('lab', 'orders', 'edit') || p.flag('lab', 'results') || p.can('patients', 'card', 'edit')),
-    r('DELETE', '/api/lab-orders/:id', 'buyurtmani o\'chirish', p => p.can('lab', 'orders', 'delete')),
+    r('DELETE', '/api/lab-orders/:id', 'buyurtmani o\'chirish', p => p.can('lab', 'orders', 'delete') || p.can('patients', 'card', 'edit')),
     r('POST', '/api/lab-orders/:id/collect', 'qon olinganini belgilash', p => p.can('lab', 'orders', 'edit')),
     r('POST', '/api/lab-orders/:id/results', 'natija kiritish', p => p.flag('lab', 'results')),
+    r('POST', '/api/lab-orders/:id/label', "probirka yorlig'i", p => p.can('lab', 'orders', 'edit')),
+    r('POST', '/api/lab-orders/:id/verify', 'natijani tasdiqlash', p => p.flag('lab', 'verify')),
+    r('POST', '/api/complaints', 'shikoyat yozish', p => p.flag('patients', 'complaints')),
+    r('POST', '/api/appointments/:id/confirm', "so'rovni tasdiqlash", p => p.can('calendar', 'appts', 'edit')),
+    r('POST', '/api/appointments/:id/reject', "so'rovni rad etish", p => p.can('calendar', 'appts', 'edit')),
+    r('PUT', '/api/complaints/:id', "shikoyatga mas'ul", p => p.flag('patients', 'complaints')),
+    r('POST', '/api/complaints/:id/resolve', 'shikoyatni yopish', p => p.flag('patients', 'complaints')),
 
     /* Diagnostika — yozish. Xulosa (PUT) shifokorniki va RULES da qoladi */
     r('POST', '/api/studies', 'tekshiruvga yozish', p => p.can('diagnostics', 'studies', 'create') || p.can('patients', 'card', 'edit')),

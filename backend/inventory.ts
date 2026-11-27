@@ -15,6 +15,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 import type express from 'express';
+import { needsApproval } from './expenseApproval';
 import { qty, som } from './money';
 import { tashkentDateStr, tashkentRangeBounds } from './tashkentTime';
 import { createCharge } from './billing';
@@ -438,6 +439,7 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
            noma'lum tovar uchun nol summali qator faqat aralashtiradi. */
         const totalCost = som((Number(cost) || 0) * qty);
 
+        const held = totalCost > 0 && await needsApproval(prisma, clinicId, (req as any).user, totalCost);
         const { batch, move } = await withRetry<any>('Ombor kirimi', () =>
             prisma.$transaction(async (tx: any) => {
                 const batch = await tx.inventoryBatch.create({
@@ -459,6 +461,10 @@ export function registerInventoryRoutes(app: express.Express, deps: Deps) {
                 if (totalCost > 0) {
                     await tx.expense.create({
                         data: {
+                            /* Xarajat tasdig'i (0048): chegaradan katta kirimni
+                               egadan boshqa xodim yozsa — pul egaga tasdiqqa
+                               boradi; tovar esa omborga darhol tushadi */
+                            ...(held ? { status: 'Pending', requestedByName: (req as any).user?.name || null } : {}),
                             clinicId,
                             date: tashkentDateStr(),
                             category: 'Inventory',

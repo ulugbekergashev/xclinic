@@ -107,6 +107,8 @@ export const PERM_MATRIX: MatrixGroup[] = [
             { id: 'phone', name: 'Telefon raqami', hint: "Yo'q bo'lsa: +*** ** *** ** 67", kind: 'flag', special: 'phone',
               opts: seeFlag("Raqam yulduzcha bilan ko'rinadi", "To'liq raqamni ko'radi") },
             { id: 'message', name: 'Bemorga xabar', hint: 'Kartadan SMS yoki Telegram', kind: 'flag', special: 'message', opts: flag('Kartadan SMS yoki Telegram yuboradi') },
+            /* Bugun → «Shikoyat va fikrlar» (2026-11-26) */
+            { id: 'complaints', name: 'Shikoyatlar', hint: "Bemor shikoyatini yozadi, mas'ul tayinlaydi, yopadi", kind: 'flag', special: 'complaints', opts: flag("Shikoyatlar ro'yxati bilan ishlaydi") },
         ],
     },
     {
@@ -168,6 +170,8 @@ export const PERM_MATRIX: MatrixGroup[] = [
               opts: levels('Laboratoriya menyuda chiqmaydi', "Buyurtmalarni ko'radi", "Buyurtma yozadi, qon olinganini belgilaydi", 'vce') },
             { id: 'delete', name: "Buyurtmani o'chirish", kind: 'cells', section: 'orders', mask: 'd', opts: bit('d', "Tahlil buyurtmasini o'chiradi") },
             { id: 'results', name: 'Natija kiritish', kind: 'flag', special: 'results', opts: flag('Tahlil natijasini kiritadi') },
+            /* Sozlamada «natijani tasdiqlash» yoqilgandagina ma'noga ega (2026-11-26) */
+            { id: 'verify', name: 'Natijani tasdiqlash', kind: 'flag', special: 'verify', opts: flag('Boshqa xodim kiritgan natijani tasdiqlaydi') },
         ],
     },
     {

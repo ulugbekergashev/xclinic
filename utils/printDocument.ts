@@ -65,6 +65,39 @@ export interface PrintClinic {
     address?: string | null;
     licenseNumber?: string | null;
     letterheadNote?: string | null;
+    /* Oldindan bosilgan blanka (migratsiya 0044). Joriy klinikadan
+       o'qiladi — chaqiruvchi bergan klinika obyektidan emas: serverdan
+       kelgan `rx.clinic` da bu maydonlar yo'q. */
+    printTopMm?: number | null;
+    printBottomMm?: number | null;
+    printSideMm?: number | null;
+    printHideHeader?: boolean | null;
+}
+
+export interface PrintLayout {
+    topMm: number;
+    bottomMm: number;
+    sideMm: number;
+    hideHeader: boolean;
+}
+
+/** Odatiy chekkalar — sozlama bo'lmaganda avvalgi ko'rinish o'zgarmaydi */
+export const DEFAULT_LAYOUT: PrintLayout = { topMm: 14, bottomMm: 12, sideMm: 14, hideHeader: false };
+
+const mm = (v: unknown, fallback: number, max: number): number => {
+    if (v === null || v === undefined || v === '') return fallback;
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.min(max, Math.max(0, n)) : fallback;
+};
+
+/** Klinika sozlamasidan varaq chekkalari. Brauzersiz sinovda ham ishlaydi. */
+export function layoutFor(clinic?: PrintClinic | null): PrintLayout {
+    return {
+        topMm: mm(clinic?.printTopMm, DEFAULT_LAYOUT.topMm, 80),
+        bottomMm: mm(clinic?.printBottomMm, DEFAULT_LAYOUT.bottomMm, 80),
+        sideMm: mm(clinic?.printSideMm, DEFAULT_LAYOUT.sideMm, 40),
+        hideHeader: !!clinic?.printHideHeader,
+    };
 }
 
 /* Joriy klinika — ilova uni yuklaganda shu yerga yozadi (App.tsx).
@@ -82,7 +115,10 @@ export function resolvePrintClinic(clinic?: PrintClinic | null): PrintClinic | n
 }
 
 /** Hujjat shapkasi: klinika kim ekani va litsenziya raqami */
-export function clinicHeader(clinicArg?: PrintClinic | null): string {
+export function clinicHeader(clinicArg?: PrintClinic | null, layout: PrintLayout = layoutFor(storedClinic)): string {
+    /* Qog'ozda shapka bosmaxonada bosilgan — dastur o'zinikini chiqarmaydi,
+       aks holda ikki shapka ustma-ust tushadi. Bo'sh joy tepa chekkadan. */
+    if (layout.hideHeader) return '';
     const clinic = resolvePrintClinic(clinicArg);
     const line2 = [clinic?.address, clinic?.phone].filter(Boolean).map(esc).join(' · ');
     return `
@@ -112,8 +148,13 @@ export function letterheadFooter(clinicArg?: PrintClinic | null): string {
     return `<div class="foot">${esc(clinic.letterheadNote)}</div>`;
 }
 
+/** `@page` qoidasi — klinika bergan chekkalar bilan */
+export function pageCss(layout: PrintLayout = layoutFor(storedClinic)): string {
+    const { topMm, sideMm, bottomMm } = layout;
+    return `@page { size: A4; margin: ${topMm}mm ${sideMm}mm ${bottomMm}mm ${sideMm}mm; }`;
+}
+
 const BASE_CSS = `
-  @page { size: A4; margin: 14mm 14mm 12mm 14mm; }
   * { box-sizing: border-box; }
   body {
     font-family: "Segoe UI", Arial, sans-serif;
@@ -156,7 +197,7 @@ const BASE_CSS = `
  * Chek oynasi darhol yopiladi, chunki u lentadan chiqadi va tekshirishga
  * hech narsa yo'q.
  */
-export function printDocument(title: string, bodyHtml: string): boolean {
+export function printDocument(title: string, bodyHtml: string, layout?: PrintLayout): boolean {
     const w = window.open('', '_blank', 'width=880,height=1000');
     if (!w) {
         // Brauzer yoki Electron oynani bloklagan — chaqiruvchi xabar bersin
@@ -165,7 +206,7 @@ export function printDocument(title: string, bodyHtml: string): boolean {
     w.document.write(`<!doctype html><html lang="uz"><head>
       <meta charset="utf-8">
       <title>${esc(title)}</title>
-      <style>${BASE_CSS}</style>
+      <style>${pageCss(layout)}${BASE_CSS}</style>
     </head><body>${bodyHtml}</body></html>`);
     w.document.close();
     w.focus();

@@ -25,6 +25,8 @@ import { Modal } from '../components/Common';
 import { ClinicMap } from '../components/ClinicMap';
 import { AttentionList, AttentionItem } from '../components/AttentionList';
 import { TodayZones } from '../components/TodayZones';
+import { FollowUpList } from '../components/FollowUpList';
+import { ComplaintList } from '../components/ComplaintList';
 import { ReferrerField, referrerFields, rememberReferrer } from '../components/visit/ReferrerField';
 
 /* Modul darajasida — har renderda qayta obuna bo'lmasin */
@@ -1177,7 +1179,31 @@ ${routeHtml}
                 enterLabel={t('flow.startVisit')}
                 onUndoEnter={undoEnter}
                 onSeeAll={() => navigate('/calendar')}
+                /* Telefondagi ro'yxat izohlari: allergiya, natija tayyor, yangi bemor */
+                hintsOf={(v) => {
+                    const p: any = v.patient || {};
+                    const allergy = (Array.isArray(p.allergies) ? p.allergies : [])
+                        .map((a: any) => a?.substance).filter(Boolean).join(', ');
+                    const visitsSoFar = p._count?.visits;
+                    return {
+                        allergy: allergy || undefined,
+                        resultReady: readyUnseen.some((r: any) => r.visitId === v.id),
+                        isNew: typeof visitsSoFar === 'number' && visitsSoFar <= 1,
+                    };
+                }}
             />
+        )}
+
+        {/* QAYTA KO'RIKKA CHAQIRISH — shifokor belgilagan bemorlar. Bo'sh
+            bo'lsa blok chiqmaydi (`components/FollowUpList`). */}
+        {canRegister && (
+            <FollowUpList onOpenPatient={(id, book) => navigate(`/patients/${id}${book ? '?book=1' : ''}`)} />
+        )}
+
+        {/* SHIKOYAT VA FIKRLAR — ega va ruxsat berilgan xodim. Bo'sh bo'lsa
+            blok chiqmaydi (`components/ComplaintList`). */}
+        {(isOwner || permsFor(userRole, currentClinic).flag('patients', 'complaints')) && (
+            <ComplaintList onOpenPatient={(id) => navigate(`/patients/${id}`)} />
         )}
 
         {canRegister ? (

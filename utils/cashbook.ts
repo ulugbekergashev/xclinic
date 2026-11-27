@@ -62,6 +62,10 @@ function findDoctorForTransaction(tx: Transaction, doctors: Doctor[]): Doctor | 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const UNASSIGNED_DOCTOR_ID = '__unassigned__';
+
+/** Kassaga tushgan xarajat — tasdiqlangan (yoki holati yo'q, eski yozuv).
+ *  Tasdiq kutayotgan va rad etilgani yashikdan chiqmagan (migratsiya 0048). */
+export const isBookedExpense = (e: { status?: string | null }): boolean => !e.status || e.status === 'Approved';
 export const ADVANCE_COLUMN_ID = '__advance__';
 
 export interface CashBookRow {

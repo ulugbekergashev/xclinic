@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-    Plus, X, Percent, Undo2, AlertCircle, Check, Loader2, CheckCircle, Printer, Wallet,
+    Plus, X, Percent, Undo2, AlertCircle, Check, Loader2, CheckCircle, Printer, Wallet, FileText,
 } from 'lucide-react';
 import { Modal, Button, Input } from './Common';
 import { VisitCharge } from '../types';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { api } from '../services/api';
 import { fmtDateTime, PrintClinic } from '../utils/printDocument';
-import { printReceipt } from '../utils/printReceipt';
+import { printReceipt, printReceiptA4, receiptA4Labels } from '../utils/printReceipt';
 
 import { useLanguage, fill } from '../context/LanguageContext';
 import { permsFor } from '../utils/accessControl';
@@ -188,8 +188,9 @@ export const ChargePaymentModal: React.FC<Props> = ({
         } finally { setSaving(false); }
     };
 
-    const printPaid = (p: Paid) => {
-        const ok = printReceipt({
+    /* Lenta yoki A4 — ma'lumot bitta. A4 ni ishxona yoki tashkilot so'raydi. */
+    const printPaid = (p: Paid, a4 = false) => {
+        const data = {
             title: t('payment.receiptTitle'),
             clinic,
             meta: [
@@ -205,7 +206,8 @@ export const ChargePaymentModal: React.FC<Props> = ({
                 ...(p.left > 0 ? [{ label: t('cpay.leftLabel'), value: `${num(p.left)} ${t('ui.som')}` }] : []),
             ],
             footer: t('receiptmodal.thanks'),
-        });
+        };
+        const ok = a4 ? printReceiptA4(data, receiptA4Labels(t)) : printReceipt(data);
         if (!ok) addToast?.('error', t('print.popupBlocked'));
     };
 
@@ -279,9 +281,15 @@ export const ChargePaymentModal: React.FC<Props> = ({
                             <span className="text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-300">{num(done.total)}</span>
                         </div>
                     </div>
-                    <Button onClick={() => printPaid(done)} className="w-full h-12 text-base" autoFocus>
-                        <Printer className="w-5 h-5" /> {t('payment.printReceipt')}
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button onClick={() => printPaid(done)} className="flex-1 h-12 text-base" autoFocus>
+                            <Printer className="w-5 h-5" /> {t('payment.printReceipt')}
+                        </Button>
+                        <Button variant="secondary" onClick={() => printPaid(done, true)}
+                            className="h-12 px-4" title={t('print.a4Title')}>
+                            <FileText className="w-4 h-4" /> {t('print.a4')}
+                        </Button>
+                    </div>
                     <Button variant="secondary" onClick={onClose} className="w-full">{t('common.close')}</Button>
                 </div>
             </Modal>

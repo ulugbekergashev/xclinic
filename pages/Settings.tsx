@@ -29,6 +29,10 @@ const DEPT_COLORS = [
 
 import { ServiceRecipeEditor } from '../components/ServiceRecipeEditor';
 import { EncounterTemplatesTab } from '../components/EncounterTemplatesTab';
+import { PrintLayoutFields, mmField } from '../components/settings/PrintLayoutFields';
+import { LabSettingsCard } from '../components/lab/LabSettingsCard';
+import { ExpenseControlCard } from '../components/settings/ExpenseControlCard';
+import { OnlineBookingCard } from '../components/settings/OnlineBookingCard';
 import { permsFor } from '../utils/accessControl';
 
 const DOCTOR_COLORS = [
@@ -163,6 +167,11 @@ export const Settings: React.FC<SettingsProps> = ({
       // Bosma blank rekvizitlari (migratsiya 0013)
       licenseNumber: '',
       letterheadNote: '',
+      // Oldindan bosilgan blanka (migratsiya 0044); bo'sh — odatiy chekka
+      printTopMm: '',
+      printBottomMm: '',
+      printSideMm: '',
+      printHideHeader: false,
    });
    const [generalSaved, setGeneralSaved] = useState(false);
 
@@ -230,6 +239,10 @@ export const Settings: React.FC<SettingsProps> = ({
             enableReceipts: currentClinic.enableReceipts ?? false,
             licenseNumber: currentClinic.licenseNumber || '',
             letterheadNote: currentClinic.letterheadNote || '',
+            printTopMm: currentClinic.printTopMm != null ? String(currentClinic.printTopMm) : '',
+            printBottomMm: currentClinic.printBottomMm != null ? String(currentClinic.printBottomMm) : '',
+            printSideMm: currentClinic.printSideMm != null ? String(currentClinic.printSideMm) : '',
+            printHideHeader: !!currentClinic.printHideHeader,
          });
       }
    }, [currentClinic]);
@@ -485,6 +498,10 @@ export const Settings: React.FC<SettingsProps> = ({
             enableReceipts: generalForm.enableReceipts,
             licenseNumber: generalForm.licenseNumber,
             letterheadNote: generalForm.letterheadNote,
+            printTopMm: mmField(generalForm.printTopMm),
+            printBottomMm: mmField(generalForm.printBottomMm),
+            printSideMm: mmField(generalForm.printSideMm),
+            printHideHeader: generalForm.printHideHeader,
          });
 
          if (response && response.id) {
@@ -754,7 +771,9 @@ export const Settings: React.FC<SettingsProps> = ({
 
    React.useEffect(() => {
       if ((activeTab === 'departments' || activeTab === 'services'
-         || activeTab === 'templates' || activeTab === 'labCatalog')
+         || activeTab === 'templates' || activeTab === 'labCatalog'
+         /* Umumiy: xarajat nazorati kartasida bo'lim byudjetlari */
+         || (activeTab === 'general' && userRole === UserRole.CLINIC_ADMIN))
          && canClinicEdit) loadDepartments();
       if (activeTab === 'services' && inventoryItems.length === 0 && currentClinic?.id) {
          api.inventory.getAll(currentClinic.id).then(setInventoryItems).catch(() => setInventoryItems([]));
@@ -1030,6 +1049,12 @@ export const Settings: React.FC<SettingsProps> = ({
                 {/* General Tab */}
                {activeTab === 'general' && (
                   <div className="space-y-6">
+                     {/* XARAJAT NAZORATI (2026-11-26): tasdiq chegarasi va bo'lim
+                         byudjeti — faqat ega; ikkalasi ham dastlab bo'sh */}
+                     {userRole === UserRole.CLINIC_ADMIN && (
+                        <ExpenseControlCard clinic={currentClinic} departments={deptList}
+                           onSaved={() => { onClinicUpdated?.(); loadDepartments(); }} />
+                     )}
                      {/* KASSA SMENALARI — klinika sozlamasi. Ilgari «Ruxsatlar»
                          ichida turardi, lekin u ruxsat emas; Ruxsatlar endi
                          faqat Xodimlar bo'limida. */}
@@ -1168,6 +1193,11 @@ export const Settings: React.FC<SettingsProps> = ({
                                     className="w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                                  />
                               </div>
+                              <PrintLayoutFields
+                                 value={generalForm}
+                                 onChange={v => setGeneralForm({ ...generalForm, ...v })}
+                                 clinicName={generalForm.clinicName}
+                              />
                            </div>
 
                            <div className="pt-4 flex items-center gap-4">
@@ -1189,6 +1219,8 @@ export const Settings: React.FC<SettingsProps> = ({
                {/* DMED Tab */}
                {activeTab === 'integrations' && userRole === UserRole.CLINIC_ADMIN && (
                   <div className="space-y-6">
+                     {/* Saytdan qabulga yozilish (2026-11-26) — dastlab o'chiq */}
+                     <OnlineBookingCard />
                      <Card className="p-6">
                         <div className="flex items-center gap-4 mb-6">
                            <div className="p-3 bg-violet-100 dark:bg-violet-900/40 rounded-xl text-violet-600 dark:text-violet-400">
@@ -1413,7 +1445,11 @@ export const Settings: React.FC<SettingsProps> = ({
                    «bo'lim» tanlovi bor, lekin unda hech qachon hech narsa
                    yo'q edi. */}
                {activeTab === 'labCatalog' && canClinicEdit && (
-                  <LabCatalogTab departments={deptList} />
+                  <div className="space-y-5">
+                     {/* Yorliq va natijani tasdiqlash — hammasi dastlab o'chiq (2026-11-26) */}
+                     <LabSettingsCard clinic={currentClinic} canEdit={userRole === UserRole.CLINIC_ADMIN} onSaved={onClinicUpdated} />
+                     <LabCatalogTab departments={deptList} />
+                  </div>
                )}
 
                {/* Tarmoq va kirish — havola, QR va internet tumbleri */}

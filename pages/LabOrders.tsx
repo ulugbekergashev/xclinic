@@ -3,13 +3,15 @@ import { formatDate, formatFullName, formatNumber } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import {
     FlaskConical, Plus, Search, Clock, CheckCircle, X, Trash2,
-    AlertCircle, Beaker, Printer, ArrowUp, ArrowDown, Minus, Settings2,
+    AlertCircle, Beaker, Printer, ArrowUp, ArrowDown, Minus, Settings2, Barcode, ShieldCheck,
 } from 'lucide-react';
 import { LabOrder, LabTest, LabOrderItem, LabResultRow, Patient, Department, Clinic } from '../types';
 import { api } from '../services/api';
 import { EmptyState } from '../components/Common';
 import { useLanguage, tr, fill } from '../context/LanguageContext';
 import { printLabResult } from '../utils/printForms';
+import { printLabels, LabelSize } from '../utils/printLabel';
+import { SendDocButton } from '../components/SendDocButton';
 import { useNavigate } from 'react-router-dom';
 import { DoctorPicker } from '../components/DoctorPicker';
 import { LabLine } from '../components/LabLine';
@@ -108,9 +110,11 @@ export const LabOrders: React.FC<Props> = ({
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
+        const digits = q.replace(/\D/g, '');
         return labOrders.filter(o =>
             (filterStatus === 'all' || o.status === filterStatus) &&
-            (!q || o.patientName?.toLowerCase().includes(q) || o.doctorName?.toLowerCase().includes(q))
+            (!q || o.patientName?.toLowerCase().includes(q) || o.doctorName?.toLowerCase().includes(q)
+                || (digits.length >= 4 && !!o.sampleCode && o.sampleCode.includes(digits)))
         );
     }, [labOrders, search, filterStatus]);
 
@@ -194,12 +198,55 @@ export const LabOrders: React.FC<Props> = ({
             const res = await api.labOrders.collect(order.id);
             await reload();
             if (res?.unpaidWarning) setError(res.unpaidWarning);
+            /* «Olindi» bilan yorliq — faqat klinika yoqqan bo'lsa. Yorliq
+               chiqmasa ham proba OLINGAN: xato faqat aytiladi. */
+            if (currentClinic?.labLabelAuto) await printLabel(order);
         } catch (e: any) {
             setError(e?.message || 'Belgilanmadi');
         } finally { setSaving(false); }
     };
 
+    /** Probirka yorlig'i: kod serverda beriladi (bor bo'lsa — o'sha), har
+     *  namuna turiga bittadan. Hech narsani to'smaydi. */
+    const printLabel = async (order: LabOrder) => {
+        try {
+            const data = await api.labOrders.label(order.id);
+            if (!printLabels(data, (data.size || '40x30') as LabelSize)) setError(t('laborders.bosma_oyna_bloklandi_brauzer'));
+            if (!order.sampleCode) await reload();
+        } catch (e: any) {
+            setError(e?.data?.error || e?.message || t('lab.label.failed'));
+        }
+    };
+
+    /** Skaner kodni yozib Enter bosadi — aniq mos kelgan BITTA buyurtma ochiladi.
+     *  Taxminiy moslik yo'q: noto'g'ri bemorning natijasi ochilmasin. */
+    const openByCode = (raw: string) => {
+        const code = raw.replace(/\D/g, '');
+        if (code.length !== 10) return;
+        const hits = labOrders.filter(o => o.sampleCode === code);
+        if (hits.length === 1) { setSearch(''); openResults(hits[0]); }
+        else if (hits.length === 0) setError(t('lab.label.notFound'));
+    };
+
+    /* Tasdiqlash (klinika yoqqan bo'lsa). O'zi kiritgan natijani laborant
+       tasdiqlay olmaydi — server aytadi. */
+    const [verifying, setVerifying] = useState(false);
+    const verifyResults = async () => {
+        if (!resultsOrder) return;
+        setVerifying(true); setError('');
+        try {
+            await api.labOrders.verify(resultsOrder.id, currentUserName);
+            await openResults(resultsOrder);
+            await reload();
+        } catch (e: any) {
+            setError(e?.data?.error || e?.message || t('lab.verify.failed'));
+        } finally { setVerifying(false); }
+    };
+
     /* Bosishga arziydigan natija bormi — saqlangan qiymat bo'yicha */
+    /* Tasdiq HAMMA ko'rsatkichni talab qiladi (server qoidasi bilan bir xil) */
+    const allSaved = !!resultsOrder?.items.length && resultsOrder.items.every(item =>
+        (item.parameters || []).length > 0 && (item.parameters || []).every(p => String(p.value ?? '').trim() !== ''));
     const hasSavedResults = !!resultsOrder?.items.some(item =>
         (item.parameters || []).some(p => String(p.value ?? '').trim() !== ''));
 
@@ -265,7 +312,8 @@ export const LabOrders: React.FC<Props> = ({
                 </div>
             )}
 
-            <LabLine orders={labOrders} tests={tests} busy={saving} onCollect={collectSample} onOpen={openResults} />
+            <LabLine orders={labOrders} tests={tests} busy={saving} onCollect={collectSample} onOpen={openResults}
+                onLabel={printLabel} verifyRequired={!!currentClinic?.labVerifyRequired} />
 
             {/* Jurnal: barcha yo'llanmalar */}
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-2">
@@ -276,6 +324,8 @@ export const LabOrders: React.FC<Props> = ({
                 <div className="relative flex-1 min-w-[220px]">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                     <input value={search} onChange={e => setSearch(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') openByCode(search); }}
+                        aria-label={t('lab.searchPh')}
                         placeholder={t('lab.searchPh')} className={`${inputCls} pl-9`} />
                 </div>
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${inputCls} max-w-[200px]`}>
@@ -317,6 +367,14 @@ export const LabOrders: React.FC<Props> = ({
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                                                     {t('ui.tolanmagan')}{(order as any).due ? ` · ${fmt((order as any).due)}` : ''}
                                                 </span>
+                                            )}
+                                            {currentClinic?.labVerifyRequired && order.status === 'Completed' && !order.verifiedAt && (
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                                    {t('lab.verify.waiting')}
+                                                </span>
+                                            )}
+                                            {order.sampleCode && (
+                                                <span className="text-xs text-faint tabular-nums">№ {order.sampleCode}</span>
                                             )}
                                             {/* «Proba olindi» nishoni olib tashlandi — holat nishoni
                                                 («Namuna olindi», «Bajarilmoqda») buni allaqachon aytadi. */}
@@ -466,13 +524,33 @@ export const LabOrders: React.FC<Props> = ({
                                     {resultsOrder.patientAge != null ? fill(t('laborders.x_yosh'), resultsOrder.patientAge) : ''}
                                     {t('laborders.normalar_shu_bemorga_moslangan')}
                                 </p>
+                                {(resultsOrder.sampleCode || resultsOrder.verifyRequired) && (
+                                    <p className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                        {resultsOrder.sampleCode && <span className="text-faint tabular-nums">№ {resultsOrder.sampleCode}</span>}
+                                        {resultsOrder.verifiedAt ? (
+                                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
+                                                <ShieldCheck className="w-3.5 h-3.5" />
+                                                {fill(t('lab.verify.done'), resultsOrder.verifiedByName || '—')}
+                                            </span>
+                                        ) : resultsOrder.verifyRequired && resultsOrder.status === 'Completed' ? (
+                                            <span className="font-semibold text-amber-700 dark:text-amber-400">{t('lab.verify.waitingHint')}</span>
+                                        ) : null}
+                                    </p>
+                                )}
                             </div>
                             <div className="ml-auto flex items-center gap-2">
+                                <button aria-label={t('lab.label.print')} title={t('lab.label.print')} onClick={() => printLabel(resultsOrder)}
+                                    className="p-2 text-faint hover:text-muted">
+                                    <Barcode className="w-5 h-5" />
+                                </button>
                                 <button aria-label={t('common.print')} onClick={printResults} disabled={!hasSavedResults}
                                     className="p-2 text-faint hover:text-muted disabled:opacity-40 disabled:cursor-not-allowed"
                                     title={hasSavedResults ? t('common.print') : t('laborders.print_no_results')}>
                                     <Printer className="w-5 h-5" />
                                 </button>
+                                <SendDocButton kind="lab" id={resultsOrder.id} patientId={resultsOrder.patientId} size="md"
+                                    disabled={!hasSavedResults || (!!resultsOrder.verifyRequired && !resultsOrder.verifiedAt)}
+                                    disabledReason={!hasSavedResults ? t('laborders.print_no_results') : t('lab.verify.sendBlocked')} />
                                 <button onClick={() => setResultsOrder(null)} className="text-faint hover:text-muted"><X className="w-5 h-5" /></button>
                             </div>
                         </div>
@@ -537,6 +615,12 @@ export const LabOrders: React.FC<Props> = ({
                             <button onClick={() => setResultsOrder(null)} className="px-4 py-2 text-sm font-medium text-muted hover:bg-elevated rounded-lg">
                                 {t('common.close')}
                             </button>
+                            {resultsOrder.verifyRequired && allSaved && !resultsOrder.verifiedAt && (
+                                <button onClick={verifyResults} disabled={verifying || saving}
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                                    <ShieldCheck className="w-4 h-4" /> {t('lab.verify.action')}
+                                </button>
+                            )}
                             <button onClick={saveResults} disabled={saving}
                                 className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
                                 {saving ? t('ui.saqlanmoqda_2') : t('laborders.natijalarni_saqlash')}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wallet, Loader2, Trash2, CheckCircle, Printer, Plus, UserPlus } from 'lucide-react';
+import { Wallet, Loader2, Trash2, CheckCircle, Printer, Plus, UserPlus, FileText } from 'lucide-react';
 import { Modal, Button } from './Common';
 import { Patient } from '../types';
 import { api } from '../services/api';
@@ -8,7 +8,7 @@ import { formatMoney } from '../utils/format';
 import { INCOMING_PAYMENT_METHODS, getPaymentMethodLabel } from '../utils/paymentMethods';
 import { validatePatient } from '../shared/validation';
 import { fmtDateTime, PrintClinic } from '../utils/printDocument';
-import { printReceipt } from '../utils/printReceipt';
+import { printReceipt, printReceiptA4, receiptA4Labels } from '../utils/printReceipt';
 import { ServiceTiles, ServiceOption, serviceKey, rememberServiceUsage } from './payment/ServiceTiles';
 import { QuickPatient, PatientDraft, EMPTY_DRAFT } from './payment/QuickPatient';
 
@@ -235,8 +235,10 @@ export const ServicePaymentModal: React.FC<Props> = ({
         }
     };
 
-    const showReceipt = (r: PaidReceipt) => {
-        const printed = printReceipt({
+    /* Lenta yoki A4 — ma'lumot bitta, ko'rinish ikki xil. A4 ni ishxona yoki
+       tashkilot so'raydi (shapka, jadval, imzo, muhr joyi bilan). */
+    const showReceipt = (r: PaidReceipt, a4 = false) => {
+        const data = {
             title: t('payment.receiptTitle'),
             clinic,
             meta: [
@@ -251,7 +253,8 @@ export const ServicePaymentModal: React.FC<Props> = ({
                 { label: t('ui.tolov_usuli'), value: getPaymentMethodLabel(r.method) },
             ],
             footer: t('receiptmodal.thanks'),
-        });
+        };
+        const printed = a4 ? printReceiptA4(data, receiptA4Labels(t)) : printReceipt(data);
         if (!printed) addToast?.('error', t('print.popupBlocked'));
     };
 
@@ -348,9 +351,15 @@ export const ServicePaymentModal: React.FC<Props> = ({
                         </div>
                     </div>
 
-                    <Button onClick={() => showReceipt(receipt)} className="w-full h-12 text-base" autoFocus>
-                        <Printer className="w-5 h-5" /> {t('payment.printReceipt')}
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button onClick={() => showReceipt(receipt)} className="flex-1 h-12 text-base" autoFocus>
+                            <Printer className="w-5 h-5" /> {t('payment.printReceipt')}
+                        </Button>
+                        <Button variant="secondary" onClick={() => showReceipt(receipt, true)}
+                            className="h-12 px-4" title={t('print.a4Title')}>
+                            <FileText className="w-4 h-4" /> {t('print.a4')}
+                        </Button>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                         <Button variant="secondary" onClick={resetForm}>
                             <Plus className="w-4 h-4" /> {t('payment.another')}

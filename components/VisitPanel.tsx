@@ -15,6 +15,7 @@ import { useVisitAutosave } from '../hooks/useVisitAutosave';
 import { useLanguage, fill } from '../context/LanguageContext';
 import { EncounterForm, EncounterSummary, isVitalField, objectiveTemplateText } from '../components/EncounterForm';
 import { printReferral, printPrescription } from '../utils/printForms';
+import { SendDocButton } from './SendDocButton';
 import { formatDate, formatNumber, formatTime } from '../utils/format';
 import { confirmAction } from '../services/confirm';
 import { calcAge, todayISO } from '../utils/dateUtils';
@@ -28,8 +29,11 @@ import { DiagnosisPicker } from './visit/DiagnosisBlock';
 import { Modal } from './Common';
 import { VisitActions, VisitHeader } from './visit/VisitFooter';
 import {
-    ConsultDraft, ConsultPicker, LabPicker, RxDraft, RxForm, ServicePicker, StudyDraft, StudyPicker,
+    ConsultDraft, ConsultPicker, LabPicker, MEAL_KEYS, RxDraft, RxForm, ServicePicker, StudyDraft, StudyPicker,
 } from './visit/VisitPickers';
+import { useTreatmentBundles, BundleButtons, BundleBar } from './visit/TreatmentBundles';
+import { FollowUpPicker } from './visit/FollowUpPicker';
+import { checkDrugAllergy, type AllergyLike } from '../shared/allergyMatch';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    QABUL VARAG'I — bemor kartasining o'ng ustuni.
@@ -268,6 +272,28 @@ export const VisitPanel: React.FC<Props> = ({
         api.labTests.getAll().then(setLabTests).catch(() => { });
     }, []);
 
+    /* ALLERGIYA (2026-11-26) — varaq tepasida ko'rinadi va dori yozilganda
+       solishtiriladi. Ilgari faqat bemor kartasining profilida turardi. */
+    const [allergies, setAllergies] = useState<AllergyLike[]>([]);
+    useEffect(() => {
+        if (!patient.id) return;
+        let stale = false;
+        api.clinical.allergies(patient.id)
+            .then(list => { if (!stale) setAllergies((list || []).filter((a: any) => a.isActive !== false)); })
+            .catch(() => { });
+        return () => { stale = true; };
+    }, [patient.id]);
+
+    /* DAVOLASH TO'PLAMI — tashxis qatoridagi tugma (`visit/TreatmentBundles`) */
+    const bundles = useTreatmentBundles({
+        visit,
+        patientName: `${patient.lastName || ''} ${patient.firstName || ''}`.trim(),
+        doctorName: visit?.doctorName || currentUserName || null,
+        allergies, services, labTests, previousVisit,
+        refresh: async () => { await reload(); onVisitChanged(visitId); },
+        toast: addToast,
+    });
+
     /* Dorilar ro'yxati faqat retsept formasi ochilganda yuklanadi —
        har karta ochilishida ombor so'rovi yuborishning ma'nosi yo'q. */
     useEffect(() => {
@@ -391,7 +417,9 @@ export const VisitPanel: React.FC<Props> = ({
     const writePrescription = async (items: RxDraft[]) => {
         const ok = await savePrescription(items);
         if (!ok) return;
-        rememberPrescriptions(quickOwner, items.filter(i => i.name.trim()));
+        /* Allergiya belgisi shu bemorniki — tez tugmaga o'tmasin */
+        rememberPrescriptions(quickOwner, items.filter(i => i.name.trim())
+            .map(({ allergyAck: _a, allergyReason: _r, ...rest }) => rest));
         setRecentRx(recentPrescriptions(quickOwner));
     };
 
@@ -407,6 +435,8 @@ export const VisitPanel: React.FC<Props> = ({
             return {
                 name: i.name.trim(), dosage: i.dosage || null, frequency: i.frequency || null,
                 durationDays: i.durationDays ? Number(i.durationDays) : null,
+                mealTiming: i.mealTiming || null,
+                ...(i.allergyAck ? { allergyAck: true, allergyReason: i.allergyReason || null } : {}),
                 ...(hit ? { medicationId: hit.id } : {}),
             };
         }),
@@ -479,13 +509,25 @@ export const VisitPanel: React.FC<Props> = ({
         t('visit.dxKindChanged'), true,
     );
 
-    /** «O'tgan safar» dagi dorilarni shu qabulga bir bosishda yozish */
-    const repeatPrescriptions = (rxs: Prescription[]) => writePrescription(
-        rxs.flatMap(rx => rx.items || []).map(i => ({
+    /** «O'tgan safar» dagi dorilarni shu qabulga bir bosishda yozish.
+        Biror dori allergiyaga mos kelsa — to'g'ridan yozilmaydi: forma shu
+        dorilar bilan ochiladi va ogohlantirish o'sha yerda ko'rinadi. */
+    const [rxPrefill, setRxPrefill] = useState<{ key: number; items: RxDraft[] } | null>(null);
+    /* Forma yopilgach to'ldirilgani unutiladi — keyingi «Dori» bo'sh ochiladi */
+    useEffect(() => { if (panel !== 'rx') setRxPrefill(null); }, [panel]);
+    const repeatPrescriptions = (rxs: Prescription[]) => {
+        const items: RxDraft[] = rxs.flatMap(rx => rx.items || []).map(i => ({
             name: i.name || '', dosage: i.dosage || '', frequency: i.frequency || '',
             durationDays: i.durationDays ? String(i.durationDays) : '',
-        })),
-    );
+            mealTiming: i.mealTiming || null,
+        }));
+        if (items.some(i => checkDrugAllergy(i.name, allergies).length > 0)) {
+            setRxPrefill({ key: Date.now(), items });
+            setPanel('rx');
+            return;
+        }
+        return writePrescription(items);
+    };
 
     const removeDiagnosis = async (id: string) => {
         if (!await confirmAction({ title: t('visit.diagnosisRemove'), body: t('visit.diagnosisRemoveBody'), confirmLabel: t('common.delete') })) return;
@@ -744,6 +786,18 @@ export const VisitPanel: React.FC<Props> = ({
                 </p>
             )}
 
+            {/* ALLERGIYA — shifokor dori yozishdan oldin ko'rsin */}
+            {allergies.length > 0 && (
+                <p className="px-5 py-2 border-t border-line bg-red-50/70 dark:bg-red-900/15 text-sm text-red-800 dark:text-red-200 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <b className="font-semibold">{t('visit.allergy.strip')}:</b>
+                    {allergies.map((a, i) => (
+                        <span key={i} className={a.severity === 'Severe' ? 'font-semibold' : ''}>
+                            {a.substance}{i < allergies.length - 1 ? ',' : ''}
+                        </span>
+                    ))}
+                </p>
+            )}
+
             {previousVisit && !isClosed && (
                 <div className="px-5 py-3 border-t border-line">
                     <PreviousVisit visit={previousVisit} onOpen={onOpenVisit}
@@ -820,9 +874,16 @@ export const VisitPanel: React.FC<Props> = ({
                                 return (
                                     <li key={d.id} className="flex items-center gap-3 py-2 text-sm border-t border-line first:border-t-0">
                                         <b className="w-14 shrink-0 text-ink">{d.code}</b>
-                                        <span className="min-w-0 flex-1 text-ink">
-                                            {d.icd10?.name || ''}
-                                            {d.isChronic && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{t('visit.chronic')}</span>}
+                                        <span className="min-w-0 flex-1 text-ink flex flex-wrap items-center gap-x-2 gap-y-1">
+                                            <span>
+                                                {d.icd10?.name || ''}
+                                                {d.isChronic && <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{t('visit.chronic')}</span>}
+                                            </span>
+                                            {!clinicalReadOnly && (
+                                                <BundleButtons bundles={bundles.bundles} code={d.code} busy={busy || bundles.working}
+                                                    canRemoveShared={userRole === UserRole.CLINIC_ADMIN}
+                                                    onApply={bundles.apply} onRemove={bundles.remove} />
+                                            )}
                                         </span>
                                         <button type="button" disabled={clinicalReadOnly || busy}
                                             onClick={() => cycleKind(d.id, kind)}
@@ -856,6 +917,11 @@ export const VisitPanel: React.FC<Props> = ({
                             <Plus className="w-3.5 h-3.5" aria-hidden="true" /> {k.label}
                         </button>
                     )))}
+
+                    {bundles.bar && (
+                        <BundleBar bar={bundles.bar} busy={busy || bundles.working}
+                            onUndo={bundles.undo} onAddSkipped={bundles.addSkippedLab} onClose={bundles.closeBar} />
+                    )}
 
                     {/* Tayyor natijalar — ro'yxatning tepasida, ko'zga birinchi tushsin */}
                     <VisitResults visit={visit} busy={busy} onMarkSeen={markSeen}
@@ -893,14 +959,17 @@ export const VisitPanel: React.FC<Props> = ({
                                 <ItemRow key={rx.id} icon={Pill}
                                     main={(rx.items || []).map(i => i.name).join(', ')}
                                     kind={t('visit.prescription')}
-                                    sub={(rx.items || []).map(i => [i.dosage, i.frequency, i.durationDays ? `${i.durationDays} ${t('visit.days')}` : '']
+                                    sub={(rx.items || []).map(i => [i.dosage, i.frequency, i.mealTiming ? t(MEAL_KEYS[i.mealTiming] as any) : '', i.durationDays ? `${i.durationDays} ${t('visit.days')}` : '']
                                         .filter(Boolean).join(' ')).filter(Boolean).join('; ') || undefined}
                                     action={(
-                                        <button type="button" onClick={() => printPrescription({ ...rx, patient }, clinic)}
-                                            title={t('common.print')} aria-label={t('common.print')}
-                                            className="w-7 h-7 grid place-items-center rounded-md text-faint hover:text-primary-600 hover:bg-elevated shrink-0">
-                                            <Printer className="w-3.5 h-3.5" />
-                                        </button>
+                                        <span className="flex items-center">
+                                            <button type="button" onClick={() => printPrescription({ ...rx, patient }, clinic)}
+                                                title={t('common.print')} aria-label={t('common.print')}
+                                                className="w-7 h-7 grid place-items-center rounded-md text-faint hover:text-primary-600 hover:bg-elevated shrink-0">
+                                                <Printer className="w-3.5 h-3.5" />
+                                            </button>
+                                            <SendDocButton kind="rx" id={rx.id} patientId={patient.id} />
+                                        </span>
                                     )}
                                     onDelete={isDone ? undefined : () => removePrescription(rx)} />
                             ))}
@@ -932,6 +1001,16 @@ export const VisitPanel: React.FC<Props> = ({
                             })}
                         </ul>
                     )}
+
+                    {/* To'plam qilib saqlash — faqat shifokor va ega, tashxis va
+                        tayinlov bo'lsa. Yakunlangan qabuldan ham (shunda eng to'liq). */}
+                    {(userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN) && bundles.canSaveFrom(visit) && (
+                        <button type="button" onClick={bundles.saveFrom} disabled={bundles.working}
+                            title={t('visit.bundle.saveHint')}
+                            className="self-start inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary-700 dark:text-primary-300 hover:underline disabled:opacity-50">
+                            {t('visit.bundle.save')}
+                        </button>
+                    )}
                 </div>
 
                 {/* 5. XULOSA VA TAVSIYALAR — bemorga qog'ozda beriladi */}
@@ -951,7 +1030,7 @@ export const VisitPanel: React.FC<Props> = ({
                 )}
             </div>
 
-            <div className="sticky bottom-0 z-10 px-5 py-4 border-t border-line bg-surface rounded-b-2xl flex flex-col gap-3">
+            <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] lg:bottom-0 z-10 px-5 py-4 border-t border-line bg-surface rounded-b-2xl flex flex-col gap-3">
                 {/* YAKUNLANGACH — bemor qo'liga qog'oz va keyingi qabul */}
                 {closedToday && (
                     <div className="flex flex-wrap gap-2">
@@ -967,6 +1046,11 @@ export const VisitPanel: React.FC<Props> = ({
                         )}
                     </div>
                 )}
+                {/* QAYTA KO'RIK — ixtiyoriy, yopishdan oldin ham, keyin ham */}
+                <FollowUpPicker visit={visit}
+                    canEdit={(userRole === UserRole.DOCTOR || userRole === UserRole.CLINIC_ADMIN) && visit.status !== 'Cancelled'}
+                    onChanged={async () => { await reload(); onVisitChanged(visitId); }}
+                    onError={msg => addToast('error', msg)} />
                 <VisitActions
                     visit={visit}
                     busy={busy}
@@ -982,7 +1066,7 @@ export const VisitPanel: React.FC<Props> = ({
             {/* Tayinlov tanlovi — bosilgan tugmaning o'zi, tab qatorisiz */}
             <Modal isOpen={!!panelShown && !isDone} onClose={() => setPanel(null)}
                 title={orderKinds.find(k => k.id === panelShown)?.label || t('visit.addTitle')} className="max-w-2xl">
-                {panelShown === 'rx' && <RxForm meds={meds} recent={recentRx} busy={busy} onSave={writePrescription} />}
+                {panelShown === 'rx' && <RxForm key={rxPrefill?.key || 0} initial={rxPrefill?.items} meds={meds} recent={recentRx} busy={busy} onSave={writePrescription} allergies={allergies} />}
                 {panelShown === 'service' && <ServicePicker services={deptServices} busy={busy} onAdd={addService} />}
                 {panelShown === 'lab' && <LabPicker tests={labTests} busy={busy} onSend={sendToLab} />}
                 {panelShown === 'study' && <StudyPicker services={ownStudies} more={otherStudies} busy={busy} onSend={sendToDiagnostics} />}

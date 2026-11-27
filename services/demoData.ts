@@ -575,6 +575,7 @@ export const DEMO_TRIGGERS: TriggerDescriptor[] = [
     { id: 'payment_received', label: "To'lov qabul qilindi", supportsDoctorFilter: false, offset: { label: 'Necha soat keyin', unit: 'hour', options: [0, 1, 2, 24], default: 0 } },
     { id: 'recall', label: 'Uzoq kelmaganlarni qaytarish', supportsDoctorFilter: true, offset: { label: 'Necha oydan beri kelmagan', unit: 'month', options: [3, 6, 9, 12], default: 6 } },
     { id: 'debt_reminder', label: 'Qarz eslatmasi', supportsDoctorFilter: false, offset: { label: 'Qarz necha kundan beri', unit: 'day', options: [3, 7, 14, 30], default: 7 } },
+    { id: 'follow_up', label: "Qayta ko'rik", supportsDoctorFilter: true, offset: { label: 'Necha kun oldin', unit: 'day', options: [0, 1, 2, 3], default: 1 } },
 ];
 
 // Demo rejim uchun segment maydonlari — backend/segmentFields.ts qisqartmasi

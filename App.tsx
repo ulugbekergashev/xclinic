@@ -44,6 +44,7 @@ import '@fontsource-variable/inter';
 import { SignIn } from './pages/SignIn';
 import { FirstRunSetup } from './pages/FirstRunSetup';
 import { QueueBoard } from './pages/QueueBoard';
+import PublicBooking from './pages/PublicBooking';
 import { lazyWithReload } from './utils/lazyWithReload';
 import { setPrintClinic } from './utils/printDocument';
 import { UserRole, Patient, Appointment, Transaction, Expense, Doctor, Receptionist, Clinic, Service, InventoryItem, ServiceCategory, Lead, LabTechnician, LabOrder, CashRegisterDay, CashMovement, Department, VisitCharge } from './types';
@@ -65,7 +66,7 @@ import { connectToast, disconnectToast } from './services/toast';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { NotFound } from './pages/NotFound';
 import { confirmAction } from './services/confirm';
-import { api } from './services/api';
+import { api, setDemoActingRole } from './services/api';
 import type { CashCloseInput } from './services/api';
 import { parseAccessControl, canSeeFinance, canSeePatientPhone, permsFor } from './utils/accessControl';
 import { visibleNavigation as buildNavigation, canOpenModule, homeFor, navLabelKey } from './utils/navigation';
@@ -365,13 +366,15 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
         const { DEMO_PATIENTS, DEMO_APPOINTMENTS, DEMO_TRANSACTIONS, DEMO_EXPENSES, DEMO_SERVICES, DEMO_DOCTORS, DEMO_CLINIC, DEMO_CATEGORIES, DEMO_LAB_TECHNICIANS, DEMO_LAB_ORDERS, DEMO_RECEPTIONISTS, DEMO_LEADS, DEMO_INVENTORY } = await import('./services/demoData');
         setCurrentClinic(DEMO_CLINIC);
         setPatients(DEMO_PATIENTS);
-        setAppointments(DEMO_APPOINTMENTS);
+        /* API orqali: saytdan kelgan namuna so'rovlari ham qo'shiladi (0046) */
+        setAppointments(await api.appointments.getAll('demo-clinic-1').catch(() => DEMO_APPOINTMENTS));
         /* NUSXA, massivning o'zi emas. Demo to'lovi `DEMO_TRANSACTIONS` ga
            joyida yoziladi; holatda o'sha massivning o'zi tursa, yangilash
            «eski» bilan «yangi»ni solishtirganda ikkalasi bitta narsa bo'lib
            chiqadi va kassadagi kun yakuni to'lovdan keyin qimirlamaydi. */
         setTransactions([...DEMO_TRANSACTIONS]);
-        setExpenses(DEMO_EXPENSES);
+        /* API orqali: tasdiq kutayotgan xarajatlar ham ko'rinadi (0048) */
+        setExpenses(await api.expenses.getAll('demo-clinic-1').catch(() => DEMO_EXPENSES));
         setServices(DEMO_SERVICES);
         setCategories(DEMO_CATEGORIES);
         setDoctors(DEMO_DOCTORS);
@@ -886,7 +889,9 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
     try {
       const newExpense = await api.expenses.create({ ...expense, clinicId });
       setExpenses(prev => [newExpense, ...prev]);
-      addToast('success', t('app.xarajat_qoshildi'));
+      /* Chegaradan katta — egaga ketdi, pul hali chiqmadi (migratsiya 0048) */
+      if ((newExpense as any)?.status === 'Pending') addToast('info', t('exp.sentForApproval'));
+      else addToast('success', t('app.xarajat_qoshildi'));
       return newExpense;
     } catch (e: any) {
       console.error('Add expense error:', e);
@@ -1345,6 +1350,8 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
 
   /* Bosma blank shapkasi: chaqiruvchi klinikani bermasa ham shu nom chiqadi */
   useEffect(() => { setPrintClinic(currentClinic || null); }, [currentClinic]);
+  /* Demoda server yo'q — xarajat tasdig'i qoidasi kim ishlayotganini shu yerdan biladi */
+  useEffect(() => { setDemoActingRole(userRole); }, [userRole]);
 
   /* SAHIFA ALMASHGANDA SKROLL TEPAGA (audit B-37).
 
@@ -1451,6 +1458,8 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
           <Route path="/login" element={<SignIn onLogin={handleLogin} />} />
           {/* Tablo televizorda login qilmasdan ochiladi */}
           <Route path="/board/:clinicId" element={<QueueBoard />} />
+          {/* Bemor saytdan qabulga yoziladi — kirishsiz (0046) */}
+          <Route path="/book" element={<PublicBooking />} />
           <Route path="*" element={<SignIn onLogin={handleLogin} />} />
         </Routes>
         <InstallPWAButton />
@@ -2044,6 +2053,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                   currentUserName={userName}
                   addToast={addToast}
                   departments={departments}
+                  onExpensesChanged={refreshExpenses}
                   charges={charges}
                   onChargesChanged={() => {
                     // To'lovdan keyin ikkalasi ham yangilanadi: qatorlar va kassa
@@ -2091,6 +2101,7 @@ const sinceDate = (n: number) => formatDateToISO(new Date(Date.now() - n * 86400
                   chiqardi — havola esa aynan shu ekranda turadi
                   (audit XC-02). */}
               <Route path="/board/:clinicId" element={<QueueBoard />} />
+              <Route path="/book" element={<PublicBooking />} />
 
               <Route path="/reception" element={
                 guard('reception',

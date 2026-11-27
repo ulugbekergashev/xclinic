@@ -4,7 +4,7 @@ import { Button, Input } from './Common';
 import { api } from '../services/api';
 import { toast } from '../services/toast';
 import { Clinic } from '../types';
-import { CheckCircle2, Send, Smartphone, Layers, Wallet, Loader2, ArrowRight, type LucideIcon } from 'lucide-react';
+import { CheckCircle2, Send, Smartphone, Layers, Wallet, Loader2, ArrowRight, FlaskConical, MessageSquareWarning, type LucideIcon } from 'lucide-react';
 
 import { useLanguage, tr } from '../context/LanguageContext';
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -82,6 +82,11 @@ export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClini
     const [prepayCard, setPrepayCard] = useState('');
     const [prepayAmount, setPrepayAmount] = useState(0);
     const [savingPrepay, setSavingPrepay] = useState(false);
+    const [labAuto, setLabAuto] = useState(false);
+    const [savingLabAuto, setSavingLabAuto] = useState(false);
+    /* Past baho (shikoyat) — egaga Telegram xabar (2026-11-26) */
+    const [cmpAlert, setCmpAlert] = useState(false);
+    const [savingCmpAlert, setSavingCmpAlert] = useState(false);
 
     const botOn = telegramConnected ?? !!currentClinic?.botToken;
 
@@ -104,6 +109,8 @@ export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClini
         setPrepayEnabled((currentClinic as any).prepaymentEnabled ?? false);
         setPrepayCard((currentClinic as any).prepaymentCardNumber || '');
         setPrepayAmount((currentClinic as any).prepaymentAmount || 0);
+        setLabAuto(!!currentClinic.labResultAutoSend);
+        setCmpAlert(!!(currentClinic as any).complaintAlert);
     }, [currentClinic]);
 
     const saveSms = async (e: React.FormEvent) => {
@@ -143,6 +150,39 @@ export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClini
             toast.error(err?.data?.error || err?.message || t('ui.saqlab_bolmadi'));
         } finally {
             setSavingPrepay(false);
+        }
+    };
+
+    /* Tahlil natijasi o'zi yuborilsin — bitta tugma, darhol saqlanadi */
+    const toggleLabAuto = async (next: boolean) => {
+        if (!clinicId || savingLabAuto) return;
+        setLabAuto(next);
+        setSavingLabAuto(true);
+        try {
+            await api.patientDocs.setLabAutoSend(clinicId, next);
+            toast.success(t('ui.saqlandi'));
+            onClinicUpdated?.();
+        } catch (err: any) {
+            setLabAuto(!next);
+            toast.error(err?.data?.error || err?.message || t('ui.saqlab_bolmadi'));
+        } finally {
+            setSavingLabAuto(false);
+        }
+    };
+
+    const toggleCmpAlert = async (next: boolean) => {
+        if (!clinicId || savingCmpAlert) return;
+        setCmpAlert(next);
+        setSavingCmpAlert(true);
+        try {
+            await api.complaints.setAlert(clinicId, next);
+            toast.success(t('ui.saqlandi'));
+            onClinicUpdated?.();
+        } catch (err: any) {
+            setCmpAlert(!next);
+            toast.error(err?.data?.error || err?.message || t('ui.saqlab_bolmadi'));
+        } finally {
+            setSavingCmpAlert(false);
         }
     };
 
@@ -228,6 +268,50 @@ export const MessageChannelSettings: React.FC<Props> = ({ clinicId, currentClini
                         </Button>
                     </div>
                 </form>
+            </section>
+
+            {/* ── Tahlil natijasi o'zi yuborilsin (2026-11-26) ─────────── */}
+            <section className="card p-5" aria-labelledby="mcs-labauto">
+                <div className="flex items-start gap-3">
+                    <span aria-hidden="true" className="w-9 h-9 rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300 flex items-center justify-center shrink-0">
+                        <FlaskConical className="w-[18px] h-[18px]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <h2 id="mcs-labauto" className="text-base font-semibold text-ink">{t('doc.tg.autoTitle')}</h2>
+                        <p className="text-sm text-muted mt-0.5">{t('doc.tg.autoHint')}</p>
+                        {!botOn && <p className="text-xs text-warning-700 dark:text-warning-300 mt-1">{t('doc.tg.autoNeedsBot')}</p>}
+                    </div>
+                    <label className="relative shrink-0 cursor-pointer mt-1">
+                        <input type="checkbox" className="sr-only peer" checked={labAuto} disabled={savingLabAuto}
+                            aria-label={t('doc.tg.autoTitle')}
+                            onChange={e => toggleLabAuto(e.target.checked)} />
+                        <span className={`block w-10 h-6 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500/40 ${labAuto ? 'bg-success-500' : 'bg-line'}`}>
+                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${labAuto ? 'translate-x-4' : ''}`} />
+                        </span>
+                    </label>
+                </div>
+            </section>
+
+            {/* ── Past baho — egaga xabar (2026-11-26) ────────────────── */}
+            <section className="card p-5" aria-labelledby="mcs-cmpalert">
+                <div className="flex items-start gap-3">
+                    <span aria-hidden="true" className="w-9 h-9 rounded-lg bg-warning-500/12 text-warning-700 dark:text-warning-300 flex items-center justify-center shrink-0">
+                        <MessageSquareWarning className="w-[18px] h-[18px]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <h2 id="mcs-cmpalert" className="text-base font-semibold text-ink">{t('cmp.alertTitle')}</h2>
+                        <p className="text-sm text-muted mt-0.5">{t('cmp.alertHint')}</p>
+                        {!botOn && <p className="text-xs text-warning-700 dark:text-warning-300 mt-1">{t('doc.tg.autoNeedsBot')}</p>}
+                    </div>
+                    <label className="relative shrink-0 cursor-pointer mt-1">
+                        <input type="checkbox" className="sr-only peer" checked={cmpAlert} disabled={savingCmpAlert}
+                            aria-label={t('cmp.alertTitle')}
+                            onChange={e => toggleCmpAlert(e.target.checked)} />
+                        <span className={`block w-10 h-6 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500/40 ${cmpAlert ? 'bg-success-500' : 'bg-line'}`}>
+                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${cmpAlert ? 'translate-x-4' : ''}`} />
+                        </span>
+                    </label>
+                </div>
             </section>
 
             {/* ── Bron uchun oldindan to'lov ─────────────────────────── */}

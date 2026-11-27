@@ -121,6 +121,7 @@ model Patient {
   prescriptions    Prescription[]
   charges          VisitCharge[]
   allergies        PatientAllergy[]
+  complaints       Complaint[]
   referrals        Referral[]
   vitals           VitalSign[]
   documents        PatientDocument[]
@@ -171,6 +172,8 @@ model Appointment {
   /// yozilganlar (bot chatda o'zi tasdiqlaydi). Shuning uchun @default yo'q —
   /// qiymatni `POST /api/appointments` o'zi qo'yadi. Migratsiya 0038.
   bookedAt     DateTime?
+  /// Qayerdan: "site" | "bot" | NULL (xodim). Migratsiya 0046.
+  source       String?
   service      Service?    @relation(fields: [serviceId], references: [id])
   department   Department? @relation(fields: [departmentId], references: [id])
   clinic       Clinic      @relation(fields: [clinicId], references: [id])
@@ -191,6 +194,7 @@ model Appointment {
   @@index([clinicId, date])
   @@index([doctorId])
   @@index([serviceId])
+  @@index([clinicId, status])
 }
 
 /// Qabul — butun tizimning markaziy tuguni. Har bir modul (tahlil, diagnostika,
@@ -242,6 +246,9 @@ model Visit {
   referredVisits      Visit[] @relation("VisitReferral")
   /// Qabul nima bilan tugadi: Home | Followup | Admit | Referred. Migratsiya 0010.
   disposition   String?
+  /// Qayta ko'rik sanasi 'YYYY-MM-DD' — shifokor belgilaydi; registratura
+  /// shu kuni qo'ng'iroq qiladi, bemorga eslatma ketadi. Migratsiya 0042.
+  followUpDate  String?
   /// Yakunlangan bayon qulflanadi — keyin jimgina qayta yozib bo'lmaydi
   lockedAt      DateTime?
   lockedByName  String?
@@ -271,6 +278,7 @@ model Visit {
   @@index([date])
   @@index([departmentId])
   @@index([referredFromVisitId])
+  @@index([clinicId, followUpDate])
 }
 
 /// Bajarilgan xizmat. Ilgari stomatologik muolaja edi (toothNumber/toothSurface),
@@ -351,6 +359,12 @@ model Expense {
   /// Xarajat qaysi bo'limga tegishli. NULL — umumiy xarajat, hisobotda
   /// alohida qatorda ko'rinadi. Migratsiya 0022.
   departmentId    String?
+  /// Approved | Pending | Rejected. Chegaradan katta xarajatni egadan boshqa
+  /// xodim yozsa — Pending (kassaga va hisobotga tushmaydi). Migratsiya 0048.
+  status          String               @default("Approved")
+  requestedByName String?
+  decidedByName   String?
+  decidedAt       DateTime?
   createdAt       DateTime             @default(now())
   clinic          Clinic               @relation(fields: [clinicId], references: [id])
   doctor          Doctor?              @relation(fields: [doctorId], references: [id])
@@ -453,6 +467,15 @@ model Clinic {
   prepaymentEnabled       Boolean                    @default(false)
   prepaymentCardNumber    String?
   prepaymentAmount        Float?
+  /// Tahlil natijasi tayyor bo'lganda bemorning Telegramiga PDF o'zi
+  /// ketadi. Dastlab o'chiq — ega yoqadi. Migratsiya 0043.
+  labResultAutoSend       Boolean                    @default(false)
+  /// Natijani ikkinchi xodim tasdiqlasin (dastlab o'chiq). Migratsiya 0045.
+  labVerifyRequired       Boolean                    @default(false)
+  /// Probirka yorlig'i: o'lcham ("40x30" | "58x40" | "50x25" | "tape80"),
+  /// «Olindi» bosilganda o'zi chiqsinmi. Migratsiya 0045.
+  labLabelSize            String?
+  labLabelAuto            Boolean                    @default(false)
   accessControl           String?
   /// Tashqi lid manbalari (yuboraman va h.k.) uchun kirish kaliti.
   /// POST /api/public/leads da X-API-Key sarlavhasi orqali klinika shu kalit bo'yicha topiladi.
@@ -462,6 +485,12 @@ model Clinic {
   /// Migratsiya 0013.
   licenseNumber           String?
   letterheadNote          String?
+  /// Oldindan bosilgan blanka: chekkalar (mm, NULL — odatiy) va dastur
+  /// shapkasini chiqarmaslik. Faqat qog'ozga; Telegram PDF ga emas. Migratsiya 0044.
+  printTopMm              Int?
+  printBottomMm           Int?
+  printSideMm             Int?
+  printHideHeader         Boolean                    @default(false)
   appointments            Appointment[]
   plan                    SubscriptionPlan           @relation(fields: [planId], references: [id])
   doctors                 Doctor[]
@@ -499,8 +528,17 @@ model Clinic {
   cashAuditLogs           CashAuditLog[]
   /// Kuniga nechta kassa smenasi (1 yoki 2). Klinikaga qarab sozlanadi.
   cashShiftsPerDay        Int                        @default(1)
+  /// Shu summadan katta xarajat egaga tasdiqqa boradi. NULL — o'chiq. 0048.
+  expenseApprovalThreshold Float?
+  /// Past baho (shikoyat) kelganda egaga Telegram xabar. Dastlab o'chiq. 0047.
+  complaintAlert          Boolean                    @default(false)
+  /// Saytdan yozilish (havola + /book) va avtomatik tasdiqlash. Dastlab o'chiq. 0046.
+  onlineBookingEnabled    Boolean                    @default(false)
+  bookingAutoConfirm      Boolean                    @default(false)
+  complaints              Complaint[]
   departments             Department[]
   encounterTemplates      EncounterTemplate[]
+  treatmentTemplates      TreatmentTemplate[]
   labTests                LabTest[]
   studies                 DiagnosticStudy[]
   wards                   Ward[]
@@ -748,6 +786,39 @@ model Review {
   comment       String?
   createdAt     DateTime    @default(now())
   appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  complaint     Complaint?
+}
+
+/// Shikoyat — ISH: mas'ul, holat, yechim. Baho Review da qoladi. Migratsiya 0047.
+model Complaint {
+  id             String    @id @default(uuid())
+  clinicId       String
+  patientId      String
+  reviewId       String?   @unique
+  appointmentId  String?
+  visitId        String?
+  doctorId       String?
+  doctorName     String?
+  /// bot | reception
+  source         String    @default("bot")
+  text           String?
+  /// open | resolved
+  status         String    @default("open")
+  /// «ROL:id» yoki «CLINIC_ADMIN:klinika»
+  assigneeKey    String?
+  assigneeName   String?
+  resolution     String?
+  resolvedAt     DateTime?
+  resolvedByName String?
+  createdByName  String?
+  createdAt      DateTime  @default(now())
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+  review  Review? @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, status])
+  @@index([patientId])
 }
 
 model TelegramLog {
@@ -896,6 +967,13 @@ model LabOrder {
   technicianNotes   String?
   /// Natija tayyor bo'lgach shifokor ko'rdimi. NULL = ko'rilmagan. Migratsiya 0009.
   seenByDoctorAt    DateTime?
+  /// Probirka kodi: faqat raqam, YYMMDD + kunlik tartib. Migratsiya 0045.
+  sampleCode        String?
+  /// Natijani tasdiqlagan (klinika `labVerifyRequired` yoqqan bo'lsa). 0045.
+  verifiedAt        DateTime?
+  verifiedByName    String?
+  /// Tasdiqlagan xodim kaliti («ROL:id»). 0045.
+  verifiedById      String?
   clinic            Clinic         @relation(fields: [clinicId], references: [id])
   patient           Patient?       @relation(fields: [patientId], references: [id])
   visit             Visit?         @relation(fields: [visitId], references: [id])
@@ -903,6 +981,7 @@ model LabOrder {
   items             LabOrderItem[]
   expense           Expense?
 
+  @@unique([clinicId, sampleCode])
   @@index([clinicId])
   @@index([patientId])
   @@index([status])
@@ -924,6 +1003,8 @@ model Department {
   color     String?
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
+  /// Oylik xarajat byudjeti (so'm). NULL — byudjet yo'q. Migratsiya 0048.
+  monthlyBudget Float?
   createdAt DateTime @default(now())
 
   clinic         Clinic              @relation(fields: [clinicId], references: [id])
@@ -1052,6 +1133,8 @@ model LabResult {
   flag        String   @default("Normal")
   note        String?
   enteredBy   String?
+  /// Kiritgan xodim kaliti («ROL:id») — o'zini o'zi tasdiqlashni to'sish uchun. 0045.
+  enteredById String?
   enteredAt   DateTime @default(now())
 
   orderItem LabOrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
@@ -1248,6 +1331,32 @@ model Prescription {
   @@index([patientId])
 }
 
+/// Davolash to'plami: tashxisga odatdagi dorilar, xizmatlar, tahlillar.
+/// `doctorId` — shifokorning o'ziniki; NULL — klinikaniki (ega yaratadi).
+/// Tarkibi JSON (`items`): [{kind:'drug',name,medicationId?,dosage,frequency,
+/// durationDays,mealTiming,instructions} | {kind:'service',serviceId} |
+/// {kind:'lab',labTestId}]. Qo'llanganda oddiy retsept, xizmat va tahlil
+/// yozuvlariga aylanadi — bu yerdan hech narsa to'g'ridan o'qilmaydi.
+/// Migratsiya 0041.
+model TreatmentTemplate {
+  id            String    @id @default(uuid())
+  clinicId      String
+  doctorId      String?
+  name          String
+  /// JSON ["J06", "I10.0"] — kod yoki uning boshi
+  icdCodes      String?
+  items         String
+  useCount      Int       @default(0)
+  lastUsedAt    DateTime?
+  isActive      Boolean   @default(true)
+  createdByName String?
+  createdAt     DateTime  @default(now())
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId, doctorId])
+}
+
 /// Dori omborda bo'lmasa ham retsept yozilishi kerak — shuning uchun
 /// medicationId ixtiyoriy, nomi matn sifatida ham saqlanadi.
 model PrescriptionItem {
@@ -1259,6 +1368,8 @@ model PrescriptionItem {
   frequency      String?
   durationDays   Int?
   instructions   String?
+  /// Ovqatga nisbatan: 'before' | 'with' | 'after' | NULL. Migratsiya 0041.
+  mealTiming     String?
 
   prescription Prescription   @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
   medication   InventoryItem? @relation(fields: [medicationId], references: [id])

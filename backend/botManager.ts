@@ -2,6 +2,12 @@ import { Telegraf } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { prisma } from './db';
 import { applyAdvance } from './billing';
+import { recordRating, attachComplaintText } from './complaints';
+
+/* Past bahodan keyin bemorning KEYINGI matni shikoyat matni bo'ladi —
+   30 daqiqa ichida. Kalit: bot tokeni + chat. */
+const COMPLAINT_REPLY_MS = 30 * 60 * 1000;
+const awaitingComplaint = new Map<string, { complaintId: string; until: number }>();
 
 class BotManager {
     private bots: Map<string, Telegraf> = new Map(); // token -> Telegraf
@@ -602,6 +608,10 @@ class BotManager {
                 const prepaymentEnabled = clinic?.prepaymentEnabled ?? false;
                 const prepaymentCard = clinic?.prepaymentCardNumber || '';
                 const prepaymentAmount = clinic?.prepaymentAmount ?? 0;
+                /* Saytdan yozilish yoqilgan va avtomatik tasdiq yo'q — bot orqali
+                   yozilish ham registratorning «so'rovlar» ro'yxatiga tushadi
+                   (2026-11-26, migratsiya 0046). O'chiq bo'lsa — avvalgidek. */
+                const asRequest = !prepaymentEnabled && !!clinic?.onlineBookingEnabled && !clinic?.bookingAutoConfirm;
 
                 try {
                     const newAppointment = await prisma.appointment.create({
@@ -614,7 +624,8 @@ class BotManager {
                             date: dateStr,
                             time: timeStr,
                             duration: 30,
-                            status: prepaymentEnabled ? 'Pending' : 'Confirmed',
+                            status: prepaymentEnabled ? 'Pending' : asRequest ? 'Requested' : 'Confirmed',
+                            source: 'bot',
                             type: 'Konsultatsiya',
                             notes: prepaymentEnabled ? 'Telegram bot orqali yozildi (to\'lov kutilmoqda)' : 'Telegram bot orqali yozildi'
                             // `bookedAt` ATAYLAB qo'yilmaydi: bot pastda chatda o'zi
@@ -636,6 +647,8 @@ class BotManager {
                             `Admin tekshirgach, qabulingiz tasdiqlanadi.`,
                             { parse_mode: 'Markdown' }
                         );
+                    } else if (asRequest) {
+                        await ctx.editMessageText(`📝 So'rovingiz qabul qilindi.\n\n👨‍⚕️ Shifokor: Dr. ${doctor.firstName} ${doctor.lastName}\n📅 Sana: ${dateStr}\n⏰ Vaqt: ${timeStr}\n\nRegistratura tasdiqlagach shu yerga xabar keladi.`);
                     } else {
                         await ctx.editMessageText(`✅ Muvaffaqiyatli yozildingiz!\n\n👨‍⚕️ Shifokor: Dr. ${doctor.firstName} ${doctor.lastName}\n📅 Sana: ${dateStr}\n⏰ Vaqt: ${timeStr}\n\nKlinikada kutib qolamiz.`);
                         if (doctor.telegramChatId) {
@@ -874,21 +887,45 @@ class BotManager {
                 if (!ctx.chat) return;
 
                 try {
-                    await prisma.review.upsert({
-                        where: { appointmentId: appointmentId },
-                        update: { rating: rating },
-                        create: {
-                            appointmentId: appointmentId,
-                            rating: rating
-                        }
-                    });
+                    /* Faqat 1..5 va faqat o'sha bemorning o'z chati (shikoyatlar,
+                       2026-11-26). Ilgari istalgan chat istalgan son yozardi. */
+                    const res = await recordRating(prisma, { appointmentId, chatId: String(ctx.chat.id), rating });
+                    if (!res.ok) { await ctx.answerCbQuery("Baholab bo'lmadi"); return; }
 
                     const stars = "⭐".repeat(rating);
-                    await ctx.editMessageText(`✅ Bahoingiz uchun rahmat!\n\nSiz bizni ${rating} ball (${stars}) bilan baholadingiz. Kelajakda xizmatlarimizni yanada yaxshilashda davom etamiz.`);
+                    if (res.complaintId) {
+                        awaitingComplaint.set(`${token}:${ctx.chat.id}`, { complaintId: res.complaintId, until: Date.now() + COMPLAINT_REPLY_MS });
+                        await ctx.editMessageText(`Bahoingiz uchun rahmat (${stars}).\n\nKechirasiz, nimadir yoqmadi. Iltimos, bitta xabarda yozing: nima yoqmadi? Klinika rahbariyati albatta ko'rib chiqadi.`);
+                        /* Egaga xabar — faqat yoqilgan bo'lsa */
+                        const clinic = await prisma.clinic.findUnique({ where: { id: res.clinicId }, select: { complaintAlert: true, telegramChatId: true } });
+                        if (clinic?.complaintAlert && clinic.telegramChatId) {
+                            await bot.telegram.sendMessage(clinic.telegramChatId,
+                                `⚠️ Past baho: ${stars} (${rating}/5)\nBemor: ${res.patientName}${res.doctorName ? `\nShifokor: ${res.doctorName}` : ''}\nXClinic → Bugun → «Shikoyat va fikrlar»`).catch(() => {});
+                        }
+                    } else {
+                        await ctx.editMessageText(`✅ Bahoingiz uchun rahmat!\n\nSiz bizni ${rating} ball (${stars}) bilan baholadingiz. Kelajakda xizmatlarimizni yanada yaxshilashda davom etamiz.`);
+                    }
                     await ctx.answerCbQuery("Rahmat!");
                 } catch (e) {
                     console.error("Rating save error:", e);
                     await ctx.answerCbQuery("Xatolik yuz berdi.");
+                }
+            });
+
+            /* Past bahodan keyingi matn — shikoyat matni. ENG OXIRIDA: boshqa
+               hech bir buyruq ushlamagan oddiy matngina shu yerga keladi. */
+            bot.on(message('text'), async (ctx, next) => {
+                const key = `${token}:${ctx.chat.id}`;
+                const wait = awaitingComplaint.get(key);
+                if (!wait || wait.until < Date.now()) { awaitingComplaint.delete(key); return next(); }
+                awaitingComplaint.delete(key);
+                try {
+                    const saved = await attachComplaintText(prisma, wait.complaintId, ctx.message.text);
+                    await ctx.reply(saved
+                        ? "Rahmat, yozganingiz qabul qilindi. Mas'ul xodim siz bilan bog'lanadi."
+                        : "Rahmat! Fikringiz avval qabul qilingan — mas'ul xodim siz bilan bog'lanadi.");
+                } catch (e) {
+                    console.error('Complaint text error:', e);
                 }
             });
 

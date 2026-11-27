@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Printer } from 'lucide-react';
+import { Check, Printer, Barcode } from 'lucide-react';
 import { Card } from './Common';
 import { LabOrder, LabTest } from '../types';
 import { useLanguage, fill } from '../context/LanguageContext';
@@ -35,6 +35,10 @@ interface Props {
     tests: LabTest[];
     busy?: boolean;
     onCollect: (order: LabOrder) => void;
+    /** Probirka yorlig'i (shtrix-kod). Berilmasa — tugma chiqmaydi. */
+    onLabel?: (order: LabOrder) => void;
+    /** Klinika natijani tasdiqlashni yoqqan — «Tayyor» da tasdiq kutayotgani belgilanadi */
+    verifyRequired?: boolean;
     /** Natijalar oynasi — kiritish ham, ko'rish va chop etish ham shu */
     onOpen: (order: LabOrder) => void;
 }
@@ -55,7 +59,7 @@ const capOf = (sample: string) => CAP[sample] || 'bg-gray-400';
 
 const dayKey = (iso?: string | null) => (iso ? new Date(iso).toDateString() : '');
 
-export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpen }) => {
+export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpen, onLabel, verifyRequired }) => {
     const { t } = useLanguage();
 
     // «12 daq», «40 daq qoldi» — daqiqada bir yangilanadi
@@ -160,6 +164,13 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
                                                     )}
                                                 </span>
                                             </span>
+                                            {onLabel && (
+                                                <button type="button" onClick={() => onLabel(o)} disabled={busy}
+                                                    title={t('lab.label.print')} aria-label={`${o.patientName}: ${t('lab.label.print')}`}
+                                                    className="shrink-0 h-9 w-9 rounded-xl border border-line bg-surface text-muted hover:text-primary-600 hover:border-primary-400 inline-flex items-center justify-center disabled:opacity-50">
+                                                    <Barcode className="w-4 h-4" />
+                                                </button>
+                                            )}
                                             <button type="button" onClick={() => onCollect(o)} disabled={busy}
                                                 aria-label={`${o.patientName}: ${t('labline.taken')}`}
                                                 className="shrink-0 h-9 px-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-extrabold transition-colors disabled:opacity-50">
@@ -243,9 +254,15 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
                                             <span className="min-w-0 flex-1 flex flex-col leading-snug">
                                                 <span className="text-sm font-extrabold text-ink truncate">{o.patientName}</span>
                                                 <span className="text-xs text-muted truncate">{testsOf(o)}</span>
-                                                <span className={`text-[11px] font-extrabold truncate ${o.seenByDoctorAt ? 'text-muted' : 'text-amber-700 dark:text-amber-400'}`}>
-                                                    {o.seenByDoctorAt ? t('labline.seen') : t('labline.unseen')}{o.doctorName ? ` · ${o.doctorName}` : ''}
-                                                </span>
+                                                {verifyRequired && !o.verifiedAt ? (
+                                                    <span className="text-[11px] font-extrabold truncate text-amber-700 dark:text-amber-400">
+                                                        {t('lab.verify.waiting')}{o.doctorName ? ` · ${o.doctorName}` : ''}
+                                                    </span>
+                                                ) : (
+                                                    <span className={`text-[11px] font-extrabold truncate ${o.seenByDoctorAt ? 'text-muted' : 'text-amber-700 dark:text-amber-400'}`}>
+                                                        {o.seenByDoctorAt ? t('labline.seen') : t('labline.unseen')}{o.doctorName ? ` · ${o.doctorName}` : ''}
+                                                    </span>
+                                                )}
                                             </span>
                                             <Printer aria-hidden="true" className="shrink-0 w-4 h-4 text-faint" />
                                         </button>
@@ -254,6 +271,11 @@ export const LabLine: React.FC<Props> = ({ orders, tests, busy, onCollect, onOpe
                             </ul>
                         )}
                         {unseen > 0 && <p className="mt-2 px-1 text-xs font-semibold text-amber-700 dark:text-amber-400">{fill(t('labline.unseenCount'), unseen)}</p>}
+                        {verifyRequired && ready.some(o => !o.verifiedAt) && (
+                            <p className="mt-1 px-1 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                                {fill(t('lab.verify.waitingCount'), ready.filter(o => !o.verifiedAt).length)}
+                            </p>
+                        )}
                     </div>
                 </div>
             </section>

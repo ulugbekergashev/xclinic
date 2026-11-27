@@ -18,7 +18,7 @@
    HTML ga tushadigan har bir qiymat `esc()` dan o'tadi.
    ───────────────────────────────────────────────────────────────────────────── */
 
-import { esc, fmtMoney, PrintClinic, resolvePrintClinic } from './printDocument';
+import { esc, fmtMoney, PrintClinic, resolvePrintClinic, printDocument, clinicHeader } from './printDocument';
 
 export interface ReceiptLine {
     name: string;
@@ -119,3 +119,84 @@ export function printReceipt(data: ReceiptData): boolean {
     setTimeout(() => { try { w.print(); } catch { /* foydalanuvchi o'zi bosadi */ } }, 250);
     return true;
 }
+
+/* ═══ A4 VARAQ — o'sha chek, katta qog'ozda ═══════════════════════════════════
+
+   Lenta cheki bemorga yetadi, lekin ishxona, sug'urta yoki tashkilot
+   (xodimini davolatgan korxona) A4 varaq so'raydi: shapka, jadval, imzo
+   va muhr joyi bilan. Ma'lumot chekniki bilan BIR XIL (`ReceiptData`) —
+   ikkinchi hisob-kitob yo'q, faqat boshqa ko'rinish.
+
+   Bu soliq e-hisob-fakturasi (Didox va h.k.) EMAS: u davlat tizimida
+   chiqariladi. Bu — klinikaning to'lov hujjati. */
+
+export interface ReceiptA4Labels {
+    no: string;
+    name: string;
+    qty: string;
+    sum: string;
+    cashier: string;
+    payer: string;
+    stamp: string;
+}
+
+const A4_DEFAULT_LABELS: ReceiptA4Labels = {
+    no: '№', name: 'Nomi', qty: 'Soni', sum: 'Summa',
+    cashier: 'Kassir', payer: "To'lovchi", stamp: 'M.O.',
+};
+
+/** A4 varaqning tanasi. Brauzerga bog'liq emas — sinovda tekshiriladi. */
+export function buildReceiptA4Body(data: ReceiptData, labels: Partial<ReceiptA4Labels> = {}): string {
+    const L = { ...A4_DEFAULT_LABELS, ...labels };
+    const table = `<table class="grid">
+      <thead><tr>
+        <th style="width:10mm">${esc(L.no)}</th><th>${esc(L.name)}</th>
+        <th style="width:18mm" class="num">${esc(L.qty)}</th>
+        <th style="width:34mm" class="num">${esc(L.sum)}</th>
+      </tr></thead>
+      <tbody>${data.lines.map((l, i) => `<tr>
+        <td>${i + 1}</td>
+        <td>${esc(l.name)}</td>
+        <td class="num">${esc(l.quantity && l.quantity > 0 ? l.quantity : 1)}</td>
+        <td class="num">${esc(fmtMoney(l.total))}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+
+    const summary = `<table class="rows" style="width:auto;margin-left:auto">${data.summary.map(r =>
+        `<tr${r.strong ? ' style="font-weight:700"' : ''}><td class="k" style="width:auto;padding-right:8mm">${esc(r.label)}:</td><td class="num" style="text-align:right">${esc(r.value)}</td></tr>`,
+    ).join('')}</table>`;
+
+    const sign = (label: string) => `<div class="sign" style="float:none">
+        <div class="sign-line"></div><div class="sign-label">${esc(label)}</div>
+      </div>`;
+
+    return `
+    ${clinicHeader(data.clinic)}
+    <div class="title">${esc(data.title)}</div>
+    <table class="rows">${data.meta.map(r =>
+        `<tr><td class="k">${esc(r.label)}:</td><td>${esc(r.value)}</td></tr>`).join('')}</table>
+    ${table}
+    ${summary}
+    ${data.footer ? `<div class="note">${esc(data.footer)}</div>` : ''}
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10mm">
+      ${sign(L.cashier)}
+      <div class="sign-label" style="margin-bottom:2mm">${esc(L.stamp)}</div>
+      ${sign(L.payer)}
+    </div>`;
+}
+
+/** A4 varaqni bosadi. `false` — oyna ochilmadi (pop-up bloklangan). */
+export function printReceiptA4(data: ReceiptData, labels?: Partial<ReceiptA4Labels>): boolean {
+    return printDocument(data.title, buildReceiptA4Body(data, labels));
+}
+
+/** Jadval va imzo yorliqlari tarjimadan. `t` tashqaridan — bu fayl tilni bilmaydi. */
+export const receiptA4Labels = (t: (key: any) => string): ReceiptA4Labels => ({
+    no: '№',
+    name: t('print.col.name'),
+    qty: t('print.col.qty'),
+    sum: t('print.col.sum'),
+    cashier: t('print.sign.cashier'),
+    payer: t('print.sign.payer'),
+    stamp: t('print.stamp'),
+});

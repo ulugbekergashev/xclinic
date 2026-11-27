@@ -32,6 +32,28 @@ import { serviceReport, recipeCostByService, catalogMatcher, chargeDepartmentId,
    shundan o'qiydi. Ilgari faqat umumiy hisobot istisno qilardi. */
 export const isCountedExpense = (category: string): boolean => category !== 'Lab';
 
+/** Kassaga va hisobotga tushadigan xarajat — faqat TASDIQLANGANI (migratsiya
+ *  0048). Tasdiq kutayotgan va rad etilgani hech qayerda sanalmaydi. Har bir
+ *  xarajat o'qilishi shu shartdan o'tadi: kassa, hisobotlar, byudjet, AI. */
+export const BOOKED_EXPENSE = { status: 'Approved' } as const;
+
+/** Bo'limlar bo'yicha xarajat — Hisobot → Bo'limlar bilan AYNAN bir qoida
+ *  (byudjetdagi «sarflandi» o'sha son bilan bir xil bo'lsin). */
+export async function departmentExpenseTotals(prisma: any, clinicId: string, from: string, to: string): Promise<Map<string | null, number>> {
+    const rows = await prisma.expense.findMany({
+        where: { clinicId, date: { gte: from, lte: to }, ...BOOKED_EXPENSE },
+        select: { amount: true, departmentId: true, category: true },
+    });
+    const out = new Map<string | null, number>();
+    for (const e of rows) {
+        if (!isCountedExpense(e.category)) continue;
+        const k = e.departmentId || null;
+        out.set(k, round(out.get(k) || 0) + (e.amount || 0));
+    }
+    for (const [k, v] of out) out.set(k, round(v));
+    return out;
+}
+
 type Deps = {
     prisma: any;
     authenticateToken: any;
@@ -114,7 +136,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 },
             }),
             prisma.expense.findMany({
-                where: { clinicId, date: { gte: from, lte: to } },
+                where: { clinicId, date: { gte: from, lte: to }, ...BOOKED_EXPENSE },
             }),
             prisma.department.findMany({ where: { clinicId } }),
             prisma.service.findMany({ where: { clinicId } }),
@@ -551,6 +573,34 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
      * xarajatlar ALOHIDA qatorda: ularni bo'limlarga taqsimlash — soxta
      * aniqlik, chunki taqsimlash qoidasini klinika o'zi belgilaydi.
      */
+/* BO'LIM BYUDJETI (2026-11-26, migratsiya 0048). Faqat byudjeti belgilangan
+       bo'limlar; «sarflandi» — Bo'limlar hisobotidagi xarajat bilan bitta
+       funksiya (`departmentExpenseTotals`). Oy — YYYY-MM, bo'lmasa joriy. */
+    route('get', '/api/reports/department-budget', async (req, res, clinicId) => {
+        if (!ownerOnly(req, res)) return;
+        const raw = String(req.query.month || '');
+        const now = new Date(Date.now() + 5 * 3600e3);
+        const month = /^\d{4}-\d{2}$/.test(raw) ? raw : now.toISOString().slice(0, 7);
+        const [y, m] = month.split('-').map(Number);
+        const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+        const from = `${month}-01`, to = `${month}-${String(last).padStart(2, '0')}`;
+        const [departments, spent] = await Promise.all([
+            prisma.department.findMany({
+                where: { clinicId, monthlyBudget: { gt: 0 } },
+                select: { id: true, name: true, color: true, monthlyBudget: true, sortOrder: true },
+                orderBy: { sortOrder: 'asc' },
+            }),
+            departmentExpenseTotals(prisma, clinicId, from, to),
+        ]);
+        res.json({
+            month,
+            rows: departments.map((d: any) => ({
+                departmentId: d.id, name: d.name, color: d.color,
+                budget: round(d.monthlyBudget || 0), spent: spent.get(d.id) || 0,
+            })),
+        });
+    });
+
     route('get', '/api/reports/departments', async (req, res, clinicId) => {
         if (!ownerOnly(req, res)) return;
         const { from, to } = period(req);
@@ -566,7 +616,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 },
             }),
             prisma.expense.findMany({
-                where: { clinicId, date: { gte: from, lte: to } },
+                where: { clinicId, date: { gte: from, lte: to }, ...BOOKED_EXPENSE },
                 select: { amount: true, departmentId: true, category: true },
             }),
             prisma.department.findMany({
@@ -707,7 +757,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                     select: { total: true, paidAmount: true, patientId: true, visitId: true },
                 }),
                 prisma.expense.findMany({
-                    where: { clinicId, date: { gte: a, lte: b } },
+                    where: { clinicId, date: { gte: a, lte: b }, ...BOOKED_EXPENSE },
                     select: { amount: true, category: true },
                 }),
                 prisma.chargePayment.findMany({
@@ -802,7 +852,7 @@ export function registerReportRoutes(app: express.Express, deps: Deps) {
                 select: { amount: true, createdAt: true },
             }),
             prisma.expense.findMany({
-                where: { clinicId, date: { gte: from, lte: to } },
+                where: { clinicId, date: { gte: from, lte: to }, ...BOOKED_EXPENSE },
                 select: { amount: true, category: true, date: true },
             }),
         ]);

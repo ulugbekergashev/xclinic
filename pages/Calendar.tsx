@@ -11,6 +11,7 @@ import { SendMessageModal } from '../components/SendMessageModal';
 import { AppointmentBlock } from '../components/calendar/AppointmentBlock';
 import { AppointmentDetailsModal } from '../components/calendar/AppointmentDetailsModal';
 import { DoctorChips } from '../components/calendar/DoctorChips';
+import { BookingRequests } from '../components/calendar/BookingRequests';
 import { api } from '../services/api';
 import { markAppointmentArrived } from '../utils/arrival';
 import { useNavigate } from 'react-router-dom';
@@ -535,6 +536,9 @@ export const Calendar: React.FC<CalendarProps> = ({
 
       {/* Shifokor filtri — chiplar; shifokorga kerak emas (u faqat
           o'zinikini ko'radi). */}
+      {/* Saytdan/botdan kelgan so'rovlar — bo'lmasa blok chiqmaydi (0046) */}
+      {!isDoctor && <BookingRequests appointments={effectiveAppointments} />}
+
       {!isDoctor && allActive.length > 0 && (
         <DoctorChips
           doctors={allActive}

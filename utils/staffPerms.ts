@@ -87,6 +87,7 @@ export const PERM_MODULES: PermModuleDef[] = [
         specials: [
             { id: 'phone', name: "Telefon raqamini ko'rish" },
             { id: 'message', name: 'Bemorga xabar yuborish' },
+            { id: 'complaints', name: 'Shikoyatlar bilan ishlash' },
         ],
     },
     {
@@ -133,7 +134,7 @@ export const PERM_MODULES: PermModuleDef[] = [
         sections: [
             { id: 'orders', name: 'Tahlil buyurtmalari', acts: ['view', 'create', 'edit', 'delete'], fixedView: true },
         ],
-        specials: [{ id: 'results', name: 'Natija kiritish' }],
+        specials: [{ id: 'results', name: 'Natija kiritish' }, { id: 'verify', name: 'Natijani tasdiqlash' }],
     },
     {
         id: 'diagnostics', name: 'Diagnostika', roles: ALL, menu: true,
@@ -201,7 +202,7 @@ type Spec = Record<string, { on?: boolean; scope?: 'own' | 'all'; c?: Record<str
 const STANDARD: Record<PermRole, Spec> = {
     receptionist: {
         reception: { on: true, c: { queue: 'vced' } },
-        patients: { on: true, c: { card: 'vcex', history: 've', docs: 'vc', photos: 'vc', payhist: 'v' }, s: { phone: true, message: true } },
+        patients: { on: true, c: { card: 'vcex', history: 've', docs: 'vc', photos: 'vc', payhist: 'v' }, s: { phone: true, message: true, complaints: true } },
         calendar: { on: true, c: { appts: 'vced' }, s: { remind: true } },
         money: { on: true, s: { payCreate: true, discount: 0, refund: false, payEdit: false, payDelete: false, amounts: true } },
         finance: { on: true, c: { cashbook: 'vx', expenses: 'vc' }, s: { closeday: true, reopen: false, encash: true } },
@@ -234,7 +235,7 @@ const STANDARD: Record<PermRole, Spec> = {
 const SIMPLE: Record<PermRole, Spec> = {
     receptionist: {
         reception: { on: true, c: { queue: 'vce' } },
-        patients: { on: true, c: { card: 'vce', history: 'v', docs: 'vc', photos: 'v', payhist: 'v' }, s: { phone: true, message: true } },
+        patients: { on: true, c: { card: 'vce', history: 'v', docs: 'vc', photos: 'v', payhist: 'v' }, s: { phone: true, message: true, complaints: true } },
         calendar: { on: true, c: { appts: 'vce' }, s: { remind: true } },
         money: { on: true, s: { payCreate: true, amounts: true } },
         finance: { on: true, c: { cashbook: 'v', expenses: 'v' }, s: { closeday: true } },

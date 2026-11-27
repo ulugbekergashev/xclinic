@@ -6,6 +6,8 @@ import { UserRole, Transaction, Expense, Doctor, Clinic, Appointment, Patient,
 import type { CashCloseArgs } from './CashBook';
 import { useLanguage } from '../context/LanguageContext';
 import { permsFor } from '../utils/accessControl';
+import { ExpenseApprovals } from '../components/finance/ExpenseApprovals';
+import { isBookedExpense } from '../utils/cashbook';
 
 /* KASSA (menyuda ilgari «Moliya»; modul nomi va manzil — `finance`).
    Kassaga qancha pul kirdi va qancha qoldi (faktik pul harakati). Shifokor
@@ -62,11 +64,14 @@ interface FinanceHubProps {
     charges?: VisitCharge[];
     onChargesChanged?: () => void;
     departments?: Department[];
+    /** Xarajat tasdig'idan keyin ro'yxatni qayta o'qish */
+    onExpensesChanged?: () => void | Promise<void>;
 }
 
 export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
     const { t } = useLanguage();
     const { userRole, transactions, expenses, doctors, currentClinic, onPatientClick } = props;
+    const bookedExpenses = React.useMemo(() => expenses.filter(isBookedExpense), [expenses]);
 
     /* Eski havola: `/finance?tab=hisobot` yoki `?tab=davomat`. Hisobot
        o'z sahifasiga ko'chdi — o'sha yerga, o'sha vkladkaga. Egadan boshqa
@@ -86,10 +91,17 @@ export const FinanceHub: React.FC<FinanceHubProps> = (props) => {
                 </div>
             </div>
 
+            {/* Tasdiq kutayotgan xarajatlar va bo'lim byudjeti — ko'rinmaydi,
+                agar ikkalasi ham bo'sh bo'lsa (migratsiya 0048) */}
+            <ExpenseApprovals expenses={expenses} departments={props.departments}
+                isOwner={userRole === UserRole.CLINIC_ADMIN}
+                onChanged={() => props.onExpensesChanged?.()} />
+
             <CashBook
                     embedded
                     transactions={transactions}
-                    expenses={expenses}
+                    /* Kassaga faqat TASDIQLANGAN xarajat: kutayotgani yashikdan chiqmagan */
+                    expenses={bookedExpenses}
                     doctors={doctors}
                     currentClinic={currentClinic}
                     onPatientClick={onPatientClick}

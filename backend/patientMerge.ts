@@ -39,6 +39,8 @@ const PATIENT_TABLES = [
        keyin materiallar arxivlangan kartada qolib, asosiy kartaning «sarflangan
        material» ro'yxatidan yo'qolardi. */
     'stockMovement',
+    /* Shikoyatlar (0047) — birlashtirilganda asosiy kartaga ko'chadi */
+    'complaint',
 ] as const;
 
 /* Bemorning ismi NUSXA qilib saqlanadigan jadvallar — birlashtirishdan keyin

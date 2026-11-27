@@ -8,7 +8,7 @@
 
 import {
     printDocument, clinicHeader, signatureBlock, letterheadFooter,
-    esc, fmtMoney, fmtDate, fmtDateTime, PrintClinic,
+    esc, fmtMoney, fmtDate, fmtDateTime, PrintClinic, PrintLayout,
 } from './printDocument';
 
 const KIND_LABEL: Record<string, string> = {
@@ -135,11 +135,20 @@ export function printLabResult(order: any, clinic?: PrintClinic | null): boolean
         }).join('');
     }).join('');
 
+    /* TASDIQ (migratsiya 0045). Klinika yoqqan va hali tasdiqlanmagan natija
+       ham bosiladi — to'smaymiz — lekin varaqning o'zi buni aytadi. */
+    const unverified = !!order?.verifyRequired && !order?.verifiedAt;
+    const verifiedLine = order?.verifiedAt
+        ? `<div class="note">Tasdiqladi: ${esc([order.verifiedByName, fmtDateTime(order.verifiedAt)].filter(Boolean).join(' · '))}</div>`
+        : '';
+    const number = order?.sampleCode ? String(order.sampleCode) : order?.id ? String(order.id).slice(0, 8).toUpperCase() : '—';
+
     const body = `
     ${clinicHeader(clinic)}
+    ${unverified ? `<div style="text-align:center;margin:4px 0"><span class="stamp">DASTLABKI NATIJA — TASDIQLANMAGAN</span></div>` : ''}
     <div class="title">Laboratoriya tahlili natijasi</div>
     <div class="subtitle">
-      Buyurtma № ${esc(order?.id ? String(order.id).slice(0, 8).toUpperCase() : '—')} ·
+      Buyurtma № ${esc(number)} ·
       Olindi: ${esc(fmtDateTime(order?.orderedAt))} ·
       Tayyor: ${esc(fmtDateTime(order?.completedAt))}
     </div>
@@ -161,6 +170,7 @@ export function printLabResult(order: any, clinic?: PrintClinic | null): boolean
             : `<div class="box"><div class="box-title">Natija</div>Natija kiritilmagan.</div>`}
     ${order?.technicianNotes ? `<div class="box"><div class="box-title">Laborant izohi</div>${esc(order.technicianNotes)}</div>` : ''}
     ${signatureBlock('Laborant', order?.technicianName)}
+    ${verifiedLine ? `<div style="clear:both;padding-top:4mm">${verifiedLine}</div>` : ''}
     ${letterheadFooter(clinic)}`;
 
     return printDocument('Tahlil natijasi', body);
@@ -335,6 +345,8 @@ export function printPrescription(rx: any, clinic?: PrintClinic | null): boolean
     const regimen = (it: any) => [
         it?.dosage,
         it?.frequency,
+        /* Ovqat vaqti (2026-11-26) — bemor eng ko'p so'raydigani */
+        it?.mealTiming === 'before' ? 'ovqatdan oldin' : it?.mealTiming === 'with' ? 'ovqat bilan' : it?.mealTiming === 'after' ? 'ovqatdan keyin' : null,
         it?.durationDays ? `${it.durationDays} kun` : null,
     ].filter(Boolean).join(' · ') || '—';
 
@@ -366,4 +378,155 @@ export function printPrescription(rx: any, clinic?: PrintClinic | null): boolean
     ${letterheadFooter(clinic || rx?.clinic)}`;
 
     return printDocument('Retsept', body);
+}
+
+/* ═══ 7. NAMUNA VARAQ (chekkalarni sozlash) ══════════════════════════════════
+
+   Sozlamalar → «Bosma blank» → «Namuna chop etish». SAQLANMAGAN chekkalar
+   bilan bosiladi: klinika oldindan bosilgan blankaga bitta varaq urib
+   ko'radi, keyin saqlaydi. Punktir ramka — matn chiqadigan joyning chegarasi;
+   u har sahifada turadi (`position: fixed` bosmada sahifaga bog'lanadi). */
+
+export function printLayoutSample(layout: PrintLayout, clinicName?: string | null): boolean {
+    const body = `
+    <div style="position:fixed;inset:0;border:1px dashed #888;pointer-events:none"></div>
+    ${clinicHeader(clinicName ? { name: clinicName } : null, layout)}
+    <div class="title">Namuna varaq</div>
+    <div class="subtitle">Chekkalar: tepa ${layout.topMm} mm · past ${layout.bottomMm} mm · yon ${layout.sideMm} mm${layout.hideHeader ? ' · shapkasiz' : ''}</div>
+    ${patientRows({ lastName: 'Familiya', firstName: 'Ism', dob: '1990-01-01', gender: 'Male' })}
+    <table class="grid">
+      <thead><tr><th style="width:10mm">№</th><th>Dori</th><th style="width:60mm">Qabul tartibi</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><b>Paratsetamol 500 mg</b></td><td>kuniga 2 mahal · ovqatdan keyin · 5 kun</td></tr>
+        <tr><td>2</td><td><b>Vitamin C 500 mg</b></td><td>kuniga 1 mahal · 10 kun</td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      Punktir ramka — matn chiqadigan joy. Ramka blankadagi bosilgan shapka yoki
+      pastki yozuvga tegsa, Sozlamalarda tegishli chekkani kattalashtiring.
+    </div>
+    ${signatureBlock('Shifokor')}`;
+    return printDocument('Namuna varaq', body, layout);
+}
+
+/* ═══ 8. OYLIK VARAQASI (xodim kartasi → Maosh) ═══════════════════════════════
+
+   Xodim «nega shuncha» deb so'raydi — javob qog'ozda bo'lishi kerak:
+   asosiy qism (shifokorda — qaysi xizmatlardan qancha ulush), bonuslar,
+   jarimalar, jami va to'langani. Pastda ikki imzo: xodim pulni oldi,
+   kassir berdi. Ma'lumot `GET /api/hr/staff/:role/:id/month` javobidan. */
+
+/** Ulush jadvali bir varaqdan oshib ketmasin; qolgani bitta «yana N ta» qatorida */
+const MAX_SLIP_ROWS = 300;
+
+export interface SalarySlipInput {
+    periodLabel: string;
+    staffName: string;
+    roleLabel?: string;
+    isDoctor: boolean;
+    month: any;
+}
+
+export function salarySlipBody(input: SalarySlipInput, clinic?: PrintClinic | null): string {
+    const m = input.month || {};
+    const adjustments: any[] = Array.isArray(m.adjustments) ? m.adjustments : [];
+    const bonuses = adjustments.filter(a => a?.type === 'Bonus');
+    const penalties = adjustments.filter(a => a?.type === 'Penalty');
+    /* Fix maoshli shifokorda foiz qatorlari TO'LANMAYDI (`payroll.ts`):
+       ularni qog'ozga chiqarsak, jadval jami summaga to'g'ri kelmaydi.
+       Faqat «Fix maosh» qatori qoladi. */
+    const allItems: any[] = input.isDoctor && Array.isArray(m.share?.items) ? m.share.items : [];
+    const items = m.staff?.salaryType === 'fixed' ? allItems.filter(i => i?.kind === 'Fixed') : allItems;
+    const shown = items.slice(0, MAX_SLIP_ROWS);
+    const hidden = items.slice(MAX_SLIP_ROWS);
+    const payment = m.payment;
+    const att = m.attendance;
+
+    const rows: [string, string][] = [
+        ['Xodim', input.staffName || '—'],
+        ...(input.roleLabel ? [['Lavozimi', input.roleLabel] as [string, string]] : []),
+        /* Davr sarlavha ostida turadi — bu yerda takrorlanmaydi */
+        ...(att && (att.present || att.absent || att.late || att.excused)
+            ? [['Davomat', `keldi ${att.present || 0} · kelmadi ${att.absent || 0} · kechikdi ${att.late || 0} · sababli ${att.excused || 0}`] as [string, string]]
+            : []),
+    ];
+
+    const shareTable = items.length
+        ? `<div class="box-title" style="margin-top:8px">Ulush hisobi</div>
+      <table class="grid">
+        <thead><tr>
+          <th style="width:10mm">№</th><th>Xizmat</th>
+          <th style="width:30mm" class="num">To'langan</th>
+          <th style="width:22mm" class="num">Foiz</th>
+          <th style="width:30mm" class="num">Ulush</th>
+        </tr></thead>
+        <tbody>${shown.map((it, i) => `<tr>
+          <td>${i + 1}</td>
+          <td>${esc(it?.name || '—')}</td>
+          <td class="num">${fmtMoney(it?.paid || 0)}</td>
+          <td class="num">${esc(it?.percent ?? 0)}%</td>
+          <td class="num">${fmtMoney(it?.share || 0)}</td>
+        </tr>`).join('')}${hidden.length ? `<tr>
+          <td></td><td colspan="3">… yana ${hidden.length} ta xizmat</td>
+          <td class="num">${fmtMoney(hidden.reduce((s, it) => s + (Number(it?.share) || 0), 0))}</td>
+        </tr>` : ''}</tbody>
+      </table>`
+        : '';
+
+    const adjList = (title: string, list: any[], sign: string) => list.length
+        ? `<div class="box-title" style="margin-top:8px">${esc(title)}</div>
+      <table class="grid"><tbody>${list.map(a => `<tr>
+        <td>${esc(a?.reason || '—')}</td>
+        <td class="num" style="width:34mm">${sign}${fmtMoney(a?.amount || 0)}</td>
+      </tr>`).join('')}</tbody></table>`
+        : '';
+
+    /* Shifokorda `m.base` — allaqachon SOF summa (hisoblangan minus eski
+       vedomost orqali to'langan). Qog'ozda zanjir to'liq ko'rinadi:
+       hisoblangan → ayirilgan → bonus/jarima → to'lanishi kerak. Aks holda
+       «ayirildi» qatori ikkinchi marta ayirilgandek o'qiladi. */
+    const baseRows: [string, string, boolean][] = input.isDoctor && m.share
+        ? [
+            ['Hisoblangan ulush va oylik', fmtMoney(m.share.accrued || 0), false],
+            ...(m.share.paidViaRuns > 0
+                ? [["Eski vedomost orqali to'langan", `−${fmtMoney(m.share.paidViaRuns)}`, false] as [string, string, boolean]]
+                : []),
+        ]
+        : [[input.isDoctor ? 'Ulush va oylik' : 'Asosiy oylik', fmtMoney(m.base || 0), false]];
+    const summary: [string, string, boolean][] = [
+        ...baseRows,
+        ['Bonus', `+${fmtMoney(m.bonus || 0)}`, false],
+        ['Jarima', `−${fmtMoney(m.penalty || 0)}`, false],
+        ["To'lanishi kerak", fmtMoney(m.due || 0), true],
+        ...(payment
+            ? [[`To'landi (${fmtDate(payment.paidAt)})`, fmtMoney(payment.amount || 0), true] as [string, string, boolean]]
+            : []),
+    ];
+
+    return `
+    ${clinicHeader(clinic)}
+    <div class="title">Oylik varaqasi</div>
+    <div class="subtitle">${esc(input.periodLabel)}</div>
+    <table class="rows">${rows.map(([k, v]) => `<tr><td class="k">${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table>
+    ${shareTable}
+    ${adjList('Bonuslar', bonuses, '+')}
+    ${adjList('Jarimalar', penalties, '−')}
+    <table class="grid" style="margin-top:10px">
+      <tbody>${summary.map(([k, v, strong]) => `<tr${strong ? ' style="font-weight:700"' : ''}>
+        <td>${esc(k)}</td><td class="num" style="width:40mm">${esc(v)} so'm</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    ${payment ? '' : `<div class="note">Hali to'lanmagan.</div>`}
+    <div style="display:flex;justify-content:space-between;gap:10mm">
+      <div class="sign" style="float:none">
+        <div class="sign-line"></div><div class="sign-label">Xodim imzosi</div>
+      </div>
+      <div class="sign" style="float:none">
+        <div class="sign-line"></div><div class="sign-label">Kassir${payment?.paidByName ? ` — ${esc(payment.paidByName)}` : ''}</div>
+      </div>
+    </div>`;
+}
+
+export function printSalarySlip(input: SalarySlipInput, clinic?: PrintClinic | null): boolean {
+    return printDocument(`Oylik varaqasi — ${input.staffName}`, salarySlipBody(input, clinic));
 }

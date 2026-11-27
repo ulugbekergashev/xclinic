@@ -92,6 +92,13 @@ import { registerTodayZonesRoutes } from './todayZones';
 import { requestStableTunnel } from './tunnelClient';
 import { readTunnelAddresses, notifyBackupAddress } from './tunnelAddresses';
 import { registerComplianceRoutes, logAccess, pruneAccessLog, auditDeletion } from './compliance';
+import { registerTreatmentTemplateRoutes } from './treatmentTemplates';
+import { registerFollowUpRoutes } from './followUps';
+import { registerPatientDocSendRoutes, autoSendLabResult } from './patientDocSend';
+import { registerLabSampleRoutes, ensureSampleCode } from './labSamples';
+import { registerExpenseApprovalRoutes, needsApproval } from './expenseApproval';
+import { registerComplaintRoutes } from './complaints';
+import { registerOnlineBookingRoutes } from './onlineBooking';
 import { check as checkPermission, isFinanceRead, isMoneyStrippedRead, canReadFinance, sanitizeAccessControl, checkStaffPerm, actsAs, discountWithinLimit, discountDenied } from './permissions';
 import { makePermChecker } from './staffPerms';
 import { validatePatient, validatePhone } from '../shared/validation';
@@ -3690,8 +3697,15 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
             }
         }
 
+        /* XARAJATNI TASDIQLASH (2026-11-26, migratsiya 0048). Ega chegara
+           qo'ygan bo'lsa, undan katta xarajatni boshqa xodim yozganda u
+           egaga boradi — pul hali chiqmaydi. Chegara yo'q — avvalgidek. */
+        const held = await needsApproval(prisma, clinicId as string, actor, parsedAmount);
+
         const expense = await prisma.expense.create({
             data: {
+                status: held ? 'Pending' : 'Approved',
+                requestedByName: held ? (actor?.name || null) : null,
                 /* Toshkent kuni (audit 2026-09-17): UTC bo'yicha 00:00-05:00 da
                    kiritilgan xarajat kechagi kassa kuniga tushib qolardi. */
                 date: date || tashkentDateStr(),
@@ -3721,6 +3735,11 @@ app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
         if (category && !EXPENSE_CATEGORIES.includes(category)) {
             return res.status(400).json({ error: 'Noto\'g\'ri kategoriya' });
         }
+        /* Summani chegaradan oshirgan tahrir — yana egaga (900 ming yozib,
+           keyin 5 mln ga o'zgartirib, tasdiqni aylanib o'tib bo'lmasin) */
+        const actor = (req as any).user;
+        const reheld = amount !== undefined
+            && await needsApproval(prisma, getScopedClinicId(req) as string, actor, som(parseFloat(amount)));
 
         const expense = await prisma.expense.update({
             where: { id: req.params.id },
@@ -3734,6 +3753,7 @@ app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
                 ...(doctorId !== undefined && { doctorId: doctorId || null }),
                 ...(receptionistId !== undefined && { receptionistId: receptionistId || null }),
                 ...(departmentId !== undefined && { departmentId: departmentId || null }),
+                ...(reheld && { status: 'Pending', requestedByName: actor?.name || null, decidedByName: null, decidedAt: null }),
             }
         });
         res.json(expense);
@@ -3840,7 +3860,8 @@ async function computeExpectedCash(prisma: any, clinicId: string, date: string) 
         // interfeysdagi hisobdan (utils/cashbook.ts, finalizeCash) farq qilardi
         // va kassir ikki xil "kutilayotgan summa" ko'rardi.
         prisma.expense.findMany({
-            where: { clinicId, date: dateRange },
+            /* Tasdiq kutayotgan xarajat yashikdan chiqmagan (migratsiya 0048) */
+            where: { clinicId, date: dateRange, status: 'Approved' },
             select: { amount: true, method: true, date: true },
         }),
     ]);
@@ -5260,9 +5281,12 @@ app.post('/api/lab-orders/:id/collect', authenticateToken,
                     technicianName: (req as any).user?.name || order.technicianName,
                 },
             });
+            /* Probirka kodi shu paytda beriladi (yorliq oldinroq bosilgan
+               bo'lsa — o'sha kod qoladi). Kod berilmasa ham proba olingan. */
+            const sampleCode = await ensureSampleCode(prisma, clinicId, order.id).catch(() => null);
 
             res.json({
-                order: updated,
+                order: { ...updated, sampleCode: sampleCode || updated.sampleCode },
                 unpaidWarning: unpaid
                     ? `Diqqat: to'lov to'liq emas (qarz ${Math.round(((charge?.total || 0) - (charge?.paidAmount || 0)))})`
                     : null,
@@ -5402,6 +5426,13 @@ app.put('/api/lab-orders/:id', authenticateToken, async (req: any, res: any) => 
             ...(sampleCollectedAt !== undefined && { sampleCollectedAt: sampleCollectedAt ? new Date(sampleCollectedAt) : null }),
         };
         if (updateData.status === 'Completed') updateData.completedAt = new Date();
+        /* Bajarilgan buyurtma qayta ochilsa — eski tasdiq yangi raqamga o'tmasin */
+        if (updateData.status && updateData.status !== 'Completed') {
+            updateData.verifiedAt = null; updateData.verifiedByName = null; updateData.verifiedById = null;
+        }
+        const before = updateData.status === 'Completed'
+            ? await prisma.labOrder.findUnique({ where: { id: req.params.id }, select: { status: true } })
+            : null;
         const order = await prisma.$transaction(async (tx: any) => {
             if (updateData.status === 'Cancelled') await cancelLabCharges(tx, req.params.id);
             return tx.labOrder.update({
@@ -5410,6 +5441,8 @@ app.put('/api/lab-orders/:id', authenticateToken, async (req: any, res: any) => 
             });
         });
         await syncLabOrderExpense(order);
+        /* Birinchi marta bajarildi — klinika yoqgan bo'lsa natija bemorga o'zi ketadi */
+        if (before && before.status !== 'Completed') void autoSendLabResult(prisma, order.clinicId, order.id);
         res.json(order);
     } catch (error: any) {
         if (error instanceof LabChargePaidError) return res.status(409).json({ error: error.message, code: 'LAB_PAID' });
@@ -6165,6 +6198,16 @@ app.post('/api/visits/:id/dmed-sync', authenticateToken, async (req, res) => {
     }
 });
 
+/** Chop etish chekkasi: undefined — tegilmaydi, bo'sh — NULL (odatiy),
+ *  son — 0..max oralig'idagi butun mm. */
+function mmOrNull(v: unknown, max: number): number | null | undefined {
+    if (v === undefined) return undefined;
+    if (v === null || String(v).trim() === '') return null;
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n)) return null;
+    return Math.min(max, Math.max(0, n));
+}
+
 // --- Umumiy sozlamalar (klinika admini o'z klinikasini yangilaydi) ---
 // Obuna maydonlariga (status, muddat, tarif) tegib bo'lmaydi — bu yerda faqat
 // klinika o'zining kundalik sozlamalari.
@@ -6172,7 +6215,8 @@ app.put('/api/clinics/:id/general', authenticateToken, async (req, res) => {
     try {
         if (!canAccessClinic(req, req.params.id)) return res.status(403).json({ error: 'Ruxsat yo\'q (boshqa klinika)' });
         const { name, address, phone, email, ownerPhone, startHour, endHour, enableReceipts,
-                licenseNumber, letterheadNote } = req.body;
+                licenseNumber, letterheadNote,
+                printTopMm, printBottomMm, printSideMm, printHideHeader } = req.body;
         const clinic = await prisma.clinic.update({
             where: { id: req.params.id },
             data: {
@@ -6192,6 +6236,14 @@ app.put('/api/clinics/:id/general', authenticateToken, async (req, res) => {
                    qolardi. */
                 licenseNumber: licenseNumber !== undefined ? (String(licenseNumber).trim() || null) : undefined,
                 letterheadNote: letterheadNote !== undefined ? (String(letterheadNote).trim() || null) : undefined,
+                /* Oldindan bosilgan blanka (migratsiya 0044). Bo'sh — odatiy
+                   chekka; aks holda butun mm, chegarada: 80 mm dan katta
+                   chekka varaqni yeb qo'yadi. */
+                printTopMm: mmOrNull(printTopMm, 80),
+                printBottomMm: mmOrNull(printBottomMm, 80),
+                printSideMm: mmOrNull(printSideMm, 40),
+                /* Satr «false» ham `true` bo'lib qolmasin */
+                printHideHeader: printHideHeader !== undefined ? (printHideHeader === true || printHideHeader === 'true') : undefined,
             }
         });
         res.json(clinicForRole(clinic, (req as any).user?.role));
@@ -6596,6 +6648,22 @@ registerHrRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerAttentionRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerTodayZonesRoutes(app, { prisma, authenticateToken, getScopedClinicId });
 registerComplianceRoutes(app, { prisma, authenticateToken, getScopedClinicId, assertPatientOwnership });
+/* Davolash to'plami — tashxisga odatdagi dori, xizmat, tahlil (2026-11-26) */
+registerTreatmentTemplateRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+/* Qayta ko'rik — shifokor belgilaydi, registratura qo'ng'iroq qiladi (2026-11-26) */
+registerFollowUpRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerPatientDocSendRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerLabSampleRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerExpenseApprovalRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+registerComplaintRoutes(app, { prisma, authenticateToken, getScopedClinicId });
+/* Saytdan yozilish (0046). Ochiq marshrutlar sozlama yoqilgandagina javob beradi */
+registerOnlineBookingRoutes(app, {
+    prisma, authenticateToken, getScopedClinicId, socketIp, sendUnified, kickTrigger, emitEvent,
+    tunnelUrl: () => {
+        const { stableUrl, quickUrl } = readTunnelAddresses(USER_DATA_PATH, { remoteEnabled: readRemoteAccess(), envUrl: process.env.CLOUDFLARE_TUNNEL_URL });
+        return stableUrl || quickUrl || null;
+    },
+});
 registerFileRoutes(app, { prisma, authenticateToken, getScopedClinicId, uploadsDir });
 
 /* Migratsiya fayllari. O'rnatilgan nusxada ncc bundle yonida yotadi,

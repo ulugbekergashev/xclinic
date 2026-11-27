@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle, Loader2, Printer, Wallet } from 'lucide-react';
+import { CheckCircle, Loader2, Printer, Wallet, FileText } from 'lucide-react';
 import { Admission, VisitCharge } from '../types';
 import { api } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -77,8 +77,8 @@ export function DischargeBill({ admission, clinic, canPay, receivedByName, role,
         return () => { isCurrent = false; };
     }, [admission.id]);
 
-    const print = (b: AdmissionBilling) => {
-        if (!printAdmissionBill(admission, b, clinic, t)) setError(t('print.popupBlocked'));
+    const print = (b: AdmissionBilling, a4 = false) => {
+        if (!printAdmissionBill(admission, b, clinic, t, a4)) setError(t('print.popupBlocked'));
     };
 
     /* To'lov oynasidan keyin: hisob qayta o'qiladi. «Qabul qilindi» —
@@ -173,6 +173,12 @@ export function DischargeBill({ admission, clinic, canPay, receivedByName, role,
                         <button type="button" onClick={() => print(billing)}
                             className="inline-flex items-center gap-2 h-11 px-4 rounded-xl border border-line bg-surface text-sm font-semibold text-ink hover:border-primary-400 disabled:opacity-50">
                             <Printer className="w-4 h-4" /> {t('inp.bill.print')}
+                        </button>
+                    )}
+                    {lines.length > 0 && (
+                        <button type="button" onClick={() => print(billing, true)} title={t('print.a4Title')}
+                            className="inline-flex items-center gap-2 h-11 px-4 rounded-xl border border-line bg-surface text-sm font-semibold text-ink hover:border-primary-400">
+                            <FileText className="w-4 h-4" /> {t('print.a4')}
                         </button>
                     )}
                 </div>
